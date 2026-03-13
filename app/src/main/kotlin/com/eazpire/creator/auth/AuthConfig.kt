@@ -2,7 +2,7 @@ package com.eazpire.creator.auth
 
 /**
  * Konfiguration für Shopify Customer Account API OAuth.
- * Sync: creator-worker → eazpire-android via GitHub Actions
+ * Sync: creator-worker → eazpire-android (GitHub Actions)
  *
  * WICHTIG: In Shopify Admin → Settings → Customer accounts → Customer Account API
  * einen "Public mobile client" mit Callback-URL registrieren:

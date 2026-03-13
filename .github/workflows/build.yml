@@ -31,9 +31,15 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Debug APK
+        env:
+          GRADLE_OPTS: ""
+          JAVA_OPTS: ""
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Build Release AAB (bundle)
+        env:
+          GRADLE_OPTS: ""
+          JAVA_OPTS: ""
         run: ./gradlew bundleRelease --no-daemon
         continue-on-error: true
 
