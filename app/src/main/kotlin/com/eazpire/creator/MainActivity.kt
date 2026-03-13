@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
                             val info = UpdateChecker.checkForUpdate(BuildConfig.VERSION_CODE)
                             updateInfo = info
                             if (info == null) {
-                                Toast.makeText(ctx, "Keine Updates verfügbar", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(ctx, "Keine Updates verfügbar (v${BuildConfig.VERSION_CODE})", Toast.LENGTH_LONG).show()
                             }
                         }
                     }
