@@ -19,12 +19,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Shopify OAuth callback: shop.allyoucanpink.eazpire -->
+            <!-- Shopify OAuth callback: shop.{shop_id}.eazpire (shop_id muss numerisch sein) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="shop.allyoucanpink.eazpire" android:host="callback" />
+                <data android:scheme="shop.73952035098.eazpire" android:host="callback" />
             </intent-filter>
         </activity>
     </application>

@@ -1,5 +1,6 @@
 # Build Android APK und erstelle GitHub Release
 # Wird bei Push auf main ausgeführt (nach Sync von creator-worker).
+# APK zum Download: https://github.com/eazpire/eazpire-android/releases
 
 name: Build and Release
 
@@ -42,13 +43,23 @@ jobs:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Prepare APK for release
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk eazpire-creator-debug.apk
+
       - name: Create GitHub Release
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: Build ${{ github.run_number }}
-          draft: true
-          files: app/build/outputs/apk/debug/app-debug.apk
+          tag_name: build-${{ github.run_number }}
+          name: "eazpire Creator – Build #${{ github.run_number }}"
+          body: |
+            ## Installation
+            1. Lade **eazpire-creator-debug.apk** herunter
+            2. Öffne die Datei auf deinem Android-Gerät
+            3. Erlaube „Installation aus unbekannten Quellen“, falls gefragt
+            4. App installieren und öffnen
+          draft: false
+          files: eazpire-creator-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
