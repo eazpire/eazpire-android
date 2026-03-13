@@ -103,7 +103,8 @@ class ShopifyAuthService {
         val json = JSONObject(respBody)
         if (!response.isSuccessful || !json.optBoolean("ok", false)) {
             val err = json.optString("error", "unknown")
-            throw AuthException("JWT exchange failed: $err")
+            val detail = json.optString("detail", "")
+            throw AuthException(if (detail.isNotEmpty()) "JWT exchange failed: $err ($detail)" else "JWT exchange failed: $err")
         }
         val jwt = json.optString("jwt")
         val ownerId = json.optString("owner_id")
