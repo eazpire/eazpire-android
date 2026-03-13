@@ -11,7 +11,7 @@ android {
         applicationId = "com.eazpire.creator"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
+        versionCode = (System.getenv("VERSION_CODE") ?: "1").toIntOrNull() ?: 1
         versionName = "1.0.0"
     }
 
@@ -33,6 +33,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.5"

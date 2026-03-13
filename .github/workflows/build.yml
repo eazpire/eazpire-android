@@ -37,6 +37,7 @@ jobs:
         env:
           GRADLE_OPTS: ""
           JAVA_OPTS: ""
+          VERSION_CODE: ${{ github.run_number }}
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Build Release AAB (bundle)
