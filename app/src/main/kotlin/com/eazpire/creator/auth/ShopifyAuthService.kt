@@ -61,7 +61,7 @@ class ShopifyAuthService {
         }
     }
 
-    suspend fun exchangeCodeForAccessToken(code: String, codeVerifier: String): String =
+    suspend fun exchangeCodeForTokens(code: String, codeVerifier: String): TokenResponse =
         withContext(Dispatchers.IO) {
             val endpoints = discoverEndpoints()
             val form = FormBody.Builder()
@@ -83,16 +83,20 @@ class ShopifyAuthService {
             }
             val json = JSONObject(body)
             val accessToken = json.optString("access_token")
-            if (accessToken.isBlank()) {
-                throw AuthException("No access_token in response")
+            val idToken = json.optString("id_token")
+            if (accessToken.isBlank() && idToken.isBlank()) {
+                throw AuthException("No access_token or id_token in response")
             }
-            accessToken
+            TokenResponse(accessToken = accessToken, idToken = idToken)
         }
 
-    suspend fun exchangeShopifyTokenForJwt(accessToken: String): JwtResult = withContext(Dispatchers.IO) {
+    data class TokenResponse(val accessToken: String, val idToken: String)
+
+    suspend fun exchangeShopifyTokenForJwt(accessToken: String, idToken: String? = null): JwtResult = withContext(Dispatchers.IO) {
         val url = "${AuthConfig.CREATOR_ENGINE_URL}/apps/creator-dispatch?op=exchange-shopify-token"
-        val escaped = accessToken.replace("\\", "\\\\").replace("\"", "\\\"")
-        val body = """{"access_token":"$escaped"}"""
+        val escaped = (idToken ?: accessToken).replace("\\", "\\\\").replace("\"", "\\\"")
+        val key = if (idToken != null) "id_token" else "access_token"
+        val body = """{"$key":"$escaped"}"""
         val request = Request.Builder()
             .url(url)
             .post(body.toRequestBody("application/json".toMediaType()))
