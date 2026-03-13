@@ -88,7 +88,8 @@ if "$cygwin" || "$msys" ; then
   JAVACMD=$( cygpath --unix "$JAVACMD" )
 fi
 
-DEFAULT_JVM_OPTS='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
+# -Xmx/-Xms removed: causes "Unknown option -X" in GitHub Actions (bash xargs parsing)
+DEFAULT_JVM_OPTS='-Dfile.encoding=UTF-8'
 
 eval "set -- $(
   printf '%s\n' "$DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS" |
