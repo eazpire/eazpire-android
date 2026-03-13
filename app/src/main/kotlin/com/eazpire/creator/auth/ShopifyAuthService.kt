@@ -20,8 +20,8 @@ import java.util.concurrent.TimeUnit
  */
 class ShopifyAuthService {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
     data class AuthEndpoints(val authorizationEndpoint: String, val tokenEndpoint: String)

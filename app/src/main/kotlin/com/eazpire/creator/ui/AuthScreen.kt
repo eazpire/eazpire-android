@@ -79,6 +79,7 @@ fun AuthScreen(
             return
         }
         val verifier = codeVerifier ?: return
+        showWebView = false  // WebView schließen, Loading anzeigen
         scope.launch {
             isLoading = true
             error = null
@@ -86,7 +87,6 @@ fun AuthScreen(
                 val accessToken = authService.exchangeCodeForAccessToken(code, verifier)
                 val result = authService.exchangeShopifyTokenForJwt(accessToken)
                 tokenStore.saveJwt(result.jwt, result.ownerId)
-                showWebView = false
                 onAuthSuccess()
             } catch (e: AuthException) {
                 error = e.message
