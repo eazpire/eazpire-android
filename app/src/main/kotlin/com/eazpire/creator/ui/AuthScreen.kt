@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -34,7 +35,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun AuthScreen(
     tokenStore: SecureTokenStore,
-    onAuthSuccess: () -> Unit
+    onAuthSuccess: () -> Unit,
+    onCheckUpdate: (() -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
     val authService = remember { ShopifyAuthService() }
@@ -141,6 +143,12 @@ fun AuthScreen(
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
+            }
+            onCheckUpdate?.let { check ->
+                Spacer(modifier = Modifier.height(24.dp))
+                TextButton(onClick = check) {
+                    Text("Nach Updates suchen")
+                }
             }
         }
     }

@@ -3,6 +3,7 @@ package com.eazpire.creator
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -46,22 +47,32 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     var isLoggedIn by remember { mutableStateOf(tokenStore.isLoggedIn()) }
                     var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
-                    LaunchedEffect(Unit) {
-                        val info = UpdateChecker.checkForUpdate(BuildConfig.VERSION_CODE)
-                        updateInfo = info
+                    val scope = rememberCoroutineScope()
+                    val ctx = LocalContext.current
+                    fun runUpdateCheck() {
+                        scope.launch {
+                            val info = UpdateChecker.checkForUpdate(BuildConfig.VERSION_CODE)
+                            updateInfo = info
+                            if (info == null) {
+                                Toast.makeText(ctx, "Keine Updates verfügbar", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
+                    LaunchedEffect(Unit) { runUpdateCheck() }
                     if (isLoggedIn) {
                         CreatorScreen(
                             tokenStore = tokenStore,
                             onLogout = {
                                 tokenStore.clear()
                                 isLoggedIn = false
-                            }
+                            },
+                            onCheckUpdate = { runUpdateCheck() }
                         )
                     } else {
                         AuthScreen(
                             tokenStore = tokenStore,
-                            onAuthSuccess = { isLoggedIn = true }
+                            onAuthSuccess = { isLoggedIn = true },
+                            onCheckUpdate = { runUpdateCheck() }
                         )
                     }
                     updateInfo?.let { info ->
@@ -116,7 +127,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CreatorScreen(
     tokenStore: SecureTokenStore,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onCheckUpdate: (() -> Unit)? = null
 ) {
     val jwt = remember { tokenStore.getJwt() }
     val api = remember(jwt) { CreatorApi(baseUrl = AuthConfig.CREATOR_ENGINE_URL, jwt = jwt) }
@@ -136,6 +148,12 @@ fun CreatorScreen(
             style = MaterialTheme.typography.headlineMedium
         )
         Spacer(modifier = Modifier.height(16.dp))
+        onCheckUpdate?.let { check ->
+            Button(onClick = check, modifier = Modifier.padding(4.dp)) {
+                Text("Nach Updates suchen")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
         Button(
             onClick = {
                 scope.launch {
