@@ -51,7 +51,10 @@ class CreatorApi(
         JSONObject(body)
     }
 
-    suspend fun getBalance(): JSONObject = call("get-balance")
+    suspend fun getBalance(ownerId: String? = null): JSONObject {
+        val params = if (!ownerId.isNullOrBlank()) mapOf("owner_id" to ownerId) else emptyMap()
+        return call("get-balance", params)
+    }
 
     /**
      * GET ?op=get-customer-account-profile&owner_id=xxx
@@ -59,6 +62,22 @@ class CreatorApi(
     suspend fun getCustomerProfile(ownerId: String): JSONObject = call(
         "get-customer-account-profile",
         mapOf("owner_id" to ownerId)
+    )
+
+    /**
+     * GET ?op=get-customer-email&customer_id=xxx&shop=xxx
+     * Returns { ok: true, email: "user@example.com" } – email from Shopify account.
+     * Shop must match the shop the user logged in with (e.g. AuthConfig.SHOP_DOMAIN).
+     */
+    suspend fun getCustomerEmail(
+        customerId: String,
+        shop: String
+    ): JSONObject = call(
+        "get-customer-email",
+        mapOf(
+            "customer_id" to customerId,
+            "shop" to shop
+        )
     )
 
     /**
@@ -87,8 +106,106 @@ class CreatorApi(
         }
     suspend fun getSettings(): JSONObject = call("get-settings")
 
+    /**
+     * GET ?op=get-customer-profile&owner_id=xxx
+     * Body measurements for Size AI (gender, height, weight, chest, waist, etc.)
+     */
+    suspend fun getSizeProfile(ownerId: String): JSONObject = call(
+        "get-customer-profile",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /**
+     * POST save-customer-profile – body measurements for Size AI
+     */
+    suspend fun saveSizeProfile(ownerId: String, profile: Map<String, Any?>): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=save-customer-profile")
+                append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+                append("&_t=${System.currentTimeMillis()}")
+            }
+            val body = org.json.JSONObject(profile.filterValues { it != null }.mapValues { it.value!! }).toString()
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply {
+                    jwt?.let { addHeader("Authorization", "Bearer $it") }
+                }
+                .build()
+            val response = client.newCall(request).execute()
+            val respBody = response.body?.string() ?: "{}"
+            JSONObject(respBody)
+        }
+
     /** GET ?op=country-product-counts – Returns { ok, counts: { "DE": 1234, ... } } */
     suspend fun getCountryProductCounts(): JSONObject = call("country-product-counts")
+
+    /** GET ?op=list-customer-mockups&owner_id=xxx → { ok, mockups: [...] } */
+    suspend fun listCustomerMockups(ownerId: String): JSONObject = call(
+        "list-customer-mockups",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=list-community-network&owner_id=xxx → { ok, network: {...} } */
+    suspend fun listCommunityNetwork(ownerId: String): JSONObject = call(
+        "list-community-network",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=list-jobs&owner_id=xxx&limit=20 → { ok, items: [...] } */
+    suspend fun listJobs(ownerId: String, limit: Int = 20): JSONObject = call(
+        "list-jobs",
+        mapOf("owner_id" to ownerId, "limit" to limit.toString())
+    )
+
+    /** GET ?op=list-generated&owner_id=xxx → { ok, items: [...] } */
+    suspend fun listGenerated(ownerId: String, limit: Int = 50): JSONObject = call(
+        "list-generated",
+        mapOf("owner_id" to ownerId, "limit" to limit.toString())
+    )
+
+    // ── Wardrobe ─────────────────────────────────────────
+    /** GET ?op=wardrobe-list&customer_id=xxx → { ok, outfits: [...] } */
+    suspend fun wardrobeList(customerId: String): JSONObject = call(
+        "wardrobe-list",
+        mapOf("customer_id" to customerId)
+    )
+
+    /** GET ?op=wardrobe-get&customer_id=xxx&outfit_id=xxx → { ok, outfit: {...} } */
+    suspend fun wardrobeGet(customerId: String, outfitId: String): JSONObject = call(
+        "wardrobe-get",
+        mapOf("customer_id" to customerId, "outfit_id" to outfitId)
+    )
+
+    /** POST ?op=wardrobe-save – Body: customer_id, outfit_id?, name, gender, age_group, slots */
+    suspend fun wardrobeSave(customerId: String, body: Map<String, Any?>): JSONObject =
+        postJson("wardrobe-save", body + ("customer_id" to customerId))
+
+    /** POST ?op=wardrobe-delete – Body: customer_id, outfit_id */
+    suspend fun wardrobeDelete(customerId: String, outfitId: String): JSONObject =
+        postJson("wardrobe-delete", mapOf("customer_id" to customerId, "outfit_id" to outfitId))
+
+    /** POST ?op=wardrobe-generate – Body: customer_id, outfit_id, slots, gender, age_group, name, ... */
+    suspend fun wardrobeGenerate(customerId: String, body: Map<String, Any?>): JSONObject =
+        postJson("wardrobe-generate", body + ("customer_id" to customerId))
+
+    private suspend fun postJson(op: String, body: Map<String, Any?>): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = "$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}"
+            val jsonBody = org.json.JSONObject(body.filterValues { it != null }.mapValues { it.value!! }).toString()
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), jsonBody.toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
 
     /** GET ?op=get-catalog-products&region=EU&design_type=classic */
     suspend fun getCatalogProducts(

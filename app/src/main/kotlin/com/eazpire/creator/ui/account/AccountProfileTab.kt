@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -26,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.launch
@@ -33,12 +33,15 @@ import kotlinx.coroutines.launch
 @Composable
 fun AccountProfileTab(
     tokenStore: SecureTokenStore,
+    onSaveActionReady: ((() -> Unit) -> Unit)? = null,
+    onSavingStateChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val jwt = remember { tokenStore.getJwt() }
     val ownerId = remember { tokenStore.getOwnerId() ?: "" }
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
 
+    var email by remember { mutableStateOf("") }
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
     var addressLine by remember { mutableStateOf("") }
@@ -57,9 +60,9 @@ fun AccountProfileTab(
         isLoading = true
         statusMessage = null
         try {
-            val resp = api.getCustomerProfile(ownerId)
-            if (resp.optBoolean("ok", false)) {
-                val profile = resp.optJSONObject("profile")
+            val profileResp = api.getCustomerProfile(ownerId)
+            if (profileResp.optBoolean("ok", false)) {
+                val profile = profileResp.optJSONObject("profile")
                 if (profile != null) {
                     firstName = profile.optString("first_name", "")
                     lastName = profile.optString("last_name", "")
@@ -69,6 +72,14 @@ fun AccountProfileTab(
                     birthDate = profile.optString("birth_date", "")
                     gender = profile.optString("gender", "")
                 }
+            }
+            val emailResp = api.getCustomerEmail(ownerId, AuthConfig.SHOP_DOMAIN)
+            if (emailResp.optBoolean("ok", false)) {
+                val raw = when (val e = emailResp.opt("email")) {
+                    null, org.json.JSONObject.NULL -> ""
+                    else -> e.toString().trim()
+                }
+                email = raw.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) } ?: ""
             }
         } catch (e: Exception) {
             DebugLog.click("Profile load error: ${e.message}")
@@ -115,6 +126,13 @@ fun AccountProfileTab(
         }
     }
 
+    LaunchedEffect(isSaving) {
+        onSavingStateChange?.invoke(isSaving)
+    }
+    LaunchedEffect(Unit) {
+        onSaveActionReady?.invoke { saveProfile() }
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -133,6 +151,27 @@ fun AccountProfileTab(
                 )
             }
         } else {
+            OutlinedTextField(
+                value = email,
+                onValueChange = { },
+                label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                readOnly = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = EazColors.TopbarBorder,
+                    unfocusedBorderColor = EazColors.TopbarBorder,
+                    cursorColor = EazColors.Orange,
+                    focusedLabelColor = EazColors.TextSecondary,
+                    unfocusedLabelColor = EazColors.TextSecondary
+                )
+            )
+            Text(
+                text = "Your account email (from Shopify)",
+                style = MaterialTheme.typography.bodySmall,
+                color = EazColors.TextSecondary,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
             OutlinedTextField(
                 value = firstName,
                 onValueChange = { firstName = it },
@@ -240,13 +279,6 @@ fun AccountProfileTab(
                     )
                     Text("Male")
                 }
-            }
-            Button(
-                onClick = { saveProfile() },
-                enabled = !isSaving,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (isSaving) "Saving..." else "Save")
             }
             statusMessage?.let { msg ->
                 Text(
