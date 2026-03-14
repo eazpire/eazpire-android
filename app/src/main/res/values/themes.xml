@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Shop-Orange #f97316 als Hintergrund -->
+    <color name="eazpire_orange">#F97316</color>
     <style name="Theme.EazpireCreator" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/eazpire_orange</item>
+        <item name="android:navigationBarColor">@color/eazpire_orange</item>
+        <item name="android:windowBackground">@color/eazpire_orange</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

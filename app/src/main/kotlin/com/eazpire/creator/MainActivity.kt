@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.api.CreatorApi
@@ -144,7 +145,7 @@ fun CreatorScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Eazpire Creator",
+            text = "eazpire",
             style = MaterialTheme.typography.headlineMedium
         )
         Spacer(modifier = Modifier.height(16.dp))
@@ -179,6 +180,32 @@ fun CreatorScreen(
         Spacer(modifier = Modifier.height(24.dp))
         Button(onClick = onLogout) {
             Text("Abmelden")
+        }
+    }
+}
+
+/** Layout-Preview für visuelle Arbeit (in Android Studio: Split-Ansicht) */
+@Preview(showBackground = true, name = "CreatorScreen")
+@Composable
+private fun CreatorScreenPreview() {
+    EazpireCreatorTheme {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text("eazpire", style = MaterialTheme.typography.headlineMedium)
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = {}, modifier = Modifier.padding(4.dp)) {
+                Text("Nach Updates suchen")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = {}) { Text("Balance laden") }
+            Text("0.00 EAZ", modifier = Modifier.padding(8.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(onClick = {}) { Text("Abmelden") }
         }
     }
 }

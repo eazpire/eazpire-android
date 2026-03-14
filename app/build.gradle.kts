@@ -1,11 +1,14 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "com.eazpire.creator"
     compileSdk = 34
+    // Build in temp – vermeidet OneDrive-Sperren im Projektordner
+    buildDir = file("${System.getProperty("java.io.tmpdir")}/eazpire-android-build/${project.name}")
 
     defaultConfig {
         applicationId = "com.eazpire.creator"
@@ -35,9 +38,6 @@ android {
         compose = true
         buildConfig = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.5"
-    }
 }
 
 dependencies {
@@ -48,6 +48,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.compose.material3:material3")
 
     // Networking
