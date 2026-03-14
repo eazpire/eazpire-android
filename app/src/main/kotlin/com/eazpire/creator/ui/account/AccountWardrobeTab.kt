@@ -42,6 +42,9 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.Male
+import androidx.compose.material.icons.filled.Female
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -382,20 +385,14 @@ fun AccountWardrobeTab(
         }
     }
 
-    val config = LocalConfiguration.current
-    val isNarrow = config.screenWidthDp < 600
-    val sidebarWidth = if (isNarrow) 260.dp else 200.dp
+    val sidebarWidth = 260.dp
     val sidebarOffset by animateDpAsState(
-        targetValue = when {
-            !isNarrow -> 0.dp
-            sidebarOpen -> 0.dp
-            else -> (-sidebarWidth)
-        },
+        targetValue = if (sidebarOpen) 0.dp else (-sidebarWidth),
         animationSpec = tween(250),
         label = "sidebar"
     )
 
-    fun closeSidebar() { if (isNarrow) sidebarOpen = false }
+    fun closeSidebar() { sidebarOpen = false }
     fun selectOutfitAndClose(id: String) {
         activeOutfitId = id
         outfits.find { it.id == id }?.let { currentGeneratedImageUrl = it.generatedImageUrl }
@@ -403,52 +400,11 @@ fun AccountWardrobeTab(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            // Desktop: sidebar always visible (200dp)
-            if (!isNarrow) {
-                Surface(
-                    modifier = Modifier.width(200.dp).fillMaxHeight(),
-                    color = WardrobeColors.Gray100
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState())
-                            .padding(vertical = 8.dp)
-                    ) {
-                        WardrobeSidebarUnsaved(
-                            isActive = activeOutfitId == "unsaved",
-                            userImageUrl = userImageUrl,
-                            onClick = { activeOutfitId = "unsaved"; closeSidebar() },
-                            onUploadClick = { userImageDialogOpen = true },
-                            onClearImage = { userImageUrl = null }
-                        )
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
-                                .height(1.dp)
-                                .fillMaxWidth()
-                                .background(WardrobeColors.Gray200)
-                        )
-                        outfits.forEach { outfit ->
-                            WardrobeSidebarEntry(
-                                outfit = outfit,
-                                isActive = activeOutfitId == outfit.id,
-                                onSelect = { selectOutfitAndClose(outfit.id) },
-                                onDelete = { deleteOutfit(outfit.id) }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // ── Main ──
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-            ) {
-                // Header: hamburger (mobile) + label
+        // ── Main content (full width) ──
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+                // Header: hamburger + label (drawer always)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -456,12 +412,8 @@ fun AccountWardrobeTab(
                         .background(WardrobeColors.Gray100),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (isNarrow) {
-                        IconButton(onClick = { sidebarOpen = !sidebarOpen }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Menu", tint = WardrobeColors.Gray700)
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = { sidebarOpen = !sidebarOpen }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = WardrobeColors.Gray700)
                     }
                     Text(
                         text = if (activeOutfitId == "unsaved") "Unsaved Outfit" else (activeOutfit?.name ?: "Outfit"),
@@ -471,19 +423,17 @@ fun AccountWardrobeTab(
                     )
                 }
 
-                // Audience selectors (Gender, Age)
+                // Audience selectors: icons only (Gender + Age)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Audience", style = MaterialTheme.typography.labelSmall, color = WardrobeColors.Gray500)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    WardrobeSelectorButton(
+                    WardrobeIconButton(
                         selected = currentGender == "male",
-                        label = "Male",
+                        icon = Icons.Default.Male,
                         onClick = {
                             if (activeOutfitId == "unsaved") unsavedGender = "male"
                             else scope.launch {
@@ -493,9 +443,9 @@ fun AccountWardrobeTab(
                         },
                         isMale = true
                     )
-                    WardrobeSelectorButton(
+                    WardrobeIconButton(
                         selected = currentGender == "female",
-                        label = "Female",
+                        icon = Icons.Default.Female,
                         onClick = {
                             if (activeOutfitId == "unsaved") unsavedGender = "female"
                             else scope.launch {
@@ -505,56 +455,82 @@ fun AccountWardrobeTab(
                         },
                         isMale = false
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    listOf("adult" to "Adult", "child" to "Child", "baby" to "Baby").forEach { (age, label) ->
-                        WardrobeSelectorButton(
-                            selected = currentAgeGroup == age,
-                            label = label,
-                            onClick = {
-                                if (activeOutfitId == "unsaved") unsavedAgeGroup = age
-                                else scope.launch {
-                                    activeOutfit?.let { api.wardrobeSave(ownerId, mapOf("outfit_id" to it.id, "age_group" to age, "name" to it.name, "gender" to it.gender, "slots" to it.slots)) }
-                                    loadOutfits()
-                                }
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(24.dp)
+                            .background(WardrobeColors.Gray300)
+                    )
+                    WardrobeIconButton(
+                        selected = currentAgeGroup == "adult",
+                        icon = Icons.Default.Person,
+                        onClick = {
+                            if (activeOutfitId == "unsaved") unsavedAgeGroup = "adult"
+                            else scope.launch {
+                                activeOutfit?.let { api.wardrobeSave(ownerId, mapOf("outfit_id" to it.id, "age_group" to "adult", "name" to it.name, "gender" to it.gender, "slots" to it.slots)) }
+                                loadOutfits()
                             }
-                        )
-                    }
+                        }
+                    )
+                    WardrobeIconButton(
+                        selected = currentAgeGroup == "child",
+                        icon = Icons.Default.Person,
+                        onClick = {
+                            if (activeOutfitId == "unsaved") unsavedAgeGroup = "child"
+                            else scope.launch {
+                                activeOutfit?.let { api.wardrobeSave(ownerId, mapOf("outfit_id" to it.id, "age_group" to "child", "name" to it.name, "gender" to it.gender, "slots" to it.slots)) }
+                                loadOutfits()
+                            }
+                        }
+                    )
+                    WardrobeIconButton(
+                        selected = currentAgeGroup == "baby",
+                        icon = Icons.Default.ChildCare,
+                        onClick = {
+                            if (activeOutfitId == "unsaved") unsavedAgeGroup = "baby"
+                            else scope.launch {
+                                activeOutfit?.let { api.wardrobeSave(ownerId, mapOf("outfit_id" to it.id, "age_group" to "baby", "name" to it.name, "gender" to it.gender, "slots" to it.slots)) }
+                                loadOutfits()
+                            }
+                        }
+                    )
                 }
 
-                // Content: Figure + Grid
-                Row(
+                // Content: Figure on top, Produkte-Grid below
+                Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
                 ) {
-                    // Figure column
+                    // Figure
                     Column(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         if (currentGeneratedImageUrl != null) {
                             Row(
-                                modifier = Modifier.padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                modifier = Modifier.padding(bottom = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                WardrobeSelectorButton(
+                                WardrobeIconButton(
                                     selected = figureView == "figure",
-                                    label = "Figur",
+                                    icon = Icons.Default.Person,
                                     onClick = { figureView = "figure" }
                                 )
-                                WardrobeSelectorButton(
+                                WardrobeIconButton(
                                     selected = figureView == "outfit",
-                                    label = "Outfit",
+                                    icon = Icons.Default.Image,
                                     onClick = { figureView = "outfit" }
                                 )
                             }
                         }
                         Box(
                             modifier = Modifier
-                                .weight(1f)
                                 .fillMaxWidth()
+                                .aspectRatio(0.75f)
                                 .background(WardrobeColors.FigureDefault.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                         ) {
                             if (figureView == "outfit" && currentGeneratedImageUrl != null) {
@@ -576,51 +552,48 @@ fun AccountWardrobeTab(
                             }
                         }
                     }
-                    // Grid column
-                    Column(modifier = Modifier.weight(1f)) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(3),
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // Produkte-Grid (3x3) unter der Figur
+                    val onePieceFilled = currentSlots["one_piece"]?.productId?.isNotBlank() == true
+                    WARDROBE_SLOTS.chunked(3).forEach { rowSlots ->
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(0.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val onePieceFilled = currentSlots["one_piece"]?.productId?.isNotBlank() == true
-                            items(WARDROBE_SLOTS) { slot ->
+                            rowSlots.forEach { slot ->
                                 val data = currentSlots[slot.key]
                                 val isFilled = data != null && data.productId.isNotBlank()
                                 val isCovered = onePieceFilled && slot.key in ONE_PIECE_CONFLICTS && !isFilled
-                                WardrobeSlotCell(
-                                    slot = slot,
-                                    data = data,
-                                    isFilled = isFilled,
-                                    isCovered = isCovered,
-                                    onSlotClick = { productModalSlot = slot.key }
-                                )
+                                Box(modifier = Modifier.weight(1f)) {
+                                    WardrobeSlotCell(
+                                        slot = slot,
+                                        data = data,
+                                        isFilled = isFilled,
+                                        isCovered = isCovered,
+                                        onSlotClick = { productModalSlot = slot.key }
+                                    )
+                                }
                             }
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
-        }
 
-        // Mobile: sidebar overlay (drawer)
-        if (isNarrow) {
-            if (sidebarOpen) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.4f))
-                        .clickable { closeSidebar() }
-                        .zIndex(1f)
-                )
-            }
+        // Drawer: outfit list (hamburger menu)
+        if (sidebarOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .clickable { closeSidebar() }
+                    .zIndex(1f)
+            )
             Surface(
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(260.dp)
                     .offset(x = sidebarOffset)
-                    .align(Alignment.CenterStart)
                     .zIndex(2f),
                 color = WardrobeColors.Gray100,
                 shadowElevation = 8.dp
@@ -855,6 +828,38 @@ private fun WardrobeSidebarEntry(
         IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = WardrobeColors.Gray400)
         }
+    }
+}
+
+@Composable
+private fun WardrobeIconButton(
+    selected: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    isMale: Boolean? = null
+) {
+    val color = when {
+        isMale == true && selected -> WardrobeColors.MaleBlue
+        isMale == false && selected -> WardrobeColors.FemalePink
+        selected -> WardrobeColors.Indigo
+        else -> WardrobeColors.Gray500
+    }
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(40.dp)
+            .then(
+                if (selected) Modifier.background(WardrobeColors.IndigoBg, RoundedCornerShape(8.dp))
+                    .border(2.dp, color, RoundedCornerShape(8.dp))
+                else Modifier.background(WardrobeColors.Gray100, RoundedCornerShape(8.dp))
+            )
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 
