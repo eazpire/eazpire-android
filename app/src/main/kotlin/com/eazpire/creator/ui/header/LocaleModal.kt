@@ -180,3 +180,18 @@ data class LanguageChildren(
     val dialects: List<LocaleModalItem>,
     val scripts: List<LocaleModalItem>
 )
+
+/** Returns the dialect/script label if the given code is a dialect or script, else null. */
+fun getDialectScriptLabel(code: String, children: Map<String, LanguageChildren>): String? {
+    val base = code.lowercase().split("-").first()
+    val c = children[base] ?: return null
+    return c.dialects.find { it.code.equals(code, ignoreCase = true) }?.label
+        ?: c.scripts.find { it.code.equals(code, ignoreCase = true) }?.label
+}
+
+/** Short badge text for dialect/script (e.g. "Swiss German" instead of full "Swiss German (Schweizerdeutsch...)"). */
+fun getDialectScriptBadge(label: String?): String? {
+    if (label.isNullOrBlank()) return null
+    val short = label.substringBefore("(").trim()
+    return short.ifBlank { label }
+}

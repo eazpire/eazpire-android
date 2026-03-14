@@ -60,6 +60,7 @@ val AVAILABLE_COUNTRIES: List<LocaleModalItem> = listOf(
 /**
  * Languages with display name and flag country for icon.
  */
+/** Base languages only (variants under +). Aligned with API /api/languages. */
 val AVAILABLE_LANGUAGES: List<LocaleModalItem> = listOf(
     LocaleModalItem("de", "Deutsch", "de"),
     LocaleModalItem("en", "English", "gb"),
@@ -72,8 +73,7 @@ val AVAILABLE_LANGUAGES: List<LocaleModalItem> = listOf(
     LocaleModalItem("cs", "Čeština", "cz"),
     LocaleModalItem("da", "Dansk", "dk"),
     LocaleModalItem("sv", "Svenska", "se"),
-    LocaleModalItem("nb", "Norsk (Bokmål)", "no"),
-    LocaleModalItem("no", "Norsk", "no"),
+    LocaleModalItem("nb", "Norsk", "no"),
     LocaleModalItem("fi", "Suomi", "fi"),
     LocaleModalItem("hu", "Magyar", "hu"),
     LocaleModalItem("ro", "Română", "ro"),
@@ -91,10 +91,6 @@ val AVAILABLE_LANGUAGES: List<LocaleModalItem> = listOf(
     LocaleModalItem("ja", "日本語", "jp"),
     LocaleModalItem("ko", "한국어", "kr"),
     LocaleModalItem("zh", "中文", "cn"),
-    LocaleModalItem("zh-cn", "简体中文", "cn"),
-    LocaleModalItem("zh-tw", "繁體中文", "tw"),
-    LocaleModalItem("pt-br", "Português (Brasil)", "br"),
-    LocaleModalItem("pt-pt", "Português (Portugal)", "pt"),
     LocaleModalItem("ar", "العربية", "sa"),
     LocaleModalItem("he", "עברית", "il"),
 )

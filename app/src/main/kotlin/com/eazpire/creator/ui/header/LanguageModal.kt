@@ -22,10 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,9 +57,17 @@ fun LanguageModal(
     var dialectModalBaseLang by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
 
-    val filtered = remember(searchQuery, standardLanguages) {
-        if (searchQuery.isBlank()) standardLanguages
-        else standardLanguages.filter {
+    val childCodes = remember(languageChildren) {
+        languageChildren.values.flatMap { c ->
+            c.dialects.map { it.code.lowercase() } + c.scripts.map { it.code.lowercase() }
+        }.toSet()
+    }
+    val baseOnlyLanguages = remember(standardLanguages, childCodes) {
+        standardLanguages.filter { it.code.lowercase() !in childCodes }
+    }
+    val filtered = remember(searchQuery, baseOnlyLanguages) {
+        if (searchQuery.isBlank()) baseOnlyLanguages
+        else baseOnlyLanguages.filter {
             it.code.contains(searchQuery, ignoreCase = true) ||
             it.label.contains(searchQuery, ignoreCase = true)
         }
@@ -154,14 +159,25 @@ fun LanguageModal(
                                 .clip(CircleShape),
                             contentScale = ContentScale.Crop
                         )
-                        Text(
-                            text = item.label,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 12.dp),
-                            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                            color = EazColors.TextPrimary
-                        )
+                        Row(
+                            modifier = Modifier.weight(1f).padding(start = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = item.label,
+                                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                                color = EazColors.TextPrimary
+                            )
+                            val dialectBadge = if (selectedCode.startsWith("${baseLang}-") && baseLang == item.code.lowercase())
+                                getDialectScriptBadge(getDialectScriptLabel(selectedCode, languageChildren)) else null
+                            if (dialectBadge != null) {
+                                Text(
+                                    text = " · $dialectBadge",
+                                    style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+                                    color = EazColors.TextSecondary
+                                )
+                            }
+                        }
                         if (hasChildren) {
                             IconButton(
                                 onClick = { dialectModalBaseLang = baseLang },
@@ -196,7 +212,7 @@ fun LanguageModal(
                 children = children,
                 selectedCode = selectedCode,
                 onDismiss = { dialectModalBaseLang = null },
-                onApply = { code ->
+                onSelect = { code ->
                     onSelect(code)
                     dialectModalBaseLang = null
                     onDismiss()
@@ -215,15 +231,11 @@ private fun DialectModal(
     children: LanguageChildren,
     selectedCode: String,
     onDismiss: () -> Unit,
-    onApply: (String) -> Unit
+    onSelect: (String) -> Unit
 ) {
-    val isDialect = children.dialects.any { it.code.equals(selectedCode, ignoreCase = true) }
-    val isScript = children.scripts.any { it.code.equals(selectedCode, ignoreCase = true) }
-    var dialectChoice by remember(selectedCode) {
-        mutableStateOf(if (isDialect) selectedCode else "")
-    }
-    var scriptChoice by remember(selectedCode) {
-        mutableStateOf(if (isScript) selectedCode else "")
+    fun selectAndClose(code: String) {
+        onSelect(code)
+        onDismiss()
     }
 
     ModalBottomSheet(
@@ -276,30 +288,31 @@ private fun DialectModal(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { dialectChoice = ""; scriptChoice = "" }
+                            .clickable { selectAndClose(baseLang) }
+                            .background(
+                                if (!children.dialects.any { it.code.equals(selectedCode, ignoreCase = true) } &&
+                                    !children.scripts.any { it.code.equals(selectedCode, ignoreCase = true) }
+                                ) EazColors.OrangeBg else androidx.compose.ui.graphics.Color.Transparent,
+                                RoundedCornerShape(8.dp)
+                            )
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
-                            selected = dialectChoice.isEmpty() && scriptChoice.isEmpty(),
-                            onClick = { dialectChoice = ""; scriptChoice = "" },
-                            colors = RadioButtonDefaults.colors(selectedColor = EazColors.Orange)
-                        )
                         Text("Standard", modifier = Modifier.padding(start = 8.dp), color = EazColors.TextPrimary)
                     }
                     children.dialects.forEach { d ->
+                        val isSelected = d.code.equals(selectedCode, ignoreCase = true)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { dialectChoice = d.code; scriptChoice = "" }
+                                .clickable { selectAndClose(d.code) }
+                                .background(
+                                    if (isSelected) EazColors.OrangeBg else androidx.compose.ui.graphics.Color.Transparent,
+                                    RoundedCornerShape(8.dp)
+                                )
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RadioButton(
-                                selected = dialectChoice == d.code,
-                                onClick = { dialectChoice = d.code; scriptChoice = "" },
-                                colors = RadioButtonDefaults.colors(selectedColor = EazColors.Orange)
-                            )
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
                                     .data("$FLAG_CDN/${d.flagCode.lowercase()}.png")
@@ -309,7 +322,12 @@ private fun DialectModal(
                                 modifier = Modifier.size(20.dp).clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
-                            Text(d.label, modifier = Modifier.padding(start = 8.dp), color = EazColors.TextPrimary)
+                            Text(
+                                d.label,
+                                modifier = Modifier.padding(start = 8.dp),
+                                color = EazColors.TextPrimary
+                            )
+                            if (isSelected) Text("✓", modifier = Modifier.padding(start = 8.dp), color = EazColors.Orange)
                         }
                     }
                 }
@@ -326,46 +344,36 @@ private fun DialectModal(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { scriptChoice = "" }
+                            .clickable { selectAndClose(baseLang) }
+                            .background(
+                                if (!children.scripts.any { it.code.equals(selectedCode, ignoreCase = true) } &&
+                                    !children.dialects.any { it.code.equals(selectedCode, ignoreCase = true) }
+                                ) EazColors.OrangeBg else androidx.compose.ui.graphics.Color.Transparent,
+                                RoundedCornerShape(8.dp)
+                            )
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
-                            selected = scriptChoice.isEmpty(),
-                            onClick = { scriptChoice = "" },
-                            colors = RadioButtonDefaults.colors(selectedColor = EazColors.Orange)
-                        )
                         Text("Standard", modifier = Modifier.padding(start = 8.dp), color = EazColors.TextPrimary)
                     }
                     children.scripts.forEach { s ->
+                        val isSelected = s.code.equals(selectedCode, ignoreCase = true)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { scriptChoice = s.code }
+                                .clickable { selectAndClose(s.code) }
+                                .background(
+                                    if (isSelected) EazColors.OrangeBg else androidx.compose.ui.graphics.Color.Transparent,
+                                    RoundedCornerShape(8.dp)
+                                )
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RadioButton(
-                                selected = scriptChoice == s.code,
-                                onClick = { scriptChoice = s.code },
-                                colors = RadioButtonDefaults.colors(selectedColor = EazColors.Orange)
-                            )
                             Text(s.label, modifier = Modifier.padding(start = 8.dp), color = EazColors.TextPrimary)
+                            if (isSelected) Text("✓", modifier = Modifier.padding(start = 8.dp), color = EazColors.Orange)
                         }
                     }
                 }
-            }
-
-            TextButton(
-                onClick = {
-                    val code = dialectChoice.ifBlank { scriptChoice.ifBlank { baseLang } }
-                    onApply(code)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 24.dp)
-            ) {
-                Text("Apply", color = EazColors.Orange)
             }
         }
     }
