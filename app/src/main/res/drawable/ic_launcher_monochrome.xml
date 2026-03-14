@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome für Themed Icons: schwarzes "e", System färbt ein -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stilisiertes "e": C-Bogen + Querstrich (zentriert in 66dp Safe Zone) -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M38,54 L70,54 L70,46 Q70,38 54,38 Q38,38 38,54 Q38,70 54,70 L70,70 L70,62 L54,62 Q46,62 46,54 Q46,46 54,46 L70,46 Z" />
+</vector>

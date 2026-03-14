@@ -50,6 +50,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
 
     // Networking
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -57,4 +58,10 @@ dependencies {
 
     // Auth: EncryptedSharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // DataStore for locale overrides
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Coil for images (logo from URL, flags)
+    implementation("io.coil-kt:coil-compose:2.5.0")
 }

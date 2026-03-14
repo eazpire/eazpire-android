@@ -110,7 +110,7 @@ fun AuthScreen(
         return
     }
 
-    Scaffold { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()

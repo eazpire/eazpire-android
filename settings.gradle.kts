@@ -16,5 +16,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "EazpireCreator"
+rootProject.name = "eazpire"
 include(":app")

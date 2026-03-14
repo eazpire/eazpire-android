@@ -52,4 +52,17 @@ class CreatorApi(
 
     suspend fun getBalance(): JSONObject = call("get-balance")
     suspend fun getSettings(): JSONObject = call("get-settings")
+
+    /** GET ?op=country-product-counts – Returns { ok, counts: { "DE": 1234, ... } } */
+    suspend fun getCountryProductCounts(): JSONObject = call("country-product-counts")
+
+    /** GET ?op=get-catalog-products&region=EU&design_type=classic */
+    suspend fun getCatalogProducts(
+        region: String,
+        designType: String? = null
+    ): JSONObject {
+        val params = mutableMapOf("region" to region)
+        designType?.let { params["design_type"] = it }
+        return call("get-catalog-products", params)
+    }
 }
