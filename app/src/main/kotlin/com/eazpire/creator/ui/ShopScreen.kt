@@ -1,6 +1,7 @@
 package com.eazpire.creator.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,7 +36,8 @@ fun ShopScreen(
     val context = LocalContext.current
     val localeStore = remember { LocaleStore(context) }
     var accountModalVisible by remember { mutableStateOf(false) }
-    var showLoginPrompt by remember { mutableStateOf(false) }
+    var showLoginOptions by remember { mutableStateOf(false) }
+    var showAuthScreen by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -46,7 +48,7 @@ fun ShopScreen(
                     if (tokenStore.isLoggedIn()) {
                         accountModalVisible = true
                     } else {
-                        showLoginPrompt = true
+                        showLoginOptions = true
                     }
                 }
             )
@@ -86,9 +88,22 @@ fun ShopScreen(
         )
     }
 
-    if (showLoginPrompt) {
-        LoginPromptDialog(
-            onDismiss = { showLoginPrompt = false }
+    if (showLoginOptions) {
+        LoginOptionsModal(
+            onDismiss = { showLoginOptions = false },
+            onShopifyLoginClick = {
+                showLoginOptions = false
+                showAuthScreen = true
+            }
         )
+    }
+
+    if (showAuthScreen) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AuthScreen(
+                tokenStore = tokenStore,
+                onAuthSuccess = { showAuthScreen = false }
+            )
+        }
     }
 }
