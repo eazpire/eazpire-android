@@ -174,3 +174,9 @@ fun LocaleModal(
 }
 
 data class LocaleModalItem(val code: String, val label: String, val flagCode: String)
+
+/** Dialects and scripts for a base language (e.g. de -> Schweizerdeutsch, Bairisch, ...) */
+data class LanguageChildren(
+    val dialects: List<LocaleModalItem>,
+    val scripts: List<LocaleModalItem>
+)

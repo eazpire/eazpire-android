@@ -68,10 +68,10 @@ class CreatorApi(
 
     /**
      * GET /api/languages – All developed languages, dialects, and scripts from our DB.
-     * Returns standard + dialects (93+ languages).
+     * Returns standard (base languages), children (dialects/scripts per base), and all.
      */
-    suspend fun getLanguages(): List<ApiLanguageItem> = withContext(Dispatchers.IO) {
-        parseLanguagesFromJson(fetchLanguagesJson())
+    suspend fun getLanguages(): ApiLanguagesResponse = withContext(Dispatchers.IO) {
+        parseLanguagesResponse(fetchLanguagesJson())
     }
 
     private fun fetchLanguagesJson(): String? {
@@ -81,24 +81,49 @@ class CreatorApi(
         return response.body?.string().takeIf { !it.isNullOrBlank() && response.isSuccessful }
     }
 
-    private fun parseLanguagesFromJson(body: String?): List<ApiLanguageItem> {
-        if (body.isNullOrBlank()) return emptyList()
+    private fun parseLanguagesResponse(body: String?): ApiLanguagesResponse {
+        if (body.isNullOrBlank()) return ApiLanguagesResponse(emptyList(), emptyMap())
         return try {
             val json = JSONObject(body)
-            val all = json.optJSONArray("all") ?: return emptyList()
-            (0 until all.length()).mapNotNull { i ->
-                val obj = all.optJSONObject(i) ?: return@mapNotNull null
-                val code = obj.optString("code", "").ifBlank { return@mapNotNull null }
-                ApiLanguageItem(
-                    code,
-                    obj.optString("native", obj.optString("name", code)),
-                    obj.optString("flag", "US").uppercase()
-                )
-            }
+            val standard = parseLangArray(json.optJSONArray("standard"))
+            val children = parseChildrenMap(json.optJSONObject("children"))
+            ApiLanguagesResponse(standard, children)
         } catch (_: Exception) {
-            emptyList()
+            ApiLanguagesResponse(emptyList(), emptyMap())
         }
+    }
+
+    private fun parseLangArray(arr: org.json.JSONArray?): List<ApiLanguageItem> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+            val code = obj.optString("code", "").ifBlank { return@mapNotNull null }
+            ApiLanguageItem(
+                code,
+                obj.optString("native", obj.optString("name", code)),
+                obj.optString("flag", "US").uppercase()
+            )
+        }
+    }
+
+    private fun parseChildrenMap(obj: JSONObject?): Map<String, ApiLanguageChildren> {
+        if (obj == null) return emptyMap()
+        val map = mutableMapOf<String, ApiLanguageChildren>()
+        obj.keys().asSequence().forEach { baseLang ->
+            val child = obj.optJSONObject(baseLang) ?: return@forEach
+            val dialects = parseLangArray(child.optJSONArray("dialects"))
+            val scripts = parseLangArray(child.optJSONArray("scripts"))
+            if (dialects.isNotEmpty() || scripts.isNotEmpty()) {
+                map[baseLang] = ApiLanguageChildren(dialects, scripts)
+            }
+        }
+        return map
     }
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)
+data class ApiLanguageChildren(val dialects: List<ApiLanguageItem>, val scripts: List<ApiLanguageItem>)
+data class ApiLanguagesResponse(
+    val standard: List<ApiLanguageItem>,
+    val children: Map<String, ApiLanguageChildren>
+)

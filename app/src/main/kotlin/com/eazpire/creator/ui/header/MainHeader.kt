@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
-import com.eazpire.creator.api.ApiLanguageItem
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.util.DebugLog
@@ -33,16 +32,21 @@ fun MainHeader(
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
     val languageCode by localeStore.languageCode.collectAsState(initial = localeStore.getLanguageCodeSync())
     var searchQuery by remember { mutableStateOf("") }
-    var availableLanguages by remember { mutableStateOf(AVAILABLE_LANGUAGES) }
+    var languageStandard by remember { mutableStateOf(AVAILABLE_LANGUAGES) }
+    var languageChildren by remember { mutableStateOf<Map<String, LanguageChildren>>(emptyMap()) }
 
     LaunchedEffect(Unit) {
         try {
             val api = CreatorApi()
-            val list = api.getLanguages()
-            if (list.isNotEmpty()) {
-                availableLanguages = list.map {
-                    LocaleModalItem(it.code, it.label, it.flagCode)
-                }
+            val resp = api.getLanguages()
+            if (resp.standard.isNotEmpty()) {
+                languageStandard = resp.standard.map { LocaleModalItem(it.code, it.label, it.flagCode) }
+                languageChildren = resp.children.mapValues { (_, v) ->
+                    LanguageChildren(
+                        dialects = v.dialects.map { LocaleModalItem(it.code, it.label, it.flagCode) },
+                        scripts = v.scripts.map { LocaleModalItem(it.code, it.label, it.flagCode) }
+                    )
+                }.mapKeys { it.key.lowercase() }
             }
         } catch (_: Exception) { /* keep fallback */ }
     }
@@ -79,7 +83,8 @@ fun MainHeader(
                 localeStore = localeStore,
                 countryCode = countryCode,
                 languageCode = languageCode,
-                availableLanguages = availableLanguages,
+                standardLanguages = languageStandard,
+                languageChildren = languageChildren,
                 onCountryChange = { },
                 onLanguageChange = { }
             )
