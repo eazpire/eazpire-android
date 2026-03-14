@@ -30,15 +30,29 @@ private val COUNTRY_TO_REGION = mapOf(
     "CN" to "CN",
 )
 
-/** Language code to flag country code (for display). */
+/** Language code to flag country code (for display). Aligned with API /api/languages. */
 private val LANG_TO_FLAG_COUNTRY = mapOf(
     "de" to "DE", "en" to "GB", "fr" to "FR", "es" to "ES", "it" to "IT", "pt" to "PT",
     "nl" to "NL", "pl" to "PL", "cs" to "CZ", "da" to "DK", "sv" to "SE", "nb" to "NO",
-    "no" to "NO", "fi" to "FI", "hu" to "HU", "ro" to "RO", "bg" to "BG", "hr" to "HR",
-    "sk" to "SK", "sl" to "SI", "et" to "EE", "lv" to "LV", "lt" to "LT", "el" to "GR",
-    "ru" to "RU", "uk" to "UA", "tr" to "TR", "ar" to "SA", "he" to "IL", "ja" to "JP",
-    "ko" to "KR", "zh" to "CN", "zh-cn" to "CN", "zh-tw" to "TW", "zh-hans" to "CN",
-    "zh-hant" to "TW", "pt-br" to "BR", "pt-pt" to "PT",
+    "nn" to "NO", "no" to "NO", "fi" to "FI", "hu" to "HU", "ro" to "RO", "bg" to "BG",
+    "hr" to "HR", "sk" to "SK", "sl" to "SI", "et" to "EE", "lv" to "LV", "lt" to "LT",
+    "el" to "GR", "ru" to "RU", "uk" to "UA", "tr" to "TR", "ar" to "SA", "he" to "IL",
+    "ja" to "JP", "ko" to "KR", "zh" to "CN", "zh-cn" to "CN", "zh-tw" to "TW",
+    "zh-hans" to "CN", "zh-hant" to "TW", "pt-br" to "BR", "pt-pt" to "PT",
+    "th" to "TH", "vi" to "VN", "id" to "ID", "ms" to "MY", "fa" to "IR", "bn" to "BD",
+    "ta" to "IN", "te" to "IN", "ka" to "GE", "hy" to "AM", "sw" to "KE", "af" to "ZA",
+    "ca" to "ES", "eu" to "ES", "gl" to "ES", "sr" to "RS", "bs" to "BA", "mk" to "MK",
+    "sq" to "AL", "mn" to "MN", "ne" to "NP", "si" to "LK", "km" to "KH", "lo" to "LA",
+    "my" to "MM", "cy" to "GB", "ga" to "IE", "is" to "IS", "mt" to "MT", "lb" to "LU",
+    "fil" to "PH", "tl" to "PH",
+    "es-mx" to "MX", "es-ar" to "AR", "fr-ca" to "CA", "fr-be" to "BE",
+    "en-us" to "US", "en-gb" to "GB", "en-au" to "AU",
+    "de-ch" to "CH", "de-at" to "AT", "de-bay" to "DE", "de-koeln" to "DE",
+    "de-berlin" to "DE", "de-platt" to "DE", "nl-be" to "BE", "fr-ch" to "CH",
+    "it-ch" to "CH", "no-nn" to "NO", "en-scots" to "GB", "es-anda" to "ES",
+    "sr-latn" to "RS", "sr-cyrl" to "RS", "zh-latn" to "CN", "ja-romaji" to "JP",
+    "ko-romaji" to "KR", "ar-latn" to "SA", "ru-latn" to "RU", "hi-latn" to "IN",
+    "pt-br-d" to "BR",
 )
 
 private val KEY_REGION_OVERRIDE = stringPreferencesKey("user_region_override")
@@ -72,7 +86,7 @@ class LocaleStore(context: Context) {
     }
 
     suspend fun setLanguageOverride(langCode: String) {
-        dataStore.edit { it[KEY_LANGUAGE_OVERRIDE] = langCode.lowercase().take(5) }
+        dataStore.edit { it[KEY_LANGUAGE_OVERRIDE] = langCode.lowercase().take(12) }
     }
 
     suspend fun clearOverrides() {
@@ -88,10 +102,13 @@ class LocaleStore(context: Context) {
 
     fun getCountryCodeSync(): String = detectCountryFromDevice()
 
-    fun getFlagCountryForLanguage(lang: String): String =
-        LANG_TO_FLAG_COUNTRY[lang.lowercase().take(5)]
-            ?: LANG_TO_FLAG_COUNTRY[lang.lowercase().take(2)]
+    fun getFlagCountryForLanguage(lang: String): String {
+        val key = lang.lowercase()
+        return LANG_TO_FLAG_COUNTRY[key]
+            ?: LANG_TO_FLAG_COUNTRY[key.take(5)]
+            ?: LANG_TO_FLAG_COUNTRY[key.take(2)]
             ?: "US"
+    }
 
     fun mapCountryToRegion(countryCode: String): String =
         COUNTRY_TO_REGION[countryCode.uppercase().take(2)] ?: "OTHER"

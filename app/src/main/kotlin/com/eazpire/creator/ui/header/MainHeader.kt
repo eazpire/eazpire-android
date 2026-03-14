@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.api.ApiLanguageItem
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.util.DebugLog
 
@@ -30,6 +33,19 @@ fun MainHeader(
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
     val languageCode by localeStore.languageCode.collectAsState(initial = localeStore.getLanguageCodeSync())
     var searchQuery by remember { mutableStateOf("") }
+    var availableLanguages by remember { mutableStateOf(AVAILABLE_LANGUAGES) }
+
+    LaunchedEffect(Unit) {
+        try {
+            val api = CreatorApi()
+            val list = api.getLanguages()
+            if (list.isNotEmpty()) {
+                availableLanguages = list.map {
+                    LocaleModalItem(it.code, it.label, it.flagCode)
+                }
+            }
+        } catch (_: Exception) { /* keep fallback */ }
+    }
     var isCreatorMode by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
 
@@ -63,6 +79,7 @@ fun MainHeader(
                 localeStore = localeStore,
                 countryCode = countryCode,
                 languageCode = languageCode,
+                availableLanguages = availableLanguages,
                 onCountryChange = { },
                 onLanguageChange = { }
             )

@@ -41,6 +41,7 @@ fun HeaderLocaleRow(
     localeStore: LocaleStore,
     countryCode: String,
     languageCode: String,
+    availableLanguages: List<LocaleModalItem> = AVAILABLE_LANGUAGES,
     onCountryChange: (String) -> Unit,
     onLanguageChange: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -153,7 +154,7 @@ fun HeaderLocaleRow(
     if (showLanguageModal) {
         LocaleModal(
             title = "Select language",
-            items = AVAILABLE_LANGUAGES,
+            items = availableLanguages,
             selectedCode = languageCode,
             onDismiss = { showLanguageModal = false },
             onSelect = { code ->

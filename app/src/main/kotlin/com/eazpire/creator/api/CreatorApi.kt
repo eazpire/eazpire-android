@@ -65,4 +65,40 @@ class CreatorApi(
         designType?.let { params["design_type"] = it }
         return call("get-catalog-products", params)
     }
+
+    /**
+     * GET /api/languages – All developed languages, dialects, and scripts from our DB.
+     * Returns standard + dialects (93+ languages).
+     */
+    suspend fun getLanguages(): List<ApiLanguageItem> = withContext(Dispatchers.IO) {
+        parseLanguagesFromJson(fetchLanguagesJson())
+    }
+
+    private fun fetchLanguagesJson(): String? {
+        val url = "$baseUrl/api/languages"
+        val request = Request.Builder().url(url).get().build()
+        val response = client.newCall(request).execute()
+        return response.body?.string().takeIf { !it.isNullOrBlank() && response.isSuccessful }
+    }
+
+    private fun parseLanguagesFromJson(body: String?): List<ApiLanguageItem> {
+        if (body.isNullOrBlank()) return emptyList()
+        return try {
+            val json = JSONObject(body)
+            val all = json.optJSONArray("all") ?: return emptyList()
+            (0 until all.length()).mapNotNull { i ->
+                val obj = all.optJSONObject(i) ?: return@mapNotNull null
+                val code = obj.optString("code", "").ifBlank { return@mapNotNull null }
+                ApiLanguageItem(
+                    code,
+                    obj.optString("native", obj.optString("name", code)),
+                    obj.optString("flag", "US").uppercase()
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
 }
+
+data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)
