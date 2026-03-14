@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.util.DebugLog
 
 @Composable
 fun MainHeader(
@@ -30,7 +31,9 @@ fun MainHeader(
     val languageCode by localeStore.languageCode.collectAsState(initial = localeStore.getLanguageCodeSync())
     var searchQuery by remember { mutableStateOf("") }
     var isCreatorMode by remember { mutableStateOf(false) }
+    var cartDrawerVisible by remember { mutableStateOf(false) }
 
+    Box {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -63,7 +66,13 @@ fun MainHeader(
                 onCountryChange = { },
                 onLanguageChange = { }
             )
-            HeaderActions(cartCount = 0)
+            HeaderActions(
+                cartCount = 0,
+                onCartClick = {
+                    DebugLog.click("Cart icon")
+                    cartDrawerVisible = true
+                }
+            )
         }
         HeaderSearch(
             query = searchQuery,
@@ -75,6 +84,11 @@ fun MainHeader(
                 .fillMaxWidth()
                 .height(1.dp)
                 .background(EazColors.TopbarBorder)
+        )
+    }
+        CartDrawer(
+            visible = cartDrawerVisible,
+            onDismiss = { cartDrawerVisible = false }
         )
     }
 }

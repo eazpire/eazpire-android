@@ -29,14 +29,20 @@ fun HeaderActions(
     modifier: Modifier = Modifier
 ) {
     Row(modifier = modifier) {
-        IconButton(onClick = onAccountClick) {
+        IconButton(onClick = {
+            com.eazpire.creator.util.DebugLog.click("Account")
+            onAccountClick()
+        }) {
             Icon(
                 imageVector = Icons.Outlined.PersonOutline,
                 contentDescription = "Account",
                 tint = EazColors.TextPrimary
             )
         }
-        IconButton(onClick = onFavoritesClick) {
+        IconButton(onClick = {
+            com.eazpire.creator.util.DebugLog.click("Favorites")
+            onFavoritesClick()
+        }) {
             Icon(
                 imageVector = Icons.Outlined.FavoriteBorder,
                 contentDescription = "Favorites",
@@ -44,7 +50,10 @@ fun HeaderActions(
             )
         }
         Box {
-            IconButton(onClick = onCartClick) {
+            IconButton(onClick = {
+                com.eazpire.creator.util.DebugLog.click("Cart")
+                onCartClick()
+            }) {
                 Icon(
                     imageVector = Icons.Outlined.ShoppingCart,
                     contentDescription = "Cart",

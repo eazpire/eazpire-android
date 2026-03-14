@@ -17,6 +17,27 @@ Native Android-App für den Eazpire Creator-Bereich (Shop + Creator).
 
 **CLI-Build:** `npm run android:build` (nach `npm run android:setup`) oder `./gradlew assembleDebug`
 
+## Debugging & Logs
+
+### Logcat (Android Studio)
+1. **View → Tool Windows → Logcat**
+2. Filter: Tag `Eazpire` oder Package `com.eazpire.creator`
+3. Bei Klicks erscheint z.B. `D/Eazpire: Click: Cart`
+
+### Logcat (Terminal)
+```bash
+adb logcat -s Eazpire:D
+```
+
+### DebugLog nutzen
+```kotlin
+import com.eazpire.creator.util.DebugLog
+
+DebugLog.click("MeinButton")  // Klick-Events
+DebugLog.d("Nachricht")       // Debug
+DebugLog.e("Fehler", exception) // Fehler
+```
+
 ## API-Konfiguration
 
 Die App nutzt die creator-engine API:

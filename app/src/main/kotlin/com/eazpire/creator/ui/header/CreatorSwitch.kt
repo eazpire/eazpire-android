@@ -5,6 +5,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -75,6 +77,8 @@ fun CreatorSwitch(
     var triggerTutorial by remember { mutableStateOf(0) }
     var trackSize by remember { mutableStateOf(IntSize.Zero) }
     var isDragging by remember { mutableStateOf(false) }
+    var useDragPositionForDisplay by remember { mutableStateOf(false) }
+    var isAnimatingFromDrag by remember { mutableStateOf(false) }
     var dragPositionPx by remember { mutableStateOf(0f) }
     val thumbOffsetPx = remember { Animatable(with(density) { thumbOffsetTarget.toPx() }) }
 
@@ -83,8 +87,8 @@ fun CreatorSwitch(
     val minPx = shopPx
     val maxPx = creatorPx
 
-    LaunchedEffect(thumbOffsetTarget, isTutorialPlaying, isDragging) {
-        if (!isTutorialPlaying && !isDragging) {
+    LaunchedEffect(thumbOffsetTarget, isTutorialPlaying, isDragging, useDragPositionForDisplay, isAnimatingFromDrag) {
+        if (!isTutorialPlaying && !isDragging && !useDragPositionForDisplay && !isAnimatingFromDrag) {
             thumbOffsetPx.snapTo(with(density) { thumbOffsetTarget.toPx() })
         }
     }
@@ -94,11 +98,13 @@ fun CreatorSwitch(
         if (triggerTutorial == 0) return@LaunchedEffect
         if (isTutorialPlaying) return@LaunchedEffect
         isTutorialPlaying = true
+        val startPx = with(density) { thumbOffsetTarget.toPx() }
+        thumbOffsetPx.snapTo(startPx)
+        useDragPositionForDisplay = false
         val direction = if (isCreatorMode) "left" else "right"
         val targetPx = if (direction == "right") creatorPx else shopPx
         val duration = 1200
         // Shop-Timing: 0–20% hold, 20–55% move, 55–70% hold, 70–100% snap back
-        val startPx = with(density) { thumbOffsetTarget.toPx() }
         thumbOffsetPx.animateTo(
             targetValue = startPx,
             animationSpec = keyframes {
@@ -125,7 +131,8 @@ fun CreatorSwitch(
             .pointerInput(Unit) {
                 var totalDrag = 0f
                 var startOffsetPx = 0f
-                val thresholdPx = with(density) { 30.dp.toPx() }
+                val switchThresholdPx = with(density) { 30.dp.toPx() }
+                val tapThresholdPx = with(density) { 8.dp.toPx() }
                 detectHorizontalDragGestures(
                     onDragStart = {
                         totalDrag = 0f
@@ -138,21 +145,45 @@ fun CreatorSwitch(
                         dragPositionPx = (startOffsetPx + totalDrag).coerceIn(minPx, maxPx)
                     },
                     onDragEnd = {
+                        val endPx = (startOffsetPx + totalDrag).coerceIn(minPx, maxPx)
                         isDragging = false
                         when {
-                            totalDrag < -thresholdPx -> {
+                            totalDrag < -switchThresholdPx -> {
+                                useDragPositionForDisplay = true
+                                isAnimatingFromDrag = true
                                 scope.launch {
+                                    thumbOffsetPx.snapTo(endPx)
+                                    useDragPositionForDisplay = false
                                     thumbOffsetPx.animateTo(shopPx, tween(250, easing = FastOutSlowInEasing))
+                                    isAnimatingFromDrag = false
                                 }
                                 onModeChange(false)
                             }
-                            totalDrag > thresholdPx -> {
+                            totalDrag > switchThresholdPx -> {
+                                useDragPositionForDisplay = true
+                                isAnimatingFromDrag = true
                                 scope.launch {
+                                    thumbOffsetPx.snapTo(endPx)
+                                    useDragPositionForDisplay = false
                                     thumbOffsetPx.animateTo(creatorPx, tween(250, easing = FastOutSlowInEasing))
+                                    isAnimatingFromDrag = false
                                 }
                                 onModeChange(true)
                             }
-                            else -> triggerTutorial++
+                            else -> {
+                                val wasTap = kotlin.math.abs(totalDrag) <= tapThresholdPx
+                                if (wasTap) {
+                                    useDragPositionForDisplay = true
+                                    triggerTutorial++
+                                } else {
+                                    useDragPositionForDisplay = true
+                                    scope.launch {
+                                        thumbOffsetPx.snapTo(endPx)
+                                        useDragPositionForDisplay = false
+                                        thumbOffsetPx.animateTo(with(density) { thumbOffsetTarget.toPx() }, tween(200, easing = FastOutSlowInEasing))
+                                    }
+                                }
+                            }
                         }
                     }
                 )
@@ -162,7 +193,7 @@ fun CreatorSwitch(
         val handOpacity = remember { Animatable(0f) }
 
         // Sliding orange thumb (folgt Finger beim Swipe)
-        val displayPx = if (isDragging) dragPositionPx else thumbOffsetPx.value
+        val displayPx = if (isDragging || useDragPositionForDisplay) dragPositionPx else thumbOffsetPx.value
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -203,15 +234,39 @@ fun CreatorSwitch(
                 tint = if (isCreatorMode) Color.White.copy(alpha = 0.9f) else LabelInactive
             )
         }
-        // Labels
+        // Labels (Klick → Tutorial-Animation direkt)
         Row(
             modifier = Modifier.fillMaxHeight().zIndex(1f),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        useDragPositionForDisplay = true
+                        triggerTutorial++
+                    },
+                contentAlignment = Alignment.Center
+            ) {
                 Text("Shop", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) LabelInactive else Color.White)
             }
-            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        useDragPositionForDisplay = true
+                        triggerTutorial++
+                    },
+                contentAlignment = Alignment.Center
+            ) {
                 Text("Creator", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) Color.White else LabelInactive)
             }
         }
