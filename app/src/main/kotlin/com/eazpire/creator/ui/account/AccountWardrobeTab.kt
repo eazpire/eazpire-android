@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,6 +57,8 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
+import androidx.compose.animation.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,10 +69,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.AuthConfig
@@ -77,6 +83,7 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.ui.account.wardrobe.ONE_PIECE_CONFLICTS
 import com.eazpire.creator.ui.account.wardrobe.WARDROBE_SLOTS
 import com.eazpire.creator.ui.account.wardrobe.WardrobeColors
+import com.eazpire.creator.ui.account.wardrobe.WardrobeFilter
 import com.eazpire.creator.ui.account.wardrobe.WardrobeSlot
 import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.launch
@@ -328,48 +335,62 @@ fun AccountWardrobeTab(
         }
     }
 
+    val config = LocalConfiguration.current
+    val isNarrow = config.screenWidthDp < 600
+    val sidebarWidth = if (isNarrow) 260.dp else 200.dp
+    val sidebarOffset by animateDpAsState(
+        targetValue = when {
+            !isNarrow -> 0.dp
+            sidebarOpen -> 0.dp
+            else -> -sidebarWidth
+        },
+        animationSpec = tween(250),
+        label = "sidebar"
+    )
+
+    fun closeSidebar() { if (isNarrow) sidebarOpen = false }
+    fun selectOutfitAndClose(id: String) {
+        activeOutfitId = id
+        outfits.find { it.id == id }?.let { currentGeneratedImageUrl = it.generatedImageUrl }
+        closeSidebar()
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxSize()) {
-            // ── Sidebar (200dp) ──
-            Surface(
-                modifier = Modifier
-                    .width(200.dp)
-                    .fillMaxHeight()
-                    .then(
-                        if (sidebarOpen) Modifier else Modifier
-                    ),
-                color = WardrobeColors.Gray100,
-                shadowElevation = if (sidebarOpen) 8.dp else 0.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp)
+            // Desktop: sidebar always visible (200dp)
+            if (!isNarrow) {
+                Surface(
+                    modifier = Modifier.width(200.dp).fillMaxHeight(),
+                    color = WardrobeColors.Gray100
                 ) {
-                    // Unsaved + User upload
-                    WardrobeSidebarUnsaved(
-                        isActive = activeOutfitId == "unsaved",
-                        userImageUrl = userImageUrl,
-                        onClick = { activeOutfitId = "unsaved"; sidebarOpen = false },
-                        onUploadClick = { userImageDialogOpen = true },
-                        onClearImage = { userImageUrl = null }
-                    )
-                    Box(
+                    Column(
                         modifier = Modifier
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                            .height(1.dp)
-                            .fillMaxWidth()
-                            .background(WardrobeColors.Gray200)
-                    )
-                    // Saved outfits
-                    outfits.forEach { outfit ->
-                        WardrobeSidebarEntry(
-                            outfit = outfit,
-                            isActive = activeOutfitId == outfit.id,
-                            onSelect = { activeOutfitId = outfit.id; currentGeneratedImageUrl = outfit.generatedImageUrl; sidebarOpen = false },
-                            onDelete = { deleteOutfit(outfit.id) }
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp)
+                    ) {
+                        WardrobeSidebarUnsaved(
+                            isActive = activeOutfitId == "unsaved",
+                            userImageUrl = userImageUrl,
+                            onClick = { activeOutfitId = "unsaved"; closeSidebar() },
+                            onUploadClick = { userImageDialogOpen = true },
+                            onClearImage = { userImageUrl = null }
                         )
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                .height(1.dp)
+                                .fillMaxWidth()
+                                .background(WardrobeColors.Gray200)
+                        )
+                        outfits.forEach { outfit ->
+                            WardrobeSidebarEntry(
+                                outfit = outfit,
+                                isActive = activeOutfitId == outfit.id,
+                                onSelect = { selectOutfitAndClose(outfit.id) },
+                                onDelete = { deleteOutfit(outfit.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -380,7 +401,7 @@ fun AccountWardrobeTab(
                     .weight(1f)
                     .fillMaxHeight()
             ) {
-                // Mobile header (drawer + label)
+                // Header: hamburger (mobile) + label
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -388,8 +409,12 @@ fun AccountWardrobeTab(
                         .background(WardrobeColors.Gray100),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { sidebarOpen = !sidebarOpen }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = WardrobeColors.Gray700)
+                    if (isNarrow) {
+                        IconButton(onClick = { sidebarOpen = !sidebarOpen }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu", tint = WardrobeColors.Gray700)
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
                     Text(
                         text = if (activeOutfitId == "unsaved") "Unsaved Outfit" else (activeOutfit?.name ?: "Outfit"),
@@ -527,6 +552,59 @@ fun AccountWardrobeTab(
                                 )
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Mobile: sidebar overlay (drawer)
+        if (isNarrow) {
+            if (sidebarOpen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .clickable { closeSidebar() }
+                        .zIndex(1f)
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(260.dp)
+                    .offset(x = sidebarOffset)
+                    .align(Alignment.CenterStart)
+                    .zIndex(2f),
+                color = WardrobeColors.Gray100,
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 8.dp)
+                ) {
+                    WardrobeSidebarUnsaved(
+                        isActive = activeOutfitId == "unsaved",
+                        userImageUrl = userImageUrl,
+                        onClick = { activeOutfitId = "unsaved"; closeSidebar() },
+                        onUploadClick = { userImageDialogOpen = true },
+                        onClearImage = { userImageUrl = null }
+                    )
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .height(1.dp)
+                            .fillMaxWidth()
+                            .background(WardrobeColors.Gray200)
+                    )
+                    outfits.forEach { outfit ->
+                        WardrobeSidebarEntry(
+                            outfit = outfit,
+                            isActive = activeOutfitId == outfit.id,
+                            onSelect = { selectOutfitAndClose(outfit.id) },
+                            onDelete = { deleteOutfit(outfit.id) }
+                        )
                     }
                 }
             }
@@ -820,13 +898,21 @@ private fun WardrobeProductModal(
         }
     }
 
-    val filtered = remember(products, searchQuery, usageFilter, usedProductIds) {
+    val filtered = remember(products, searchQuery, usageFilter, usedProductIds, slotKey, gender, ageGroup) {
         var list = products
+        // Category filter (slot)
+        list = list.filter { WardrobeFilter.matchesCategory(it.productType, it.title, it.tags, slotKey) }
+        // Gender filter
+        list = list.filter { WardrobeFilter.matchesGender(it.tags, gender) }
+        // Age filter
+        list = list.filter { WardrobeFilter.matchesAge(it.tags, ageGroup) }
+        // Usage filter
         if (usageFilter == "used") {
             list = list.filter { it.id in usedProductIds }
         } else {
             list = list.filter { it.id !in usedProductIds }
         }
+        // Search
         if (searchQuery.isNotBlank()) {
             val q = searchQuery.lowercase()
             list = list.filter { it.title.lowercase().contains(q) || it.productType.lowercase().contains(q) }
