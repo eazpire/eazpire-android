@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +60,8 @@ fun AccountModalSheet(
     var wardrobeTotalPrice by remember { mutableStateOf("0,00 €") }
     var wardrobeGenerateAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var wardrobeCanGenerate by remember { mutableStateOf(false) }
+    var wardrobeSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var wardrobeCanSave by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -151,6 +154,10 @@ fun AccountModalSheet(
                             onGenerateActionReady = { action, canGen ->
                                 wardrobeGenerateAction = action
                                 wardrobeCanGenerate = canGen
+                            },
+                            onSaveActionReady = { action, canSave ->
+                                wardrobeSaveAction = action
+                                wardrobeCanSave = canSave
                             }
                         )
                         AccountTab.Mockups -> AccountMockupsTab(tokenStore = tokenStore)
@@ -215,6 +222,13 @@ fun AccountModalSheet(
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
+                                            if (wardrobeCanSave) {
+                                                OutlinedButton(
+                                                    onClick = { wardrobeSaveAction?.invoke() }
+                                                ) {
+                                                    Text("Save")
+                                                }
+                                            }
                                             IconButton(
                                                 onClick = { },
                                                 modifier = Modifier

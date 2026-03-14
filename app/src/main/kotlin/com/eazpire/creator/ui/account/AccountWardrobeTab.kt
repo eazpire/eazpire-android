@@ -57,7 +57,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
-import androidx.compose.animation.animateDpAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,6 +84,7 @@ import com.eazpire.creator.ui.account.wardrobe.ONE_PIECE_CONFLICTS
 import com.eazpire.creator.ui.account.wardrobe.WARDROBE_SLOTS
 import com.eazpire.creator.ui.account.wardrobe.WardrobeColors
 import com.eazpire.creator.ui.account.wardrobe.WardrobeFilter
+import com.eazpire.creator.ui.account.wardrobe.WardrobeFigureSvg
 import com.eazpire.creator.ui.account.wardrobe.WardrobeSlot
 import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.launch
@@ -143,6 +144,7 @@ fun AccountWardrobeTab(
     tokenStore: SecureTokenStore,
     onTotalPriceChange: (String) -> Unit = {},
     onGenerateActionReady: ((() -> Unit)?, Boolean) -> Unit = { _, _ -> },
+    onSaveActionReady: ((() -> Unit)?, Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val jwt = remember { tokenStore.getJwt() }
@@ -166,6 +168,8 @@ fun AccountWardrobeTab(
     var lightboxUrl by remember { mutableStateOf<String?>(null) }
     var userImageDialogOpen by remember { mutableStateOf(false) }
     var sidebarOpen by remember { mutableStateOf(false) }
+    var saveOutfitDialogOpen by remember { mutableStateOf(false) }
+    var saveOutfitName by remember { mutableStateOf("Outfit ${System.currentTimeMillis().toString().takeLast(4)}") }
 
     val currentSlots = when (activeOutfitId) {
         "unsaved" -> unsavedSlots
@@ -304,6 +308,42 @@ fun AccountWardrobeTab(
         }
     }
 
+    val canSaveUnsaved = activeOutfitId == "unsaved" && unsavedSlots.values.any { it.productId.isNotBlank() }
+    fun openSaveOutfitDialog() { saveOutfitDialogOpen = true }
+    fun saveUnsavedOutfit(name: String) {
+        scope.launch {
+            try {
+                val slotsMap = unsavedSlots.mapValues { (_, s) ->
+                    mapOf(
+                        "product_id" to s.productId,
+                        "variant_id" to s.variantId,
+                        "title" to s.title,
+                        "variant_title" to s.variantTitle,
+                        "price" to s.price,
+                        "currency" to s.currency,
+                        "image_url" to s.imageUrl
+                    )
+                }
+                val resp = api.wardrobeSave(ownerId, mapOf(
+                    "name" to name,
+                    "gender" to unsavedGender,
+                    "age_group" to unsavedAgeGroup,
+                    "slots" to slotsMap
+                ))
+                if (resp.optBoolean("ok", false)) {
+                    val newId = resp.optString("outfit_id", "")
+                    loadOutfits()
+                    activeOutfitId = newId
+                    outfits.find { it.id == newId }?.let { currentGeneratedImageUrl = it.generatedImageUrl }
+                    unsavedSlots = emptyMap()
+                    saveOutfitDialogOpen = false
+                }
+            } catch (e: Exception) {
+                DebugLog.click("Wardrobe save error: ${e.message}")
+            }
+        }
+    }
+
     fun createNewOutfit() {
         scope.launch {
             try {
@@ -325,6 +365,13 @@ fun AccountWardrobeTab(
             }
         }
     }
+    LaunchedEffect(canSaveUnsaved) {
+        if (canSaveUnsaved) {
+            onSaveActionReady({ openSaveOutfitDialog() }, true)
+        } else {
+            onSaveActionReady(null, false)
+        }
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -342,7 +389,7 @@ fun AccountWardrobeTab(
         targetValue = when {
             !isNarrow -> 0.dp
             sidebarOpen -> 0.dp
-            else -> -sidebarWidth
+            else -> (-sidebarWidth)
         },
         animationSpec = tween(250),
         label = "sidebar"
@@ -508,8 +555,7 @@ fun AccountWardrobeTab(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .background(WardrobeColors.FigureDefault.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
+                                .background(WardrobeColors.FigureDefault.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                         ) {
                             if (figureView == "outfit" && currentGeneratedImageUrl != null) {
                                 AsyncImage(
@@ -520,11 +566,12 @@ fun AccountWardrobeTab(
                                         .clickable { lightboxUrl = currentGeneratedImageUrl }
                                 )
                             } else {
-                                Icon(
-                                    Icons.Default.Person,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(120.dp),
-                                    tint = WardrobeColors.Gray400
+                                WardrobeFigureSvg(
+                                    gender = currentGender,
+                                    ageGroup = currentAgeGroup,
+                                    slots = currentSlots,
+                                    onSlotClick = { slotKey -> productModalSlot = slotKey },
+                                    modifier = Modifier.fillMaxSize()
                                 )
                             }
                         }
@@ -691,6 +738,41 @@ fun AccountWardrobeTab(
                 onMockup = { userImageDialogOpen = false },
                 onDismiss = { userImageDialogOpen = false }
             )
+        }
+
+        // Save outfit dialog
+        if (saveOutfitDialogOpen) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { saveOutfitDialogOpen = false }) {
+                Surface(shape = RoundedCornerShape(16.dp)) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text("Outfit speichern", style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        BasicTextField(
+                            value = saveOutfitName,
+                            onValueChange = { saveOutfitName = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp)
+                                .background(WardrobeColors.Gray100, RoundedCornerShape(8.dp))
+                                .padding(12.dp),
+                            singleLine = true,
+                            decorationBox = { inner ->
+                                Box { inner() }
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { saveOutfitDialogOpen = false }) { Text("Abbrechen") }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    saveUnsavedOutfit(saveOutfitName.ifBlank { "Outfit" })
+                                }
+                            ) { Text("Speichern") }
+                        }
+                    }
+                }
+            }
         }
     }
 }
