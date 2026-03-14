@@ -27,6 +27,7 @@ import com.eazpire.creator.util.DebugLog
 @Composable
 fun MainHeader(
     localeStore: LocaleStore,
+    onAccountClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
@@ -90,6 +91,7 @@ fun MainHeader(
             )
             HeaderActions(
                 cartCount = 0,
+                onAccountClick = onAccountClick,
                 onCartClick = {
                     DebugLog.click("Cart icon")
                     cartDrawerVisible = true

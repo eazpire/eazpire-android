@@ -2,6 +2,7 @@ package com.eazpire.creator.api
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -51,6 +52,39 @@ class CreatorApi(
     }
 
     suspend fun getBalance(): JSONObject = call("get-balance")
+
+    /**
+     * GET ?op=get-customer-account-profile&owner_id=xxx
+     */
+    suspend fun getCustomerProfile(ownerId: String): JSONObject = call(
+        "get-customer-account-profile",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /**
+     * POST ?op=save-customer-account-profile&owner_id=xxx
+     */
+    suspend fun saveCustomerProfile(ownerId: String, profile: Map<String, String>): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=save-customer-account-profile")
+                append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+                append("&_t=${System.currentTimeMillis()}")
+            }
+            val body = org.json.JSONObject(profile).toString()
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply {
+                    jwt?.let { addHeader("Authorization", "Bearer $it") }
+                }
+                .build()
+            val response = client.newCall(request).execute()
+            val respBody = response.body?.string() ?: "{}"
+            JSONObject(respBody)
+        }
     suspend fun getSettings(): JSONObject = call("get-settings")
 
     /** GET ?op=country-product-counts – Returns { ok, counts: { "DE": 1234, ... } } */

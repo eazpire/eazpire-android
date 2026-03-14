@@ -126,16 +126,6 @@ fun HeaderLocaleRow(
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
-                val baseLang = languageCode.lowercase().split("-").first()
-                val mainLabel = standardLanguages.find { it.code.equals(baseLang, ignoreCase = true) }
-                    ?.label ?: standardLanguages.find { it.code.equals(languageCode, ignoreCase = true) }
-                    ?.label ?: baseLang.uppercase()
-                Text(
-                    text = mainLabel,
-                    modifier = Modifier.padding(horizontal = 6.dp),
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                    color = EazColors.TextPrimary
-                )
                 Icon(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
                     contentDescription = null,
