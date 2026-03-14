@@ -127,8 +127,8 @@ fun AccountWardrobeTab(
 
     val canGenerate = selectedOutfit != null && selectedOutfit.slots.values.any { it.productId.isNotBlank() }
     LaunchedEffect(selectedOutfit, canGenerate) {
-        if (canGenerate && selectedOutfit != null) {
-            val outfit = selectedOutfit
+        val outfit = selectedOutfit
+        if (canGenerate && outfit != null) {
             onGenerateActionReady({
                 scope.launch {
                     try {

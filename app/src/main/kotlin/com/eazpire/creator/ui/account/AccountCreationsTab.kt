@@ -184,7 +184,7 @@ fun AccountCreationsTab(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             CircularProgressIndicator(
-                                                progress = { (item.progress / 100f).coerceIn(0f, 1f) },
+                                                progress = (item.progress / 100f).coerceIn(0f, 1f),
                                                 color = EazColors.Orange,
                                                 modifier = Modifier.padding(24.dp)
                                             )
@@ -192,7 +192,7 @@ fun AccountCreationsTab(
                                     }
                                 }
                                 val label = item.productName?.takeIf { it.isNotBlank() }
-                                    ?: item.prompt?.take(40)?.plus(if ((item.prompt?.length ?: 0) > 40) "…" else "")
+                                    ?: item.prompt?.let { it.take(40) + if (it.length > 40) "…" else "" }
                                     ?: "Creation"
                                 Text(
                                     text = label,
@@ -218,7 +218,7 @@ private fun parseJobsFromJson(arr: org.json.JSONArray?): List<JobItem> {
         JobItem(
             jobId = jobId,
             imageUrl = obj.optString("image_url").takeIf { it.isNotBlank() }
-                ?: (obj.optJSONObject("result")?.optString("image_url") ?: obj.optJSONObject("result")?.optString("preview_url")).takeIf { it.isNotBlank() },
+                ?: (obj.optJSONObject("result")?.optString("image_url") ?: obj.optJSONObject("result")?.optString("preview_url")).takeIf { it?.isNotBlank() == true },
             prompt = obj.optString("prompt").takeIf { it.isNotBlank() },
             productName = obj.optString("product_name").takeIf { it.isNotBlank() },
             done = obj.optBoolean("done", false),
