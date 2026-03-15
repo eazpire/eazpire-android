@@ -31,17 +31,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
-
-private const val FLAG_CDN = "https://flagcdn.com/w80"
+import com.eazpire.creator.ui.components.GlassCircularFlag
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,17 +135,7 @@ fun LocaleModal(
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data("$FLAG_CDN/${item.flagCode.lowercase()}.png")
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
+                        GlassCircularFlag(countryCode = item.flagCode, size = 24.dp)
                         Text(
                             text = item.label,
                             modifier = Modifier.padding(start = 12.dp),

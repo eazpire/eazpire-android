@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Card
@@ -45,6 +47,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -62,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.components.GlassCircularFlag
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -70,6 +75,78 @@ import com.eazpire.creator.util.DebugLog
 import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
+
+/** Ref links – same as web community_ref_links_v1 */
+private const val REF_LINKS_SETTING_KEY = "community_ref_links_v1"
+private const val REF_LINKS_MAX = 5
+private const val REF_SLUG_MIN_LEN = 4
+private const val REF_SLUG_MAX_LEN = 24
+private val REF_SLUG_PATTERN = Regex("^[a-z0-9-]+\$")
+private val RESERVED_REF_SLUGS = setOf(
+    "admin", "api", "app", "apps", "assets", "auth", "account", "accounts",
+    "billing", "checkout", "cart", "collections", "collection", "products", "product",
+    "pages", "page", "search", "shop", "store", "creator", "creators",
+    "network", "analytics", "community", "settings", "help", "support",
+    "blog", "blogs", "news", "contact", "about", "privacy", "terms",
+    "policy", "policies", "refund", "shipping", "imprint",
+    "login", "logout", "register", "signup", "signin",
+    "www", "cdn", "static", "media", "img", "images",
+    "favicon.ico", "robots.txt", "sitemap.xml"
+)
+
+private data class RefLink(val id: String, val name: String, val slug: String)
+
+private fun buildNamedRefUrl(baseUrl: String, slug: String): String {
+    if (slug.isBlank()) return baseUrl
+    return try {
+        val u = java.net.URI(baseUrl).toURL()
+        val portSuffix = if (u.port in 1..65535 && u.port != 80 && u.port != 443) ":${u.port}" else ""
+        "${u.protocol}://${u.host}$portSuffix/${slug.lowercase()}"
+    } catch (_: Exception) {
+        baseUrl
+    }
+}
+
+private fun slugifyLabel(name: String): String = name
+    .lowercase()
+    .replace(Regex("[^a-z0-9\\s-]"), "")
+    .trim()
+    .replace(Regex("\\s+"), "-")
+    .replace(Regex("-+"), "-")
+    .take(40)
+
+private fun isValidRefSlug(slug: String): Boolean {
+    val s = slug.lowercase()
+    return s.length in REF_SLUG_MIN_LEN..REF_SLUG_MAX_LEN && REF_SLUG_PATTERN.matches(s)
+}
+
+private fun isReservedRefSlug(slug: String): Boolean = RESERVED_REF_SLUGS.contains(slug.lowercase())
+
+private fun normalizeStoredRefLinks(raw: String?): Pair<List<RefLink>, String> {
+    val defaultName = "Main link"
+    val parsed = runCatching { raw?.let { org.json.JSONObject(it) } }.getOrNull()
+    val linksArr = parsed?.optJSONArray("links") ?: org.json.JSONArray()
+    val activeIdRaw = parsed?.optString("activeId", "") ?: ""
+    val defaultNameLc = defaultName.lowercase()
+    val normalized = (0 until linksArr.length()).mapNotNull { i ->
+        val item = linksArr.optJSONObject(i) ?: return@mapNotNull null
+        val label = item.optString("name", "").trim()
+        if (label.isBlank()) return@mapNotNull null
+        val id = item.optString("id", "id-${System.currentTimeMillis()}-${(0..4).map { ('a'..'z').random() }.joinToString("")}")
+        val isDefault = id == "default" || label.lowercase() == defaultNameLc
+        val rawSlug = item.optString("slug", "").trim()
+        val slug = when {
+            isDefault && (rawSlug == "main-link" || rawSlug == slugifyLabel(defaultName)) -> ""
+            isDefault -> ""
+            rawSlug.isNotBlank() -> slugifyLabel(rawSlug)
+            else -> slugifyLabel(label)
+        }
+        RefLink(id = id, name = label, slug = slug)
+    }.filter { it.name.isNotBlank() }.take(REF_LINKS_MAX)
+    val links = if (normalized.isEmpty()) listOf(RefLink("default", defaultName, "")) else normalized
+    val activeId = if (links.any { it.id == activeIdRaw }) activeIdRaw else links.first().id
+    return Pair(links, activeId)
+}
 
 /**
  * Community Tab – native Android UI, matches web (theme/snippets/community-panel-content.liquid).
@@ -113,23 +190,6 @@ private val COUNTRY_NAMES = mapOf(
 
 private fun countryNameFor(code: String): String = COUNTRY_NAMES[code.uppercase()] ?: code
 
-@Composable
-private fun CircularFlag(emoji: String, size: Dp = 24.dp) {
-    val textStyle = when {
-        size >= 40.dp -> MaterialTheme.typography.titleLarge
-        size >= 28.dp -> MaterialTheme.typography.bodyLarge
-        else -> MaterialTheme.typography.bodyMedium
-    }
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(EazColors.TopbarBorder.copy(alpha = 0.15f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(emoji, style = textStyle)
-    }
-}
 
 data class CommunityNetwork(
     val me: MeStats,
@@ -180,7 +240,10 @@ fun AccountCommunityTab(
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
 
     var network by remember { mutableStateOf<CommunityNetwork?>(null) }
-    var referralUrl by remember { mutableStateOf<String?>(null) }
+    var referralBaseUrl by remember { mutableStateOf<String?>(null) }
+    var refLinks by remember { mutableStateOf<List<RefLink>>(emptyList()) }
+    var refLinksActiveId by remember { mutableStateOf("") }
+    var showManageRefModal by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var overviewSubtab by remember { mutableStateOf(true) }
@@ -214,7 +277,14 @@ fun AccountCommunityTab(
                     errorMessage = net.optString("error", "Failed to load community")
                 }
                 if (ref.optBoolean("ok", false)) {
-                    referralUrl = ref.optString("url", "").ifBlank { ref.optString("short_url", "") }
+                    referralBaseUrl = ref.optString("short_url", "").ifBlank { ref.optString("url", "") }
+                }
+                if (referralBaseUrl != null) {
+                    val settingRes = api.getCustomerSetting(ownerId, REF_LINKS_SETTING_KEY)
+                    val raw = if (settingRes.optBoolean("ok", false)) settingRes.optString("value", null) else null
+                    val (links, activeId) = normalizeStoredRefLinks(raw)
+                    refLinks = links
+                    refLinksActiveId = activeId
                 }
             }
         } catch (e: Exception) {
@@ -556,7 +626,7 @@ private fun LevelCards(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    CircularFlag(flagEmojiFor(code), size = 20.dp)
+                                    GlassCircularFlag(countryCode = code, size = 20.dp)
                                     Text(count.toString(), color = if (selected) EazColors.Orange else EazColors.TextSecondary, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
@@ -969,7 +1039,6 @@ private fun ReferralSection(
 @Composable
 private fun PartnerCard(partner: PartnerItem, onClick: () -> Unit) {
     val countryCode = partner.country.ifBlank { "DE" }.uppercase().take(2)
-    val flagEmoji = flagEmojiFor(countryCode)
     val countryLabel = countryNameFor(countryCode)
     Card(
         modifier = Modifier
@@ -991,7 +1060,7 @@ private fun PartnerCard(partner: PartnerItem, onClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                CircularFlag(flagEmoji, size = 44.dp)
+                GlassCircularFlag(countryCode = countryCode, size = 44.dp)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(countryLabel, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
                     Text(partner.name, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)

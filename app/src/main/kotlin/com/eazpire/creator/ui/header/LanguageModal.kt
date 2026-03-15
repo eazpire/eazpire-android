@@ -36,11 +36,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
-
-private const val FLAG_CDN = "https://flagcdn.com/w80"
+import com.eazpire.creator.ui.components.GlassCircularFlag
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,17 +145,7 @@ fun LanguageModal(
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data("$FLAG_CDN/${item.flagCode.lowercase()}.png")
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
+                        GlassCircularFlag(countryCode = item.flagCode, size = 24.dp)
                         Row(
                             modifier = Modifier.weight(1f).padding(start = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -254,17 +241,7 @@ private fun DialectModal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data("$FLAG_CDN/${baseFlag.lowercase()}.png")
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
+                    GlassCircularFlag(countryCode = baseFlag, size = 28.dp)
                     Text(
                         text = baseLabel,
                         modifier = Modifier.padding(start = 12.dp),
@@ -313,15 +290,7 @@ private fun DialectModal(
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data("$FLAG_CDN/${d.flagCode.lowercase()}.png")
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp).clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
+                            GlassCircularFlag(countryCode = d.flagCode, size = 20.dp)
                             Text(
                                 d.label,
                                 modifier = Modifier.padding(start = 8.dp),

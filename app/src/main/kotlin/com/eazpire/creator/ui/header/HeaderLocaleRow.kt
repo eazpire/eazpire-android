@@ -23,13 +23,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.components.GlassCircularFlag
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.launch
 
@@ -76,17 +72,7 @@ fun HeaderLocaleRow(
                     tint = EazColors.TextSecondary,
                     modifier = Modifier.size(16.dp)
                 )
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data("$FLAG_CDN/${countryCode.lowercase()}.png")
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop
-                )
+                GlassCircularFlag(countryCode = countryCode, size = 24.dp)
                 Icon(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
                     contentDescription = null,
@@ -115,17 +101,7 @@ fun HeaderLocaleRow(
                     tint = EazColors.TextSecondary,
                     modifier = Modifier.size(16.dp)
                 )
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data("$FLAG_CDN/${flagCountryForLang.lowercase()}.png")
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop
-                )
+                GlassCircularFlag(countryCode = flagCountryForLang, size = 24.dp)
                 Icon(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
                     contentDescription = null,

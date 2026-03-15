@@ -209,6 +209,56 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=get-customer-setting&owner_id=xxx&key=xxx → { ok, key, value } */
+    suspend fun getCustomerSetting(ownerId: String, key: String): JSONObject = call(
+        "get-customer-setting",
+        mapOf("owner_id" to ownerId, "key" to key)
+    )
+
+    /** POST ?op=set-customer-setting&owner_id=xxx Body: { key, value } */
+    suspend fun setCustomerSetting(ownerId: String, key: String, value: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=set-customer-setting")
+                append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+                append("&_t=${System.currentTimeMillis()}")
+            }
+            val body = org.json.JSONObject(mapOf("key" to key, "value" to value)).toString()
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply {
+                    jwt?.let { addHeader("Authorization", "Bearer $it") }
+                }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    /** POST ?op=sync-ref-link-slugs&owner_id=xxx Body: { links: [{ slug, name }] } */
+    suspend fun syncRefLinkSlugs(ownerId: String, links: List<Map<String, String>>): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=sync-ref-link-slugs")
+                append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+                append("&_t=${System.currentTimeMillis()}")
+            }
+            val body = org.json.JSONObject(mapOf("links" to org.json.JSONArray(links.map { org.json.JSONObject(it) }))).toString()
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply {
+                    jwt?.let { addHeader("Authorization", "Bearer $it") }
+                }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
     /** GET ?op=get-community-analytics-overview&owner_id=xxx&days=30&compare=0&link_id=&source= */
     suspend fun getCommunityAnalyticsOverview(
         ownerId: String,
