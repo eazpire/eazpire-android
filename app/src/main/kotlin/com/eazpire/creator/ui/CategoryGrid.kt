@@ -122,11 +122,7 @@ private fun CategoryCard(
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
             .background(
-                Brush.linearGradient(
-                    colors = gradientColors,
-                    start = Offset(0f, 1f),
-                    end = Offset(1f, 0f)
-                )
+                Brush.linearGradient(colors = gradientColors)
             )
             .clickable(onClick = onClick)
             .padding(12.dp),
