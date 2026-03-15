@@ -1,9 +1,9 @@
 package com.eazpire.creator.ui.header
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,9 +27,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.List
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -47,17 +52,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+
+private fun normalizeImageUrl(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    val s = url.trim()
+    return when {
+        s.startsWith("//") -> "https:$s"
+        s.startsWith("/") -> "https://www.eazpire.com$s"
+        else -> s
+    }
+}
 
 /** Favorite item – pool uses product_id|variant_id, list items use id */
 data class FavoriteItem(
@@ -83,6 +100,7 @@ fun FavoritesModal(
 ) {
     if (!visible) return
 
+    val context = LocalContext.current
     val scope = remember { CoroutineScope(Dispatchers.Main) }
     var drawerOpen by remember { mutableStateOf(false) }
     var activeView by remember { mutableStateOf("pool") }
@@ -90,11 +108,15 @@ fun FavoritesModal(
     var lists by remember { mutableStateOf<List<FavoriteListInfo>>(emptyList()) }
     var listItems by remember { mutableStateOf<List<FavoriteItem>>(emptyList()) }
     var listName by remember { mutableStateOf("") }
+    var listShareToken by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
     var showCreateListModal by remember { mutableStateOf(false) }
     var showSaveAsListModal by remember { mutableStateOf(false) }
+    var showEditListModal by remember { mutableStateOf(false) }
+    var showClearConfirm by remember { mutableStateOf(false) }
     var newListName by remember { mutableStateOf("") }
+    var editListId by remember { mutableStateOf(0L) }
+    var editListName by remember { mutableStateOf("") }
 
     fun loadPool() {
         scope.launch {
@@ -105,13 +127,14 @@ fun FavoritesModal(
                     val arr = resp.optJSONArray("items") ?: org.json.JSONArray()
                     poolItems = (0 until arr.length()).map { i ->
                         val obj = arr.optJSONObject(i) ?: JSONObject()
+                        val img = obj.optString("product_image", null).takeIf { it.isNullOrBlank().not() }
                         FavoriteItem(
                             id = "${obj.optString("product_id")}|${obj.optString("variant_id", "")}",
                             itemId = 0L,
                             productId = obj.optString("product_id", ""),
                             variantId = obj.optString("variant_id", null).takeIf { it.isNullOrBlank().not() },
                             productTitle = obj.optString("product_title", "Product"),
-                            productImage = obj.optString("product_image", null).takeIf { it.isNullOrBlank().not() },
+                            productImage = normalizeImageUrl(img),
                             variantTitle = obj.optString("variant_title", null).takeIf { it.isNullOrBlank().not() }
                         )
                     }
@@ -145,6 +168,7 @@ fun FavoritesModal(
         scope.launch {
             if (customerId.isNullOrBlank()) return@launch
             loading = true
+            listShareToken = null
             try {
                 val resp = api.getFavoriteListItems(customerId!!, listId)
                 if (resp.optBoolean("ok", false)) {
@@ -153,15 +177,25 @@ fun FavoritesModal(
                     val arr = resp.optJSONArray("items") ?: org.json.JSONArray()
                     listItems = (0 until arr.length()).map { i ->
                         val obj = arr.optJSONObject(i) ?: JSONObject()
+                        val img = obj.optString("product_image", null).takeIf { it.isNullOrBlank().not() }
                         FavoriteItem(
                             id = obj.optString("id", ""),
                             itemId = obj.optLong("id", 0L),
                             productId = obj.optString("product_id", ""),
                             variantId = obj.optString("variant_id", null).takeIf { it.isNullOrBlank().not() },
                             productTitle = obj.optString("product_title", "Product"),
-                            productImage = obj.optString("product_image", null).takeIf { it.isNullOrBlank().not() },
+                            productImage = normalizeImageUrl(img),
                             variantTitle = obj.optString("variant_title", null).takeIf { it.isNullOrBlank().not() }
                         )
+                    }
+                    val token = listObj?.optString("share_token", null).takeIf { it.isNullOrBlank().not() }
+                    if (token != null) {
+                        listShareToken = token
+                    } else {
+                        val ensureResp = api.ensureFavoriteListShareToken(customerId, listId)
+                        if (ensureResp.optBoolean("ok", false)) {
+                            listShareToken = ensureResp.optString("share_token", null).takeIf { it.isNullOrBlank().not() }
+                        }
                     }
                 }
             } catch (_: Exception) {}
@@ -178,7 +212,6 @@ fun FavoritesModal(
             return@LaunchedEffect
         }
         loading = true
-        errorMsg = null
         try {
             loadPool()
             loadLists()
@@ -205,11 +238,128 @@ fun FavoritesModal(
         modifier = Modifier.fillMaxHeight(0.9f)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                AnimatedVisibility(
-                    visible = drawerOpen,
-                    enter = slideInHorizontally(animationSpec = tween(250)) { -it },
-                    exit = slideOutHorizontally(animationSpec = tween(250)) { -it }
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { drawerOpen = !drawerOpen }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Lists", tint = EazColors.TextPrimary)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            if (activeView == "pool") "Unassigned" else listName.ifBlank { "List" },
+                            style = MaterialTheme.typography.titleLarge,
+                            color = EazColors.TextPrimary
+                        )
+                        val count = if (activeView == "pool") poolItems.size else listItems.size
+                        Text(
+                            "$count item${if (count != 1) "s" else ""}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EazColors.TextSecondary
+                        )
+                    }
+                    if (activeView == "pool" && poolItems.isNotEmpty()) {
+                        TextButton(onClick = { showSaveAsListModal = true }) {
+                            Icon(Icons.Outlined.List, null, Modifier.size(18.dp), tint = EazColors.Orange)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Save", color = EazColors.Orange, style = MaterialTheme.typography.labelMedium)
+                        }
+                        TextButton(onClick = { showClearConfirm = true }) {
+                            Icon(Icons.Default.Delete, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Clear", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    if (activeView != "pool" && listItems.isNotEmpty()) {
+                        listShareToken?.let { token ->
+                            val shareUrl = "https://www.eazpire.com/pages/my-favorites?share_token=${java.net.URLEncoder.encode(token, "UTF-8")}"
+                            IconButton(onClick = {
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                cm?.setPrimaryClip(ClipData.newPlainText("Share link", shareUrl))
+                            }) {
+                                Icon(Icons.Outlined.ContentCopy, "Copy", tint = EazColors.Orange)
+                            }
+                            IconButton(onClick = {
+                                val sendIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, shareUrl)
+                                    type = "text/plain"
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, "Share"))
+                            }) {
+                                Icon(Icons.Default.Share, "Share", tint = EazColors.Orange)
+                            }
+                        }
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                    }
+                }
+
+                when {
+                    customerId.isNullOrBlank() -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Log in to save favorites", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
+                        }
+                    }
+                    loading && listItems.isEmpty() && activeView != "pool" -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
+                        }
+                    }
+                    else -> {
+                        val items = if (activeView == "pool") poolItems else listItems
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            item {
+                                AddProductPlaceholderCard(
+                                    onClick = {
+                                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.eazpire.com"))
+                                        context.startActivity(Intent.createChooser(intent, "Open shop"))
+                                    }
+                                )
+                            }
+                            items(items) { item ->
+                                FavoriteGridCard(
+                                    item = item,
+                                    onRemove = {
+                                        scope.launch {
+                                            if (activeView == "pool") {
+                                                api.removeFavorite(customerId!!, item.productId, item.variantId)
+                                                loadPool()
+                                            } else {
+                                                api.removeFromFavoriteList(customerId!!, activeView.toLong(), item.itemId)
+                                                loadListItems(activeView.toLong())
+                                                loadLists()
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (drawerOpen) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        .clickable { drawerOpen = false }
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .width(280.dp)
+                        .background(Color.White)
                 ) {
                     FavoritesSidebar(
                         poolCount = poolItems.size,
@@ -217,6 +367,17 @@ fun FavoritesModal(
                         activeView = activeView,
                         onSelect = { activeView = it; drawerOpen = false },
                         onNewList = { showCreateListModal = true },
+                        onEditList = { list ->
+                            editListId = list.id
+                            editListName = list.name
+                            showEditListModal = true
+                        },
+                        onDuplicateList = { listId ->
+                            scope.launch {
+                                api.duplicateFavoriteList(customerId!!, listId)
+                                loadLists()
+                            }
+                        },
                         onDeleteList = { listId ->
                             scope.launch {
                                 api.deleteFavoriteList(customerId!!, listId)
@@ -228,113 +389,9 @@ fun FavoritesModal(
                             }
                         },
                         modifier = Modifier
-                            .width(280.dp)
                             .fillMaxHeight()
-                            .background(Color.White)
                             .padding(12.dp)
                     )
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                    ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { drawerOpen = !drawerOpen }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Lists", tint = EazColors.TextPrimary)
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                if (activeView == "pool") "Unassigned" else listName.ifBlank { "List" },
-                                style = MaterialTheme.typography.titleLarge,
-                                color = EazColors.TextPrimary
-                            )
-                            val count = if (activeView == "pool") poolItems.size else listItems.size
-                            Text(
-                                "$count item${if (count != 1) "s" else ""}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = EazColors.TextSecondary
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
-                        }
-                    }
-
-                    when {
-                        customerId.isNullOrBlank() -> {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Log in to save favorites", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
-                            }
-                        }
-                        loading && listItems.isEmpty() && activeView != "pool" -> {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
-                            }
-                        }
-                        else -> {
-                            val items = if (activeView == "pool") poolItems else listItems
-                            if (items.isEmpty()) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(Icons.Default.Favorite, null, tint = EazColors.TextSecondary.copy(alpha = 0.3f), modifier = Modifier.size(48.dp))
-                                        Text("No items", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 8.dp))
-                                    }
-                                }
-                            } else {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(2),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 12.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    items(items) { item ->
-                                        FavoriteGridCard(
-                                            item = item,
-                                            onRemove = {
-                                                scope.launch {
-                                                    if (activeView == "pool") {
-                                                        api.removeFavorite(customerId!!, item.productId, item.variantId)
-                                                        loadPool()
-                                                    } else {
-                                                        api.removeFromFavoriteList(customerId!!, activeView.toLong(), item.itemId)
-                                                        loadListItems(activeView.toLong())
-                                                        loadLists()
-                                                    }
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                            if (activeView == "pool" && poolItems.isNotEmpty()) {
-                                TextButton(
-                                    onClick = { showSaveAsListModal = true },
-                                    modifier = Modifier.padding(top = 8.dp)
-                                ) {
-                                    Icon(Icons.Outlined.List, null, Modifier.size(18.dp), tint = EazColors.Orange)
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Save as list", color = EazColors.Orange)
-                                }
-                            }
-                        }
-                    }
-                    }
-                    if (drawerOpen) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .clickable { drawerOpen = false }
-                                .background(Color.Black.copy(alpha = 0.3f))
-                        )
-                    }
                 }
             }
         }
@@ -372,6 +429,48 @@ fun FavoritesModal(
                 title = "Save as list"
             )
         }
+        if (showEditListModal) {
+            CreateListModal(
+                name = editListName,
+                onNameChange = { editListName = it },
+                onConfirm = {
+                    scope.launch {
+                        api.updateFavoriteList(customerId!!, editListId, editListName.trim())
+                        loadLists()
+                        listName = editListName.trim()
+                        showEditListModal = false
+                    }
+                },
+                onDismiss = { showEditListModal = false },
+                title = "Edit list"
+            )
+        }
+        if (showClearConfirm) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showClearConfirm = false }) {
+                Column(
+                    modifier = Modifier
+                        .background(Color.White, RoundedCornerShape(16.dp))
+                        .padding(24.dp)
+                ) {
+                    Text("Remove all from Unassigned?", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
+                    Spacer(Modifier.height(16.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    api.clearFavorites(customerId!!)
+                                    loadPool()
+                                    showClearConfirm = false
+                                }
+                            },
+                            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Clear all") }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -382,6 +481,8 @@ private fun FavoritesSidebar(
     activeView: String,
     onSelect: (String) -> Unit,
     onNewList: () -> Unit,
+    onEditList: (FavoriteListInfo) -> Unit,
+    onDuplicateList: (Long) -> Unit,
     onDeleteList: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -416,8 +517,14 @@ private fun FavoritesSidebar(
                 Spacer(Modifier.width(8.dp))
                 Text(list.name, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${list.itemsCount}", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
-                IconButton(onClick = { onDeleteList(list.id) }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                IconButton(onClick = { onEditList(list) }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Edit, null, tint = EazColors.TextSecondary, modifier = Modifier.size(14.dp))
+                }
+                IconButton(onClick = { onDuplicateList(list.id) }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.ContentCopy, null, tint = EazColors.TextSecondary, modifier = Modifier.size(14.dp))
+                }
+                IconButton(onClick = { onDeleteList(list.id) }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
                 }
             }
         }
@@ -434,6 +541,29 @@ private fun FavoritesSidebar(
             Icon(Icons.Default.Add, null, tint = EazColors.Orange, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Text("New list", style = MaterialTheme.typography.bodyMedium, color = EazColors.Orange)
+        }
+    }
+}
+
+@Composable
+private fun AddProductPlaceholderCard(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .fillMaxWidth()
+            .height(180.dp)
+            .border(1.dp, EazColors.Orange.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+            .background(EazColors.OrangeBg.copy(alpha = 0.2f))
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Default.Add, null, tint = EazColors.Orange, modifier = Modifier.size(40.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Add Product", style = MaterialTheme.typography.bodyMedium, color = EazColors.Orange)
         }
     }
 }
@@ -459,7 +589,10 @@ private fun FavoriteGridCard(
             ) {
                 if (!item.productImage.isNullOrBlank()) {
                     AsyncImage(
-                        model = item.productImage,
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(item.productImage)
+                            .crossfade(true)
+                            .build(),
                         contentDescription = item.productTitle,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop

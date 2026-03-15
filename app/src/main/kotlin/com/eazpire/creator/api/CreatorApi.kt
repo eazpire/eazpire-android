@@ -499,6 +499,22 @@ class CreatorApi(
     suspend fun saveFavoritesAsList(customerId: String, name: String, description: String? = null): JSONObject =
         postJson("save-favorites-as-list", mapOf("customer_id" to customerId, "name" to name, "description" to description))
 
+    /** POST clear-favorites Body: { customer_id } – removes all from pool */
+    suspend fun clearFavorites(customerId: String): JSONObject =
+        postJson("clear-favorites", mapOf("customer_id" to customerId))
+
+    /** POST update-favorite-list Body: { customer_id, list_id, name?, description? } */
+    suspend fun updateFavoriteList(customerId: String, listId: Long, name: String? = null, description: String? = null): JSONObject =
+        postJson("update-favorite-list", mapOf("customer_id" to customerId, "list_id" to listId, "name" to name, "description" to description))
+
+    /** POST duplicate-favorite-list Body: { customer_id, list_id } */
+    suspend fun duplicateFavoriteList(customerId: String, listId: Long): JSONObject =
+        postJson("duplicate-favorite-list", mapOf("customer_id" to customerId, "list_id" to listId))
+
+    /** POST ensure-favorite-list-share-token Body: { customer_id, list_id } → { ok, share_token } */
+    suspend fun ensureFavoriteListShareToken(customerId: String, listId: Long): JSONObject =
+        postJson("ensure-favorite-list-share-token", mapOf("customer_id" to customerId, "list_id" to listId))
+
     /** GET ?op=get-catalog-products&region=EU&design_type=classic */
     suspend fun getCatalogProducts(
         region: String,
