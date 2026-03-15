@@ -2,16 +2,18 @@ package com.eazpire.creator.ui.account
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
@@ -106,36 +108,43 @@ fun AccountModalSheet(
 
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    AccountTab.entries.forEachIndexed { index, tab ->
-                        val isSelected = selectedTab == index
-                        Text(
-                            text = tab.label,
-                            modifier = Modifier
-                                .clickable { selectedTab = index }
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                                .then(
-                                    if (isSelected) Modifier.background(
-                                        EazColors.OrangeBg,
-                                        RoundedCornerShape(8.dp)
-                                    ) else Modifier
-                                ),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (isSelected) EazColors.Orange else EazColors.TextSecondary
-                        )
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 16.dp)
                 ) {
+                    Column(
+                        modifier = Modifier
+                            .width(200.dp)
+                            .fillMaxHeight()
+                            .background(EazColors.TopbarBorder.copy(alpha = 0.15f))
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp)
+                    ) {
+                        AccountTab.entries.forEachIndexed { index, tab ->
+                            val isSelected = selectedTab == index
+                            Text(
+                                text = tab.label,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedTab = index }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                                    .then(
+                                        if (isSelected) Modifier.background(
+                                            EazColors.OrangeBg,
+                                            RoundedCornerShape(4.dp)
+                                        ) else Modifier
+                                    ),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isSelected) EazColors.Orange else EazColors.TextSecondary
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(16.dp)
+                    ) {
                     when (val tab = AccountTab.entries[selectedTab]) {
                         AccountTab.Profile -> AccountProfileTab(
                             tokenStore = tokenStore,
@@ -166,6 +175,7 @@ fun AccountModalSheet(
                         AccountTab.Creations -> AccountCreationsTab(tokenStore = tokenStore)
                         AccountTab.Community -> AccountCommunityTab(tokenStore = tokenStore)
                         AccountTab.Balance -> AccountBalanceTab(tokenStore = tokenStore)
+                    }
                     }
                 }
 
