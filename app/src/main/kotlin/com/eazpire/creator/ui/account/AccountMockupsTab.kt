@@ -263,6 +263,18 @@ fun AccountMockupsTab(
             }
         } else {
             // Upload area
+            selectedPhotoUri?.let { uri ->
+                AsyncImage(
+                    model = uri,
+                    contentDescription = "Selected photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(4f / 3f)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+            }
             OutlinedButton(
                 onClick = { photoPicker.launch("image/*") },
                 modifier = Modifier.fillMaxWidth()
