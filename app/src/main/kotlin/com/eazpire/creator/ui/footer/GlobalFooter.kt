@@ -120,9 +120,9 @@ fun GlobalFooter(
                     )
                 )
             )
-            .padding(horizontal = 20.dp)
-            .padding(vertical = 12.dp)
-            .padding(bottom = 24.dp) // safe area
+            .padding(horizontal = 16.dp)
+            .padding(vertical = 6.dp)
+            .padding(bottom = 16.dp) // safe area
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -132,29 +132,29 @@ fun GlobalFooter(
             // Left: Copyright + Terms
             Row(
                 modifier = Modifier.weight(1f, fill = false),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "© $year ",
                     color = FooterText,
-                    fontSize = 13.sp
+                    fontSize = 11.sp
                 )
                 Text(
                     text = "eazpire",
                     color = FooterBrand,
-                    fontSize = 13.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = "*",
                     color = FooterSep,
-                    fontSize = 13.sp
+                    fontSize = 11.sp
                 )
                 Text(
                     text = "Terms & Policies",
                     color = FooterText,
-                    fontSize = 13.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier.clickable {
                         try {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TERMS_URL)))
@@ -165,21 +165,21 @@ fun GlobalFooter(
 
             // Right: Language + Balance
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Language button
                 Box(
                     modifier = Modifier
-                        .background(FooterBtnBg, RoundedCornerShape(8.dp))
+                        .background(FooterBtnBg, RoundedCornerShape(6.dp))
                         .clickable { showLanguageModal = true }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = languageCode.uppercase().take(2),
                         color = FooterText,
-                        fontSize = 10.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -188,19 +188,19 @@ fun GlobalFooter(
                 if (isLoggedIn) {
                     Box(
                         modifier = Modifier
-                            .background(FooterBalanceBg, RoundedCornerShape(9.dp))
+                            .background(FooterBalanceBg, RoundedCornerShape(6.dp))
                             .clickable(onClick = onBalanceClick)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             AsyncImage(
                                 model = EAZ_COIN_URL,
                                 contentDescription = null,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(11.dp)
                             )
                             Text(
                                 text = when (val b = balanceEaz) {
@@ -208,13 +208,13 @@ fun GlobalFooter(
                                     else -> "%.0f".format(b)
                                 },
                                 color = FooterBrand,
-                                fontSize = 12.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = "EAZ",
                                 color = FooterSep,
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
