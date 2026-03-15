@@ -27,7 +27,8 @@ class ShopifyProductsApi(
         val url: String,
         val price: Double = 0.0,
         val compareAtPrice: Double? = null,
-        val createdAt: String = ""
+        val createdAt: String = "",
+        val productType: String = ""
     )
 
     /**
@@ -111,9 +112,11 @@ class ShopifyProductsApi(
             val cap = v?.optString("compare_at_price")
             if (cap != null && cap != "null") compareAtPrice = cap.toDoubleOrNull()
         }
+        val productType = obj.optString("product_type", "").trim()
         return ProductItem(
             id = id, title = title, handle = handle, images = images, url = "",
-            price = price, compareAtPrice = compareAtPrice, createdAt = createdAt
+            price = price, compareAtPrice = compareAtPrice, createdAt = createdAt,
+            productType = productType
         )
     }
 }

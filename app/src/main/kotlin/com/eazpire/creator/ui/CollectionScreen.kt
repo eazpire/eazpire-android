@@ -3,25 +3,25 @@ package com.eazpire.creator.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -39,7 +39,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,14 +51,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
@@ -69,6 +72,55 @@ private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
 private const val PRODUCTS_PER_PAGE = 24
 
 private data class SortOption(val value: String, val label: String)
+
+private data class ProductFilters(
+    val priceMin: String = "",
+    val priceMax: String = "",
+    val categories: Set<String> = emptySet(),
+    val productTypes: Set<String> = emptySet()
+) {
+    fun isEmpty(): Boolean =
+        priceMin.isBlank() && priceMax.isBlank() && categories.isEmpty() && productTypes.isEmpty()
+}
+
+private fun productTypeToCategory(productType: String): String = when {
+    productType.contains("T-Shirt", ignoreCase = true) ||
+    productType.contains("Hoodie", ignoreCase = true) ||
+    productType.contains("Sweatshirt", ignoreCase = true) ||
+    productType.contains("Tank", ignoreCase = true) ||
+    productType.contains("Baby", ignoreCase = true) ||
+    productType.contains("clothes", ignoreCase = true) ||
+    productType.contains("Bodysuit", ignoreCase = true) -> "clothing"
+    productType.contains("Mug", ignoreCase = true) ||
+    productType.contains("Poster", ignoreCase = true) ||
+    productType.contains("Canvas", ignoreCase = true) -> "home"
+    productType.contains("Cap", ignoreCase = true) ||
+    productType.contains("Bag", ignoreCase = true) ||
+    productType.contains("Sticker", ignoreCase = true) -> "accessories"
+    else -> "other"
+}
+
+private fun applyFilters(
+    products: List<ShopifyProductsApi.ProductItem>,
+    filters: ProductFilters
+): List<ShopifyProductsApi.ProductItem> {
+    if (filters.isEmpty()) return products
+    return products.filter { p ->
+        val priceMin = filters.priceMin.toDoubleOrNull()
+        val priceMax = filters.priceMax.toDoubleOrNull()
+        if (priceMin != null && p.price < priceMin) return@filter false
+        if (priceMax != null && p.price > priceMax) return@filter false
+        if (filters.categories.isNotEmpty()) {
+            val cat = productTypeToCategory(p.productType)
+            if (cat !in filters.categories) return@filter false
+        }
+        if (filters.productTypes.isNotEmpty()) {
+            val pt = p.productType.ifBlank { "Other" }
+            if (pt !in filters.productTypes) return@filter false
+        }
+        true
+    }
+}
 
 private val SORT_OPTIONS = listOf(
     SortOption("manual", "Featured"),
@@ -109,7 +161,9 @@ fun CollectionScreen(
     var sortBy by remember { mutableStateOf("manual") }
     var sortSheetVisible by remember { mutableStateOf(false) }
     var filterDrawerVisible by remember { mutableStateOf(false) }
+    var productFilters by remember { mutableStateOf(ProductFilters()) }
     val context = LocalContext.current
+    val density = LocalDensity.current
 
     LaunchedEffect(collectionHandle, currentPage) {
         isLoading = true
@@ -129,6 +183,9 @@ fun CollectionScreen(
     }
 
     val sortedProducts = remember(products, sortBy) { sortProducts(products, sortBy) }
+    val filteredProducts = remember(sortedProducts, productFilters) {
+        applyFilters(sortedProducts, productFilters)
+    }
     val currentSortLabel = SORT_OPTIONS.find { it.value == sortBy }?.label ?: "Sort by"
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -145,7 +202,7 @@ fun CollectionScreen(
             CollectionComingSoon(title = title, onBrowseAll = onBack)
         } else {
             ResultsBar(
-                productCount = products.size,
+                productCount = filteredProducts.size,
                 collectionTitle = title,
                 sortBy = sortBy,
                 sortLabel = currentSortLabel,
@@ -153,13 +210,28 @@ fun CollectionScreen(
                 onSortClick = { sortSheetVisible = true }
             )
             LazyVerticalGrid(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .pointerInput(currentPage, totalPages) {
+                        var totalDrag = 0f
+                        val thresholdPx = with(density) { 80.dp.toPx() }
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                            onDragEnd = {
+                                when {
+                                    totalDrag > thresholdPx && currentPage > 1 -> currentPage = currentPage - 1
+                                    totalDrag < -thresholdPx && currentPage < totalPages -> currentPage = currentPage + 1
+                                }
+                            }
+                        )
+                    },
                 columns = GridCells.Fixed(2),
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(sortedProducts) { product ->
+                items(filteredProducts) { product ->
                     CollectionProductCard(
                         product = product,
                         onClick = {
@@ -174,14 +246,21 @@ fun CollectionScreen(
                 PaginationDots(
                     totalPages = totalPages,
                     currentPage = currentPage,
-                    onPageClick = { currentPage = it }
+                    onPageClick = { currentPage = it },
+                    onSwipePrev = { if (currentPage > 1) currentPage = currentPage - 1 },
+                    onSwipeNext = { if (currentPage < totalPages) currentPage = currentPage + 1 }
                 )
             }
         }
     }
 
     if (filterDrawerVisible) {
-        FilterDrawer(onDismiss = { filterDrawerVisible = false })
+        FilterDrawer(
+            filters = productFilters,
+            products = products,
+            onFiltersChange = { productFilters = it },
+            onDismiss = { filterDrawerVisible = false }
+        )
     }
 
     if (sortSheetVisible) {
@@ -296,99 +375,200 @@ private fun ResultsBar(
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
+private val CATEGORY_OPTIONS = listOf(
+    "clothing" to "Clothing",
+    "accessories" to "Accessories",
+    "home" to "Home & Living",
+    "other" to "Other"
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FilterDrawer(
+    filters: ProductFilters,
+    products: List<ShopifyProductsApi.ProductItem>,
+    onFiltersChange: (ProductFilters) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Popup(
+    val productTypes = remember(products) {
+        products.map { it.productType.ifBlank { "Other" } }.distinct().sorted()
+    }
+    val scrollState = rememberScrollState()
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        alignment = Alignment.TopStart,
-        properties = PopupProperties(usePlatformDefaultWidth = false)
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+                .heightIn(min = 450.dp)
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.3f))
-                    .clickable(onClick = onDismiss)
-            )
-            AnimatedVisibility(
-                visible = true,
-                enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
-                exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
-                modifier = Modifier.align(Alignment.CenterStart)
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(
-                    modifier = modifier
-                        .width(280.dp)
-                        .fillMaxHeight()
-                        .background(Color.White)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Icon(
+                        Icons.Default.FilterList,
+                        contentDescription = null,
+                        tint = EazColors.Orange,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        "Filters",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = EazColors.TextPrimary
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextSecondary)
+                }
+            }
+
+            Text(
+                "Price",
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Row(
+                modifier = Modifier.padding(bottom = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextField(
+                    value = filters.priceMin,
+                    onValueChange = { onFiltersChange(filters.copy(priceMin = it)) },
+                    placeholder = { Text("Min", style = MaterialTheme.typography.bodySmall) },
+                    modifier = Modifier
+                        .fillMaxWidth(0.5f)
+                        .heightIn(min = 44.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+                Text("–", color = EazColors.TextSecondary)
+                TextField(
+                    value = filters.priceMax,
+                    onValueChange = { onFiltersChange(filters.copy(priceMax = it)) },
+                    placeholder = { Text("Max", style = MaterialTheme.typography.bodySmall) },
+                    modifier = Modifier
+                        .fillMaxWidth(0.5f)
+                        .heightIn(min = 44.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            }
+
+            Text(
+                "Product Category",
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Column(modifier = Modifier.padding(bottom = 20.dp)) {
+                CATEGORY_OPTIONS.forEach { (value, label) ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .clickable {
+                                val next = if (value in filters.categories) {
+                                    filters.categories - value
+                                } else {
+                                    filters.categories + value
+                                }
+                                onFiltersChange(filters.copy(categories = next))
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.FilterList,
-                                contentDescription = null,
-                                tint = EazColors.Orange,
-                                modifier = Modifier.size(20.dp)
+                        Checkbox(
+                            checked = value in filters.categories,
+                            onCheckedChange = {
+                                val next = if (it) filters.categories + value else filters.categories - value
+                                onFiltersChange(filters.copy(categories = next))
+                            },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                checkedColor = EazColors.Orange
                             )
-                            Text(
-                                "Filters",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = EazColors.TextPrimary
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextSecondary)
-                        }
-                    }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        Text(
-                            "Price",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = EazColors.TextPrimary,
-                            modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Placeholder for price filter – client-side filtering can be added later
-                            Text(
-                                "Min",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = EazColors.TextSecondary
-                            )
-                            Text("–", color = EazColors.TextSecondary)
-                            Text(
-                                "Max",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = EazColors.TextSecondary
-                            )
-                        }
-                        Text(
-                            "Product filters coming soon.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EazColors.TextSecondary,
-                            modifier = Modifier.padding(top = 24.dp)
-                        )
+                        Text(label, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
                     }
                 }
+            }
+
+            Text(
+                "Product Type",
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Column(modifier = Modifier.padding(bottom = 20.dp)) {
+                productTypes.forEach { pt ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val next = if (pt in filters.productTypes) {
+                                    filters.productTypes - pt
+                                } else {
+                                    filters.productTypes + pt
+                                }
+                                onFiltersChange(filters.copy(productTypes = next))
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = pt in filters.productTypes,
+                            onCheckedChange = {
+                                val next = if (it) filters.productTypes + pt else filters.productTypes - pt
+                                onFiltersChange(filters.copy(productTypes = next))
+                            },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                checkedColor = EazColors.Orange
+                            )
+                        )
+                        Text(pt, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Reset",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = EazColors.Orange,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF5F5F5))
+                        .clickable { onFiltersChange(ProductFilters()) }
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+                Text(
+                    "Apply",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EazColors.Orange)
+                        .clickable(onClick = onDismiss)
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                )
             }
         }
     }
@@ -399,13 +579,30 @@ private fun PaginationDots(
     totalPages: Int,
     currentPage: Int,
     onPageClick: (Int) -> Unit,
+    onSwipePrev: () -> Unit = {},
+    onSwipeNext: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
     Row(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(0xFFF5F5F5))
-            .padding(vertical = 16.dp),
+            .padding(vertical = 16.dp)
+            .pointerInput(currentPage, totalPages) {
+                var totalDrag = 0f
+                val thresholdPx = with(density) { 60.dp.toPx() }
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDrag = 0f },
+                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                    onDragEnd = {
+                        when {
+                            totalDrag > thresholdPx -> onSwipePrev()
+                            totalDrag < -thresholdPx -> onSwipeNext()
+                        }
+                    }
+                )
+            },
         horizontalArrangement = Arrangement.Center
     ) {
         (1..totalPages).forEach { page ->
