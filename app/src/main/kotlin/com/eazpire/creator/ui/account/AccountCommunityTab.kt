@@ -9,6 +9,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +57,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import kotlinx.coroutines.async
@@ -90,6 +94,42 @@ private val FLAG_EMOJI = mapOf(
 )
 
 private fun flagEmojiFor(code: String): String = FLAG_EMOJI[code.uppercase()] ?: "🏳️"
+
+private val COUNTRY_NAMES = mapOf(
+    "ALL" to "Alle",
+    "DE" to "Deutschland",
+    "AT" to "Österreich",
+    "CH" to "Schweiz",
+    "NL" to "Niederlande",
+    "SE" to "Schweden",
+    "US" to "USA",
+    "FR" to "Frankreich",
+    "ES" to "Spanien",
+    "IT" to "Italien",
+    "PL" to "Polen",
+    "GB" to "UK",
+    "TR" to "Türkei"
+)
+
+private fun countryNameFor(code: String): String = COUNTRY_NAMES[code.uppercase()] ?: code
+
+@Composable
+private fun CircularFlag(emoji: String, size: Dp = 24.dp) {
+    val textStyle = when {
+        size >= 40.dp -> MaterialTheme.typography.titleLarge
+        size >= 28.dp -> MaterialTheme.typography.bodyLarge
+        else -> MaterialTheme.typography.bodyMedium
+    }
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(EazColors.TopbarBorder.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(emoji, style = textStyle)
+    }
+}
 
 data class CommunityNetwork(
     val me: MeStats,
@@ -512,7 +552,13 @@ private fun LevelCards(
                                     androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = EazColors.OrangeBg.copy(alpha = 0.5f))
                                 } else androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
                             ) {
-                                Text("${flagEmojiFor(code)} $count", color = if (selected) EazColors.Orange else EazColors.TextSecondary, style = MaterialTheme.typography.labelSmall)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    CircularFlag(flagEmojiFor(code), size = 20.dp)
+                                    Text(count.toString(), color = if (selected) EazColors.Orange else EazColors.TextSecondary, style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
                     }
@@ -922,6 +968,9 @@ private fun ReferralSection(
 
 @Composable
 private fun PartnerCard(partner: PartnerItem, onClick: () -> Unit) {
+    val countryCode = partner.country.ifBlank { "DE" }.uppercase().take(2)
+    val flagEmoji = flagEmojiFor(countryCode)
+    val countryLabel = countryNameFor(countryCode)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -935,18 +984,39 @@ private fun PartnerCard(partner: PartnerItem, onClick: () -> Unit) {
                 .fillMaxWidth()
                 .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
-            Column {
-                Text(partner.name, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
-                Text("${flagEmojiFor(partner.country.ifBlank { "DE" }.uppercase().take(2))} ${partner.country} · since ${partner.since}", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                CircularFlag(flagEmoji, size = 44.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(countryLabel, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+                    Text(partner.name, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("D:${partner.designs}", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
-                Text("P:${partner.products}", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
-                Text("S:${partner.sales}", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                partnerStatIcon(Icons.Default.Image, partner.designs)
+                partnerStatIcon(Icons.Default.Inventory2, partner.products)
+                partnerStatIcon(Icons.Default.ShoppingCart, partner.sales)
             }
         }
+    }
+}
+
+@Composable
+private fun partnerStatIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, value: Int) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = EazColors.TextSecondary)
+        Text(value.toString(), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
     }
 }
 
