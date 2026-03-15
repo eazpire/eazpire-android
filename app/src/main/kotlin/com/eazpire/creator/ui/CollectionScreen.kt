@@ -73,42 +73,33 @@ private const val PRODUCTS_PER_PAGE = 24
 
 private data class SortOption(val value: String, val label: String)
 
-// Shop filter structure (theme/snippets/facets.liquid): Price, Category, Gender, Creator
+// Design filter (creator-mobile-filter-modal, saveDesign.js): Price, Content Type, Design Type, Design Style
 private data class ProductFilters(
     val priceMin: String = "",
     val priceMax: String = "",
-    val categories: Set<String> = emptySet(),      // T-Shirts, Hoodies, Sweatshirts
-    val genders: Set<String> = emptySet(),         // Unisex, Men, Women
-    val creators: Set<String> = emptySet()        // Tobias, Lisa, Anna
+    val contentTypes: Set<String> = emptySet(),   // Design + Text, Design Only, Text Only
+    val designTypes: Set<String> = emptySet(),   // Classic, Pattern, All Over, Full Surface, Panorama
+    val designStyles: Set<String> = emptySet()   // Minimalist, Urban, Vintage, Bold, etc.
 ) {
     fun isEmpty(): Boolean =
-        priceMin.isBlank() && priceMax.isBlank() && categories.isEmpty() &&
-        genders.isEmpty() && creators.isEmpty()
+        priceMin.isBlank() && priceMax.isBlank() && contentTypes.isEmpty() &&
+        designTypes.isEmpty() && designStyles.isEmpty()
 }
 
-private fun productTypeToShopCategory(productType: String): String? {
-    val pt = productType.lowercase()
-    return when {
-        pt.contains("t-shirt") || pt.contains("tshirt") || pt.contains("t shirt") -> "T-Shirts"
-        pt.contains("hoodie") -> "Hoodies"
-        pt.contains("sweatshirt") || pt.contains("sweat shirt") -> "Sweatshirts"
-        else -> null
-    }
+private fun contentTypeToFilterValue(ct: String): String = when {
+    ct.equals("Design + Text", ignoreCase = true) -> "Design + Text"
+    ct.equals("Design Only", ignoreCase = true) -> "Design Only"
+    ct.equals("Text Only", ignoreCase = true) -> "Text Only"
+    else -> ct
 }
 
-private fun productMatchesGender(product: ShopifyProductsApi.ProductItem, gender: String): Boolean {
-    val tags = product.tags
-    if (tags.isEmpty()) return gender == "Unisex"
-    val hasUnisex = tags.any { it.contains("unisex", ignoreCase = true) }
-    if (hasUnisex) return gender == "Unisex"
-    val hasMen = tags.any { it.contains("men", ignoreCase = true) || it.contains("man", ignoreCase = true) || it.contains("herren", ignoreCase = true) }
-    val hasWomen = tags.any { it.contains("women", ignoreCase = true) || it.contains("woman", ignoreCase = true) || it.contains("damen", ignoreCase = true) }
-    return when (gender) {
-        "Men" -> hasMen && !hasWomen
-        "Women" -> hasWomen && !hasMen
-        "Unisex" -> hasUnisex || (!hasMen && !hasWomen)
-        else -> true
-    }
+private fun designTypeToFilterValue(dt: String): String = when {
+    dt.equals("Classic", ignoreCase = true) -> "Classic"
+    dt.equals("Pattern", ignoreCase = true) -> "Pattern"
+    dt.equals("All Over", ignoreCase = true) || dt.equals("All-Over", ignoreCase = true) -> "All Over"
+    dt.equals("Full Surface", ignoreCase = true) || dt.equals("Full-Coverage", ignoreCase = true) -> "Full Surface"
+    dt.equals("Panorama", ignoreCase = true) -> "Panorama"
+    else -> dt
 }
 
 private fun applyFilters(
@@ -121,16 +112,17 @@ private fun applyFilters(
         val priceMax = filters.priceMax.toDoubleOrNull()
         if (priceMin != null && p.price < priceMin) return@filter false
         if (priceMax != null && p.price > priceMax) return@filter false
-        if (filters.categories.isNotEmpty()) {
-            val cat = productTypeToShopCategory(p.productType)
-            if (cat == null || cat !in filters.categories) return@filter false
+        if (filters.contentTypes.isNotEmpty()) {
+            val ct = contentTypeToFilterValue(p.contentType)
+            if (ct.isBlank() || ct !in filters.contentTypes) return@filter false
         }
-        if (filters.genders.isNotEmpty()) {
-            if (!filters.genders.any { productMatchesGender(p, it) }) return@filter false
+        if (filters.designTypes.isNotEmpty()) {
+            val dt = designTypeToFilterValue(p.designType)
+            if (dt.isBlank() || dt !in filters.designTypes) return@filter false
         }
-        if (filters.creators.isNotEmpty()) {
-            val v = p.vendor.ifBlank { return@filter false }
-            if (v !in filters.creators) return@filter false
+        if (filters.designStyles.isNotEmpty()) {
+            val styles = p.designStyle.map { it.trim() }.filter { it.isNotBlank() }
+            if (styles.isEmpty() || !styles.any { it in filters.designStyles }) return@filter false
         }
         true
     }
@@ -168,10 +160,11 @@ fun CollectionScreen(
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
-    var products by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
+    var productsByPage by remember { mutableStateOf<Map<Int, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
+    var pageCursors by remember { mutableStateOf(listOf<String?>(null)) }
+    var hasNextPage by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     var currentPage by remember { mutableStateOf(1) }
-    var totalPages by remember { mutableStateOf(1) }
     var sortBy by remember { mutableStateOf("manual") }
     var sortSheetVisible by remember { mutableStateOf(false) }
     var filterDrawerVisible by remember { mutableStateOf(false) }
@@ -179,20 +172,39 @@ fun CollectionScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
 
+    val products = productsByPage[currentPage] ?: emptyList()
+    val totalPages = maxOf(1, if (hasNextPage) currentPage + 1 else currentPage)
+
+    LaunchedEffect(collectionHandle) {
+        productsByPage = emptyMap()
+        pageCursors = listOf(null)
+        hasNextPage = false
+        currentPage = 1
+    }
+
     LaunchedEffect(collectionHandle, currentPage) {
-        isLoading = true
-        val result = withContext(Dispatchers.IO) {
-            val fromCollection = api.getProducts(
-                collectionHandle = collectionHandle,
-                limit = PRODUCTS_PER_PAGE,
-                page = currentPage
-            )
-            if (fromCollection.isEmpty()) api.getProducts(limit = PRODUCTS_PER_PAGE, page = currentPage)
-            else fromCollection
+        if (productsByPage.containsKey(currentPage)) {
+            isLoading = false
+            return@LaunchedEffect
         }
-        products = result
-        totalPages = if (result.size >= PRODUCTS_PER_PAGE) currentPage + 1 else currentPage
-        totalPages = maxOf(1, totalPages)
+        isLoading = true
+        val cursor = pageCursors.getOrNull(currentPage - 1)
+        val result = withContext(Dispatchers.IO) {
+            var r = api.getProducts(
+                collectionHandle = collectionHandle.ifBlank { null },
+                limit = PRODUCTS_PER_PAGE,
+                cursor = cursor
+            )
+            if (r.products.isEmpty() && collectionHandle.isNotBlank()) {
+                r = api.getProducts(limit = PRODUCTS_PER_PAGE, cursor = cursor)
+            }
+            r
+        }
+        productsByPage = productsByPage + (currentPage to result.products)
+        if (result.hasNextPage && result.nextCursor != null && currentPage >= pageCursors.size) {
+            pageCursors = pageCursors + result.nextCursor
+        }
+        hasNextPage = result.hasNextPage
         isLoading = false
     }
 
@@ -389,23 +401,30 @@ private fun ResultsBar(
     }
 }
 
-// Shop filter (theme/snippets/facets.liquid): Category, Gender, Creator
-private val CATEGORY_OPTIONS = listOf(
-    "T-Shirts" to "T-Shirts",
-    "Hoodies" to "Hoodies",
-    "Sweatshirts" to "Sweatshirts"
+// Design filter (creator-mobile-filter-modal, saveDesign.js, custom-fields-metadata.md)
+private val CONTENT_TYPE_OPTIONS = listOf(
+    "Design + Text" to "Design + Text",
+    "Design Only" to "Design Only",
+    "Text Only" to "Text Only"
 )
 
-private val GENDER_OPTIONS = listOf(
-    "Unisex" to "Unisex",
-    "Men" to "Men",
-    "Women" to "Women"
+private val DESIGN_TYPE_OPTIONS = listOf(
+    "Classic" to "Classic",
+    "Pattern" to "Pattern",
+    "All Over" to "All Over",
+    "Full Surface" to "Full Surface",
+    "Panorama" to "Panorama"
 )
 
-private val CREATOR_OPTIONS = listOf(
-    "Tobias" to "Tobias",
-    "Lisa" to "Lisa",
-    "Anna" to "Anna"
+private val DESIGN_STYLE_OPTIONS = listOf(
+    "Minimalist" to "Minimalist",
+    "Urban" to "Urban",
+    "Modern" to "Modern",
+    "Vintage" to "Vintage",
+    "Bold" to "Bold",
+    "Playful" to "Playful",
+    "Retro" to "Retro",
+    "Elegant" to "Elegant"
 )
 
 @Composable
@@ -528,69 +547,69 @@ private fun FilterDrawer(
             }
 
             Text(
-                "Category",
+                "Content Type",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
             Column(modifier = Modifier.padding(bottom = 14.dp)) {
-                CATEGORY_OPTIONS.forEach { (value, label) ->
+                CONTENT_TYPE_OPTIONS.forEach { (value, label) ->
                     FilterOptionRow(
                         label = label,
-                        checked = value in filters.categories,
+                        checked = value in filters.contentTypes,
                         onCheckedChange = {
-                            val next = if (it) filters.categories + value else filters.categories - value
-                            onFiltersChange(filters.copy(categories = next))
+                            val next = if (it) filters.contentTypes + value else filters.contentTypes - value
+                            onFiltersChange(filters.copy(contentTypes = next))
                         },
                         onClick = {
-                            val next = if (value in filters.categories) filters.categories - value else filters.categories + value
-                            onFiltersChange(filters.copy(categories = next))
+                            val next = if (value in filters.contentTypes) filters.contentTypes - value else filters.contentTypes + value
+                            onFiltersChange(filters.copy(contentTypes = next))
                         }
                     )
                 }
             }
 
             Text(
-                "Gender",
+                "Design Type",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
             Column(modifier = Modifier.padding(bottom = 14.dp)) {
-                GENDER_OPTIONS.forEach { (value, label) ->
+                DESIGN_TYPE_OPTIONS.forEach { (value, label) ->
                     FilterOptionRow(
                         label = label,
-                        checked = value in filters.genders,
+                        checked = value in filters.designTypes,
                         onCheckedChange = {
-                            val next = if (it) filters.genders + value else filters.genders - value
-                            onFiltersChange(filters.copy(genders = next))
+                            val next = if (it) filters.designTypes + value else filters.designTypes - value
+                            onFiltersChange(filters.copy(designTypes = next))
                         },
                         onClick = {
-                            val next = if (value in filters.genders) filters.genders - value else filters.genders + value
-                            onFiltersChange(filters.copy(genders = next))
+                            val next = if (value in filters.designTypes) filters.designTypes - value else filters.designTypes + value
+                            onFiltersChange(filters.copy(designTypes = next))
                         }
                     )
                 }
             }
 
             Text(
-                "Creator",
+                "Design Style",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
             Column(modifier = Modifier.padding(bottom = 14.dp)) {
-                CREATOR_OPTIONS.forEach { (value, label) ->
+                DESIGN_STYLE_OPTIONS.forEach { (value, label) ->
                     FilterOptionRow(
                         label = label,
-                        checked = value in filters.creators,
+                        checked = value in filters.designStyles,
                         onCheckedChange = {
-                            val next = if (it) filters.creators + value else filters.creators - value
-                            onFiltersChange(filters.copy(creators = next))
+                            val next = if (it) filters.designStyles + value else filters.designStyles - value
+                            onFiltersChange(filters.copy(designStyles = next))
                         },
                         onClick = {
-                            val next = if (value in filters.creators) filters.creators - value else filters.creators + value
-                            onFiltersChange(filters.copy(creators = next))
+                            val next = if (value in filters.designStyles) filters.designStyles - value else filters.designStyles + value
+                            onFiltersChange(filters.copy(designStyles = next))
                         }
                     )
                 }

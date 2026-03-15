@@ -9,11 +9,12 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Lädt Produkte aus Shopify products.json.
- * https://www.eazpire.com/collections/{handle}/products.json oder /products.json
+ * Lädt Produkte via Shopify Storefront API (Worker-Proxy) mit Design-Metafields.
+ * Filter: Content Type, Design Type, Design Style – gleiche Werte wie im Web.
  */
 class ShopifyProductsApi(
-    private val baseUrl: String = "https://www.eazpire.com",
+    private val workerUrl: String = "https://creator-engine.eazpire.workers.dev",
+    private val storeUrl: String = "https://www.eazpire.com",
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -30,99 +31,108 @@ class ShopifyProductsApi(
         val createdAt: String = "",
         val productType: String = "",
         val tags: List<String> = emptyList(),
-        val vendor: String = ""
+        val vendor: String = "",
+        val contentType: String = "",
+        val designType: String = "",
+        val designStyle: List<String> = emptyList()
+    )
+
+    data class ProductsResult(
+        val products: List<ProductItem>,
+        val hasNextPage: Boolean,
+        val nextCursor: String?
     )
 
     /**
-     * Lädt Produkte einer Collection oder alle Produkte.
-     * @param collectionHandle z.B. "women", "men", "kids" – null = alle Produkte
+     * Lädt Produkte einer Collection oder alle Produkte via Storefront API.
+     * @param collectionHandle z.B. "women", "men" – null = alle Produkte
      * @param limit max. Anzahl Produkte
-     * @param page Pagination (1-based)
+     * @param cursor Pagination-Cursor (null für erste Seite)
      */
     suspend fun getProducts(
         collectionHandle: String? = null,
-        limit: Int = 20,
-        page: Int = 1
-    ): List<ProductItem> = withContext(Dispatchers.IO) {
-        val base = if (!collectionHandle.isNullOrBlank()) {
-            "$baseUrl/collections/$collectionHandle/products.json"
-        } else {
-            "$baseUrl/products.json"
-        }
+        limit: Int = 24,
+        cursor: String? = null
+    ): ProductsResult = withContext(Dispatchers.IO) {
         val url = buildString {
-            append(base)
-            append("?limit=$limit")
-            if (page > 1) append("&page=$page")
+            append("$workerUrl/apps/creator-dispatch?op=get-storefront-products")
+            append("&limit=$limit")
+            if (!collectionHandle.isNullOrBlank()) {
+                append("&collection_handle=${java.net.URLEncoder.encode(collectionHandle, "UTF-8")}")
+            }
+            cursor?.takeIf { it.isNotBlank() }?.let {
+                append("&cursor=${java.net.URLEncoder.encode(it, "UTF-8")}")
+            }
         }
         val request = Request.Builder().url(url).build()
         val response = client.newCall(request).execute()
         val body = response.body?.string() ?: "{}"
         val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
-        val products = json.optJSONArray("products") ?: JSONArray()
-        (0 until products.length()).mapNotNull { i ->
-            parseProduct(products.optJSONObject(i))?.let { p ->
-                p.copy(url = "$baseUrl/products/${p.handle}")
-            }
+        if (!json.optBoolean("ok", false)) {
+            return@withContext ProductsResult(emptyList(), false, null)
         }
+        val productsArr = json.optJSONArray("products") ?: JSONArray()
+        val products = (0 until productsArr.length()).mapNotNull { i ->
+            parseProduct(productsArr.optJSONObject(i))
+        }
+        ProductsResult(
+            products = products,
+            hasNextPage = json.optBoolean("hasNextPage", false),
+            nextCursor = json.optString("nextCursor").takeIf { it.isNotBlank() }
+        )
     }
 
     /**
-     * Lädt Produkte für mehrere Kategorien. Bei leerer Collection wird auf alle Produkte zurückgegriffen.
+     * Lädt Produkte für mehrere Kategorien.
      */
     suspend fun getProductsByCategories(
         categories: List<Pair<String, String>>,
         limitPerCategory: Int = 12
     ): Map<String, List<ProductItem>> = withContext(Dispatchers.IO) {
         categories.associate { (handle, _) ->
-            val products = getProducts(collectionHandle = handle, limit = limitPerCategory)
-            val fallback = if (products.isEmpty()) getProducts(limit = limitPerCategory) else products
+            val result = getProducts(collectionHandle = handle, limit = limitPerCategory)
+            val fallback = if (result.products.isEmpty()) {
+                getProducts(limit = limitPerCategory).products
+            } else result.products
             handle to fallback
         }
     }
 
     private fun parseProduct(obj: JSONObject?): ProductItem? {
         if (obj == null) return null
-        val id = obj.optLong("id", 0L)
-        val title = obj.optString("title", "").takeIf { it.isNotBlank() } ?: return null
         val handle = obj.optString("handle", "").takeIf { it.isNotBlank() } ?: return null
-        val createdAt = obj.optString("created_at", "")
         val images = mutableListOf<String>()
         val imagesArr = obj.optJSONArray("images")
         if (imagesArr != null) {
             for (j in 0 until imagesArr.length()) {
-                val img = imagesArr.optJSONObject(j)
-                val src = img?.optString("src")?.takeIf { it.isNotBlank() }
+                val src = imagesArr.optString(j).takeIf { it.isNotBlank() }
                 if (src != null) images.add(src)
             }
         }
-        if (images.isEmpty()) {
-            val variants = obj.optJSONArray("variants")
-            for (j in 0 until (variants?.length() ?: 0)) {
-                val v = variants?.optJSONObject(j)
-                val feat = v?.optJSONObject("featured_image")
-                val src = feat?.optString("src")?.takeIf { it.isNotBlank() }
-                if (src != null && src !in images) images.add(src)
-            }
-        }
         if (images.isEmpty()) return null
-        var price = 0.0
-        var compareAtPrice: Double? = null
-        val variants = obj.optJSONArray("variants")
-        if (variants != null && variants.length() > 0) {
-            val v = variants.optJSONObject(0)
-            price = v?.optString("price", "0")?.toDoubleOrNull() ?: 0.0
-            val cap = v?.optString("compare_at_price")
-            if (cap != null && cap != "null") compareAtPrice = cap.toDoubleOrNull()
-        }
-        val productType = obj.optString("product_type", "").trim()
-        val tags = obj.optJSONArray("tags")?.let { t ->
-            (0 until t.length()).mapNotNull { t.optString(it).takeIf { s -> s.isNotBlank() } }
-        } ?: emptyList()
-        val vendor = obj.optString("vendor", "").trim()
+        val designStyleArr = obj.optJSONArray("designStyle")
+        val designStyle = if (designStyleArr != null) {
+            (0 until designStyleArr.length()).mapNotNull { designStyleArr.optString(it).takeIf { s -> s.isNotBlank() } }
+        } else emptyList()
+        val tagsArr = obj.optJSONArray("tags")
+        val tags = if (tagsArr != null) {
+            (0 until tagsArr.length()).mapNotNull { tagsArr.optString(it).takeIf { s -> s.isNotBlank() } }
+        } else emptyList()
         return ProductItem(
-            id = id, title = title, handle = handle, images = images, url = "",
-            price = price, compareAtPrice = compareAtPrice, createdAt = createdAt,
-            productType = productType, tags = tags, vendor = vendor
+            id = obj.optLong("id", 0L),
+            title = obj.optString("title", ""),
+            handle = handle,
+            images = images,
+            url = obj.optString("url", "").ifBlank { "$storeUrl/products/$handle" },
+            price = obj.optDouble("price", 0.0),
+            compareAtPrice = null,
+            createdAt = obj.optString("createdAt", ""),
+            productType = obj.optString("productType", ""),
+            tags = tags,
+            vendor = obj.optString("vendor", ""),
+            contentType = obj.optString("contentType", ""),
+            designType = obj.optString("designType", ""),
+            designStyle = designStyle
         )
     }
 }
