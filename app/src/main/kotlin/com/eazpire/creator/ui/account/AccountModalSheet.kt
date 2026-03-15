@@ -264,14 +264,14 @@ fun AccountModalSheet(
                     exit = slideOutHorizontally(targetOffsetX = { -it })
                 ) {
                     Row(modifier = Modifier.fillMaxSize()) {
-                        Column(
-                            modifier = Modifier
-                                .width(260.dp)
-                                .fillMaxHeight()
-                                .background(Color.White)
-                                .verticalScroll(rememberScrollState())
-                                .padding(vertical = 8.dp)
-                        ) {
+                        Box(modifier = Modifier.width(260.dp).fillMaxHeight()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.White)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(vertical = 8.dp)
+                            ) {
                                 AccountTab.entries.forEachIndexed { index, tab ->
                                     val isSelected = selectedTab == index
                                     Text(
@@ -294,6 +294,14 @@ fun AccountModalSheet(
                                     )
                                 }
                             }
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .width(1.dp)
+                                    .fillMaxHeight()
+                                    .background(EazColors.Orange)
+                            )
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
