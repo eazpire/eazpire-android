@@ -31,10 +31,10 @@ fun HeaderSearch(
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
         placeholder = { Text(placeholder, color = EazColors.TextSecondary) },
         singleLine = true,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = EazColors.Orange,
             unfocusedBorderColor = EazColors.TopbarBorder,

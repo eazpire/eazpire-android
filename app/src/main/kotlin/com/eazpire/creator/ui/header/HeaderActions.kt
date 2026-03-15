@@ -35,7 +35,7 @@ fun HeaderActions(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(36.dp),
             onClick = {
                 com.eazpire.creator.util.DebugLog.click("Account")
                 onAccountClick()
@@ -47,10 +47,13 @@ fun HeaderActions(
                 tint = EazColors.TextPrimary
             )
         }
-        IconButton(onClick = {
-            com.eazpire.creator.util.DebugLog.click("Favorites")
-            onFavoritesClick()
-        }) {
+        IconButton(
+            modifier = Modifier.size(36.dp),
+            onClick = {
+                com.eazpire.creator.util.DebugLog.click("Favorites")
+                onFavoritesClick()
+            }
+        ) {
             Icon(
                 imageVector = Icons.Outlined.FavoriteBorder,
                 contentDescription = "Favorites",
@@ -59,7 +62,7 @@ fun HeaderActions(
         }
         Box {
             IconButton(
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
                 onClick = {
                     com.eazpire.creator.util.DebugLog.click("Cart")
                     onCartClick()

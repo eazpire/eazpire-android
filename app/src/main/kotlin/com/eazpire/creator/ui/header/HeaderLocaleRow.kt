@@ -54,20 +54,20 @@ fun HeaderLocaleRow(
 
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         OutlinedCard(
             onClick = { showCountryModal = true },
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(8.dp),
             border = BorderStroke(1.dp, EazColors.TopbarBorder),
             colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
                 containerColor = androidx.compose.ui.graphics.Color.White
             ),
-            modifier = Modifier.padding(2.dp)
+            modifier = Modifier.padding(0.dp)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -83,7 +83,7 @@ fun HeaderLocaleRow(
                         .build(),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(18.dp)
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
@@ -98,15 +98,15 @@ fun HeaderLocaleRow(
 
         OutlinedCard(
             onClick = { showLanguageModal = true },
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(8.dp),
             border = BorderStroke(1.dp, EazColors.TopbarBorder),
             colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
                 containerColor = androidx.compose.ui.graphics.Color.White
             ),
-            modifier = Modifier.padding(1.dp)
+            modifier = Modifier.padding(0.dp)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -122,7 +122,7 @@ fun HeaderLocaleRow(
                         .build(),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(18.dp)
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
