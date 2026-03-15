@@ -89,7 +89,7 @@ private val FLAG_EMOJI = mapOf(
     "TR" to "🇹🇷"
 )
 
-private fun flagEmojiFor(code: String): String = FLAG_EMOJI[code.uppercase] ?: "🏳️"
+private fun flagEmojiFor(code: String): String = FLAG_EMOJI[code.uppercase()] ?: "🏳️"
 
 data class CommunityNetwork(
     val me: MeStats,
