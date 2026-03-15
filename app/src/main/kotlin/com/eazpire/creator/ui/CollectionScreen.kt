@@ -40,8 +40,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,7 +93,7 @@ private fun sortProducts(
     else -> products
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollectionScreen(
     title: String,
@@ -180,6 +178,10 @@ fun CollectionScreen(
                 )
             }
         }
+    }
+
+    if (filterDrawerVisible) {
+        FilterDrawer(onDismiss = { filterDrawerVisible = false })
     }
 
     if (sortSheetVisible) {
@@ -294,6 +296,7 @@ private fun ResultsBar(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun FilterDrawer(
     onDismiss: () -> Unit,
