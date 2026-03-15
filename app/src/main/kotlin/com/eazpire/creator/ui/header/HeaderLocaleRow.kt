@@ -54,7 +54,7 @@ fun HeaderLocaleRow(
 
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         OutlinedCard(
@@ -74,7 +74,7 @@ fun HeaderLocaleRow(
                     imageVector = Icons.Outlined.LocationOn,
                     contentDescription = null,
                     tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(12.dp)
                 )
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
@@ -91,7 +91,7 @@ fun HeaderLocaleRow(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
                     contentDescription = null,
                     tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.dp)
                 )
             }
         }
@@ -103,17 +103,17 @@ fun HeaderLocaleRow(
             colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
                 containerColor = androidx.compose.ui.graphics.Color.White
             ),
-            modifier = Modifier.padding(2.dp)
+            modifier = Modifier.padding(1.dp)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Language,
                     contentDescription = null,
                     tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(12.dp)
                 )
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
@@ -130,7 +130,7 @@ fun HeaderLocaleRow(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
                     contentDescription = null,
                     tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.dp)
                 )
             }
         }

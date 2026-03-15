@@ -34,7 +34,7 @@ fun HeaderLogo(
                 indication = null,
                 onClick = onClick
             )
-            .padding(6.dp),
+            .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
         SubcomposeAsyncImage(

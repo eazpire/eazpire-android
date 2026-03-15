@@ -31,7 +31,7 @@ fun HeaderSearch(
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         placeholder = { Text(placeholder, color = EazColors.TextSecondary) },
         singleLine = true,
         shape = RoundedCornerShape(12.dp),

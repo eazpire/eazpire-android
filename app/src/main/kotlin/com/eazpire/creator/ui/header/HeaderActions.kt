@@ -1,5 +1,6 @@
 package com.eazpire.creator.ui.header
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -28,11 +29,18 @@ fun HeaderActions(
     onCartClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    Row(modifier = modifier) {
-        IconButton(onClick = {
-            com.eazpire.creator.util.DebugLog.click("Account")
-            onAccountClick()
-        }) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            modifier = Modifier.size(40.dp),
+            onClick = {
+                com.eazpire.creator.util.DebugLog.click("Account")
+                onAccountClick()
+            }
+        ) {
             Icon(
                 imageVector = Icons.Outlined.PersonOutline,
                 contentDescription = "Account",
@@ -50,10 +58,13 @@ fun HeaderActions(
             )
         }
         Box {
-            IconButton(onClick = {
-                com.eazpire.creator.util.DebugLog.click("Cart")
-                onCartClick()
-            }) {
+            IconButton(
+                modifier = Modifier.size(40.dp),
+                onClick = {
+                    com.eazpire.creator.util.DebugLog.click("Cart")
+                    onCartClick()
+                }
+            ) {
                 Icon(
                     imageVector = Icons.Outlined.ShoppingCart,
                     contentDescription = "Cart",
