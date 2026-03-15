@@ -58,6 +58,7 @@ fun ShopScreen(
             ) {
                 MainHeader(
                 localeStore = localeStore,
+                tokenStore = tokenStore,
                 onAccountClick = {
                     if (tokenStore.isLoggedIn()) {
                         accountModalVisible = true

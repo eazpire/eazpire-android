@@ -434,6 +434,23 @@ class CreatorApi(
             JSONObject(response.body?.string() ?: "{}")
         }
 
+    /** GET ?op=get-favorites&customer_id=xxx → { ok, items: [...], count } */
+    suspend fun getFavorites(customerId: String): JSONObject = call(
+        "get-favorites",
+        mapOf("customer_id" to customerId)
+    )
+
+    /** POST ?op=remove-favorite Body: { customer_id, product_id, variant_id? } */
+    suspend fun removeFavorite(customerId: String, productId: String, variantId: String? = null): JSONObject =
+        postJson(
+            "remove-favorite",
+            mapOf(
+                "customer_id" to customerId,
+                "product_id" to productId,
+                "variant_id" to variantId
+            )
+        )
+
     /** GET ?op=get-catalog-products&region=EU&design_type=classic */
     suspend fun getCatalogProducts(
         region: String,

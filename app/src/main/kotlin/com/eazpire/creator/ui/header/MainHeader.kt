@@ -21,12 +21,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.util.DebugLog
 
 @Composable
 fun MainHeader(
     localeStore: LocaleStore,
+    tokenStore: SecureTokenStore? = null,
     onAccountClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -53,6 +55,23 @@ fun MainHeader(
     }
     var isCreatorMode by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
+    var favoritesModalVisible by remember { mutableStateOf(false) }
+    var favoritesCount by remember { mutableStateOf(0) }
+    val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
+    val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
+
+    LaunchedEffect(ownerId) {
+        if (ownerId.isNotBlank()) {
+            try {
+                val resp = api.getFavorites(ownerId)
+                if (resp.optBoolean("ok", false)) {
+                    favoritesCount = resp.optInt("count", 0)
+                }
+            } catch (_: Exception) {}
+        } else {
+            favoritesCount = 0
+        }
+    }
 
     Box {
     Column(
@@ -91,7 +110,12 @@ fun MainHeader(
             )
             HeaderActions(
                 cartCount = 0,
+                favoritesCount = favoritesCount,
                 onAccountClick = onAccountClick,
+                onFavoritesClick = {
+                    DebugLog.click("Favorites icon")
+                    favoritesModalVisible = true
+                },
                 onCartClick = {
                     DebugLog.click("Cart icon")
                     cartDrawerVisible = true
@@ -113,6 +137,13 @@ fun MainHeader(
         CartDrawer(
             visible = cartDrawerVisible,
             onDismiss = { cartDrawerVisible = false }
+        )
+        FavoritesModal(
+            visible = favoritesModalVisible,
+            customerId = ownerId.ifBlank { null },
+            api = api,
+            onDismiss = { favoritesModalVisible = false },
+            onCountChange = { favoritesCount = it }
         )
     }
 }

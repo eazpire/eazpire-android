@@ -24,6 +24,7 @@ import com.eazpire.creator.EazColors
 @Composable
 fun HeaderActions(
     cartCount: Int = 0,
+    favoritesCount: Int = 0,
     onAccountClick: () -> Unit = {},
     onFavoritesClick: () -> Unit = {},
     onCartClick: () -> Unit = {},
@@ -44,16 +45,26 @@ fun HeaderActions(
                 tint = EazColors.TextPrimary
             )
         }
-        IconButton(onClick = {
+        Box {
+            IconButton(onClick = {
                 com.eazpire.creator.util.DebugLog.click("Favorites")
                 onFavoritesClick()
+            }) {
+                Icon(
+                    imageVector = Icons.Outlined.FavoriteBorder,
+                    contentDescription = "Favorites",
+                    tint = EazColors.TextPrimary
+                )
             }
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.FavoriteBorder,
-                contentDescription = "Favorites",
-                tint = EazColors.TextPrimary
-            )
+            if (favoritesCount > 0) {
+                Badge(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(18.dp)
+                ) {
+                    Text("$favoritesCount")
+                }
+            }
         }
         Box {
             IconButton(onClick = {
