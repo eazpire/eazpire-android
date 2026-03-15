@@ -1,7 +1,13 @@
 package com.eazpire.creator.ui.header
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
@@ -86,7 +93,27 @@ fun MainHeader(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HeaderLogo()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HeaderLogo()
+                val ctx = LocalContext.current
+                IconButton(
+                    onClick = {
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "https://www.eazpire.com")
+                        }
+                        val chooser = Intent.createChooser(sendIntent, null)
+                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ctx.startActivity(chooser)
+                    },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = EazColors.Orange
+                    )
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = "Share")
+                }
+            }
             CreatorSwitch(
                 isCreatorMode = isCreatorMode,
                 onModeChange = { isCreatorMode = it }

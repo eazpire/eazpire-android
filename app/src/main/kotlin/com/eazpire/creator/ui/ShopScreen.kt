@@ -79,7 +79,7 @@ fun ShopScreen(
                     interactionSource = remember { MutableInteractionSource() }
                 ) { focusManager.clearFocus() }
         ) {
-            CategoryGrid()
+            ProductCarouselSection()
         }
     }
 
