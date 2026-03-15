@@ -67,9 +67,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.ui.components.GlassCircularFlag
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.util.DebugLog
 import org.json.JSONObject
@@ -94,7 +97,7 @@ private val RESERVED_REF_SLUGS = setOf(
     "favicon.ico", "robots.txt", "sitemap.xml"
 )
 
-private data class RefLink(val id: String, val name: String, val slug: String)
+private data class RefLink(val id: String, val name: String, val slug: String, val description: String = "")
 
 private fun buildNamedRefUrl(baseUrl: String, slug: String): String {
     if (slug.isBlank()) return baseUrl
@@ -141,7 +144,8 @@ private fun normalizeStoredRefLinks(raw: String?): Pair<List<RefLink>, String> {
             rawSlug.isNotBlank() -> slugifyLabel(rawSlug)
             else -> slugifyLabel(label)
         }
-        RefLink(id = id, name = label, slug = slug)
+        val description = item.optString("description", "").trim()
+        RefLink(id = id, name = label, slug = slug, description = description)
     }.filter { it.name.isNotBlank() }.take(REF_LINKS_MAX)
     val links = if (normalized.isEmpty()) listOf(RefLink("default", defaultName, "")) else normalized
     val activeId = if (links.any { it.id == activeIdRaw }) activeIdRaw else links.first().id
@@ -276,10 +280,9 @@ fun AccountCommunityTab(
                 } else {
                     errorMessage = net.optString("error", "Failed to load community")
                 }
-                if (ref.optBoolean("ok", false)) {
-                    referralBaseUrl = ref.optString("short_url", "").ifBlank { ref.optString("url", "") }
-                }
-                if (referralBaseUrl != null) {
+                val baseUrl = ref.optString("short_url", "").ifBlank { ref.optString("url", "") }
+                if (ref.optBoolean("ok", false) && baseUrl.isNotBlank()) {
+                    referralBaseUrl = baseUrl
                     val settingRes = api.getCustomerSetting(ownerId, REF_LINKS_SETTING_KEY)
                     val raw = if (settingRes.optBoolean("ok", false)) settingRes.optString("value", null) else null
                     val (links, activeId) = normalizeStoredRefLinks(raw)
@@ -1019,6 +1022,7 @@ private fun parseOptions(arr: org.json.JSONArray?, valueKey: String, labelKey: S
 @Composable
 private fun ReferralSection(
     url: String,
+    onClick: () -> Unit,
     onCopy: () -> Unit,
     onShare: () -> Unit,
     copied: Boolean
@@ -1030,11 +1034,12 @@ private fun ReferralSection(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Your Referral Link", style = MaterialTheme.typography.titleSmall, color = EazColors.TextPrimary)
-            Text("Share this link – when others register and buy, you earn.", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 4.dp))
+            Text("Share this link – when others register and buy, you earn. Tap link to manage.", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 4.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
+                    .padding(top = 12.dp)
+                    .clickable { onClick() },
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1050,6 +1055,214 @@ private fun ReferralSection(
                 Text("Copied!", style = MaterialTheme.typography.labelSmall, color = EazColors.Orange, modifier = Modifier.padding(top = 4.dp))
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ManageRefLinksModal(
+    baseUrl: String,
+    links: List<RefLink>,
+    activeId: String,
+    ownerId: String,
+    api: com.eazpire.creator.api.CreatorApi,
+    onDismiss: () -> Unit,
+    onUpdate: (List<RefLink>, String) -> Unit
+) {
+    var localLinks by remember(links) { mutableStateOf(links) }
+    var localActiveId by remember(activeId) { mutableStateOf(activeId) }
+    var newSlug by remember { mutableStateOf("") }
+    var newName by remember { mutableStateOf("") }
+    var newDescription by remember { mutableStateOf("") }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    val scope = remember { CoroutineScope(Dispatchers.Main) }
+
+    LaunchedEffect(links, activeId) {
+        localLinks = links
+        localActiveId = activeId
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = androidx.compose.ui.graphics.Color.White
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Manage referral links", style = MaterialTheme.typography.titleLarge, color = EazColors.TextPrimary)
+                    Text("Create up to 5 named links.", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                }
+            }
+
+            localLinks.forEach { link ->
+                val isActive = link.id == localActiveId
+                val isMain = link.id == "default"
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .background(if (isActive) EazColors.OrangeBg.copy(alpha = 0.3f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(8.dp))
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(link.name, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
+                        Text(buildNamedRefUrl(baseUrl, link.slug), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+                        if (link.description.isNotBlank()) {
+                            Text(link.description, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                localActiveId = link.id
+                                persistRefLinks(scope, ownerId, api, localLinks, localActiveId) { l, a ->
+                                    onUpdate(l, a)
+                                }
+                            },
+                            modifier = Modifier.padding(0.dp)
+                        ) {
+                            Text("Use", style = MaterialTheme.typography.labelSmall)
+                        }
+                        if (!isMain) {
+                            OutlinedButton(
+                                onClick = {
+                                    val updated = localLinks.filter { it.id != link.id }
+                                    val newActive = if (localActiveId == link.id) (updated.firstOrNull()?.id ?: "") else localActiveId
+                                    localLinks = updated
+                                    localActiveId = newActive
+                                    persistRefLinks(scope, ownerId, api, localLinks, localActiveId) { l, a ->
+                                        onUpdate(l, a)
+                                    }
+                                },
+                                modifier = Modifier.padding(0.dp),
+                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("Remove", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text("Ref link", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 16.dp))
+            OutlinedTextField(
+                value = newSlug,
+                onValueChange = { newSlug = it; errorMsg = null },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("e.g. instagram-campaign", color = EazColors.TextSecondary) },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = EazColors.Orange,
+                    unfocusedBorderColor = EazColors.TopbarBorder,
+                    focusedTextColor = EazColors.TextPrimary,
+                    unfocusedTextColor = EazColors.TextPrimary
+                )
+            )
+            Text("${baseUrl.trimEnd('/')}/${newSlug.ifBlank { "your-link" }.lowercase()}", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+            Text("Allowed: a-z, 0-9, -, length 4-24.", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+
+            Text("Label", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 8.dp))
+            OutlinedTextField(
+                value = newName,
+                onValueChange = { newName = it; errorMsg = null },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("e.g. Instagram Bio", color = EazColors.TextSecondary) },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = EazColors.Orange,
+                    unfocusedBorderColor = EazColors.TopbarBorder,
+                    focusedTextColor = EazColors.TextPrimary,
+                    unfocusedTextColor = EazColors.TextPrimary
+                )
+            )
+
+            Text("Description", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 8.dp))
+            OutlinedTextField(
+                value = newDescription,
+                onValueChange = { newDescription = it; errorMsg = null },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Optional info for this link", color = EazColors.TextSecondary) },
+                minLines = 3,
+                maxLines = 4,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = EazColors.Orange,
+                    unfocusedBorderColor = EazColors.TopbarBorder,
+                    focusedTextColor = EazColors.TextPrimary,
+                    unfocusedTextColor = EazColors.TextPrimary
+                )
+            )
+
+            OutlinedButton(
+                onClick = {
+                    val slugNorm = slugifyLabel(newSlug.trim())
+                    val label = newName.trim()
+                    when {
+                        slugNorm.isBlank() -> errorMsg = "Please enter the ref link."
+                        label.isBlank() -> errorMsg = "Please enter a label."
+                        localLinks.any { it.name.equals(label, ignoreCase = true) } -> errorMsg = "This label already exists."
+                        localLinks.size >= REF_LINKS_MAX -> errorMsg = "Maximum 5 links reached."
+                        !isValidRefSlug(slugNorm) -> errorMsg = "Link path must be 4-24 chars, a-z, 0-9, -."
+                        isReservedRefSlug(slugNorm) -> errorMsg = "This link path is reserved."
+                        localLinks.any { it.slug.equals(slugNorm, ignoreCase = true) } -> errorMsg = "This link path is already in use."
+                        else -> {
+                            val newLink = RefLink("id-${System.currentTimeMillis()}-${(0..5).map { ('a'..'z').random() }.joinToString("")}", label, slugNorm, newDescription.trim())
+                            localLinks = localLinks + newLink
+                            localActiveId = newLink.id
+                            newSlug = ""
+                            newName = ""
+                            newDescription = ""
+                            errorMsg = null
+                            persistRefLinks(scope, ownerId, api, localLinks, localActiveId) { l, a ->
+                                onUpdate(l, a)
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.padding(top = 12.dp)
+            ) {
+                Text("Add link")
+            }
+            errorMsg?.let { msg ->
+                Text(msg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+    }
+}
+
+private fun persistRefLinks(
+    scope: CoroutineScope,
+    ownerId: String,
+    api: com.eazpire.creator.api.CreatorApi,
+    links: List<RefLink>,
+    activeId: String,
+    onDone: (List<RefLink>, String) -> Unit
+) {
+    scope.launch {
+        try {
+            val payload = org.json.JSONObject().apply {
+                put("activeId", activeId)
+                put("links", org.json.JSONArray(links.map { org.json.JSONObject(mapOf("id" to it.id, "name" to it.name, "slug" to it.slug, "description" to it.description)) }))
+            }
+            api.setCustomerSetting(ownerId, REF_LINKS_SETTING_KEY, payload.toString())
+            api.syncRefLinkSlugs(ownerId, links.filter { it.slug.isNotBlank() }.map { mapOf("slug" to it.slug, "name" to it.name) })
+            onDone(links, activeId)
+        } catch (_: Exception) {}
     }
 }
 
