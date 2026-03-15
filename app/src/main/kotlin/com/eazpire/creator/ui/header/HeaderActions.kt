@@ -34,22 +34,17 @@ fun HeaderActions(
         horizontalArrangement = Arrangement.spacedBy(0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
-            modifier = Modifier.size(36.dp),
-            onClick = {
-                com.eazpire.creator.util.DebugLog.click("Account")
-                onAccountClick()
-            }
-        ) {
+        IconButton(onClick = {
+            com.eazpire.creator.util.DebugLog.click("Account")
+            onAccountClick()
+        }) {
             Icon(
                 imageVector = Icons.Outlined.PersonOutline,
                 contentDescription = "Account",
                 tint = EazColors.TextPrimary
             )
         }
-        IconButton(
-            modifier = Modifier.size(36.dp),
-            onClick = {
+        IconButton(onClick = {
                 com.eazpire.creator.util.DebugLog.click("Favorites")
                 onFavoritesClick()
             }
@@ -61,13 +56,10 @@ fun HeaderActions(
             )
         }
         Box {
-            IconButton(
-                modifier = Modifier.size(36.dp),
-                onClick = {
-                    com.eazpire.creator.util.DebugLog.click("Cart")
-                    onCartClick()
-                }
-            ) {
+            IconButton(onClick = {
+                com.eazpire.creator.util.DebugLog.click("Cart")
+                onCartClick()
+            }) {
                 Icon(
                     imageVector = Icons.Outlined.ShoppingCart,
                     contentDescription = "Cart",

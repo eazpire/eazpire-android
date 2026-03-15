@@ -1,6 +1,7 @@
 package com.eazpire.creator.ui.header
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -15,8 +16,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 
 @Composable
@@ -24,15 +27,16 @@ fun HeaderSearch(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
-    placeholder: String = "Search at eazpire...",
+    placeholder: String = "Search...",
     modifier: Modifier = Modifier
 ) {
     val focusManager = LocalFocusManager.current
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-        placeholder = { Text(placeholder, color = EazColors.TextSecondary) },
+        modifier = modifier.fillMaxWidth().height(44.dp).padding(horizontal = 8.dp, vertical = 2.dp),
+        textStyle = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
+        placeholder = { Text(placeholder, color = EazColors.TextSecondary, fontSize = 13.sp) },
         singleLine = true,
         shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(

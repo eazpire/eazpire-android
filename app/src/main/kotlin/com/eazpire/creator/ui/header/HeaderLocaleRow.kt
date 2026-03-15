@@ -59,7 +59,7 @@ fun HeaderLocaleRow(
     ) {
         OutlinedCard(
             onClick = { showCountryModal = true },
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(12.dp),
             border = BorderStroke(1.dp, EazColors.TopbarBorder),
             colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
                 containerColor = androidx.compose.ui.graphics.Color.White
@@ -67,14 +67,14 @@ fun HeaderLocaleRow(
             modifier = Modifier.padding(0.dp)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Outlined.LocationOn,
                     contentDescription = null,
                     tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(16.dp)
                 )
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
@@ -83,7 +83,7 @@ fun HeaderLocaleRow(
                         .build(),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(18.dp)
+                        .size(24.dp)
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
@@ -91,14 +91,14 @@ fun HeaderLocaleRow(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
                     contentDescription = null,
                     tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
 
         OutlinedCard(
             onClick = { showLanguageModal = true },
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(12.dp),
             border = BorderStroke(1.dp, EazColors.TopbarBorder),
             colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
                 containerColor = androidx.compose.ui.graphics.Color.White
@@ -106,14 +106,14 @@ fun HeaderLocaleRow(
             modifier = Modifier.padding(0.dp)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Language,
                     contentDescription = null,
                     tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(16.dp)
                 )
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
@@ -122,7 +122,7 @@ fun HeaderLocaleRow(
                         .build(),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(18.dp)
+                        .size(24.dp)
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
@@ -130,7 +130,7 @@ fun HeaderLocaleRow(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
                     contentDescription = null,
                     tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }

@@ -34,7 +34,7 @@ fun HeaderLogo(
                 indication = null,
                 onClick = onClick
             )
-            .padding(2.dp),
+            .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
         SubcomposeAsyncImage(
@@ -44,7 +44,7 @@ fun HeaderLogo(
                 .build(),
             contentDescription = "eazpire",
             modifier = Modifier
-                .height(28.dp)
+                .height(36.dp)
                 .widthIn(max = 140.dp),
             contentScale = ContentScale.Fit,
             error = {
