@@ -383,11 +383,71 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
-    /** GET ?op=get-shopify-products&shop=xxx → { ok, products: [...] } */
-    suspend fun getShopifyProducts(shop: String? = null): JSONObject {
-        val params = shop?.let { mapOf("shop" to it) } ?: emptyMap()
+    /** GET ?op=get-shopify-products&shop=xxx&owner_id=xxx → { ok, products: [...] } */
+    suspend fun getShopifyProducts(shop: String? = null, ownerId: String? = null): JSONObject {
+        val params = mutableMapOf<String, String>()
+        shop?.let { params["shop"] = it }
+        ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
         return call("get-shopify-products", params)
     }
+
+    /** GET ?op=hero-used-products&owner_id=xxx → { ok, used_product_ids: [...] } */
+    suspend fun getHeroUsedProducts(ownerId: String): JSONObject = call(
+        "hero-used-products",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=hero-published-random&limit=4 → { ok, images: [{ id, image_url, thumbnail_url, title }] } */
+    suspend fun getHeroPublishedRandom(limit: Int = 4): JSONObject = call(
+        "hero-published-random",
+        mapOf("limit" to limit.toString())
+    )
+
+    /** POST ?op=upload-hero-image&owner_id=xxx – multipart: image, slot */
+    suspend fun uploadHeroImage(ownerId: String, slot: String, imageBytes: ByteArray, contentType: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val ext = when {
+                contentType.contains("png") -> "png"
+                contentType.contains("webp") -> "webp"
+                contentType.contains("gif") -> "gif"
+                else -> "jpg"
+            }
+            val mediaType = contentType.toMediaType()
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("image", "$slot.$ext", okhttp3.RequestBody.create(mediaType, imageBytes))
+                .addFormDataPart("slot", slot)
+                .build()
+            val url = "$baseUrl/apps/creator-dispatch?op=upload-hero-image&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+            val request = Request.Builder()
+                .url(url)
+                .post(body)
+                .addHeader("Accept", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    /** POST ?op=hero-generate – Body: owner_id, product_ids, prompt, product_image_urls?, model_image_url?, background_image_url? */
+    suspend fun heroGenerate(
+        ownerId: String,
+        productIds: List<String>,
+        prompt: String,
+        productImageUrls: List<String>? = null,
+        modelImageUrl: String? = null,
+        backgroundImageUrl: String? = null
+    ): JSONObject = postJson(
+        "hero-generate",
+        mapOf(
+            "owner_id" to ownerId,
+            "product_ids" to org.json.JSONArray(productIds),
+            "prompt" to prompt,
+            "product_image_urls" to (productImageUrls?.let { org.json.JSONArray(it) } ?: org.json.JSONArray()),
+            "model_image_url" to modelImageUrl,
+            "background_image_url" to backgroundImageUrl
+        )
+    )
 
     // ── Wardrobe ─────────────────────────────────────────
     /** GET ?op=wardrobe-list&customer_id=xxx → { ok, outfits: [...] } */
