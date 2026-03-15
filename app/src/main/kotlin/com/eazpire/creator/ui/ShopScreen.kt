@@ -1,10 +1,13 @@
 package com.eazpire.creator.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
@@ -35,6 +39,7 @@ fun ShopScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val localeStore = remember { LocaleStore(context) }
     var accountModalVisible by remember { mutableStateOf(false) }
     var showLoginOptions by remember { mutableStateOf(false) }
@@ -43,7 +48,15 @@ fun ShopScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            MainHeader(
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { focusManager.clearFocus() }
+            ) {
+                MainHeader(
                 localeStore = localeStore,
                 onAccountClick = {
                     if (tokenStore.isLoggedIn()) {
@@ -52,20 +65,29 @@ fun ShopScreen(
                         showLoginOptions = true
                     }
                 }
-            )
+                )
+            }
         },
         bottomBar = {
             GlobalFooter()
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { focusManager.clearFocus() }
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
             Text(
                 text = "Willkommen bei eazpire",
                 style = MaterialTheme.typography.headlineSmall
@@ -82,6 +104,7 @@ fun ShopScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            }
         }
     }
 

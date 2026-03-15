@@ -34,9 +34,18 @@ fun HeaderSearch(
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = modifier.fillMaxWidth().height(44.dp).padding(horizontal = 8.dp, vertical = 2.dp),
-        textStyle = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
-        placeholder = { Text(placeholder, color = EazColors.TextSecondary, fontSize = 13.sp) },
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        textStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
+        placeholder = {
+            Text(
+                text = placeholder,
+                color = EazColors.TextSecondary,
+                fontSize = 14.sp
+            )
+        },
         singleLine = true,
         shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
@@ -51,9 +60,7 @@ fun HeaderSearch(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus(); onSearch() }),
         trailingIcon = {
-            IconButton(
-                onClick = { focusManager.clearFocus(); onSearch() }
-            ) {
+            IconButton(onClick = { focusManager.clearFocus(); onSearch() }) {
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "Search",
