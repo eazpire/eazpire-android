@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.account.AccountModalSheet
+import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.MainHeader
 
 /**
@@ -36,6 +37,7 @@ fun ShopScreen(
     val context = LocalContext.current
     val localeStore = remember { LocaleStore(context) }
     var accountModalVisible by remember { mutableStateOf(false) }
+    var accountModalInitialTab by remember { mutableStateOf<com.eazpire.creator.ui.account.AccountTab?>(null) }
     var showLoginOptions by remember { mutableStateOf(false) }
     var showAuthScreen by remember { mutableStateOf(false) }
 
@@ -46,10 +48,21 @@ fun ShopScreen(
                 localeStore = localeStore,
                 onAccountClick = {
                     if (tokenStore.isLoggedIn()) {
+                        accountModalInitialTab = null
                         accountModalVisible = true
                     } else {
                         showLoginOptions = true
                     }
+                }
+            )
+        },
+        bottomBar = {
+            GlobalFooter(
+                localeStore = localeStore,
+                tokenStore = tokenStore,
+                onBalanceClick = {
+                    accountModalInitialTab = com.eazpire.creator.ui.account.AccountTab.Balance
+                    accountModalVisible = true
                 }
             )
         }
@@ -84,7 +97,8 @@ fun ShopScreen(
     if (accountModalVisible) {
         AccountModalSheet(
             tokenStore = tokenStore,
-            onDismiss = { accountModalVisible = false }
+            onDismiss = { accountModalVisible = false; accountModalInitialTab = null },
+            initialTab = accountModalInitialTab
         )
     }
 

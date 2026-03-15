@@ -51,9 +51,11 @@ enum class AccountTab(val label: String) {
 fun AccountModalSheet(
     tokenStore: SecureTokenStore,
     onDismiss: () -> Unit,
+    initialTab: AccountTab? = null,
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by remember { mutableStateOf(0) }
+    val initialIndex = initialTab?.let { AccountTab.entries.indexOf(it).takeIf { i -> i >= 0 } } ?: 0
+    var selectedTab by remember(initialTab) { mutableStateOf(initialIndex) }
     var footerSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var footerSaveInProgress by remember { mutableStateOf(false) }
     var sizeAiMeasurementsSubTab by remember { mutableStateOf(true) }
