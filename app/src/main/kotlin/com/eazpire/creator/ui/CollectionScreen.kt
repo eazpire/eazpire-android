@@ -73,26 +73,41 @@ private const val PRODUCTS_PER_PAGE = 24
 
 private data class SortOption(val value: String, val label: String)
 
+// Shop filter structure (theme/snippets/facets.liquid): Price, Category, Gender, Creator
 private data class ProductFilters(
     val priceMin: String = "",
     val priceMax: String = "",
-    val categories: Set<String> = emptySet(),
-    val productTypes: Set<String> = emptySet(),
-    val sales: Set<String> = emptySet()
+    val categories: Set<String> = emptySet(),      // T-Shirts, Hoodies, Sweatshirts
+    val genders: Set<String> = emptySet(),         // Unisex, Men, Women
+    val creators: Set<String> = emptySet()        // Tobias, Lisa, Anna
 ) {
     fun isEmpty(): Boolean =
         priceMin.isBlank() && priceMax.isBlank() && categories.isEmpty() &&
-        productTypes.isEmpty() && sales.isEmpty()
+        genders.isEmpty() && creators.isEmpty()
 }
 
-// Web: title-based category (clothing, accessories, home, other)
-private fun titleToCategory(title: String): String {
-    val t = title.lowercase()
+private fun productTypeToShopCategory(productType: String): String? {
+    val pt = productType.lowercase()
     return when {
-        Regex("shirt|tee|hoodie|tank|jacket|sweat|pullover|t-shirt").containsMatchIn(t) -> "clothing"
-        Regex("bag|cap|hat|beanie|backpack").containsMatchIn(t) -> "accessories"
-        Regex("poster|pillow|mug|blanket|cushion").containsMatchIn(t) -> "home"
-        else -> "other"
+        pt.contains("t-shirt") || pt.contains("tshirt") || pt.contains("t shirt") -> "T-Shirts"
+        pt.contains("hoodie") -> "Hoodies"
+        pt.contains("sweatshirt") || pt.contains("sweat shirt") -> "Sweatshirts"
+        else -> null
+    }
+}
+
+private fun productMatchesGender(product: ShopifyProductsApi.ProductItem, gender: String): Boolean {
+    val tags = product.tags
+    if (tags.isEmpty()) return gender == "Unisex"
+    val hasUnisex = tags.any { it.contains("unisex", ignoreCase = true) }
+    if (hasUnisex) return gender == "Unisex"
+    val hasMen = tags.any { it.contains("men", ignoreCase = true) || it.contains("man", ignoreCase = true) || it.contains("herren", ignoreCase = true) }
+    val hasWomen = tags.any { it.contains("women", ignoreCase = true) || it.contains("woman", ignoreCase = true) || it.contains("damen", ignoreCase = true) }
+    return when (gender) {
+        "Men" -> hasMen && !hasWomen
+        "Women" -> hasWomen && !hasMen
+        "Unisex" -> hasUnisex || (!hasMen && !hasWomen)
+        else -> true
     }
 }
 
@@ -107,12 +122,15 @@ private fun applyFilters(
         if (priceMin != null && p.price < priceMin) return@filter false
         if (priceMax != null && p.price > priceMax) return@filter false
         if (filters.categories.isNotEmpty()) {
-            val cat = titleToCategory(p.title)
-            if (cat !in filters.categories) return@filter false
+            val cat = productTypeToShopCategory(p.productType)
+            if (cat == null || cat !in filters.categories) return@filter false
         }
-        if (filters.productTypes.isNotEmpty()) {
-            val pt = p.productType.ifBlank { "Other" }
-            if (pt !in filters.productTypes) return@filter false
+        if (filters.genders.isNotEmpty()) {
+            if (!filters.genders.any { productMatchesGender(p, it) }) return@filter false
+        }
+        if (filters.creators.isNotEmpty()) {
+            val v = p.vendor.ifBlank { return@filter false }
+            if (v !in filters.creators) return@filter false
         }
         true
     }
@@ -371,20 +389,23 @@ private fun ResultsBar(
     }
 }
 
+// Shop filter (theme/snippets/facets.liquid): Category, Gender, Creator
 private val CATEGORY_OPTIONS = listOf(
-    "clothing" to "Clothing",
-    "accessories" to "Accessories",
-    "home" to "Home & Living",
-    "other" to "Other"
+    "T-Shirts" to "T-Shirts",
+    "Hoodies" to "Hoodies",
+    "Sweatshirts" to "Sweatshirts"
 )
 
-// Web: Sales filter – same values as creator-mobile-filter-modal.liquid
-private val SALES_OPTIONS = listOf(
-    "0" to "No sales",
-    "1-10" to "1-10",
-    "11-50" to "11-50",
-    "51-100" to "51-100",
-    "100+" to "100+"
+private val GENDER_OPTIONS = listOf(
+    "Unisex" to "Unisex",
+    "Men" to "Men",
+    "Women" to "Women"
+)
+
+private val CREATOR_OPTIONS = listOf(
+    "Tobias" to "Tobias",
+    "Lisa" to "Lisa",
+    "Anna" to "Anna"
 )
 
 @Composable
@@ -507,7 +528,7 @@ private fun FilterDrawer(
             }
 
             Text(
-                "Product Category",
+                "Category",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -529,55 +550,47 @@ private fun FilterDrawer(
                 }
             }
 
-            val productTypesWithCounts = remember(products) {
-                products
-                    .groupingBy { it.productType.ifBlank { "Other" } }
-                    .eachCount()
-                    .toList()
-                    .sortedByDescending { it.second }
-            }
-
             Text(
-                "Product Name",
+                "Gender",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
             Column(modifier = Modifier.padding(bottom = 14.dp)) {
-                productTypesWithCounts.forEach { (pt, count) ->
+                GENDER_OPTIONS.forEach { (value, label) ->
                     FilterOptionRow(
-                        label = "$pt ($count)",
-                        checked = pt in filters.productTypes,
+                        label = label,
+                        checked = value in filters.genders,
                         onCheckedChange = {
-                            val next = if (it) filters.productTypes + pt else filters.productTypes - pt
-                            onFiltersChange(filters.copy(productTypes = next))
+                            val next = if (it) filters.genders + value else filters.genders - value
+                            onFiltersChange(filters.copy(genders = next))
                         },
                         onClick = {
-                            val next = if (pt in filters.productTypes) filters.productTypes - pt else filters.productTypes + pt
-                            onFiltersChange(filters.copy(productTypes = next))
+                            val next = if (value in filters.genders) filters.genders - value else filters.genders + value
+                            onFiltersChange(filters.copy(genders = next))
                         }
                     )
                 }
             }
 
             Text(
-                "Sales",
+                "Creator",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
             Column(modifier = Modifier.padding(bottom = 14.dp)) {
-                SALES_OPTIONS.forEach { (value, label) ->
+                CREATOR_OPTIONS.forEach { (value, label) ->
                     FilterOptionRow(
                         label = label,
-                        checked = value in filters.sales,
+                        checked = value in filters.creators,
                         onCheckedChange = {
-                            val next = if (it) filters.sales + value else filters.sales - value
-                            onFiltersChange(filters.copy(sales = next))
+                            val next = if (it) filters.creators + value else filters.creators - value
+                            onFiltersChange(filters.copy(creators = next))
                         },
                         onClick = {
-                            val next = if (value in filters.sales) filters.sales - value else filters.sales + value
-                            onFiltersChange(filters.copy(sales = next))
+                            val next = if (value in filters.creators) filters.creators - value else filters.creators + value
+                            onFiltersChange(filters.copy(creators = next))
                         }
                     )
                 }

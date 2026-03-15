@@ -28,7 +28,9 @@ class ShopifyProductsApi(
         val price: Double = 0.0,
         val compareAtPrice: Double? = null,
         val createdAt: String = "",
-        val productType: String = ""
+        val productType: String = "",
+        val tags: List<String> = emptyList(),
+        val vendor: String = ""
     )
 
     /**
@@ -113,10 +115,14 @@ class ShopifyProductsApi(
             if (cap != null && cap != "null") compareAtPrice = cap.toDoubleOrNull()
         }
         val productType = obj.optString("product_type", "").trim()
+        val tags = obj.optJSONArray("tags")?.let { t ->
+            (0 until t.length()).mapNotNull { t.optString(it).takeIf { s -> s.isNotBlank() } }
+        } ?: emptyList()
+        val vendor = obj.optString("vendor", "").trim()
         return ProductItem(
             id = id, title = title, handle = handle, images = images, url = "",
             price = price, compareAtPrice = compareAtPrice, createdAt = createdAt,
-            productType = productType
+            productType = productType, tags = tags, vendor = vendor
         )
     }
 }
