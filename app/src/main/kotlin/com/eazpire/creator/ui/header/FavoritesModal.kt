@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -87,7 +86,7 @@ data class FavoriteItem(
     val variantTitle: String?
 )
 
-data class FavoriteListInfo(val id: Long, val name: String, val itemsCount: Int)
+data class FavoriteListInfo(val id: Long, val name: String, val description: String, val itemsCount: Int)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,8 +114,10 @@ fun FavoritesModal(
     var showEditListModal by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var newListName by remember { mutableStateOf("") }
+    var newListDescription by remember { mutableStateOf("") }
     var editListId by remember { mutableStateOf(0L) }
     var editListName by remember { mutableStateOf("") }
+    var editListDescription by remember { mutableStateOf("") }
 
     fun loadPool() {
         scope.launch {
@@ -156,6 +157,7 @@ fun FavoritesModal(
                         FavoriteListInfo(
                             id = obj.optLong("id", 0L),
                             name = obj.optString("name", ""),
+                            description = obj.optString("description", ""),
                             itemsCount = obj.optInt("items_count", 0)
                         )
                     }
@@ -370,6 +372,7 @@ fun FavoritesModal(
                         onEditList = { list ->
                             editListId = list.id
                             editListName = list.name
+                            editListDescription = list.description
                             showEditListModal = true
                         },
                         onDuplicateList = { listId ->
@@ -400,32 +403,38 @@ fun FavoritesModal(
             CreateListModal(
                 name = newListName,
                 onNameChange = { newListName = it },
+                description = newListDescription,
+                onDescriptionChange = { newListDescription = it },
                 onConfirm = {
                     scope.launch {
-                        api.createFavoriteList(customerId!!, newListName.trim())
+                        api.createFavoriteList(customerId!!, newListName.trim(), newListDescription.trim().takeIf { it.isNotBlank() })
                         loadLists()
                         newListName = ""
+                        newListDescription = ""
                         showCreateListModal = false
                     }
                 },
-                onDismiss = { showCreateListModal = false; newListName = "" }
+                onDismiss = { showCreateListModal = false; newListName = ""; newListDescription = "" }
             )
         }
         if (showSaveAsListModal) {
             CreateListModal(
                 name = newListName,
                 onNameChange = { newListName = it },
+                description = newListDescription,
+                onDescriptionChange = { newListDescription = it },
                 onConfirm = {
                     scope.launch {
-                        api.saveFavoritesAsList(customerId!!, newListName.trim())
+                        api.saveFavoritesAsList(customerId!!, newListName.trim(), newListDescription.trim().takeIf { it.isNotBlank() })
                         loadPool()
                         loadLists()
                         newListName = ""
+                        newListDescription = ""
                         showSaveAsListModal = false
                         activeView = "pool"
                     }
                 },
-                onDismiss = { showSaveAsListModal = false; newListName = "" },
+                onDismiss = { showSaveAsListModal = false; newListName = ""; newListDescription = "" },
                 title = "Save as list"
             )
         }
@@ -433,9 +442,11 @@ fun FavoritesModal(
             CreateListModal(
                 name = editListName,
                 onNameChange = { editListName = it },
+                description = editListDescription,
+                onDescriptionChange = { editListDescription = it },
                 onConfirm = {
                     scope.launch {
-                        api.updateFavoriteList(customerId!!, editListId, editListName.trim())
+                        api.updateFavoriteList(customerId!!, editListId, editListName.trim(), editListDescription.trim().ifBlank { null })
                         loadLists()
                         listName = editListName.trim()
                         showEditListModal = false
@@ -636,6 +647,8 @@ private fun FavoriteGridCard(
 private fun CreateListModal(
     name: String,
     onNameChange: (String) -> Unit,
+    description: String,
+    onDescriptionChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     title: String = "New list"
@@ -654,6 +667,15 @@ private fun CreateListModal(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("List name") },
                 singleLine = true
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = description,
+                onValueChange = onDescriptionChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Description") },
+                minLines = 2,
+                maxLines = 4
             )
             Spacer(Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
