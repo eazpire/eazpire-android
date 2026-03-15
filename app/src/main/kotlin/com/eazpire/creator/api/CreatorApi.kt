@@ -3,6 +3,7 @@ package com.eazpire.creator.api
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -149,6 +150,53 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** POST ?op=generate-customer-mockups – multipart: photo + person_type */
+    suspend fun generateCustomerMockups(
+        ownerId: String,
+        photoBytes: ByteArray,
+        contentType: String,
+        personType: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val ext = when {
+            contentType.contains("png") -> "png"
+            contentType.contains("webp") -> "webp"
+            else -> "jpg"
+        }
+        val mediaType = contentType.toMediaType()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "photo",
+                "photo.$ext",
+                okhttp3.RequestBody.create(mediaType, photoBytes)
+            )
+            .addFormDataPart("person_type", personType)
+            .build()
+        val url = "$baseUrl/apps/creator-dispatch?op=generate-customer-mockups&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
+
+    /** GET ?op=poll-job&job_id=xxx */
+    suspend fun pollJob(jobId: String): JSONObject = call(
+        "poll-job",
+        mapOf("job_id" to jobId)
+    )
+
+    /** POST ?op=toggle-mockup-preview&owner_id=xxx – Body: { mockup_id, enabled } */
+    suspend fun toggleMockupPreview(ownerId: String, mockupId: Long, enabled: Boolean): JSONObject =
+        postJson("toggle-mockup-preview", mapOf("mockup_id" to mockupId, "enabled" to enabled), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=delete-customer-mockup&owner_id=xxx – Body: { mockup_id } */
+    suspend fun deleteCustomerMockup(ownerId: String, mockupId: Long): JSONObject =
+        postJson("delete-customer-mockup", mapOf("mockup_id" to mockupId), mapOf("owner_id" to ownerId))
+
     /** GET ?op=list-community-network&owner_id=xxx → { ok, network: {...} } */
     suspend fun listCommunityNetwork(ownerId: String): JSONObject = call(
         "list-community-network",
@@ -198,9 +246,14 @@ class CreatorApi(
     suspend fun wardrobeGenerate(customerId: String, body: Map<String, Any?>): JSONObject =
         postJson("wardrobe-generate", body + ("customer_id" to customerId))
 
-    private suspend fun postJson(op: String, body: Map<String, Any?>): JSONObject =
+    private suspend fun postJson(op: String, body: Map<String, Any?>, queryParams: Map<String, String> = emptyMap()): JSONObject =
         withContext(Dispatchers.IO) {
-            val url = "$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}"
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}")
+                queryParams.forEach { (k, v) ->
+                    if (v.isNotBlank()) append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}")
+                }
+            }
             val jsonBody = org.json.JSONObject(body.filterValues { it != null }.mapValues { it.value!! }).toString()
             val request = Request.Builder()
                 .url(url)
