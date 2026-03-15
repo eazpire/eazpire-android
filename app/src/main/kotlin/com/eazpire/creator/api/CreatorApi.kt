@@ -203,6 +203,106 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=get-referral-code&owner_id=xxx → { ok, code, url, short_url } */
+    suspend fun getReferralCode(ownerId: String): JSONObject = call(
+        "get-referral-code",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=get-community-analytics-overview&owner_id=xxx&days=30&compare=0&link_id=&source= */
+    suspend fun getCommunityAnalyticsOverview(
+        ownerId: String,
+        days: Int = 30,
+        compare: Boolean = false,
+        linkId: String? = null,
+        source: String? = null
+    ): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId, "days" to days.toString(), "compare" to if (compare) "1" else "0")
+        linkId?.takeIf { it.isNotBlank() }?.let { params["link_id"] = it }
+        source?.takeIf { it.isNotBlank() }?.let { params["source"] = it }
+        return call("get-community-analytics-overview", params)
+    }
+
+    /** GET ?op=get-community-analytics-links&owner_id=xxx&days=30&... */
+    suspend fun getCommunityAnalyticsLinks(
+        ownerId: String,
+        days: Int = 30,
+        linkId: String? = null,
+        source: String? = null
+    ): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId, "days" to days.toString())
+        linkId?.takeIf { it.isNotBlank() }?.let { params["link_id"] = it }
+        source?.takeIf { it.isNotBlank() }?.let { params["source"] = it }
+        return call("get-community-analytics-links", params)
+    }
+
+    /** GET ?op=get-community-analytics-sources&owner_id=xxx&days=30&... */
+    suspend fun getCommunityAnalyticsSources(
+        ownerId: String,
+        days: Int = 30,
+        linkId: String? = null,
+        source: String? = null
+    ): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId, "days" to days.toString())
+        linkId?.takeIf { it.isNotBlank() }?.let { params["link_id"] = it }
+        source?.takeIf { it.isNotBlank() }?.let { params["source"] = it }
+        return call("get-community-analytics-sources", params)
+    }
+
+    /** GET ?op=get-community-analytics-events&owner_id=xxx&days=30&limit=20&cursor= */
+    suspend fun getCommunityAnalyticsEvents(
+        ownerId: String,
+        days: Int = 30,
+        linkId: String? = null,
+        source: String? = null,
+        limit: Int = 20,
+        cursor: String? = null
+    ): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId, "days" to days.toString(), "limit" to limit.toString())
+        linkId?.takeIf { it.isNotBlank() }?.let { params["link_id"] = it }
+        source?.takeIf { it.isNotBlank() }?.let { params["source"] = it }
+        cursor?.takeIf { it.isNotBlank() }?.let { params["cursor"] = it }
+        return call("get-community-analytics-events", params)
+    }
+
+    /** GET ?op=get-creator-payout-overview&owner_id=xxx&days=30&scope=community_only */
+    suspend fun getCreatorPayoutOverview(
+        ownerId: String,
+        days: Int = 30,
+        scope: String = "community_only"
+    ): JSONObject = call(
+        "get-creator-payout-overview",
+        mapOf("owner_id" to ownerId, "days" to days.toString(), "scope" to scope)
+    )
+
+    /** GET ?op=get-shop-credits-summary&owner_id=xxx */
+    suspend fun getShopCreditsSummary(ownerId: String): JSONObject =
+        call("get-shop-credits-summary", mapOf("owner_id" to ownerId))
+
+    /** GET ?op=get-creator-payout-details&owner_id=xxx */
+    suspend fun getCreatorPayoutDetails(ownerId: String): JSONObject =
+        call("get-creator-payout-details", mapOf("owner_id" to ownerId))
+
+    /** POST ?op=save-creator-payout-details – add/remove payout method */
+    suspend fun saveCreatorPayoutDetails(body: Map<String, Any?>): JSONObject =
+        postJson("save-creator-payout-details", body)
+
+    /** POST ?op=save-creator-payout-settings – auto-payout settings */
+    suspend fun saveCreatorPayoutSettings(body: Map<String, Any?>): JSONObject =
+        postJson("save-creator-payout-settings", body)
+
+    /** POST ?op=convert-to-shop-credit – request payout as shop credit */
+    suspend fun convertToShopCredit(body: Map<String, Any?>): JSONObject =
+        postJson("convert-to-shop-credit", body)
+
+    /** POST ?op=request-wise-payout */
+    suspend fun requestWisePayout(body: Map<String, Any?>): JSONObject =
+        postJson("request-wise-payout", body)
+
+    /** POST ?op=request-paypal-payout */
+    suspend fun requestPayPalPayout(body: Map<String, Any?>): JSONObject =
+        postJson("request-paypal-payout", body)
+
     /** GET ?op=list-jobs&owner_id=xxx&limit=20 → { ok, items: [...] } */
     suspend fun listJobs(ownerId: String, limit: Int = 20): JSONObject = call(
         "list-jobs",

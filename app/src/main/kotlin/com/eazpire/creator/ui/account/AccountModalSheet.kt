@@ -106,7 +106,7 @@ fun AccountModalSheet(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Account",
+                                text = AccountTab.entries[selectedTab].label,
                                 style = MaterialTheme.typography.titleLarge,
                                 color = EazColors.TextPrimary
                             )
