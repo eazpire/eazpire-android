@@ -77,27 +77,37 @@ private data class ProductFilters(
     val priceMin: String = "",
     val priceMax: String = "",
     val categories: Set<String> = emptySet(),
-    val productTypes: Set<String> = emptySet()
+    val productTypes: Set<String> = emptySet(),
+    val sales: Set<String> = emptySet()
 ) {
     fun isEmpty(): Boolean =
-        priceMin.isBlank() && priceMax.isBlank() && categories.isEmpty() && productTypes.isEmpty()
+        priceMin.isBlank() && priceMax.isBlank() && categories.isEmpty() &&
+        productTypes.isEmpty() && sales.isEmpty()
 }
 
-private fun productTypeToCategory(productType: String): String = when {
-    productType.contains("T-Shirt", ignoreCase = true) ||
-    productType.contains("Hoodie", ignoreCase = true) ||
-    productType.contains("Sweatshirt", ignoreCase = true) ||
-    productType.contains("Tank", ignoreCase = true) ||
-    productType.contains("Baby", ignoreCase = true) ||
-    productType.contains("clothes", ignoreCase = true) ||
-    productType.contains("Bodysuit", ignoreCase = true) -> "clothing"
-    productType.contains("Mug", ignoreCase = true) ||
-    productType.contains("Poster", ignoreCase = true) ||
-    productType.contains("Canvas", ignoreCase = true) -> "home"
-    productType.contains("Cap", ignoreCase = true) ||
-    productType.contains("Bag", ignoreCase = true) ||
-    productType.contains("Sticker", ignoreCase = true) -> "accessories"
-    else -> "other"
+// Web: matchesProductFilter – title-based category (clothing, accessories, home, other)
+private fun titleToCategory(title: String): String {
+    val t = title.lowercase()
+    return when {
+        Regex("shirt|tee|hoodie|tank|jacket|sweat|pullover|t-shirt").containsMatchIn(t) -> "clothing"
+        Regex("bag|cap|hat|beanie|backpack").containsMatchIn(t) -> "accessories"
+        Regex("poster|pillow|mug|blanket|cushion").containsMatchIn(t) -> "home"
+        else -> "other"
+    }
+}
+
+// Web: product_type filter values t_shirts, hoodies, poster, mugs, totes, caps, other
+private fun titleToProductTypeFilter(title: String): String {
+    val t = title.lowercase()
+    return when {
+        Regex("tee|t-shirt|shirt").containsMatchIn(t) -> "t_shirts"
+        Regex("hoodie").containsMatchIn(t) -> "hoodies"
+        Regex("poster").containsMatchIn(t) -> "poster"
+        Regex("mug").containsMatchIn(t) -> "mugs"
+        Regex("tote|bag").containsMatchIn(t) -> "totes"
+        Regex("cap|hat|beanie").containsMatchIn(t) -> "caps"
+        else -> "other"
+    }
 }
 
 private fun applyFilters(
@@ -106,18 +116,20 @@ private fun applyFilters(
 ): List<ShopifyProductsApi.ProductItem> {
     if (filters.isEmpty()) return products
     return products.filter { p ->
+        val title = "${p.title} ${p.productType}".lowercase()
         val priceMin = filters.priceMin.toDoubleOrNull()
         val priceMax = filters.priceMax.toDoubleOrNull()
         if (priceMin != null && p.price < priceMin) return@filter false
         if (priceMax != null && p.price > priceMax) return@filter false
         if (filters.categories.isNotEmpty()) {
-            val cat = productTypeToCategory(p.productType)
+            val cat = titleToCategory(p.title)
             if (cat !in filters.categories) return@filter false
         }
         if (filters.productTypes.isNotEmpty()) {
-            val pt = p.productType.ifBlank { "Other" }
+            val pt = titleToProductTypeFilter(p.title)
             if (pt !in filters.productTypes) return@filter false
         }
+        // Sales: no data from products.json – filter passes when sales filter set (UI only)
         true
     }
 }
@@ -382,6 +394,26 @@ private val CATEGORY_OPTIONS = listOf(
     "other" to "Other"
 )
 
+// Web: loadProductTypes – same values as creator-mobile-filter-modal.js
+private val PRODUCT_TYPE_OPTIONS = listOf(
+    "t_shirts" to "T-Shirts",
+    "hoodies" to "Hoodies",
+    "poster" to "Poster",
+    "mugs" to "Mugs",
+    "totes" to "Totes",
+    "caps" to "Caps",
+    "other" to "Other"
+)
+
+// Web: Sales filter – same values as creator-mobile-filter-modal.liquid
+private val SALES_OPTIONS = listOf(
+    "0" to "No sales",
+    "1-10" to "1-10",
+    "11-50" to "11-50",
+    "51-100" to "51-100",
+    "100+" to "100+"
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FilterDrawer(
@@ -391,9 +423,6 @@ private fun FilterDrawer(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val productTypes = remember(products) {
-        products.map { it.productType.ifBlank { "Other" } }.distinct().sorted()
-    }
     val scrollState = rememberScrollState()
 
     ModalBottomSheet(
@@ -515,15 +544,15 @@ private fun FilterDrawer(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             Column(modifier = Modifier.padding(bottom = 20.dp)) {
-                productTypes.forEach { pt ->
+                PRODUCT_TYPE_OPTIONS.forEach { (value, label) ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                val next = if (pt in filters.productTypes) {
-                                    filters.productTypes - pt
+                                val next = if (value in filters.productTypes) {
+                                    filters.productTypes - value
                                 } else {
-                                    filters.productTypes + pt
+                                    filters.productTypes + value
                                 }
                                 onFiltersChange(filters.copy(productTypes = next))
                             }
@@ -531,16 +560,53 @@ private fun FilterDrawer(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = pt in filters.productTypes,
+                            checked = value in filters.productTypes,
                             onCheckedChange = {
-                                val next = if (it) filters.productTypes + pt else filters.productTypes - pt
+                                val next = if (it) filters.productTypes + value else filters.productTypes - value
                                 onFiltersChange(filters.copy(productTypes = next))
                             },
                             colors = androidx.compose.material3.CheckboxDefaults.colors(
                                 checkedColor = EazColors.Orange
                             )
                         )
-                        Text(pt, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
+                        Text(label, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
+                    }
+                }
+            }
+
+            Text(
+                "Sales",
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Column(modifier = Modifier.padding(bottom = 20.dp)) {
+                SALES_OPTIONS.forEach { (value, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val next = if (value in filters.sales) {
+                                    filters.sales - value
+                                } else {
+                                    filters.sales + value
+                                }
+                                onFiltersChange(filters.copy(sales = next))
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = value in filters.sales,
+                            onCheckedChange = {
+                                val next = if (it) filters.sales + value else filters.sales - value
+                                onFiltersChange(filters.copy(sales = next))
+                            },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                checkedColor = EazColors.Orange
+                            )
+                        )
+                        Text(label, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
                     }
                 }
             }
