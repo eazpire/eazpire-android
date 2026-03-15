@@ -387,6 +387,39 @@ private val SALES_OPTIONS = listOf(
     "100+" to "100+"
 )
 
+@Composable
+private fun FilterOptionRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.size(20.dp),
+            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                checkedColor = EazColors.Orange
+            )
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = EazColors.TextPrimary,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FilterDrawer(
@@ -408,13 +441,13 @@ private fun FilterDrawer(
                 .fillMaxHeight(0.9f)
                 .heightIn(min = 450.dp)
                 .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
