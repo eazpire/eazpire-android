@@ -1,5 +1,8 @@
 # Install eazpire App auf verbundenes Android-Gerät
-# Voraussetzung: Pixel 7 per USB verbunden, USB-Debugging aktiviert
+# Voraussetzung: Pixel 7 per USB oder WLAN verbunden, Debugging aktiviert
+#
+# WICHTIG: buildDir zeigt auf %TEMP%/eazpire-android-build/ – die APK liegt dort,
+# nicht in app/build/... (OneDrive-Vermeidung). gradlew installDebug nutzt den richtigen Pfad.
 
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 if (-not (Test-Path $adb)) {
