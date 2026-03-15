@@ -358,23 +358,40 @@ fun AccountCommunityTab(
                     )
                 }
 
-                referralUrl?.let { url ->
+                referralBaseUrl?.let { baseUrl ->
+                    val activeLink = refLinks.find { it.id == refLinksActiveId } ?: refLinks.firstOrNull()
+                    val activeUrl = buildNamedRefUrl(baseUrl, activeLink?.slug ?: "")
                     ReferralSection(
-                        url = url,
+                        url = activeUrl,
+                        onClick = { showManageRefModal = true },
                         onCopy = {
                             val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                            cm?.setPrimaryClip(ClipData.newPlainText("referral", url))
+                            cm?.setPrimaryClip(ClipData.newPlainText("referral", activeUrl))
                             copiedToast = true
                         },
                         onShare = {
                             val intent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, url)
+                                putExtra(Intent.EXTRA_TEXT, activeUrl)
                             }
                             context.startActivity(Intent.createChooser(intent, "Share referral link"))
                         },
                         copied = copiedToast
                     )
+                    if (showManageRefModal) {
+                        ManageRefLinksModal(
+                            baseUrl = baseUrl,
+                            links = refLinks,
+                            activeId = refLinksActiveId,
+                            ownerId = ownerId,
+                            api = api,
+                            onDismiss = { showManageRefModal = false },
+                            onUpdate = { links, activeId ->
+                                refLinks = links
+                                refLinksActiveId = activeId
+                            }
+                        )
+                    }
                 }
 
                 network?.let { net ->
