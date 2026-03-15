@@ -17,9 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -353,71 +350,76 @@ fun AccountMockupsTab(
                     }
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    contentPadding = PaddingValues(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(mockups, key = { it.id }) { mockup ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .clickable { lightboxMockup = mockup },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    mockups.chunked(2).forEach { rowMockups ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Box(
+                            rowMockups.forEach { mockup ->
+                                Card(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                                        .aspectRatio(1f)
+                                        .clickable { lightboxMockup = mockup },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    shape = RoundedCornerShape(12.dp),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                                 ) {
-                                    if (mockup.mockupUrl.isNotBlank()) {
-                                        AsyncImage(
-                                            model = mockup.mockupUrl,
-                                            contentDescription = mockup.productName,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(EazColors.TopbarBorder.copy(alpha = 0.3f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.Image, contentDescription = null, tint = EazColors.TextSecondary)
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                                    ) {
+                                        if (mockup.mockupUrl.isNotBlank()) {
+                                            AsyncImage(
+                                                model = mockup.mockupUrl,
+                                                contentDescription = mockup.productName,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(EazColors.TopbarBorder.copy(alpha = 0.3f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Default.Image, contentDescription = null, tint = EazColors.TextSecondary)
+                                            }
                                         }
                                     }
-                                }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = mockup.productName.ifBlank { "Mockup" },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = EazColors.TextPrimary,
-                                        maxLines = 2,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    OutlinedButton(
-                                        onClick = { onTogglePreview(mockup) },
-                                        modifier = Modifier.padding(0.dp)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            if (mockup.useAsPreview) "Try-on ✓" else "Try-on",
-                                            style = MaterialTheme.typography.labelSmall
+                                            text = mockup.productName.ifBlank { "Mockup" },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = EazColors.TextPrimary,
+                                            maxLines = 2,
+                                            modifier = Modifier.weight(1f)
                                         )
+                                        OutlinedButton(
+                                            onClick = { onTogglePreview(mockup) },
+                                            modifier = Modifier.padding(0.dp)
+                                        ) {
+                                            Text(
+                                                if (mockup.useAsPreview) "Try-on ✓" else "Try-on",
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    }
                                     }
                                 }
+                            }
+                            if (rowMockups.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
                             }
                         }
                     }
