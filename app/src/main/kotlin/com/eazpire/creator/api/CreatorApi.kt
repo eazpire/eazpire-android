@@ -215,6 +215,24 @@ class CreatorApi(
         mapOf("owner_id" to ownerId, "limit" to limit.toString())
     )
 
+    /** GET ?op=list&owner_id=xxx&limit=100 → { ok, items: [...] } Creator designs */
+    suspend fun listDesigns(ownerId: String, limit: Int = 100): JSONObject = call(
+        "list",
+        mapOf("owner_id" to ownerId, "limit" to limit.toString())
+    )
+
+    /** GET ?op=get-customer-designs&owner_id=xxx → { ok, designs: [...] } Customer designs */
+    suspend fun getCustomerDesigns(ownerId: String): JSONObject = call(
+        "get-customer-designs",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=get-customer-products&owner_id=xxx → { ok, products: [...] } */
+    suspend fun getCustomerProducts(ownerId: String): JSONObject = call(
+        "get-customer-products",
+        mapOf("owner_id" to ownerId)
+    )
+
     /** GET ?op=get-shopify-products&shop=xxx → { ok, products: [...] } */
     suspend fun getShopifyProducts(shop: String? = null): JSONObject {
         val params = shop?.let { mapOf("shop" to it) } ?: emptyMap()
