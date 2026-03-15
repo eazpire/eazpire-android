@@ -20,6 +20,7 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.account.AccountModalSheet
 import com.eazpire.creator.ui.footer.GlobalFooter
+import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.ShopMenuBar
@@ -41,6 +42,8 @@ fun ShopScreen(
     var showAuthScreen by remember { mutableStateOf(false) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
     var currentPagePath by remember { mutableStateOf("/") }
+    var scrollToTopTrigger by remember { mutableStateOf(0) }
+    var selectedCollection by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -56,7 +59,15 @@ fun ShopScreen(
                 MainHeader(
                     localeStore = localeStore,
                     tokenStore = tokenStore,
-                    currentPagePath = currentPagePath,
+                    currentPagePath = selectedCollection?.let { "/collections/${it.second}" } ?: currentPagePath,
+                    onLogoClick = {
+                        accountModalVisible = false
+                        showLoginOptions = false
+                        menuDrawerVisible = false
+                        showAuthScreen = false
+                        selectedCollection = null
+                        scrollToTopTrigger++
+                    },
                     onAccountClick = {
                         if (tokenStore.isLoggedIn()) {
                             accountModalVisible = true
@@ -65,7 +76,20 @@ fun ShopScreen(
                         }
                     }
                 )
-                ShopMenuBar(onAllClick = { menuDrawerVisible = true })
+                ShopMenuBar(
+                    onAllClick = {
+                        if (selectedCollection != null) selectedCollection = null
+                        else menuDrawerVisible = true
+                    },
+                    onCategoryClick = { title, handle -> selectedCollection = title to handle },
+                    selectedHandle = selectedCollection?.second
+                )
+                if (selectedCollection != null) {
+                    CollectionBreadcrumb(
+                        categoryTitle = selectedCollection!!.first,
+                        onHomeClick = { selectedCollection = null }
+                    )
+                }
             }
         },
         bottomBar = {
@@ -81,7 +105,20 @@ fun ShopScreen(
                     interactionSource = remember { MutableInteractionSource() }
                 ) { focusManager.clearFocus() }
         ) {
-            ProductCarouselSection(onCurrentPageChange = { currentPagePath = it })
+            if (selectedCollection != null) {
+                val (title, handle) = selectedCollection!!
+                CollectionScreen(
+                    title = title,
+                    collectionHandle = handle,
+                    onBack = { selectedCollection = null }
+                )
+            } else {
+                ProductCarouselSection(
+                    onCurrentPageChange = { currentPagePath = it },
+                    onCategoryClick = { title, handle -> selectedCollection = title to handle },
+                    scrollToTopTrigger = scrollToTopTrigger
+                )
+            }
         }
     }
 

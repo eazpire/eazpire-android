@@ -24,22 +24,32 @@ class ShopifyProductsApi(
         val title: String,
         val handle: String,
         val images: List<String>,
-        val url: String
+        val url: String,
+        val price: Double = 0.0,
+        val compareAtPrice: Double? = null,
+        val createdAt: String = ""
     )
 
     /**
      * Lädt Produkte einer Collection oder alle Produkte.
      * @param collectionHandle z.B. "women", "men", "kids" – null = alle Produkte
      * @param limit max. Anzahl Produkte
+     * @param page Pagination (1-based)
      */
     suspend fun getProducts(
         collectionHandle: String? = null,
-        limit: Int = 20
+        limit: Int = 20,
+        page: Int = 1
     ): List<ProductItem> = withContext(Dispatchers.IO) {
-        val url = if (!collectionHandle.isNullOrBlank()) {
-            "$baseUrl/collections/$collectionHandle/products.json?limit=$limit"
+        val base = if (!collectionHandle.isNullOrBlank()) {
+            "$baseUrl/collections/$collectionHandle/products.json"
         } else {
-            "$baseUrl/products.json?limit=$limit"
+            "$baseUrl/products.json"
+        }
+        val url = buildString {
+            append(base)
+            append("?limit=$limit")
+            if (page > 1) append("&page=$page")
         }
         val request = Request.Builder().url(url).build()
         val response = client.newCall(request).execute()
@@ -72,6 +82,7 @@ class ShopifyProductsApi(
         val id = obj.optLong("id", 0L)
         val title = obj.optString("title", "").takeIf { it.isNotBlank() } ?: return null
         val handle = obj.optString("handle", "").takeIf { it.isNotBlank() } ?: return null
+        val createdAt = obj.optString("created_at", "")
         val images = mutableListOf<String>()
         val imagesArr = obj.optJSONArray("images")
         if (imagesArr != null) {
@@ -91,6 +102,18 @@ class ShopifyProductsApi(
             }
         }
         if (images.isEmpty()) return null
-        return ProductItem(id = id, title = title, handle = handle, images = images, url = "")
+        var price = 0.0
+        var compareAtPrice: Double? = null
+        val variants = obj.optJSONArray("variants")
+        if (variants != null && variants.length() > 0) {
+            val v = variants.optJSONObject(0)
+            price = v?.optString("price", "0")?.toDoubleOrNull() ?: 0.0
+            val cap = v?.optString("compare_at_price")
+            if (cap != null && cap != "null") compareAtPrice = cap.toDoubleOrNull()
+        }
+        return ProductItem(
+            id = id, title = title, handle = handle, images = images, url = "",
+            price = price, compareAtPrice = compareAtPrice, createdAt = createdAt
+        )
     }
 }

@@ -45,6 +45,7 @@ private const val CAROUSEL_SCROLL_PX_PER_SEC = 48f
 fun ProductCarousel(
     title: String,
     products: List<ShopifyProductsApi.ProductItem>,
+    onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (products.isEmpty()) return
@@ -53,11 +54,20 @@ fun ProductCarousel(
     val listState = rememberLazyListState()
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .then(
+                    if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick)
+                    else Modifier
+                )
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
         Box(modifier = Modifier.fillMaxWidth()) {
             LazyRow(
                 state = listState,

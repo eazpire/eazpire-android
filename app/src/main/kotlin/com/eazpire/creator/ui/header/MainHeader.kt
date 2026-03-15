@@ -39,6 +39,7 @@ fun MainHeader(
     localeStore: LocaleStore,
     tokenStore: SecureTokenStore? = null,
     onAccountClick: () -> Unit = {},
+    onLogoClick: () -> Unit = {},
     currentPagePath: String = "/",
     modifier: Modifier = Modifier
 ) {
@@ -100,7 +101,7 @@ fun MainHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HeaderLogo()
+                HeaderLogo(onClick = onLogoClick)
                 val ctx = LocalContext.current
                 IconButton(
                     onClick = {

@@ -27,20 +27,27 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 
-private data class MenuItem(val label: String, val url: String)
+private data class MenuItem(
+    val label: String,
+    val collectionHandle: String?,
+    val url: String
+)
 
 private val MENU_ITEMS = listOf(
-    MenuItem("Women", "https://www.eazpire.com/collections/women"),
-    MenuItem("Men", "https://www.eazpire.com/collections/men"),
-    MenuItem("Kids", "https://www.eazpire.com/collections/kids"),
-    MenuItem("Toddler", "https://www.eazpire.com/collections/toddler"),
-    MenuItem("Personalize", "https://www.eazpire.com/pages/design-generator"),
-    MenuItem("Generate", "https://www.eazpire.com/pages/design-generator"),
+    MenuItem("Women", "women", "https://www.eazpire.com/collections/women"),
+    MenuItem("Men", "men", "https://www.eazpire.com/collections/men"),
+    MenuItem("Kids", "kids", "https://www.eazpire.com/collections/kids"),
+    MenuItem("Toddler", "toddler", "https://www.eazpire.com/collections/toddler"),
+    MenuItem("Home & Living", "home-living", "https://www.eazpire.com/collections/home-living"),
+    MenuItem("Personalize", null, "https://www.eazpire.com/pages/design-generator"),
+    MenuItem("Generate", null, "https://www.eazpire.com/pages/design-generator"),
 )
 
 @Composable
 fun ShopMenuBar(
     onAllClick: () -> Unit,
+    onCategoryClick: ((title: String, handle: String) -> Unit)? = null,
+    selectedHandle: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -100,17 +107,23 @@ fun ShopMenuBar(
                     Box(
                         modifier = Modifier
                             .clickable {
-                                try {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
-                                    )
-                                } catch (_: Exception) {}
+                                val handle = item.collectionHandle
+                                if (handle != null && onCategoryClick != null) {
+                                    onCategoryClick(item.label, handle)
+                                } else {
+                                    try {
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
+                                        )
+                                    } catch (_: Exception) {}
+                                }
                             }
                             .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
+                        val isSelected = item.collectionHandle != null && item.collectionHandle == selectedHandle
                         Text(
                             text = item.label,
-                            color = Color.White.copy(alpha = 0.95f),
+                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.95f),
                             style = androidx.compose.material3.MaterialTheme.typography.labelLarge
                         )
                     }

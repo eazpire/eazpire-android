@@ -29,6 +29,8 @@ val CAROUSEL_CATEGORIES = listOf(
 @Composable
 fun ProductCarouselSection(
     onCurrentPageChange: ((String) -> Unit)? = null,
+    onCategoryClick: ((title: String, handle: String) -> Unit)? = null,
+    scrollToTopTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
@@ -41,6 +43,9 @@ fun ProductCarouselSection(
     }
 
     val listState = rememberLazyListState()
+    LaunchedEffect(scrollToTopTrigger) {
+        if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
+    }
     LaunchedEffect(listState.firstVisibleItemIndex) {
         val idx = listState.firstVisibleItemIndex
         if (idx in CAROUSEL_CATEGORIES.indices) {
@@ -59,6 +64,7 @@ fun ProductCarouselSection(
             ProductCarousel(
                 title = title,
                 products = products,
+                onTitleClick = onCategoryClick?.let { { it(title, handle) } },
                 modifier = Modifier.padding(bottom = 16.dp)
             )
         }
