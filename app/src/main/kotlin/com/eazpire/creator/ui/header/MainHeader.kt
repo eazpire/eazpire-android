@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.ui.share.buildShareUrl
+import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.util.DebugLog
 
@@ -37,6 +39,7 @@ fun MainHeader(
     localeStore: LocaleStore,
     tokenStore: SecureTokenStore? = null,
     onAccountClick: () -> Unit = {},
+    currentPagePath: String = "/",
     modifier: Modifier = Modifier
 ) {
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
@@ -66,6 +69,7 @@ fun MainHeader(
     var favoritesCount by remember { mutableStateOf(0) }
     val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
     val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
+    var shareUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isNotBlank()) {
@@ -74,9 +78,11 @@ fun MainHeader(
                 if (resp.optBoolean("ok", false)) {
                     favoritesCount = resp.optInt("count", 0)
                 }
+                shareUrl = getActiveRefUrl(api, ownerId)
             } catch (_: Exception) {}
         } else {
             favoritesCount = 0
+            shareUrl = null
         }
     }
 
@@ -98,9 +104,11 @@ fun MainHeader(
                 val ctx = LocalContext.current
                 IconButton(
                     onClick = {
+                        val urlToShare = shareUrl?.let { buildShareUrl(it, currentPagePath) }
+                            ?: "https://www.eazpire.com" + if (currentPagePath.isNotBlank() && currentPagePath != "/") currentPagePath else ""
                         val sendIntent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, "https://www.eazpire.com")
+                            putExtra(Intent.EXTRA_TEXT, urlToShare)
                         }
                         val chooser = Intent.createChooser(sendIntent, null)
                         chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

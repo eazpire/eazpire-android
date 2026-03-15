@@ -40,6 +40,7 @@ fun ShopScreen(
     var showLoginOptions by remember { mutableStateOf(false) }
     var showAuthScreen by remember { mutableStateOf(false) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
+    var currentPagePath by remember { mutableStateOf("/") }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -55,6 +56,7 @@ fun ShopScreen(
                 MainHeader(
                     localeStore = localeStore,
                     tokenStore = tokenStore,
+                    currentPagePath = currentPagePath,
                     onAccountClick = {
                         if (tokenStore.isLoggedIn()) {
                             accountModalVisible = true
@@ -79,7 +81,7 @@ fun ShopScreen(
                     interactionSource = remember { MutableInteractionSource() }
                 ) { focusManager.clearFocus() }
         ) {
-            ProductCarouselSection()
+            ProductCarouselSection(onCurrentPageChange = { currentPagePath = it })
         }
     }
 

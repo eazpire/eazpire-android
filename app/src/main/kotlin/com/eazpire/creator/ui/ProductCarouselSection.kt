@@ -3,8 +3,9 @@ package com.eazpire.creator.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,7 +18,7 @@ import com.eazpire.creator.api.ShopifyProductsApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val CAROUSEL_CATEGORIES = listOf(
+val CAROUSEL_CATEGORIES = listOf(
     "Women" to "women",
     "Men" to "men",
     "Kids" to "kids",
@@ -26,7 +27,10 @@ private val CAROUSEL_CATEGORIES = listOf(
 )
 
 @Composable
-fun ProductCarouselSection(modifier: Modifier = Modifier) {
+fun ProductCarouselSection(
+    onCurrentPageChange: ((String) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
     val api = remember { ShopifyProductsApi() }
     var productsByCategory by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
 
@@ -36,13 +40,21 @@ fun ProductCarouselSection(modifier: Modifier = Modifier) {
         }
     }
 
-    Column(
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState.firstVisibleItemIndex) {
+        val idx = listState.firstVisibleItemIndex
+        if (idx in CAROUSEL_CATEGORIES.indices) {
+            val handle = CAROUSEL_CATEGORIES[idx].second
+            onCurrentPageChange?.invoke("/collections/$handle")
+        }
+    }
+    LazyColumn(
+        state = listState,
         modifier = modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
             .padding(vertical = 16.dp)
     ) {
-        CAROUSEL_CATEGORIES.forEach { (title, handle) ->
+        itemsIndexed(CAROUSEL_CATEGORIES) { _, (title, handle) ->
             val products = productsByCategory[handle].orEmpty()
             ProductCarousel(
                 title = title,
