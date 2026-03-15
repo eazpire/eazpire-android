@@ -85,7 +85,7 @@ private data class ProductFilters(
         productTypes.isEmpty() && sales.isEmpty()
 }
 
-// Web: matchesProductFilter – title-based category (clothing, accessories, home, other)
+// Web: title-based category (clothing, accessories, home, other)
 private fun titleToCategory(title: String): String {
     val t = title.lowercase()
     return when {
@@ -96,27 +96,12 @@ private fun titleToCategory(title: String): String {
     }
 }
 
-// Web: product_type filter values t_shirts, hoodies, poster, mugs, totes, caps, other
-private fun titleToProductTypeFilter(title: String): String {
-    val t = title.lowercase()
-    return when {
-        Regex("tee|t-shirt|shirt").containsMatchIn(t) -> "t_shirts"
-        Regex("hoodie").containsMatchIn(t) -> "hoodies"
-        Regex("poster").containsMatchIn(t) -> "poster"
-        Regex("mug").containsMatchIn(t) -> "mugs"
-        Regex("tote|bag").containsMatchIn(t) -> "totes"
-        Regex("cap|hat|beanie").containsMatchIn(t) -> "caps"
-        else -> "other"
-    }
-}
-
 private fun applyFilters(
     products: List<ShopifyProductsApi.ProductItem>,
     filters: ProductFilters
 ): List<ShopifyProductsApi.ProductItem> {
     if (filters.isEmpty()) return products
     return products.filter { p ->
-        val title = "${p.title} ${p.productType}".lowercase()
         val priceMin = filters.priceMin.toDoubleOrNull()
         val priceMax = filters.priceMax.toDoubleOrNull()
         if (priceMin != null && p.price < priceMin) return@filter false
@@ -126,10 +111,9 @@ private fun applyFilters(
             if (cat !in filters.categories) return@filter false
         }
         if (filters.productTypes.isNotEmpty()) {
-            val pt = titleToProductTypeFilter(p.title)
+            val pt = p.productType.ifBlank { "Other" }
             if (pt !in filters.productTypes) return@filter false
         }
-        // Sales: no data from products.json – filter passes when sales filter set (UI only)
         true
     }
 }
@@ -394,17 +378,6 @@ private val CATEGORY_OPTIONS = listOf(
     "other" to "Other"
 )
 
-// Web: loadProductTypes – same values as creator-mobile-filter-modal.js
-private val PRODUCT_TYPE_OPTIONS = listOf(
-    "t_shirts" to "T-Shirts",
-    "hoodies" to "Hoodies",
-    "poster" to "Poster",
-    "mugs" to "Mugs",
-    "totes" to "Totes",
-    "caps" to "Caps",
-    "other" to "Other"
-)
-
 // Web: Sales filter – same values as creator-mobile-filter-modal.liquid
 private val SALES_OPTIONS = listOf(
     "0" to "No sales",
@@ -470,10 +443,10 @@ private fun FilterDrawer(
                 "Price",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 6.dp)
             )
             Row(
-                modifier = Modifier.padding(bottom = 20.dp),
+                modifier = Modifier.padding(bottom = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -504,73 +477,53 @@ private fun FilterDrawer(
                 "Product Category",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 6.dp)
             )
-            Column(modifier = Modifier.padding(bottom = 20.dp)) {
+            Column(modifier = Modifier.padding(bottom = 14.dp)) {
                 CATEGORY_OPTIONS.forEach { (value, label) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val next = if (value in filters.categories) {
-                                    filters.categories - value
-                                } else {
-                                    filters.categories + value
-                                }
-                                onFiltersChange(filters.copy(categories = next))
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = value in filters.categories,
-                            onCheckedChange = {
-                                val next = if (it) filters.categories + value else filters.categories - value
-                                onFiltersChange(filters.copy(categories = next))
-                            },
-                            colors = androidx.compose.material3.CheckboxDefaults.colors(
-                                checkedColor = EazColors.Orange
-                            )
-                        )
-                        Text(label, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
-                    }
+                    FilterOptionRow(
+                        label = label,
+                        checked = value in filters.categories,
+                        onCheckedChange = {
+                            val next = if (it) filters.categories + value else filters.categories - value
+                            onFiltersChange(filters.copy(categories = next))
+                        },
+                        onClick = {
+                            val next = if (value in filters.categories) filters.categories - value else filters.categories + value
+                            onFiltersChange(filters.copy(categories = next))
+                        }
+                    )
                 }
             }
 
+            val productTypesWithCounts = remember(products) {
+                products
+                    .groupingBy { it.productType.ifBlank { "Other" } }
+                    .eachCount()
+                    .toList()
+                    .sortedByDescending { it.second }
+            }
+
             Text(
-                "Product Type",
+                "Product Name",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 6.dp)
             )
-            Column(modifier = Modifier.padding(bottom = 20.dp)) {
-                PRODUCT_TYPE_OPTIONS.forEach { (value, label) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val next = if (value in filters.productTypes) {
-                                    filters.productTypes - value
-                                } else {
-                                    filters.productTypes + value
-                                }
-                                onFiltersChange(filters.copy(productTypes = next))
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = value in filters.productTypes,
-                            onCheckedChange = {
-                                val next = if (it) filters.productTypes + value else filters.productTypes - value
-                                onFiltersChange(filters.copy(productTypes = next))
-                            },
-                            colors = androidx.compose.material3.CheckboxDefaults.colors(
-                                checkedColor = EazColors.Orange
-                            )
-                        )
-                        Text(label, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
-                    }
+            Column(modifier = Modifier.padding(bottom = 14.dp)) {
+                productTypesWithCounts.forEach { (pt, count) ->
+                    FilterOptionRow(
+                        label = "$pt ($count)",
+                        checked = pt in filters.productTypes,
+                        onCheckedChange = {
+                            val next = if (it) filters.productTypes + pt else filters.productTypes - pt
+                            onFiltersChange(filters.copy(productTypes = next))
+                        },
+                        onClick = {
+                            val next = if (pt in filters.productTypes) filters.productTypes - pt else filters.productTypes + pt
+                            onFiltersChange(filters.copy(productTypes = next))
+                        }
+                    )
                 }
             }
 
@@ -578,36 +531,22 @@ private fun FilterDrawer(
                 "Sales",
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 6.dp)
             )
-            Column(modifier = Modifier.padding(bottom = 20.dp)) {
+            Column(modifier = Modifier.padding(bottom = 14.dp)) {
                 SALES_OPTIONS.forEach { (value, label) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val next = if (value in filters.sales) {
-                                    filters.sales - value
-                                } else {
-                                    filters.sales + value
-                                }
-                                onFiltersChange(filters.copy(sales = next))
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = value in filters.sales,
-                            onCheckedChange = {
-                                val next = if (it) filters.sales + value else filters.sales - value
-                                onFiltersChange(filters.copy(sales = next))
-                            },
-                            colors = androidx.compose.material3.CheckboxDefaults.colors(
-                                checkedColor = EazColors.Orange
-                            )
-                        )
-                        Text(label, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
-                    }
+                    FilterOptionRow(
+                        label = label,
+                        checked = value in filters.sales,
+                        onCheckedChange = {
+                            val next = if (it) filters.sales + value else filters.sales - value
+                            onFiltersChange(filters.copy(sales = next))
+                        },
+                        onClick = {
+                            val next = if (value in filters.sales) filters.sales - value else filters.sales + value
+                            onFiltersChange(filters.copy(sales = next))
+                        }
+                    )
                 }
             }
 
