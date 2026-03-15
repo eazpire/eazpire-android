@@ -10,18 +10,22 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,12 +33,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
@@ -67,6 +73,9 @@ fun AccountModalSheet(
     var wardrobeSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var wardrobeCanSave by remember { mutableStateOf(false) }
 
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -82,59 +91,75 @@ fun AccountModalSheet(
                 .padding(0.dp),
             color = Color.White
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Account",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = EazColors.TextPrimary
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = EazColors.TextPrimary
-                        )
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                drawerContent = {
+                    ModalDrawerSheet {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .verticalScroll(rememberScrollState())
+                                .padding(vertical = 8.dp)
+                        ) {
+                            AccountTab.entries.forEachIndexed { index, tab ->
+                                val isSelected = selectedTab == index
+                                Text(
+                                    text = tab.label,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selectedTab = index
+                                            scope.launch { drawerState.close() }
+                                        }
+                                        .padding(horizontal = 28.dp, vertical = 12.dp)
+                                        .then(
+                                            if (isSelected) Modifier.background(
+                                                EazColors.OrangeBg,
+                                                RoundedCornerShape(4.dp)
+                                            ) else Modifier
+                                        ),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (isSelected) EazColors.Orange else EazColors.TextSecondary
+                                )
+                            }
+                        }
                     }
                 }
-
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier
-                            .width(200.dp)
-                            .fillMaxHeight()
-                            .background(EazColors.TopbarBorder.copy(alpha = 0.15f))
-                            .verticalScroll(rememberScrollState())
-                            .padding(vertical = 8.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AccountTab.entries.forEachIndexed { index, tab ->
-                            val isSelected = selectedTab == index
+                        IconButton(
+                            onClick = { scope.launch { drawerState.open() } }
+                        ) {
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = "Menu",
+                                tint = EazColors.TextPrimary
+                            )
+                        }
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Text(
-                                text = tab.label,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { selectedTab = index }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                                    .then(
-                                        if (isSelected) Modifier.background(
-                                            EazColors.OrangeBg,
-                                            RoundedCornerShape(4.dp)
-                                        ) else Modifier
-                                    ),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (isSelected) EazColors.Orange else EazColors.TextSecondary
+                                text = "Account",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = EazColors.TextPrimary
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = EazColors.TextPrimary
                             )
                         }
                     }
@@ -142,7 +167,7 @@ fun AccountModalSheet(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight()
+                            .fillMaxWidth()
                             .padding(16.dp)
                     ) {
                     when (val tab = AccountTab.entries[selectedTab]) {
