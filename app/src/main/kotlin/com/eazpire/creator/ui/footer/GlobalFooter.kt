@@ -75,12 +75,12 @@ fun GlobalFooter(
         Text(
             text = "  ·  ",
             color = FooterTextSecondary,
-            fontSize = 10.sp
+            fontSize = 9.sp
         )
         Text(
             text = "© $year ",
             color = FooterTextSecondary,
-            fontSize = 10.sp
+            fontSize = 9.sp
         )
         Text(
             text = "eazpire",
