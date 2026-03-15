@@ -451,6 +451,54 @@ class CreatorApi(
             )
         )
 
+    /** GET ?op=get-favorite-lists&customer_id=xxx → { ok, lists: [{ id, name, items_count }] } */
+    suspend fun getFavoriteLists(customerId: String): JSONObject = call(
+        "get-favorite-lists",
+        mapOf("customer_id" to customerId)
+    )
+
+    /** GET ?op=get-favorite-list-items&customer_id=xxx&list_id=123 → { ok, list, items } */
+    suspend fun getFavoriteListItems(customerId: String, listId: Long): JSONObject = call(
+        "get-favorite-list-items",
+        mapOf("customer_id" to customerId, "list_id" to listId.toString())
+    )
+
+    /** POST create-favorite-list Body: { customer_id, name, description? } */
+    suspend fun createFavoriteList(customerId: String, name: String, description: String? = null): JSONObject =
+        postJson("create-favorite-list", mapOf("customer_id" to customerId, "name" to name, "description" to description))
+
+    /** POST delete-favorite-list Body: { customer_id, list_id } */
+    suspend fun deleteFavoriteList(customerId: String, listId: Long): JSONObject =
+        postJson("delete-favorite-list", mapOf("customer_id" to customerId, "list_id" to listId))
+
+    /** POST add-to-favorite-list Body: { customer_id, list_id, product_id, variant_id?, product_title?, product_image? } */
+    suspend fun addToFavoriteList(
+        customerId: String,
+        listId: Long,
+        productId: String,
+        variantId: String? = null,
+        productTitle: String? = null,
+        productImage: String? = null
+    ): JSONObject = postJson(
+        "add-to-favorite-list",
+        mapOf(
+            "customer_id" to customerId,
+            "list_id" to listId,
+            "product_id" to productId,
+            "variant_id" to variantId,
+            "product_title" to productTitle,
+            "product_image" to productImage
+        )
+    )
+
+    /** POST remove-from-favorite-list Body: { customer_id, list_id, item_id } */
+    suspend fun removeFromFavoriteList(customerId: String, listId: Long, itemId: Long): JSONObject =
+        postJson("remove-from-favorite-list", mapOf("customer_id" to customerId, "list_id" to listId, "item_id" to itemId))
+
+    /** POST save-favorites-as-list Body: { customer_id, name, description? } – moves pool to new list */
+    suspend fun saveFavoritesAsList(customerId: String, name: String, description: String? = null): JSONObject =
+        postJson("save-favorites-as-list", mapOf("customer_id" to customerId, "name" to name, "description" to description))
+
     /** GET ?op=get-catalog-products&region=EU&design_type=classic */
     suspend fun getCatalogProducts(
         region: String,
