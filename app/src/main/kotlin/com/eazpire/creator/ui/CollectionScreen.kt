@@ -662,7 +662,7 @@ private fun FilterDrawer(
                     onValueChange = { onFiltersChange(filters.copy(priceMin = it)) },
                     placeholder = { Text("Min", style = MaterialTheme.typography.bodySmall) },
                     modifier = Modifier
-                        .fillMaxWidth(0.5f)
+                        .weight(1f)
                         .heightIn(min = 44.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true
@@ -673,7 +673,7 @@ private fun FilterDrawer(
                     onValueChange = { onFiltersChange(filters.copy(priceMax = it)) },
                     placeholder = { Text("Max", style = MaterialTheme.typography.bodySmall) },
                     modifier = Modifier
-                        .fillMaxWidth(0.5f)
+                        .weight(1f)
                         .heightIn(min = 44.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true
