@@ -231,6 +231,7 @@ fun CollectionScreen(
         pageCursors = listOf(null)
         hasNextPage = false
         currentPage = 1
+        filterCountProducts = emptyList()
     }
 
     LaunchedEffect(collectionHandle, currentPage) {
@@ -259,8 +260,12 @@ fun CollectionScreen(
         isLoading = false
     }
 
-    LaunchedEffect(filterDrawerVisible, collectionHandle) {
-        if (filterDrawerVisible) {
+    // Load 250 products for filtering: when drawer opens OR when filters applied but not yet loaded.
+    // Key includes productFilters.isEmpty() so we re-run when user applies – then load if still empty
+    // (handles fast Apply before initial load completed / LaunchedEffect was cancelled).
+    LaunchedEffect(collectionHandle, filterDrawerVisible, productFilters.isEmpty()) {
+        val needFilterProducts = filterDrawerVisible || !productFilters.isEmpty()
+        if (needFilterProducts && filterCountProducts.isEmpty()) {
             filterCountProducts = withContext(Dispatchers.IO) {
                 var r = api.getProducts(
                     collectionHandle = collectionHandle.ifBlank { null },
@@ -272,12 +277,16 @@ fun CollectionScreen(
                 }
                 r.products
             }
-        } else {
-            filterCountProducts = emptyList()
         }
     }
 
-    val sortedProducts = remember(products, sortBy) { sortProducts(products, sortBy) }
+    val allLoadedProducts = remember(productsByPage) { productsByPage.values.flatten() }
+    val productsToFilter = when {
+        productFilters.isEmpty() -> products
+        filterCountProducts.isNotEmpty() -> filterCountProducts
+        else -> allLoadedProducts
+    }
+    val sortedProducts = remember(productsToFilter, sortBy) { sortProducts(productsToFilter, sortBy) }
     val filteredProducts = remember(sortedProducts, productFilters) {
         applyFilters(sortedProducts, productFilters)
     }
@@ -337,7 +346,7 @@ fun CollectionScreen(
                     )
                 }
             }
-            if (totalPages > 1) {
+            if (totalPages > 1 && productFilters.isEmpty()) {
                 PaginationDots(
                     totalPages = totalPages,
                     currentPage = currentPage,
