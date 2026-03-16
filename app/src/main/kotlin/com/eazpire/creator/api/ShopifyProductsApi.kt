@@ -217,10 +217,22 @@ class ShopifyProductsApi(
             }
         }
         if (images.isEmpty()) return null
-        val designStyleArr = obj.optJSONArray("designStyle")
+        val designStyleArr = obj.optJSONArray("designStyle") ?: obj.optJSONArray("design_style")
         val designStyle = if (designStyleArr != null) {
             (0 until designStyleArr.length()).mapNotNull { designStyleArr.optString(it).takeIf { s -> s.isNotBlank() } }
-        } else emptyList()
+        } else {
+            val styleStr = obj.optString("designStyle", "").ifBlank { obj.optString("design_style", "") }
+            if (styleStr.isNotBlank()) {
+                when {
+                    styleStr.trimStart().startsWith("[") -> try {
+                        org.json.JSONArray(styleStr).let { arr ->
+                            (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+                        }
+                    } catch (_: Exception) { styleStr.split(",").map { it.trim() }.filter { it.isNotBlank() } }
+                    else -> styleStr.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                }
+            } else emptyList()
+        }
         val tagsArr = obj.optJSONArray("tags")
         val tags = if (tagsArr != null) {
             (0 until tagsArr.length()).mapNotNull { tagsArr.optString(it).takeIf { s -> s.isNotBlank() } }
@@ -237,11 +249,11 @@ class ShopifyProductsApi(
             productType = obj.optString("productType", ""),
             tags = tags,
             vendor = obj.optString("vendor", ""),
-            contentType = obj.optString("contentType", ""),
-            designType = obj.optString("designType", ""),
+            contentType = obj.optString("contentType", "").ifBlank { obj.optString("content_type", "") },
+            designType = obj.optString("designType", "").ifBlank { obj.optString("design_type", "") },
             designStyle = designStyle,
-            ratio = obj.optString("ratio", ""),
-            designLanguage = obj.optString("designLanguage", "")
+            ratio = obj.optString("ratio", "").ifBlank { obj.optString("design_ratio", "") },
+            designLanguage = obj.optString("designLanguage", "").ifBlank { obj.optString("design_language", "") }
         )
     }
 }

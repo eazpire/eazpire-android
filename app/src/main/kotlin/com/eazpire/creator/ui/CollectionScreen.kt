@@ -92,16 +92,16 @@ private data class ProductFilters(
 }
 
 private fun contentTypeToFilterValue(ct: String): String = when {
-    ct.equals("Design + Text", ignoreCase = true) -> "Design + Text"
-    ct.equals("Design Only", ignoreCase = true) -> "Design Only"
-    ct.equals("Text Only", ignoreCase = true) -> "Text Only"
+    ct.equals("Design + Text", ignoreCase = true) || ct.equals("design_text", ignoreCase = true) -> "Design + Text"
+    ct.equals("Design Only", ignoreCase = true) || ct.equals("design_only", ignoreCase = true) -> "Design Only"
+    ct.equals("Text Only", ignoreCase = true) || ct.equals("text_only", ignoreCase = true) -> "Text Only"
     else -> ct
 }
 
 private fun designTypeToFilterValue(dt: String): String = when {
     dt.equals("Classic", ignoreCase = true) -> "Classic"
     dt.equals("Pattern", ignoreCase = true) -> "Pattern"
-    dt.equals("All Over", ignoreCase = true) || dt.equals("All-Over", ignoreCase = true) -> "All Over"
+    dt.equals("All Over", ignoreCase = true) || dt.equals("All-Over", ignoreCase = true) || dt.equals("all_over", ignoreCase = true) -> "All Over"
     dt.equals("Full Surface", ignoreCase = true) || dt.equals("Full-Coverage", ignoreCase = true) -> "Full Surface"
     dt.equals("Panorama", ignoreCase = true) -> "Panorama"
     else -> dt
