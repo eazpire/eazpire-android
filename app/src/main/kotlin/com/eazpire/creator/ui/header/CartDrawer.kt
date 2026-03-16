@@ -1,16 +1,5 @@
 package com.eazpire.creator.ui.header
 
-import android.annotation.SuppressLint
-import android.os.Message
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,13 +7,26 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,69 +39,60 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.api.ShopifyStorefrontCartApi
+import com.eazpire.creator.cart.AppCartStore
+import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.util.DebugLog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
-
-private const val CART_STORE_URL = "https://www.eazpire.com"
-
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun CartWebView() {
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-                settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                }
-                val wv = this
-                CookieManager.getInstance().apply {
-                    setAcceptCookie(true)
-                    setAcceptThirdPartyCookies(wv, true)
-                }
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
-                        val url = request?.url?.toString() ?: return false
-                        view?.loadUrl(url)
-                        return true
-                    }
-                }
-                webChromeClient = object : WebChromeClient() {
-                    override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
-                        val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
-                        transport.setWebView(view)
-                        resultMsg.sendToTarget()
-                        return true
-                    }
-                }
-                loadUrl("$CART_STORE_URL/cart")
-            }
-        },
-        modifier = Modifier.fillMaxSize()
-    )
-}
 
 @Composable
 fun CartDrawer(
     visible: Boolean,
+    tokenStore: com.eazpire.creator.auth.SecureTokenStore?,
     onDismiss: () -> Unit,
+    onCheckout: (checkoutUrl: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
+
+    val context = LocalContext.current
+    val cartStore = remember { StorefrontCartStore(context) }
+    val api = remember { ShopifyStorefrontCartApi() }
+    val accessToken = tokenStore?.getAccessToken()
+
+    var cart by remember { mutableStateOf<ShopifyStorefrontCartApi.CartResult?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
+        loading = true
+        error = null
+        val cartId = cartStore.cartId
+        if (cartId != null) {
+            cart = withContext(Dispatchers.IO) { api.getCart(cartId) }
+            if (cart == null) cartStore.clear()
+        } else {
+            cart = null
+        }
+        loading = false
+    }
+
     Dialog(
         onDismissRequest = {
             DebugLog.click("CartDrawer dismiss (backdrop)")
@@ -184,19 +177,158 @@ fun CartDrawer(
                             .weight(1f)
                             .fillMaxWidth()
                     ) {
-                        val shouldLoad = offsetXPx < 10f
-                        if (shouldLoad) {
-                            CartWebView()
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.White)
-                            )
+                        when {
+                            loading -> {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = EazColors.Orange)
+                                }
+                            }
+                            error != null -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = error ?: "Fehler",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = EazColors.TextSecondary
+                                    )
+                                }
+                            }
+                            cart == null || cart!!.lines.isEmpty() -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.ShoppingCart,
+                                            contentDescription = null,
+                                            tint = EazColors.TextSecondary,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                        Text(
+                                            text = "Dein Warenkorb ist leer",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = EazColors.TextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                            else -> {
+                                val c = cart!!
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(c.lines, key = { it.id }) { line ->
+                                        CartLineItem(line = line)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (cart != null && !cart!!.lines.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White)
+                                .padding(16.dp)
+                        ) {
+                            val totalText = cart!!.lines
+                                .sumOf { (it.priceAmount.toDoubleOrNull() ?: 0.0) * it.quantity }
+                                .let { "%.2f %s".format(it, cart!!.lines.firstOrNull()?.currencyCode ?: "CHF") }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Gesamt: $totalText",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = EazColors.TextPrimary
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(EazColors.Orange)
+                                        .clickable {
+                                            val url = cart!!.checkoutUrl
+                                            if (url.isNotBlank()) onCheckout(url)
+                                        }
+                                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                                ) {
+                                    Text(
+                                        text = "Zur Kasse",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = Color.White,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CartLineItem(line: ShopifyStorefrontCartApi.CartLine) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFFF5F5F5))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(line.imageUrl ?: "https://via.placeholder.com/80")
+                .crossfade(true)
+                .build(),
+            contentDescription = null,
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(6.dp)),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = line.productTitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = EazColors.TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = line.title,
+                style = MaterialTheme.typography.bodySmall,
+                color = EazColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "${line.priceAmount} ${line.currencyCode} × ${line.quantity}",
+                style = MaterialTheme.typography.labelSmall,
+                color = EazColors.TextSecondary
+            )
         }
     }
 }

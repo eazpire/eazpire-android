@@ -68,9 +68,11 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
-import com.eazpire.creator.api.ShopifyCartApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.cart.AppCartStore
+import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
@@ -202,8 +204,10 @@ fun ProductDetailScreen(
     var quantity by remember { mutableIntStateOf(1) }
     var showCartToast by remember { mutableStateOf(false) }
     var showFavoriteToast by remember { mutableStateOf(false) }
-    var checkoutWebViewVisible by remember { mutableStateOf(false) }
-    var checkoutParams by remember { mutableStateOf<Triple<String, Long, Int>?>(null) }
+    var checkoutUrl by remember { mutableStateOf<String?>(null) }
+    val storefrontCartStore = remember { StorefrontCartStore(context) }
+    val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
+    val accessToken = tokenStore.getAccessToken()
 
     LaunchedEffect(productHandle) {
         isLoading = true
@@ -623,11 +627,26 @@ fun ProductDetailScreen(
                     .clickable(enabled = available) {
                         val vid = selectedVariant?.id ?: return@clickable
                         scope.launch {
-                            val result = withContext(Dispatchers.IO) {
-                                ShopifyCartApi().addToCart(vid, quantity)
+                            val cartId = storefrontCartStore.cartId
+                            if (cartId != null) {
+                                val result = withContext(Dispatchers.IO) {
+                                    storefrontCartApi.addLine(cartId, vid, quantity, accessToken)
+                                }
+                                if (result.ok && result.cart != null) {
+                                    storefrontCartStore.cartId = result.cart.cartId
+                                    AppCartStore.setCount(result.cart.itemCount)
+                                    showCartToast = true
+                                }
+                            } else {
+                                val result = withContext(Dispatchers.IO) {
+                                    storefrontCartApi.createCart(listOf(vid to quantity), accessToken)
+                                }
+                                if (result.ok && result.cartId != null) {
+                                    storefrontCartStore.cartId = result.cartId
+                                    AppCartStore.setCount(quantity)
+                                    showCartToast = true
+                                }
                             }
-                            com.eazpire.creator.cart.AppCartStore.setCount(result.itemCount)
-                            showCartToast = true
                         }
                     }
                     .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -640,9 +659,29 @@ fun ProductDetailScreen(
                     .background(EazColors.Orange)
                     .clickable(enabled = available) {
                         val vid = selectedVariant?.id ?: return@clickable
-                        val storeBase = p.url.substringBefore("/products/")
-                        checkoutParams = Triple(storeBase, vid, quantity)
-                        checkoutWebViewVisible = true
+                        scope.launch {
+                            val cartId = storefrontCartStore.cartId
+                            val url = if (cartId != null) {
+                                val result = withContext(Dispatchers.IO) {
+                                    storefrontCartApi.addLine(cartId, vid, quantity, accessToken)
+                                }
+                                if (result.ok && result.cart != null) {
+                                    storefrontCartStore.cartId = result.cart.cartId
+                                    AppCartStore.setCount(result.cart.itemCount)
+                                    result.cart.checkoutUrl
+                                } else null
+                            } else {
+                                val result = withContext(Dispatchers.IO) {
+                                    storefrontCartApi.createCart(listOf(vid to quantity), accessToken)
+                                }
+                                if (result.ok && result.cartId != null && result.checkoutUrl != null) {
+                                    storefrontCartStore.cartId = result.cartId
+                                    AppCartStore.setCount(quantity)
+                                    result.checkoutUrl
+                                } else null
+                            }
+                            url?.let { checkoutUrl = it }
+                        }
                     }
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
@@ -806,18 +845,12 @@ fun ProductDetailScreen(
     }
 
     // Checkout as right-side drawer (like Cart)
-    val params = checkoutParams
-    if (checkoutWebViewVisible && params != null) {
-        val (storeBase, variantId, qty) = params
+    val url = checkoutUrl
+    if (url != null) {
         CheckoutDrawer(
             visible = true,
-            storeBase = storeBase,
-            variantId = variantId,
-            quantity = qty,
-            onDismiss = {
-                checkoutWebViewVisible = false
-                checkoutParams = null
-            }
+            checkoutUrl = url,
+            onDismiss = { checkoutUrl = null }
         )
     }
 }

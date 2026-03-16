@@ -221,8 +221,15 @@ fun HeroCarousel(
                             hotspots = hero.hotspots,
                             onHotspotClick = { url ->
                                 if (url != null) {
-                                    if (url.startsWith("/products/")) {
-                                        val handle = url.removePrefix("/products/").trimEnd('/')
+                                    val handle = when {
+                                        url.startsWith("/products/") -> url.removePrefix("/products/").trimEnd('/')
+                                        url.contains("/products/") -> {
+                                            val idx = url.indexOf("/products/") + "/products/".length
+                                            url.substring(idx).trimEnd('/').substringBefore('?').substringBefore('#')
+                                        }
+                                        else -> null
+                                    }
+                                    if (handle != null && handle.isNotBlank()) {
                                         when {
                                             onHotspotProductClick != null -> onHotspotProductClick(handle)
                                             else -> onProductClick?.invoke(handle)

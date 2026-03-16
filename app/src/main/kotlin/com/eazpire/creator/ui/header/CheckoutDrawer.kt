@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -48,20 +48,33 @@ import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
 import kotlin.math.roundToInt
 
+/** CSS to hide Shopify branding – checkout feels native in-app */
+private val HIDE_SHOPIFY_BRANDING_CSS = """
+(function() {
+  var style = document.createElement('style');
+  style.textContent = [
+    '[class*="shopify"][class*="footer"],',
+    '[class*="shopify"][class*="branding"],',
+    '.shopify-challenge__container,',
+    '[data-shopify="footer"],',
+    'footer [class*="shopify"],',
+    'a[href*="shopify.com"]:not([href*="checkout"]),',
+    '[class*="powered-by"],',
+    '[id*="shopify"]'
+  ].join(' ') + ' { display: none !important; visibility: hidden !important; }';
+  document.head.appendChild(style);
+})();
+""".trimIndent()
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun CheckoutDrawer(
     visible: Boolean,
-    storeBase: String,
-    variantId: Long,
-    quantity: Int,
+    checkoutUrl: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (!visible) return
-
-    val cartAddUrl = "$storeBase/cart/$variantId:${quantity.coerceAtLeast(1)}"
-    val checkoutUrl = "$storeBase/checkout"
+    if (!visible || checkoutUrl.isBlank()) return
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -137,60 +150,79 @@ fun CheckoutDrawer(
                             .fillMaxWidth()
                     ) {
                         val shouldLoadWebView = offsetXPx < 10f
+                        var isCheckoutReady by remember { mutableStateOf(false) }
                         if (shouldLoadWebView) {
-                        val context = LocalContext.current
-                        AndroidView(
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    layoutParams = FrameLayout.LayoutParams(
-                                        FrameLayout.LayoutParams.MATCH_PARENT,
-                                        FrameLayout.LayoutParams.MATCH_PARENT
-                                    )
-                                    settings.apply {
-                                        javaScriptEnabled = true
-                                        domStorageEnabled = true
-                                        databaseEnabled = true
-                                        mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                                        cacheMode = WebSettings.LOAD_DEFAULT
-                                        userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                                    }
-                                    val wv = this
-                                    CookieManager.getInstance().apply {
-                                        setAcceptCookie(true)
-                                        setAcceptThirdPartyCookies(wv, true)
-                                    }
-                                    webChromeClient = object : WebChromeClient() {
-                                        override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
-                                            val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
-                                            transport.setWebView(view)
-                                            resultMsg.sendToTarget()
-                                            return true
+                            AndroidView(
+                                factory = { ctx ->
+                                    WebView(ctx).apply {
+                                        layoutParams = FrameLayout.LayoutParams(
+                                            FrameLayout.LayoutParams.MATCH_PARENT,
+                                            FrameLayout.LayoutParams.MATCH_PARENT
+                                        )
+                                        settings.apply {
+                                            javaScriptEnabled = true
+                                            domStorageEnabled = true
+                                            databaseEnabled = true
+                                            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                                            cacheMode = WebSettings.LOAD_DEFAULT
+                                            userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                                         }
-                                    }
-                                    webViewClient = object : WebViewClient() {
-                                        private var hasRedirected = false
-                                        override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
-                                            val url = request?.url?.toString() ?: return false
-                                            view?.loadUrl(url)
-                                            return true
+                                        val wv = this
+                                        CookieManager.getInstance().apply {
+                                            setAcceptCookie(true)
+                                            setAcceptThirdPartyCookies(wv, true)
                                         }
-                                        override fun onPageFinished(view: WebView?, url: String?) {
-                                            super.onPageFinished(view, url)
-                                            if (!hasRedirected && url != null && url.contains(storeBase)) {
-                                                hasRedirected = true
-                                                view?.postDelayed({
-                                                    if (!url.contains("/checkout")) {
-                                                        view?.loadUrl(checkoutUrl)
-                                                    }
-                                                }, 500)
+                                        webChromeClient = object : WebChromeClient() {
+                                            override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
+                                                val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                                                transport.setWebView(view)
+                                                resultMsg.sendToTarget()
+                                                return true
                                             }
                                         }
+                                        webViewClient = object : WebViewClient() {
+                                            override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                                                val url = request?.url?.toString() ?: return false
+                                                view?.loadUrl(url)
+                                                return true
+                                            }
+                                            override fun onPageFinished(view: WebView?, url: String?) {
+                                                super.onPageFinished(view, url)
+                                                val isCheckout = url != null && url.contains("checkout")
+                                                if (isCheckout) {
+                                                    view?.evaluateJavascript(HIDE_SHOPIFY_BRANDING_CSS, null)
+                                                    isCheckoutReady = true
+                                                }
+                                            }
+                                        }
+                                        loadUrl(checkoutUrl)
                                     }
-                                    loadUrl(cartAddUrl)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            if (!isCheckoutReady) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.White),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = EazColors.Orange,
+                                            modifier = Modifier.padding(8.dp)
+                                        )
+                                        Text(
+                                            text = "Loading checkout…",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = EazColors.TextSecondary
+                                        )
+                                    }
                                 }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+                            }
                         } else {
                             Box(
                                 modifier = Modifier

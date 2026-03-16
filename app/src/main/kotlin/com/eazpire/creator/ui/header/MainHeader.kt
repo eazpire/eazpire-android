@@ -28,8 +28,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
-import com.eazpire.creator.api.ShopifyCartApi
+import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.cart.AppCartStore
+import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.locale.LocaleStore
@@ -69,14 +71,27 @@ fun MainHeader(
     }
     var isCreatorMode by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
+    var checkoutUrl by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val storefrontCartStore = remember { StorefrontCartStore(context) }
+    val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
     LaunchedEffect(Unit) {
-        val count = withContext(Dispatchers.IO) { ShopifyCartApi().getCartItemCount() }
-        com.eazpire.creator.cart.AppCartStore.setCount(count)
+        val cartId = storefrontCartStore.cartId
+        if (cartId != null) {
+            val cart = withContext(Dispatchers.IO) { storefrontCartApi.getCart(cartId) }
+            AppCartStore.setCount(cart?.itemCount ?: 0)
+            if (cart == null) storefrontCartStore.clear()
+        } else {
+            AppCartStore.setCount(0)
+        }
     }
     LaunchedEffect(cartDrawerVisible) {
         if (!cartDrawerVisible) {
-            val count = withContext(Dispatchers.IO) { ShopifyCartApi().getCartItemCount() }
-            com.eazpire.creator.cart.AppCartStore.setCount(count)
+            val cartId = storefrontCartStore.cartId
+            if (cartId != null) {
+                val cart = withContext(Dispatchers.IO) { storefrontCartApi.getCart(cartId) }
+                AppCartStore.setCount(cart?.itemCount ?: 0)
+            }
         }
     }
     var favoritesModalVisible by remember { mutableStateOf(false) }
@@ -186,8 +201,20 @@ fun MainHeader(
     }
         CartDrawer(
             visible = cartDrawerVisible,
-            onDismiss = { cartDrawerVisible = false }
+            tokenStore = tokenStore,
+            onDismiss = { cartDrawerVisible = false },
+            onCheckout = { url ->
+                checkoutUrl = url
+                cartDrawerVisible = false
+            }
         )
+        if (checkoutUrl != null) {
+            CheckoutDrawer(
+                visible = true,
+                checkoutUrl = checkoutUrl!!,
+                onDismiss = { checkoutUrl = null }
+            )
+        }
         FavoritesModal(
             visible = favoritesModalVisible,
             customerId = ownerId.ifBlank { null },
