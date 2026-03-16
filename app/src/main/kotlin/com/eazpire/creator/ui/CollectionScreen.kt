@@ -73,17 +73,22 @@ private const val PRODUCTS_PER_PAGE = 24
 
 private data class SortOption(val value: String, val label: String)
 
-// Design filter (creator-mobile-filter-modal, saveDesign.js): Price, Content Type, Design Type, Design Style
+// Design filter (creator-mobile-filter-modal): Price, Content Type, Design Type, Design Style, Ratio, Design Language, Product Category, Product Type
 private data class ProductFilters(
     val priceMin: String = "",
     val priceMax: String = "",
-    val contentTypes: Set<String> = emptySet(),   // Design + Text, Design Only, Text Only
-    val designTypes: Set<String> = emptySet(),   // Classic, Pattern, All Over, Full Surface, Panorama
-    val designStyles: Set<String> = emptySet()   // Minimalist, Urban, Vintage, Bold, etc.
+    val contentTypes: Set<String> = emptySet(),
+    val designTypes: Set<String> = emptySet(),
+    val designStyles: Set<String> = emptySet(),
+    val ratios: Set<String> = emptySet(),           // Portrait, Landscape, Square
+    val designLanguages: Set<String> = emptySet(),   // English, German, Bilingual
+    val categories: Set<String> = emptySet(),        // Clothing, Accessories, Home & Living, Other
+    val productTypes: Set<String> = emptySet()       // dynamic: T-Shirt, Hoodie, Poster, etc.
 ) {
     fun isEmpty(): Boolean =
         priceMin.isBlank() && priceMax.isBlank() && contentTypes.isEmpty() &&
-        designTypes.isEmpty() && designStyles.isEmpty()
+        designTypes.isEmpty() && designStyles.isEmpty() && ratios.isEmpty() &&
+        designLanguages.isEmpty() && categories.isEmpty() && productTypes.isEmpty()
 }
 
 private fun contentTypeToFilterValue(ct: String): String = when {
@@ -100,6 +105,16 @@ private fun designTypeToFilterValue(dt: String): String = when {
     dt.equals("Full Surface", ignoreCase = true) || dt.equals("Full-Coverage", ignoreCase = true) -> "Full Surface"
     dt.equals("Panorama", ignoreCase = true) -> "Panorama"
     else -> dt
+}
+
+private fun productTypeToCategory(productType: String, title: String): String {
+    val t = (productType + " " + title).lowercase()
+    return when {
+        Regex("shirt|tee|hoodie|tank|jacket|sweat|pullover|t-shirt").containsMatchIn(t) -> "Clothing"
+        Regex("bag|cap|hat|beanie|backpack").containsMatchIn(t) -> "Accessories"
+        Regex("poster|pillow|mug|blanket|cushion").containsMatchIn(t) -> "Home & Living"
+        else -> "Other"
+    }
 }
 
 private fun applyFilters(
@@ -123,6 +138,22 @@ private fun applyFilters(
         if (filters.designStyles.isNotEmpty()) {
             val styles = p.designStyle.map { it.trim() }.filter { it.isNotBlank() }
             if (styles.isEmpty() || !styles.any { it in filters.designStyles }) return@filter false
+        }
+        if (filters.ratios.isNotEmpty()) {
+            val r = p.ratio.ifBlank { return@filter false }
+            if (r !in filters.ratios) return@filter false
+        }
+        if (filters.designLanguages.isNotEmpty()) {
+            val dl = p.designLanguage.ifBlank { return@filter false }
+            if (dl !in filters.designLanguages) return@filter false
+        }
+        if (filters.categories.isNotEmpty()) {
+            val cat = productTypeToCategory(p.productType, p.title)
+            if (cat !in filters.categories) return@filter false
+        }
+        if (filters.productTypes.isNotEmpty()) {
+            val pt = p.productType.ifBlank { "Other" }
+            if (pt !in filters.productTypes) return@filter false
         }
         true
     }
@@ -281,9 +312,12 @@ fun CollectionScreen(
     }
 
     if (filterDrawerVisible) {
+        val allLoadedProducts = remember(productsByPage) {
+            productsByPage.values.flatten()
+        }
         FilterDrawer(
             filters = productFilters,
-            products = products,
+            products = allLoadedProducts,
             onFiltersChange = { productFilters = it },
             onDismiss = { filterDrawerVisible = false }
         )
@@ -424,17 +458,42 @@ private val DESIGN_STYLE_OPTIONS = listOf(
     "Bold" to "Bold",
     "Playful" to "Playful",
     "Retro" to "Retro",
-    "Elegant" to "Elegant"
+    "Elegant" to "Elegant",
+    "Scandinavian" to "Scandinavian",
+    "Abstract" to "Abstract",
+    "Geometric" to "Geometric",
+    "Floral" to "Floral"
+)
+
+private val RATIO_OPTIONS = listOf(
+    "Portrait" to "Portrait",
+    "Landscape" to "Landscape",
+    "Square" to "Square"
+)
+
+private val DESIGN_LANGUAGE_OPTIONS = listOf(
+    "English" to "English",
+    "German" to "German",
+    "Bilingual" to "Bilingual"
+)
+
+private val CATEGORY_OPTIONS = listOf(
+    "Clothing" to "Clothing",
+    "Accessories" to "Accessories",
+    "Home & Living" to "Home & Living",
+    "Other" to "Other"
 )
 
 @Composable
 private fun FilterOptionRow(
     label: String,
+    count: Int? = null,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val displayLabel = if (count != null) "$label ($count)" else label
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -452,7 +511,7 @@ private fun FilterOptionRow(
             )
         )
         Text(
-            label,
+            displayLabel,
             style = MaterialTheme.typography.bodySmall,
             color = EazColors.TextPrimary,
             modifier = Modifier.weight(1f)
@@ -470,6 +529,49 @@ private fun FilterDrawer(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val productTypesWithCounts = remember(products) {
+        products
+            .map { it.productType.ifBlank { "Other" } }
+            .groupingBy { it }
+            .eachCount()
+            .toList()
+            .sortedByDescending { it.second }
+    }
+    val contentTypesCount = remember(products) {
+        CONTENT_TYPE_OPTIONS.associate { (value, _) ->
+            value to products.count { contentTypeToFilterValue(it.contentType) == value }
+        }
+    }
+    val designTypesCount = remember(products) {
+        DESIGN_TYPE_OPTIONS.associate { (value, _) ->
+            value to products.count { designTypeToFilterValue(it.designType) == value }
+        }
+    }
+    val designStylesCount = remember(products) {
+        DESIGN_STYLE_OPTIONS.associate { (value, _) ->
+            value to products.count { p ->
+                p.designStyle.map { it.trim() }.filter { it.isNotBlank() }.any { it == value }
+            }
+        }
+    }
+    val ratiosCount = remember(products) {
+        RATIO_OPTIONS.associate { (value, _) ->
+            value to products.count { it.ratio == value }
+        }
+    }
+    val designLanguagesCount = remember(products) {
+        DESIGN_LANGUAGE_OPTIONS.associate { (value, _) ->
+            value to products.count { it.designLanguage == value }
+        }
+    }
+    val categoriesCount = remember(products) {
+        CATEGORY_OPTIONS.associate { (value, _) ->
+            value to products.count { productTypeToCategory(it.productType, it.title) == value }
+        }
+    }
+    val filteredCount = remember(products, filters) {
+        applyFilters(products, filters).size
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -480,14 +582,12 @@ private fun FilterDrawer(
                 .fillMaxWidth()
                 .fillMaxHeight(0.9f)
                 .heightIn(min = 450.dp)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp)
         ) {
+            // Header (fixed)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -512,6 +612,13 @@ private fun FilterDrawer(
                 }
             }
 
+            // Content (scrollable)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 20.dp)
+            ) {
             Text(
                 "Price",
                 style = MaterialTheme.typography.labelLarge,
@@ -556,6 +663,7 @@ private fun FilterDrawer(
                 CONTENT_TYPE_OPTIONS.forEach { (value, label) ->
                     FilterOptionRow(
                         label = label,
+                        count = contentTypesCount[value] ?: 0,
                         checked = value in filters.contentTypes,
                         onCheckedChange = {
                             val next = if (it) filters.contentTypes + value else filters.contentTypes - value
@@ -602,6 +710,7 @@ private fun FilterDrawer(
                 DESIGN_STYLE_OPTIONS.forEach { (value, label) ->
                     FilterOptionRow(
                         label = label,
+                        count = designStylesCount[value] ?: 0,
                         checked = value in filters.designStyles,
                         onCheckedChange = {
                             val next = if (it) filters.designStyles + value else filters.designStyles - value
@@ -615,30 +724,140 @@ private fun FilterDrawer(
                 }
             }
 
+            Text(
+                "Ratio",
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+            Column(modifier = Modifier.padding(bottom = 14.dp)) {
+                RATIO_OPTIONS.forEach { (value, label) ->
+                    FilterOptionRow(
+                        label = label,
+                        count = ratiosCount[value] ?: 0,
+                        checked = value in filters.ratios,
+                        onCheckedChange = {
+                            val next = if (it) filters.ratios + value else filters.ratios - value
+                            onFiltersChange(filters.copy(ratios = next))
+                        },
+                        onClick = {
+                            val next = if (value in filters.ratios) filters.ratios - value else filters.ratios + value
+                            onFiltersChange(filters.copy(ratios = next))
+                        }
+                    )
+                }
+            }
+
+            Text(
+                "Design Language",
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+            Column(modifier = Modifier.padding(bottom = 14.dp)) {
+                DESIGN_LANGUAGE_OPTIONS.forEach { (value, label) ->
+                    FilterOptionRow(
+                        label = label,
+                        checked = value in filters.designLanguages,
+                        onCheckedChange = {
+                            val next = if (it) filters.designLanguages + value else filters.designLanguages - value
+                            onFiltersChange(filters.copy(designLanguages = next))
+                        },
+                        onClick = {
+                            val next = if (value in filters.designLanguages) filters.designLanguages - value else filters.designLanguages + value
+                            onFiltersChange(filters.copy(designLanguages = next))
+                        }
+                    )
+                }
+            }
+
+            Text(
+                "Product Category",
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+            Column(modifier = Modifier.padding(bottom = 14.dp)) {
+                CATEGORY_OPTIONS.forEach { (value, label) ->
+                    FilterOptionRow(
+                        label = label,
+                        count = categoriesCount[value] ?: 0,
+                        checked = value in filters.categories,
+                        onCheckedChange = {
+                            val next = if (it) filters.categories + value else filters.categories - value
+                            onFiltersChange(filters.copy(categories = next))
+                        },
+                        onClick = {
+                            val next = if (value in filters.categories) filters.categories - value else filters.categories + value
+                            onFiltersChange(filters.copy(categories = next))
+                        }
+                    )
+                }
+            }
+
+            Text(
+                "Product Type",
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+            Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                productTypesWithCounts.forEach { (pt, count) ->
+                    FilterOptionRow(
+                        label = pt,
+                        count = count,
+                        checked = pt in filters.productTypes,
+                        onCheckedChange = {
+                            val next = if (it) filters.productTypes + pt else filters.productTypes - pt
+                            onFiltersChange(filters.copy(productTypes = next))
+                        },
+                        onClick = {
+                            val next = if (pt in filters.productTypes) filters.productTypes - pt else filters.productTypes + pt
+                            onFiltersChange(filters.copy(productTypes = next))
+                        }
+                    )
+                }
+            }
+            }
+
+            // Footer (fixed)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFF5F5F5))
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    "Reset",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = EazColors.Orange,
+                Box(
                     modifier = Modifier
+                        .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFF5F5F5))
+                        .background(Color.White)
                         .clickable { onFiltersChange(ProductFilters()) }
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                )
-                Text(
-                    "Apply",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Reset",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = EazColors.Orange
+                    )
+                }
+                Box(
                     modifier = Modifier
+                        .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
                         .background(EazColors.Orange)
                         .clickable(onClick = onDismiss)
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                )
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Apply ($filteredCount)",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White
+                    )
+                }
             }
         }
     }
