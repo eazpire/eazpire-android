@@ -306,8 +306,8 @@ fun CollectionScreen(
             CollectionComingSoon(title = title, onBrowseAll = onBack)
         } else {
             ResultsBar(
-                productCount = filteredProducts.size,
-                collectionTitle = title,
+                filteredCount = filteredProducts.size,
+                totalCount = productsToFilter.size,
                 sortBy = sortBy,
                 sortLabel = currentSortLabel,
                 onFilterClick = { filterDrawerVisible = true },
