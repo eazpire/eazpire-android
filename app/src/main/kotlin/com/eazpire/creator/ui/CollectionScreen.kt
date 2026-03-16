@@ -1019,11 +1019,6 @@ private fun CollectionProductCard(
     modifier: Modifier = Modifier
 ) {
     val images = product.variantImages.ifEmpty { product.images }
-        .let { list ->
-            if (list.size > 1 && list == product.images) {
-                listOf(list.first())
-            } else list
-        }
     var currentIndex by remember(product.id) { mutableStateOf(0) }
 
     LaunchedEffect(product.id, images.size) {

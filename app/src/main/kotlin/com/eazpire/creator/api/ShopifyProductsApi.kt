@@ -57,6 +57,9 @@ class ShopifyProductsApi(
         cursor: String? = null
     ): ProductsResult = withContext(Dispatchers.IO) {
         var result = fetchFromStorefrontApi(collectionHandle, limit, cursor)
+        if (result.products.isEmpty() && collectionHandle != null) {
+            result = fetchFromStorefrontApi(null, limit, cursor)
+        }
         if (result.products.isEmpty()) {
             result = fetchFromProductsJson(collectionHandle, limit, cursor)
         }
