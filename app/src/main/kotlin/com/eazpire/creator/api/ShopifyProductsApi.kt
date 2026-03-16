@@ -295,8 +295,8 @@ class ShopifyProductsApi(
         )
     }
 
-    /** Image with variant association for filtering by selected variant. */
-    data class ProductImage(val src: String, val variantIds: List<Long>)
+    /** Image with variant association and alt for color-based filtering (like web getMediaForColor). */
+    data class ProductImage(val src: String, val variantIds: List<Long>, val alt: String? = null)
 
     /** Full product detail for PDP: variants, options, body_html. */
     data class ProductDetail(
@@ -347,21 +347,41 @@ class ShopifyProductsApi(
         if (obj == null) return null
         val h = obj.optString("handle", "").takeIf { it.isNotBlank() } ?: handle
         val images = mutableListOf<ProductImage>()
-        val imagesArr = obj.optJSONArray("images")
-        if (imagesArr != null) {
-            for (j in 0 until imagesArr.length()) {
-                val img = imagesArr.optJSONObject(j)
-                val src = img?.optString("src")?.takeIf { it.isNotBlank() } ?: continue
-                val variantIdsArr = img.optJSONArray("variant_ids")
-                val variantIds = if (variantIdsArr != null) {
-                    (0 until variantIdsArr.length()).mapNotNull { i ->
-                        try {
-                            val v = variantIdsArr.getLong(i)
-                            if (v != 0L) v else null
-                        } catch (_: Exception) { null }
-                    }
-                } else emptyList()
-                images.add(ProductImage(src = src, variantIds = variantIds))
+        // Prefer media array (like web productData.media) – has alt for color|view format
+        val mediaArr = obj.optJSONArray("media")
+        if (mediaArr != null) {
+            for (j in 0 until mediaArr.length()) {
+                val m = mediaArr.optJSONObject(j)
+                val mediaType = m?.optString("media_type", "image") ?: "image"
+                if (mediaType != "image" && mediaType.isNotBlank()) continue
+                val src = m?.optString("src")
+                    ?: m?.optJSONObject("preview_image")?.optString("src")
+                    ?: m?.optJSONObject("image")?.optString("src")
+                    ?: m?.optJSONObject("featured_image")?.optString("src")
+                val srcVal = src?.takeIf { it.isNotBlank() } ?: continue
+                val alt = m.optString("alt").takeIf { it.isNotBlank() }
+                images.add(ProductImage(src = srcVal, variantIds = emptyList(), alt = alt))
+            }
+        }
+        // Fallback: images array (storefront JSON)
+        if (images.isEmpty()) {
+            val imagesArr = obj.optJSONArray("images")
+            if (imagesArr != null) {
+                for (j in 0 until imagesArr.length()) {
+                    val img = imagesArr.optJSONObject(j)
+                    val src = img?.optString("src")?.takeIf { it.isNotBlank() } ?: continue
+                    val variantIdsArr = img.optJSONArray("variant_ids")
+                    val variantIds = if (variantIdsArr != null) {
+                        (0 until variantIdsArr.length()).mapNotNull { i ->
+                            try {
+                                val v = variantIdsArr.getLong(i)
+                                if (v != 0L) v else null
+                            } catch (_: Exception) { null }
+                        }
+                    } else emptyList()
+                    val alt = img.optString("alt").takeIf { it.isNotBlank() }
+                    images.add(ProductImage(src = src, variantIds = variantIds, alt = alt))
+                }
             }
         }
         if (images.isEmpty()) {
@@ -372,7 +392,7 @@ class ShopifyProductsApi(
                 val src = feat?.optString("src")?.takeIf { it.isNotBlank() }
                 if (src != null && images.none { it.src == src }) {
                     val vid = v?.optLong("id", 0L) ?: 0L
-                    images.add(ProductImage(src = src, variantIds = if (vid != 0L) listOf(vid) else emptyList()))
+                    images.add(ProductImage(src = src, variantIds = if (vid != 0L) listOf(vid) else emptyList(), alt = null))
                 }
             }
         }

@@ -26,6 +26,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -55,6 +56,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.text.Html
+import android.widget.TextView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
@@ -67,6 +71,74 @@ import com.eazpire.creator.ui.share.getActiveRefUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * Same logic as web getMediaForColor (eaz-redesign-pdp.js): filter images by selected color
+ * using alt prefix (e.g. "navy|front|back") or variant_ids fallback.
+ */
+private fun getMediaForColor(
+    selectedColor: String,
+    selectedVariant: ShopifyProductsApi.ProductDetail.ProductVariant?,
+    allImages: List<ShopifyProductsApi.ProductImage>,
+    variants: List<ShopifyProductsApi.ProductDetail.ProductVariant>
+): List<String> {
+    val fallback = allImages.take(5).map { it.src }
+    if (selectedColor.isBlank() || variants.isEmpty() || allImages.isEmpty()) return fallback
+
+    val variantForColor = variants.find { v ->
+        v.option1.equals(selectedColor, true) || v.option2.equals(selectedColor, true) || v.option3.equals(selectedColor, true)
+    } ?: selectedVariant ?: return fallback
+
+    val featuredSrc = variantForColor.featuredImageSrc
+    val selectedColorKey = normalizeColorKey(selectedColor)
+    val anchorIndex = if (featuredSrc != null) allImages.indexOfFirst { it.src == featuredSrc } else -1
+
+    // 1) Strict color-key matching from alt prefix (e.g. "navy|front|...")
+    val matched = allImages.filter { img ->
+        val key = getMediaAltColorKey(img)
+        key.isNotBlank() && key == selectedColorKey
+    }
+    if (matched.size >= 2) return matched.map { it.src }.take(5)
+
+    // 2) Fallback: contiguous images from anchor forward (same color key or no conflict)
+    if (anchorIndex >= 0) {
+        val contiguous = mutableListOf<ShopifyProductsApi.ProductImage>()
+        for (i in anchorIndex until allImages.size) {
+            val img = allImages[i]
+            val key = getMediaAltColorKey(img)
+            if (key.isNotBlank() && key != selectedColorKey) {
+                if (contiguous.isNotEmpty()) break
+                continue
+            }
+            contiguous.add(img)
+            if (contiguous.size >= 5) break
+        }
+        if (contiguous.isNotEmpty()) return contiguous.map { it.src }
+    }
+
+    // 3) variant_ids fallback (when no alt-based matching)
+    val vid = variantForColor.id
+    if (vid != 0L) {
+        val byVariant = allImages.filter { it.variantIds.isEmpty() || it.variantIds.contains(vid) }
+        if (byVariant.isNotEmpty()) {
+            val withFeat = if (featuredSrc != null && byVariant.none { it.src == featuredSrc })
+                listOf(ShopifyProductsApi.ProductImage(featuredSrc, listOf(vid), null)) + byVariant
+            else byVariant
+            return withFeat.map { it.src }.take(5)
+        }
+    }
+
+    return fallback.ifEmpty { featuredSrc?.let { listOf(it) } ?: emptyList() }
+}
+
+private fun normalizeColorKey(value: String): String =
+    value.lowercase().replace(Regex("[_-]+"), " ").replace(Regex("\\s+"), " ").trim()
+
+private fun getMediaAltColorKey(img: ShopifyProductsApi.ProductImage): String {
+    val alt = (img.alt ?: "").lowercase()
+    if (alt.isBlank()) return ""
+    return normalizeColorKey(alt.split("|").firstOrNull() ?: "")
+}
 
 /**
  * Product Detail Screen – 1:1 wie Web Mobile PDP (eaz-pdp-main.liquid, eaz-redesign-pdp.css).
@@ -135,18 +207,9 @@ fun ProductDetailScreen(
     val price = selectedVariant?.price ?: 0.0
     val comparePrice = selectedVariant?.compareAtPrice
     val available = selectedVariant?.available ?: true
-    // Images for selected variant only (different views of same variant, like web)
-    val images = remember(selectedVariant?.id, p.images) {
-        val vid = selectedVariant?.id ?: 0L
-        val filtered = if (vid != 0L) {
-            p.images.filter { img -> img.variantIds.isEmpty() || img.variantIds.contains(vid) }
-        } else p.images
-        val withFeatured = selectedVariant?.featuredImageSrc?.let { feat ->
-            if (filtered.none { it.src == feat }) listOf(ShopifyProductsApi.ProductImage(feat, listOf(vid))) + filtered
-            else filtered
-        } ?: filtered
-        val result = (if (withFeatured.isEmpty()) p.images else withFeatured).map { it.src }.take(4)
-        if (result.isEmpty()) selectedVariant?.featuredImageSrc?.let { listOf(it) } ?: emptyList() else result
+    // Images for selected variant only – same logic as web getMediaForColor (eaz-redesign-pdp.js)
+    val images = remember(selectedColor, selectedVariant, p.images, p.variants) {
+        getMediaForColor(selectedColor, selectedVariant, p.images, p.variants)
     }
     LaunchedEffect(selectedVariant?.id) { selectedImageIndex = 0 }
     LaunchedEffect(showCartToast) { if (showCartToast) { kotlinx.coroutines.delay(1500); showCartToast = false } }
@@ -576,8 +639,11 @@ fun ProductDetailScreen(
         }
     }
 
-    // Product Details Modal
+    // Product Details Modal – von unten nach oben, Header + X, Tabs
     if (detailsSheetVisible) {
+        val sections = remember(p.bodyHtml) { parseDescriptionSections(p.bodyHtml) }
+        var selectedTabIndex by remember { mutableIntStateOf(0) }
+
         ModalBottomSheet(
             onDismissRequest = { detailsSheetVisible = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -585,24 +651,122 @@ fun ProductDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp)
+                    .height(520.dp)
             ) {
-                Text(
-                    "Product Details",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    color = EazColors.TextPrimary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                Text(
-                    p.bodyHtml.replace(Regex("<[^>]+>"), " ").trim(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = EazColors.TextPrimary,
-                    lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.5f
-                )
-                Spacer(modifier = Modifier.height(24.dp))
+                // Header + X
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "Product Details",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = EazColors.TextPrimary
+                    )
+                    IconButton(onClick = { detailsSheetVisible = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                    }
+                }
+                Box(modifier = Modifier.height(1.dp).fillMaxWidth().background(Color(0xFFE8E8E8)))
+                // Tabs
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .background(Color.White)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    sections.forEachIndexed { idx, (title, _) ->
+                        val isSelected = idx == selectedTabIndex
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) EazColors.Orange else Color(0xFFF5F5F5))
+                                .clickable { selectedTabIndex = idx }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                title,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected) Color.White else EazColors.TextPrimary,
+                                fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+                Box(modifier = Modifier.height(1.dp).fillMaxWidth().background(Color(0xFFF0F0F0)))
+                // Content
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(20.dp)
+                ) {
+                    val (_, content) = sections.getOrNull(selectedTabIndex) ?: ("" to "")
+                    if (content.isNotBlank()) {
+                        AndroidView(
+                            factory = { ctx ->
+                                TextView(ctx).apply {
+                                    setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
+                                    textSize = 14f
+                                    setLineSpacing(4f, 1.2f)
+                                }
+                            },
+                            update = { tv ->
+                                @Suppress("DEPRECATION")
+                                tv.text = Html.fromHtml(content)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        Text(
+                            "Not available",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = EazColors.TextSecondary
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+/** Parse body_html into sections by headings: Design Detail, Product Features, Care Instructions, Size Table, GPSR */
+private fun parseDescriptionSections(bodyHtml: String): List<Pair<String, String>> {
+    val raw = bodyHtml.trim()
+    val tabOrder = listOf("Design Detail", "Product Features", "Care Instructions", "Size Table", "GPSR")
+    val keyToTitle = mapOf(
+        "design detail" to "Design Detail",
+        "product features" to "Product Features",
+        "care instructions" to "Care Instructions",
+        "size table" to "Size Table",
+        "gpsr" to "GPSR"
+    )
+    if (raw.isBlank()) return tabOrder.map { it to "Not available" }
+    val sectionPattern = Regex("(?i)<p>\\s*<strong>\\s*([^:]+):\\s*</strong>\\s*</p>\\s*")
+    val matches = sectionPattern.findAll(raw)
+    val parsed = mutableMapOf<String, String>()
+    for (m in matches) {
+        val key = m.groupValues[1].trim().lowercase().replace(":", "")
+        val displayTitle = keyToTitle[key] ?: m.groupValues[1].trim()
+        val contentStart = m.range.last + 1
+        val nextMatch = sectionPattern.find(raw, contentStart)
+        val contentEnd = nextMatch?.range?.first ?: raw.length
+        val content = raw.substring(contentStart, contentEnd).trim()
+        parsed[displayTitle] = content
+    }
+    val fallback = if (parsed.isEmpty()) raw.replace(Regex("<[^>]+>"), " ").trim().ifBlank { "Not available" } else null
+    return tabOrder.mapIndexed { i, title ->
+        val content = parsed[title]?.takeIf { it.isNotBlank() }
+            ?: if (i == 0 && fallback != null) fallback else "Not available"
+        title to content
     }
 }
 
