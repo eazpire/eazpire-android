@@ -25,6 +25,8 @@ class ShopifyProductsApi(
         val title: String,
         val handle: String,
         val images: List<String>,
+        /** Variant-only images (preview view); use for collection card rotation. Falls back to images if empty. */
+        val variantImages: List<String> = emptyList(),
         val url: String,
         val price: Double = 0.0,
         val compareAtPrice: Double? = null,
@@ -192,6 +194,41 @@ class ShopifyProductsApi(
         }
     }
 
+    /**
+     * Filter images to variant-only (preview view). Alt format: "Color|View" (e.g. "Black|front").
+     * Same logic as eaz-product-card-redesign.liquid and getStorefrontProducts.js.
+     */
+    private fun filterVariantImages(imagesArr: JSONArray): List<String> {
+        var primaryView = ""
+        for (j in 0 until imagesArr.length()) {
+            val img = imagesArr.optJSONObject(j) ?: continue
+            val alt = (img.optString("alt") ?: "").trim()
+            if (alt.contains("|")) {
+                val parts = alt.split("|")
+                primaryView = (parts.getOrNull(1) ?: "").trim().lowercase()
+                break
+            }
+        }
+        val variantImages = mutableListOf<String>()
+        val usedColors = mutableSetOf<String>()
+        for (j in 0 until imagesArr.length()) {
+            val img = imagesArr.optJSONObject(j) ?: continue
+            val src = img.optString("src").takeIf { it.isNotBlank() } ?: continue
+            val alt = (img.optString("alt") ?: "").trim()
+            if (alt.isEmpty() || !alt.contains("|")) continue
+            val parts = alt.split("|")
+            val colorKey = (parts.getOrNull(0) ?: "").trim().lowercase()
+            val mediaView = (parts.getOrNull(1) ?: "").trim().lowercase()
+            if (colorKey.isEmpty()) continue
+            if (primaryView.isNotEmpty() && mediaView != primaryView) continue
+            val colorToken = "|$colorKey|"
+            if (colorToken in usedColors) continue
+            usedColors.add(colorToken)
+            variantImages.add(src)
+        }
+        return variantImages
+    }
+
     private fun parseProductFromJson(obj: JSONObject?): ProductItem? {
         if (obj == null) return null
         val id = obj.optLong("id", 0L)
@@ -216,6 +253,8 @@ class ShopifyProductsApi(
             }
         }
         if (images.isEmpty()) return null
+
+        val variantImages = if (imagesArr != null) filterVariantImages(imagesArr) else emptyList()
         var price = 0.0
         val variants = obj.optJSONArray("variants")
         if (variants != null && variants.length() > 0) {
@@ -232,6 +271,7 @@ class ShopifyProductsApi(
             title = title,
             handle = handle,
             images = images,
+            variantImages = variantImages.ifEmpty { images },
             url = "$storeUrl/products/$handle",
             price = price,
             compareAtPrice = null,
@@ -275,6 +315,11 @@ class ShopifyProductsApi(
             }
         }
         if (images.isEmpty()) return null
+
+        val variantImagesArr = obj.optJSONArray("variantImages")
+        val variantImages = if (variantImagesArr != null) {
+            (0 until variantImagesArr.length()).mapNotNull { variantImagesArr.optString(it).takeIf { s -> s.isNotBlank() } }
+        } else emptyList()
         val designStyleArr = obj.optJSONArray("designStyle") ?: obj.optJSONArray("design_style")
         val designStyle = if (designStyleArr != null) {
             (0 until designStyleArr.length()).mapNotNull { designStyleArr.optString(it).takeIf { s -> s.isNotBlank() } }
@@ -300,6 +345,7 @@ class ShopifyProductsApi(
             title = obj.optString("title", ""),
             handle = handle,
             images = images,
+            variantImages = variantImages.ifEmpty { images },
             url = obj.optString("url", "").ifBlank { "$storeUrl/products/$handle" },
             price = obj.optDouble("price", 0.0),
             compareAtPrice = null,

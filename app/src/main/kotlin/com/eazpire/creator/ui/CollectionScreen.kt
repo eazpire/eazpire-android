@@ -1020,7 +1020,7 @@ private fun CollectionProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val images = product.images
+    val images = product.variantImages.ifEmpty { product.images }
     var currentIndex by remember(product.id) { mutableStateOf(0) }
 
     LaunchedEffect(product.id, images.size) {
