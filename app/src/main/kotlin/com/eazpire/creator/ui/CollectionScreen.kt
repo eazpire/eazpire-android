@@ -207,6 +207,7 @@ fun CollectionScreen(
     title: String,
     collectionHandle: String,
     onBack: () -> Unit,
+    onProductClick: (ShopifyProductsApi.ProductItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
@@ -260,11 +261,9 @@ fun CollectionScreen(
         isLoading = false
     }
 
-    // Load 250 products for filtering: when drawer opens OR when filters applied but not yet loaded.
-    // Key includes productFilters.isEmpty() so we re-run when user applies – then load if still empty
-    // (handles fast Apply before initial load completed / LaunchedEffect was cancelled).
-    LaunchedEffect(collectionHandle, filterDrawerVisible, productFilters.isEmpty()) {
-        val needFilterProducts = filterDrawerVisible || !productFilters.isEmpty()
+    // Load 250 products for filtering/counts: when drawer opens, filters applied, or collection has products (for total display).
+    LaunchedEffect(collectionHandle, filterDrawerVisible, productFilters.isEmpty(), productsByPage.isEmpty()) {
+        val needFilterProducts = filterDrawerVisible || !productFilters.isEmpty() || productsByPage.isNotEmpty()
         if (needFilterProducts && filterCountProducts.isEmpty()) {
             filterCountProducts = withContext(Dispatchers.IO) {
                 var r = api.getProducts(
@@ -307,7 +306,7 @@ fun CollectionScreen(
         } else {
             ResultsBar(
                 filteredCount = filteredProducts.size,
-                totalCount = productsToFilter.size,
+                totalCount = if (filterCountProducts.isNotEmpty()) filterCountProducts.size else productsToFilter.size,
                 sortBy = sortBy,
                 sortLabel = currentSortLabel,
                 onFilterClick = { filterDrawerVisible = true },
@@ -338,11 +337,7 @@ fun CollectionScreen(
                 items(filteredProducts) { product ->
                     CollectionProductCard(
                         product = product,
-                        onClick = {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(product.url)))
-                            } catch (_: Exception) {}
-                        }
+                        onClick = { onProductClick(product) }
                     )
                 }
             }
@@ -408,8 +403,8 @@ fun CollectionScreen(
 
 @Composable
 private fun ResultsBar(
-    productCount: Int,
-    collectionTitle: String,
+    filteredCount: Int,
+    totalCount: Int,
     sortBy: String,
     sortLabel: String,
     onFilterClick: () -> Unit,
@@ -441,7 +436,7 @@ private fun ResultsBar(
                 )
             }
             Text(
-                text = "$productCount products in $collectionTitle",
+                text = "$filteredCount/$totalCount products",
                 style = MaterialTheme.typography.bodySmall,
                 color = EazColors.TextSecondary,
                 maxLines = 1,

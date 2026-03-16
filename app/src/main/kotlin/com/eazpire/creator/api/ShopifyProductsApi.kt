@@ -295,6 +295,123 @@ class ShopifyProductsApi(
         )
     }
 
+    /** Full product detail for PDP: variants, options, body_html. */
+    data class ProductDetail(
+        val id: Long,
+        val title: String,
+        val handle: String,
+        val bodyHtml: String,
+        val images: List<String>,
+        val variants: List<ProductVariant>,
+        val options: List<ProductOption>,
+        val vendor: String,
+        val productType: String,
+        val url: String
+    ) {
+        data class ProductVariant(
+            val id: Long,
+            val option1: String?,
+            val option2: String?,
+            val option3: String?,
+            val price: Double,
+            val compareAtPrice: Double?,
+            val available: Boolean,
+            val featuredImageSrc: String?
+        )
+        data class ProductOption(val name: String, val values: List<String>)
+    }
+
+    /**
+     * Lädt ein einzelnes Produkt per Handle (für PDP).
+     * Worker: op=product-json&handle=...
+     */
+    suspend fun getProductByHandle(handle: String): ProductDetail? = withContext(Dispatchers.IO) {
+        if (handle.isBlank()) return@withContext null
+        val url = "$workerUrl/apps/creator-dispatch?op=product-json&handle=${java.net.URLEncoder.encode(handle, "UTF-8")}"
+        try {
+            val request = Request.Builder().url(url).build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: "{}"
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+            val productObj = json.optJSONObject("product") ?: json
+            parseProductDetail(productObj, handle)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun parseProductDetail(obj: JSONObject?, handle: String): ProductDetail? {
+        if (obj == null) return null
+        val h = obj.optString("handle", "").takeIf { it.isNotBlank() } ?: handle
+        val images = mutableListOf<String>()
+        val imagesArr = obj.optJSONArray("images")
+        if (imagesArr != null) {
+            for (j in 0 until imagesArr.length()) {
+                val img = imagesArr.optJSONObject(j)
+                val src = img?.optString("src")?.takeIf { it.isNotBlank() }
+                if (src != null) images.add(src)
+            }
+        }
+        if (images.isEmpty()) {
+            val variants = obj.optJSONArray("variants")
+            for (j in 0 until (variants?.length() ?: 0)) {
+                val v = variants?.optJSONObject(j)
+                val feat = v?.optJSONObject("featured_image")
+                val src = feat?.optString("src")?.takeIf { it.isNotBlank() }
+                if (src != null && src !in images) images.add(src)
+            }
+        }
+        if (images.isEmpty()) return null
+
+        val variants = mutableListOf<ProductDetail.ProductVariant>()
+        val variantsArr = obj.optJSONArray("variants")
+        if (variantsArr != null) {
+            for (j in 0 until variantsArr.length()) {
+                val v = variantsArr.optJSONObject(j) ?: continue
+                val feat = v.optJSONObject("featured_image")
+                variants.add(
+                    ProductDetail.ProductVariant(
+                        id = v.optLong("id", 0L),
+                        option1 = v.optString("option1").takeIf { it.isNotBlank() },
+                        option2 = v.optString("option2").takeIf { it.isNotBlank() },
+                        option3 = v.optString("option3").takeIf { it.isNotBlank() },
+                        price = v.optString("price", "0").toDoubleOrNull() ?: 0.0,
+                        compareAtPrice = v.optString("compare_at_price").takeIf { it.isNotBlank() }?.toDoubleOrNull(),
+                        available = v.optBoolean("available", true),
+                        featuredImageSrc = feat?.optString("src")?.takeIf { it.isNotBlank() }
+                    )
+                )
+            }
+        }
+
+        val options = mutableListOf<ProductDetail.ProductOption>()
+        val optionsArr = obj.optJSONArray("options")
+        if (optionsArr != null) {
+            for (j in 0 until optionsArr.length()) {
+                val o = optionsArr.optJSONObject(j) ?: continue
+                val name = o.optString("name", "").takeIf { it.isNotBlank() } ?: continue
+                val valuesArr = o.optJSONArray("values")
+                val values = if (valuesArr != null) {
+                    (0 until valuesArr.length()).mapNotNull { valuesArr.optString(it).takeIf { s -> s.isNotBlank() } }
+                } else emptyList()
+                options.add(ProductDetail.ProductOption(name = name, values = values))
+            }
+        }
+
+        return ProductDetail(
+            id = obj.optLong("id", 0L),
+            title = obj.optString("title", ""),
+            handle = h,
+            bodyHtml = obj.optString("body_html", ""),
+            images = images,
+            variants = variants,
+            options = options,
+            vendor = obj.optString("vendor", ""),
+            productType = obj.optString("product_type", ""),
+            url = "$storeUrl/products/$h"
+        )
+    }
+
     /**
      * Lädt Produkte für mehrere Kategorien.
      */

@@ -44,6 +44,7 @@ fun ShopScreen(
     var currentPagePath by remember { mutableStateOf("/") }
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var selectedProductHandle by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -66,6 +67,7 @@ fun ShopScreen(
                         menuDrawerVisible = false
                         showAuthScreen = false
                         selectedCollection = null
+                        selectedProductHandle = null
                         scrollToTopTrigger++
                     },
                     onAccountClick = {
@@ -105,17 +107,24 @@ fun ShopScreen(
                     interactionSource = remember { MutableInteractionSource() }
                 ) { focusManager.clearFocus() }
         ) {
-            if (selectedCollection != null) {
-                val (title, handle) = selectedCollection!!
-                CollectionScreen(
-                    title = title,
-                    collectionHandle = handle,
-                    onBack = { selectedCollection = null }
+            when {
+                selectedProductHandle != null -> ProductDetailScreen(
+                    productHandle = selectedProductHandle!!,
+                    onBack = { selectedProductHandle = null }
                 )
-            } else {
-                ProductCarouselSection(
+                selectedCollection != null -> {
+                    val (title, handle) = selectedCollection!!
+                    CollectionScreen(
+                        title = title,
+                        collectionHandle = handle,
+                        onBack = { selectedCollection = null },
+                        onProductClick = { selectedProductHandle = it.handle }
+                    )
+                }
+                else -> ProductCarouselSection(
                     onCurrentPageChange = { currentPagePath = it },
-                    onCategoryClick = { title, handle -> selectedCollection = title to handle },
+                    onCategoryClick = { title, h -> selectedCollection = title to h },
+                    onProductClick = { selectedProductHandle = it },
                     scrollToTopTrigger = scrollToTopTrigger
                 )
             }

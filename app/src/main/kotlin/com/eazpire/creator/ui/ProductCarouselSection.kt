@@ -30,6 +30,7 @@ val CAROUSEL_CATEGORIES = listOf(
 fun ProductCarouselSection(
     onCurrentPageChange: ((String) -> Unit)? = null,
     onCategoryClick: ((title: String, handle: String) -> Unit)? = null,
+    onProductClick: ((handle: String) -> Unit)? = null,
     scrollToTopTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
@@ -65,6 +66,7 @@ fun ProductCarouselSection(
                 title = title,
                 products = products,
                 onTitleClick = onCategoryClick?.let { { it(title, handle) } },
+                onProductClick = onProductClick,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
         }

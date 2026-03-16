@@ -46,6 +46,7 @@ fun ProductCarousel(
     title: String,
     products: List<ShopifyProductsApi.ProductItem>,
     onTitleClick: (() -> Unit)? = null,
+    onProductClick: ((handle: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (products.isEmpty()) return
@@ -79,9 +80,13 @@ fun ProductCarousel(
                     ProductCard(
                         product = product,
                         onClick = {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(product.url)))
-                            } catch (_: Exception) {}
+                            if (onProductClick != null) {
+                                onProductClick(product.handle)
+                            } else {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(product.url)))
+                                } catch (_: Exception) {}
+                            }
                         }
                     )
                 }
