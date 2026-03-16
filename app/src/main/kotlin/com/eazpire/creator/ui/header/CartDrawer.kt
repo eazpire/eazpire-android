@@ -1,5 +1,13 @@
 package com.eazpire.creator.ui.header
 
+import android.annotation.SuppressLint
+import android.os.Message
+import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -30,14 +38,60 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.util.DebugLog
 import kotlin.math.roundToInt
+
+private const val CART_STORE_URL = "https://www.eazpire.com"
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun CartWebView() {
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    userAgentString = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                }
+                val wv = this
+                CookieManager.getInstance().apply {
+                    setAcceptCookie(true)
+                    setAcceptThirdPartyCookies(wv, true)
+                }
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                        val url = request?.url?.toString() ?: return false
+                        view?.loadUrl(url)
+                        return true
+                    }
+                }
+                webChromeClient = object : WebChromeClient() {
+                    override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
+                        val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                        transport.setWebView(view)
+                        resultMsg.sendToTarget()
+                        return true
+                    }
+                }
+                loadUrl("$CART_STORE_URL/cart")
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
+}
 
 @Composable
 fun CartDrawer(
@@ -125,23 +179,21 @@ fun CartDrawer(
                             )
                         }
                     }
-                    Column(
+                    Box(
                         modifier = Modifier
+                            .weight(1f)
                             .fillMaxWidth()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(
-                            text = "Dein Warenkorb ist leer",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = EazColors.TextSecondary
-                        )
-                        Text(
-                            text = "Platzhalter – echte Cart-Daten folgen",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EazColors.TextSecondary,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
+                        val shouldLoad = offsetXPx < 10f
+                        if (shouldLoad) {
+                            CartWebView()
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.White)
+                            )
+                        }
                     }
                 }
             }

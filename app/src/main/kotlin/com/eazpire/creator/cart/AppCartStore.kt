@@ -5,15 +5,19 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * In-memory cart store for app. Holds item count.
- * Checkout still happens on web (Shopify).
+ * Cart store – syncs with Shopify cart via ShopifyCartApi.
+ * Item count is updated when adding to cart; CartDrawer shows real cart in WebView.
  */
 object AppCartStore {
     var itemCount by mutableIntStateOf(0)
-        private set
+        internal set
+
+    fun setCount(count: Int) {
+        itemCount = count.coerceAtLeast(0)
+    }
 
     fun add(quantity: Int) {
-        itemCount += quantity
+        itemCount += quantity.coerceAtLeast(0)
     }
 
     fun clear() {

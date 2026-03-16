@@ -24,15 +24,17 @@ private const val LOGO_URL = "https://cdn.shopify.com/s/files/1/0739/5203/5098/f
 
 @Composable
 fun HeaderLogo(
-    onClick: () -> Unit = {},
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick
+            .then(
+                if (onClick != null) Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick
+                ) else Modifier
             )
             .padding(4.dp),
         contentAlignment = Alignment.Center

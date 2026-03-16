@@ -28,11 +28,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.api.ShopifyCartApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.util.DebugLog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun MainHeader(
@@ -66,6 +69,16 @@ fun MainHeader(
     }
     var isCreatorMode by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val count = withContext(Dispatchers.IO) { ShopifyCartApi().getCartItemCount() }
+        com.eazpire.creator.cart.AppCartStore.setCount(count)
+    }
+    LaunchedEffect(cartDrawerVisible) {
+        if (!cartDrawerVisible) {
+            val count = withContext(Dispatchers.IO) { ShopifyCartApi().getCartItemCount() }
+            com.eazpire.creator.cart.AppCartStore.setCount(count)
+        }
+    }
     var favoritesModalVisible by remember { mutableStateOf(false) }
     var favoritesCount by remember { mutableStateOf(0) }
     val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
@@ -102,7 +115,7 @@ fun MainHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HeaderLogo(onClick = onLogoClick)
+                HeaderLogo(onClick = null)
                 val ctx = LocalContext.current
                 IconButton(
                     onClick = {

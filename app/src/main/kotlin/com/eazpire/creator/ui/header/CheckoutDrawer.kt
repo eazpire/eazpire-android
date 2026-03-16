@@ -1,6 +1,7 @@
 package com.eazpire.creator.ui.header
 
 import android.annotation.SuppressLint
+import android.os.Message
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -135,6 +136,8 @@ fun CheckoutDrawer(
                             .weight(1f)
                             .fillMaxWidth()
                     ) {
+                        val shouldLoadWebView = offsetXPx < 10f
+                        if (shouldLoadWebView) {
                         val context = LocalContext.current
                         AndroidView(
                             factory = { ctx ->
@@ -156,9 +159,21 @@ fun CheckoutDrawer(
                                         setAcceptCookie(true)
                                         setAcceptThirdPartyCookies(wv, true)
                                     }
-                                    webChromeClient = WebChromeClient()
+                                    webChromeClient = object : WebChromeClient() {
+                                        override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
+                                            val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                                            transport.setWebView(view)
+                                            resultMsg.sendToTarget()
+                                            return true
+                                        }
+                                    }
                                     webViewClient = object : WebViewClient() {
                                         private var hasRedirected = false
+                                        override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                                            val url = request?.url?.toString() ?: return false
+                                            view?.loadUrl(url)
+                                            return true
+                                        }
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
                                             if (!hasRedirected && url != null && url.contains(storeBase)) {
@@ -176,6 +191,13 @@ fun CheckoutDrawer(
                             },
                             modifier = Modifier.fillMaxSize()
                         )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.White)
+                            )
+                        }
                     }
                 }
             }

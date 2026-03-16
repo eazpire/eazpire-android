@@ -49,8 +49,10 @@ fun ProductCarouselSection(
     }
     LaunchedEffect(listState.firstVisibleItemIndex) {
         val idx = listState.firstVisibleItemIndex
-        if (idx in CAROUSEL_CATEGORIES.indices) {
-            val handle = CAROUSEL_CATEGORIES[idx].second
+        if (idx == 0) {
+            onCurrentPageChange?.invoke("/")
+        } else if (idx - 1 in CAROUSEL_CATEGORIES.indices) {
+            val handle = CAROUSEL_CATEGORIES[idx - 1].second
             onCurrentPageChange?.invoke("/collections/$handle")
         }
     }
@@ -58,8 +60,11 @@ fun ProductCarouselSection(
         state = listState,
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 16.dp)
+            .padding(top = 0.dp, bottom = 16.dp)
     ) {
+        item(key = "hero") {
+            HeroCarousel()
+        }
         itemsIndexed(CAROUSEL_CATEGORIES) { _, (title, handle) ->
             val products = productsByCategory[handle].orEmpty()
             ProductCarousel(

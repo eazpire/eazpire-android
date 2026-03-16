@@ -68,6 +68,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.api.ShopifyCartApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.ui.footer.GlobalFooter
@@ -609,8 +610,14 @@ fun ProductDetailScreen(
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFFE5E7EB))
                     .clickable(enabled = available) {
-                        com.eazpire.creator.cart.AppCartStore.add(quantity)
-                        showCartToast = true
+                        val vid = selectedVariant?.id ?: return@clickable
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                ShopifyCartApi().addToCart(vid, quantity)
+                            }
+                            com.eazpire.creator.cart.AppCartStore.setCount(result.itemCount)
+                            showCartToast = true
+                        }
                     }
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
