@@ -86,16 +86,23 @@ fun ShopScreen(
                     onCategoryClick = { title, handle -> selectedCollection = title to handle },
                     selectedHandle = selectedCollection?.second
                 )
-                if (selectedCollection != null) {
+                if (selectedCollection != null || selectedProductHandle != null) {
                     CollectionBreadcrumb(
-                        categoryTitle = selectedCollection!!.first,
-                        onHomeClick = { selectedCollection = null }
+                        categoryTitle = selectedCollection?.first ?: "",
+                        onHomeClick = {
+                            selectedCollection = null
+                            selectedProductHandle = null
+                        },
+                        productTitle = if (selectedProductHandle != null) "Product" else null,
+                        onCollectionClick = if (selectedProductHandle != null && selectedCollection != null) {
+                            { selectedProductHandle = null }
+                        } else null
                     )
                 }
             }
         },
         bottomBar = {
-            GlobalFooter()
+            if (selectedProductHandle == null) GlobalFooter()
         }
     ) { padding ->
         Box(
@@ -110,7 +117,8 @@ fun ShopScreen(
             when {
                 selectedProductHandle != null -> ProductDetailScreen(
                     productHandle = selectedProductHandle!!,
-                    onBack = { selectedProductHandle = null }
+                    onBack = { selectedProductHandle = null },
+                    tokenStore = tokenStore
                 )
                 selectedCollection != null -> {
                     val (title, handle) = selectedCollection!!

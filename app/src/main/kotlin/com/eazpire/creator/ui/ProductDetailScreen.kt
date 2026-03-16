@@ -22,11 +22,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.border
 import androidx.compose.ui.Alignment
@@ -56,8 +58,14 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.ui.footer.GlobalFooter
+import com.eazpire.creator.ui.share.buildShareUrl
+import com.eazpire.creator.ui.share.getActiveRefUrl
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -69,15 +77,20 @@ import kotlinx.coroutines.withContext
 fun ProductDetailScreen(
     productHandle: String,
     onBack: () -> Unit,
+    tokenStore: SecureTokenStore,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
+    val creatorApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
     val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var product by remember { mutableStateOf<ShopifyProductsApi.ProductDetail?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var detailsSheetVisible by remember { mutableStateOf(false) }
     var selectedImageIndex by remember { mutableIntStateOf(0) }
     var quantity by remember { mutableIntStateOf(1) }
+    var showCartToast by remember { mutableStateOf(false) }
+    var showFavoriteToast by remember { mutableStateOf(false) }
 
     LaunchedEffect(productHandle) {
         isLoading = true
@@ -106,7 +119,6 @@ fun ProductDetailScreen(
         return
     }
 
-    val images = p.images.take(5)
     // Color/Size options – wie Web
     val colorOption = p.options.find { it.name.equals("Color", ignoreCase = true) || it.name.equals("Colour", ignoreCase = true) || it.name.equals("Farbe", ignoreCase = true) }
     val sizeOption = p.options.find { it.name.equals("Size", ignoreCase = true) || it.name.equals("Größe", ignoreCase = true) || it.name.equals("Groesse", ignoreCase = true) }
@@ -123,20 +135,26 @@ fun ProductDetailScreen(
     val price = selectedVariant?.price ?: 0.0
     val comparePrice = selectedVariant?.compareAtPrice
     val available = selectedVariant?.available ?: true
+    // Images for selected variant only (different views of same variant, like web)
+    val images = remember(selectedVariant?.id, p.images) {
+        val vid = selectedVariant?.id ?: 0L
+        val filtered = if (vid != 0L) {
+            p.images.filter { img -> img.variantIds.isEmpty() || img.variantIds.contains(vid) }
+        } else p.images
+        val withFeatured = selectedVariant?.featuredImageSrc?.let { feat ->
+            if (filtered.none { it.src == feat }) listOf(ShopifyProductsApi.ProductImage(feat, listOf(vid))) + filtered
+            else filtered
+        } ?: filtered
+        val result = (if (withFeatured.isEmpty()) p.images else withFeatured).map { it.src }.take(4)
+        if (result.isEmpty()) selectedVariant?.featuredImageSrc?.let { listOf(it) } ?: emptyList() else result
+    }
+    LaunchedEffect(selectedVariant?.id) { selectedImageIndex = 0 }
+    LaunchedEffect(showCartToast) { if (showCartToast) { kotlinx.coroutines.delay(1500); showCartToast = false } }
+    LaunchedEffect(showFavoriteToast) { if (showFavoriteToast) { kotlinx.coroutines.delay(1500); showFavoriteToast = false } }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        // Top bar (back)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.White)
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = EazColors.TextPrimary)
-            }
-        }
+    Box(modifier = modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // No back button – navigation via breadcrumb (Home / Collection)
 
         Column(
             modifier = Modifier
@@ -221,7 +239,8 @@ fun ProductDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Thumbs (vertical)
-                if (images.size > 1) {
+                val imageCount = images.size
+                if (imageCount > 1) {
                     Column(
                         modifier = Modifier
                             .width(52.dp)
@@ -229,7 +248,7 @@ fun ProductDetailScreen(
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        images.forEachIndexed { idx, url ->
+                        images.forEachIndexed { idx: Int, url: String ->
                             val thumbActive = idx == selectedImageIndex
                             Box(
                                 modifier = Modifier
@@ -258,22 +277,23 @@ fun ProductDetailScreen(
                         .background(Color(0xFFF0F0F0))
                 ) {
                     if (images.isNotEmpty()) {
+                        val imgIdx = selectedImageIndex.coerceIn(0, (imageCount - 1).coerceAtLeast(0))
                         AsyncImage(
-                            model = ImageRequest.Builder(context).data(images[selectedImageIndex.coerceIn(0, images.size - 1)]).build(),
+                            model = ImageRequest.Builder(context).data(images[imgIdx]).build(),
                             contentDescription = p.title,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit
                         )
                     }
                     // Dots
-                    if (images.size > 1) {
+                    if (imageCount > 1) {
                         Row(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            images.forEachIndexed { idx, _ ->
+                            repeat(imageCount) { idx ->
                                 Box(
                                     modifier = Modifier
                                         .size(8.dp)
@@ -378,112 +398,181 @@ fun ProductDetailScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(80.dp)) // Space for footer
+            Spacer(modifier = Modifier.height(16.dp))
         }
-    }
 
-    // Sticky footer (pdp-footer)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White.copy(alpha = 0.97f))
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Qty
+        // PDP Sub-Footer – 2 rows like web (Row 1: qty, fav, share, total | Row 2: price, delivery, cart, buy)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                .padding(horizontal = 12.dp)
+        ) {
+        // Row 1: Qty, Favorite, Share, Delivery, Total
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF5F5F5)),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            IconButton(
-                onClick = { if (quantity > 1) quantity-- },
-                modifier = Modifier.size(34.dp)
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF5F5F5)),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("−", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
-            }
-            Text(
-                "$quantity",
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(horizontal = 8.dp),
-                color = EazColors.TextPrimary
-            )
-            IconButton(
-                onClick = { quantity++ },
-                modifier = Modifier.size(34.dp)
-            ) {
-                Text("+", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
-            }
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        // Icons: Favorite, Copy, Share
-        IconButton(onClick = { /* TODO */ }) {
-            Icon(Icons.Default.Favorite, contentDescription = "Favorite", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
-        }
-        IconButton(onClick = {
-            try {
-                val clip = android.content.ClipData.newPlainText("url", p.url)
-                (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
-            } catch (_: Exception) {}
-        }) {
-            Icon(Icons.Default.Link, contentDescription = "Copy", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
-        }
-        IconButton(onClick = {
-            try {
-                val sendIntent = Intent().apply {
-                    action = Intent.ACTION_SEND
-                    putExtra(Intent.EXTRA_TEXT, p.url)
-                    type = "text/plain"
+                IconButton(onClick = { if (quantity > 1) quantity-- }, modifier = Modifier.size(34.dp)) {
+                    Text("−", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
                 }
-                context.startActivity(Intent.createChooser(sendIntent, "Share"))
-            } catch (_: Exception) {}
-        }) {
-            Icon(Icons.Default.Share, contentDescription = "Share", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
+                Text("$quantity", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp), color = EazColors.TextPrimary)
+                IconButton(onClick = { quantity++ }, modifier = Modifier.size(34.dp)) {
+                    Text("+", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
+                }
+            }
+            Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color(0xFFE8E8E8)))
+            IconButton(onClick = {
+                val ownerId = tokenStore.getOwnerId()
+                if (!ownerId.isNullOrBlank()) {
+                    scope.launch {
+                        try {
+                            val resp = creatorApi.addFavorite(
+                                customerId = ownerId!!,
+                                productId = p.id.toString(),
+                                variantId = selectedVariant?.id?.toString(),
+                                productTitle = p.title,
+                                productImage = images.firstOrNull()
+                            )
+                            if (resp.optBoolean("ok", false)) {
+                                com.eazpire.creator.favorites.FavoritesRefreshTrigger.trigger()
+                            }
+                            showFavoriteToast = true
+                        } catch (_: Exception) { showFavoriteToast = true }
+                    }
+                } else {
+                    showFavoriteToast = true
+                }
+            }) {
+                Icon(Icons.Default.Favorite, contentDescription = "Favorite", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = {
+                scope.launch {
+                    val productPath = "/products/${p.handle}"
+                    val urlToShare = tokenStore.getJwt()?.let { jwt ->
+                        tokenStore.getOwnerId()?.let { ownerId ->
+                            getActiveRefUrl(creatorApi, ownerId)?.let { refUrl ->
+                                buildShareUrl(refUrl, productPath)
+                            }
+                        }
+                    } ?: p.url
+                    withContext(Dispatchers.Main) {
+                        try {
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, urlToShare)
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "Share"))
+                        } catch (_: Exception) {}
+                    }
+                }
+            }) {
+                Icon(Icons.Default.Share, contentDescription = "Share", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            Text("Total: CHF %.2f incl.".format(price), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
         }
-        // Price
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
-                "CHF %.2f".format(price),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                color = EazColors.TextPrimary
-            )
+        // Row 2: Price, Delivery, Cart, Buy now
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("CHF %.2f".format(price), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = EazColors.TextPrimary)
+            val deliveryDate = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMAN).format(java.util.Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000))
+            Text("ca. $deliveryDate", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
             if (comparePrice != null && comparePrice > price) {
-                Text(
-                    "CHF %.2f".format(comparePrice),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = EazColors.TextSecondary
-                )
+                Text("CHF %.2f".format(comparePrice), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFFE5E7EB))
+                    .clickable(enabled = available) {
+                        com.eazpire.creator.cart.AppCartStore.add(quantity)
+                        showCartToast = true
+                    }
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Icon(Icons.Default.ShoppingCart, contentDescription = "Add to cart", tint = EazColors.TextPrimary, modifier = Modifier.size(20.dp))
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(EazColors.Orange)
+                    .clickable(enabled = available) {
+                        try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${p.url}?variant=${selectedVariant?.id}"))) } catch (_: Exception) {}
+                    }
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text("Buy now", style = MaterialTheme.typography.labelMedium, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
             }
         }
-        // Add to cart / Buy now
-        IconButton(
-            onClick = {
-                try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${p.url}?variant=${selectedVariant?.id}")))
-                } catch (_: Exception) {}
-            },
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFE5E7EB))
-        ) {
-            Icon(Icons.Default.ShoppingCart, contentDescription = "Add to cart", tint = EazColors.TextPrimary, modifier = Modifier.size(20.dp))
         }
-        Box(
+
+        // Main Footer – ganz unten (wie Web)
+        GlobalFooter()
+    }
+
+        // Toast overlays – mittig
+        AnimatedVisibility(
+            visible = showCartToast,
+            enter = fadeIn(),
+            exit = fadeOut(),
             modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(EazColors.Orange)
-                .clickable(enabled = available) {
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${p.url}?variant=${selectedVariant?.id}")))
-                    } catch (_: Exception) {}
-                }
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .align(Alignment.Center)
+                .padding(24.dp)
         ) {
-            Text("Buy now", style = MaterialTheme.typography.labelMedium, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                    Text("Added to cart", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = showFavoriteToast,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(24.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Favorite, contentDescription = null, tint = EazColors.Orange, modifier = Modifier.size(24.dp))
+                    Text(
+                        if (tokenStore.getOwnerId()?.isNotBlank() == true) "Added to favorites" else "Login to save favorites",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color.White
+                    )
+                }
+            }
         }
     }
 

@@ -295,13 +295,16 @@ class ShopifyProductsApi(
         )
     }
 
+    /** Image with variant association for filtering by selected variant. */
+    data class ProductImage(val src: String, val variantIds: List<Long>)
+
     /** Full product detail for PDP: variants, options, body_html. */
     data class ProductDetail(
         val id: Long,
         val title: String,
         val handle: String,
         val bodyHtml: String,
-        val images: List<String>,
+        val images: List<ProductImage>,
         val variants: List<ProductVariant>,
         val options: List<ProductOption>,
         val vendor: String,
@@ -343,13 +346,22 @@ class ShopifyProductsApi(
     private fun parseProductDetail(obj: JSONObject?, handle: String): ProductDetail? {
         if (obj == null) return null
         val h = obj.optString("handle", "").takeIf { it.isNotBlank() } ?: handle
-        val images = mutableListOf<String>()
+        val images = mutableListOf<ProductImage>()
         val imagesArr = obj.optJSONArray("images")
         if (imagesArr != null) {
             for (j in 0 until imagesArr.length()) {
                 val img = imagesArr.optJSONObject(j)
-                val src = img?.optString("src")?.takeIf { it.isNotBlank() }
-                if (src != null) images.add(src)
+                val src = img?.optString("src")?.takeIf { it.isNotBlank() } ?: continue
+                val variantIdsArr = img.optJSONArray("variant_ids")
+                val variantIds = if (variantIdsArr != null) {
+                    (0 until variantIdsArr.length()).mapNotNull { i ->
+                        try {
+                            val v = variantIdsArr.getLong(i)
+                            if (v != 0L) v else null
+                        } catch (_: Exception) { null }
+                    }
+                } else emptyList()
+                images.add(ProductImage(src = src, variantIds = variantIds))
             }
         }
         if (images.isEmpty()) {
@@ -358,7 +370,10 @@ class ShopifyProductsApi(
                 val v = variants?.optJSONObject(j)
                 val feat = v?.optJSONObject("featured_image")
                 val src = feat?.optString("src")?.takeIf { it.isNotBlank() }
-                if (src != null && src !in images) images.add(src)
+                if (src != null && images.none { it.src == src }) {
+                    val vid = v?.optLong("id", 0L) ?: 0L
+                    images.add(ProductImage(src = src, variantIds = if (vid != 0L) listOf(vid) else emptyList()))
+                }
             }
         }
         if (images.isEmpty()) return null

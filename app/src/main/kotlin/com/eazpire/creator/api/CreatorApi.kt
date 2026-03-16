@@ -500,6 +500,24 @@ class CreatorApi(
         mapOf("customer_id" to customerId)
     )
 
+    /** POST ?op=add-favorite Body: { customer_id, product_id, variant_id?, product_title?, product_image? } → { ok, added, count } */
+    suspend fun addFavorite(
+        customerId: String,
+        productId: String,
+        variantId: String? = null,
+        productTitle: String? = null,
+        productImage: String? = null
+    ): JSONObject = postJson(
+        "add-favorite",
+        mapOf(
+            "customer_id" to customerId,
+            "product_id" to productId,
+            "variant_id" to variantId,
+            "product_title" to productTitle,
+            "product_image" to productImage
+        )
+    )
+
     /** POST ?op=remove-favorite Body: { customer_id, product_id, variant_id? } */
     suspend fun removeFavorite(customerId: String, productId: String, variantId: String? = null): JSONObject =
         postJson(

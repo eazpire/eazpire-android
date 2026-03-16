@@ -72,7 +72,8 @@ fun MainHeader(
     val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
     var shareUrl by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(ownerId) {
+    val favoritesRefreshTrigger = com.eazpire.creator.favorites.FavoritesRefreshTrigger.value
+    LaunchedEffect(ownerId, favoritesRefreshTrigger) {
         if (ownerId.isNotBlank()) {
             try {
                 val resp = api.getFavorites(ownerId)
@@ -145,7 +146,7 @@ fun MainHeader(
                 onLanguageChange = { }
             )
             HeaderActions(
-                cartCount = 0,
+                cartCount = com.eazpire.creator.cart.AppCartStore.itemCount,
                 favoritesCount = favoritesCount,
                 onAccountClick = onAccountClick,
                 onFavoritesClick = {

@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 
@@ -18,6 +19,8 @@ import com.eazpire.creator.EazColors
 fun CollectionBreadcrumb(
     categoryTitle: String,
     onHomeClick: () -> Unit,
+    productTitle: String? = null,
+    onCollectionClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -33,15 +36,37 @@ fun CollectionBreadcrumb(
             color = EazColors.Orange,
             modifier = Modifier.clickable(onClick = onHomeClick)
         )
-        Text(
-            text = " > ",
-            style = MaterialTheme.typography.bodySmall,
-            color = EazColors.TextSecondary
-        )
-        Text(
-            text = categoryTitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = EazColors.TextPrimary
-        )
+        if (categoryTitle.isNotBlank()) {
+            Text(
+                text = " > ",
+                style = MaterialTheme.typography.bodySmall,
+                color = EazColors.TextSecondary
+            )
+            Text(
+                text = categoryTitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (onCollectionClick != null) EazColors.Orange else EazColors.TextPrimary,
+                modifier = Modifier.then(
+                    if (onCollectionClick != null) Modifier.clickable(onClick = onCollectionClick)
+                    else Modifier
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (productTitle != null) {
+            Text(
+                text = if (categoryTitle.isNotBlank()) " > " else " > ",
+                style = MaterialTheme.typography.bodySmall,
+                color = EazColors.TextSecondary
+            )
+            Text(
+                text = productTitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = EazColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
