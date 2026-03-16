@@ -239,7 +239,9 @@ class ShopifyProductsApi(
             vendor = obj.optString("vendor", ""),
             contentType = obj.optString("contentType", ""),
             designType = obj.optString("designType", ""),
-            designStyle = designStyle
+            designStyle = designStyle,
+            ratio = obj.optString("ratio", ""),
+            designLanguage = obj.optString("designLanguage", "")
         )
     }
 }

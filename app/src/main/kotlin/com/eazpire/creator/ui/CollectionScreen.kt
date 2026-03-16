@@ -107,6 +107,13 @@ private fun designTypeToFilterValue(dt: String): String = when {
     else -> dt
 }
 
+private fun ratioToFilterValue(r: String): String = when {
+    r.equals("Portrait", ignoreCase = true) -> "Portrait"
+    r.equals("Landscape", ignoreCase = true) -> "Landscape"
+    r.equals("Square", ignoreCase = true) -> "Square"
+    else -> r
+}
+
 private fun productTypeToCategory(productType: String, title: String): String {
     val t = (productType + " " + title).lowercase()
     return when {
@@ -137,15 +144,15 @@ private fun applyFilters(
         }
         if (filters.designStyles.isNotEmpty()) {
             val styles = p.designStyle.map { it.trim() }.filter { it.isNotBlank() }
-            if (styles.isEmpty() || !styles.any { it in filters.designStyles }) return@filter false
+            if (styles.isEmpty() || !styles.any { s -> filters.designStyles.any { s.equals(it, ignoreCase = true) } }) return@filter false
         }
         if (filters.ratios.isNotEmpty()) {
-            val r = p.ratio.ifBlank { return@filter false }
+            val r = ratioToFilterValue(p.ratio).ifBlank { return@filter false }
             if (r !in filters.ratios) return@filter false
         }
         if (filters.designLanguages.isNotEmpty()) {
             val dl = p.designLanguage.ifBlank { return@filter false }
-            if (dl !in filters.designLanguages) return@filter false
+            if (!filters.designLanguages.any { dl.equals(it, ignoreCase = true) }) return@filter false
         }
         if (filters.categories.isNotEmpty()) {
             val cat = productTypeToCategory(p.productType, p.title)
@@ -200,6 +207,7 @@ fun CollectionScreen(
     var sortSheetVisible by remember { mutableStateOf(false) }
     var filterDrawerVisible by remember { mutableStateOf(false) }
     var productFilters by remember { mutableStateOf(ProductFilters()) }
+    var filterCountProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -237,6 +245,24 @@ fun CollectionScreen(
         }
         hasNextPage = result.hasNextPage
         isLoading = false
+    }
+
+    LaunchedEffect(filterDrawerVisible, collectionHandle) {
+        if (filterDrawerVisible) {
+            filterCountProducts = withContext(Dispatchers.IO) {
+                var r = api.getProducts(
+                    collectionHandle = collectionHandle.ifBlank { null },
+                    limit = 250,
+                    cursor = null
+                )
+                if (r.products.isEmpty() && collectionHandle.isNotBlank()) {
+                    r = api.getProducts(limit = 250, cursor = null)
+                }
+                r.products
+            }
+        } else {
+            filterCountProducts = emptyList()
+        }
     }
 
     val sortedProducts = remember(products, sortBy) { sortProducts(products, sortBy) }
@@ -315,9 +341,10 @@ fun CollectionScreen(
         val allLoadedProducts = remember(productsByPage) {
             productsByPage.values.flatten()
         }
+        val productsForCounts = if (filterCountProducts.isNotEmpty()) filterCountProducts else allLoadedProducts
         FilterDrawer(
             filters = productFilters,
-            products = allLoadedProducts,
+            products = productsForCounts,
             onFiltersChange = { productFilters = it },
             onDismiss = { filterDrawerVisible = false }
         )
@@ -550,18 +577,18 @@ private fun FilterDrawer(
     val designStylesCount = remember(products) {
         DESIGN_STYLE_OPTIONS.associate { (value, _) ->
             value to products.count { p ->
-                p.designStyle.map { it.trim() }.filter { it.isNotBlank() }.any { it == value }
+                p.designStyle.map { it.trim() }.filter { it.isNotBlank() }.any { it.equals(value, ignoreCase = true) }
             }
         }
     }
     val ratiosCount = remember(products) {
         RATIO_OPTIONS.associate { (value, _) ->
-            value to products.count { it.ratio == value }
+            value to products.count { ratioToFilterValue(it.ratio) == value }
         }
     }
     val designLanguagesCount = remember(products) {
         DESIGN_LANGUAGE_OPTIONS.associate { (value, _) ->
-            value to products.count { it.designLanguage == value }
+            value to products.count { it.designLanguage.equals(value, ignoreCase = true) }
         }
     }
     val categoriesCount = remember(products) {
