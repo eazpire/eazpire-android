@@ -66,7 +66,8 @@ data class HeroHotspot(
     val x: Float,
     val y: Float,
     val url: String?,
-    val title: String?
+    val title: String?,
+    val productHandle: String? = null
 )
 
 data class HeroImage(
@@ -89,7 +90,9 @@ private fun parseHotspots(obj: JSONObject): List<HeroHotspot> {
                 val y = h.optDouble("y", 0.5).toFloat().coerceIn(0f, 1f)
                 val url = h.optString("url", "").takeIf { it.isNotBlank() }
                 val title = h.optString("title", "").takeIf { it.isNotBlank() }
-                result.add(HeroHotspot(x = x, y = y, url = url, title = title))
+                val handle = h.optString("product_handle", "").takeIf { it.isNotBlank() }
+                    ?: url?.takeIf { it.startsWith("/products/") }?.removePrefix("/products/")?.trimEnd('/')
+                result.add(HeroHotspot(x = x, y = y, url = url, title = title, productHandle = handle))
             }
         }
         val hotspotsJson = obj.optString("hotspots_json", "").takeIf { it.isNotBlank() }
@@ -109,7 +112,7 @@ private fun parseHotspots(obj: JSONObject): List<HeroHotspot> {
                             val x = h.optDouble("x", 0.5).toFloat().coerceIn(0f, 1f)
                             val y = h.optDouble("y", 0.5).toFloat().coerceIn(0f, 1f)
                             val url = if (productHandle != null) "/products/$productHandle" else null
-                            result.add(HeroHotspot(x = x, y = y, url = url, title = productTitle))
+                            result.add(HeroHotspot(x = x, y = y, url = url, title = productTitle, productHandle = productHandle))
                         }
                     }
                 }
@@ -223,27 +226,27 @@ fun HeroCarousel(
                     if (hero.hotspots.isNotEmpty()) {
                         HeroHotspotsOverlay(
                             hotspots = hero.hotspots,
-                            onHotspotClick = { url ->
-                                if (url != null) {
-                                    val handle = when {
-                                        url.startsWith("/products/") -> url.removePrefix("/products/").trimEnd('/')
-                                        url.contains("/products/") -> {
-                                            val idx = url.indexOf("/products/") + "/products/".length
-                                            url.substring(idx).trimEnd('/').substringBefore('?').substringBefore('#')
-                                        }
-                                        else -> null
+                            onHotspotClick = { hotspot ->
+                                val handle = when {
+                                    hotspot.url != null && hotspot.url.startsWith("/products/") ->
+                                        hotspot.url.removePrefix("/products/").trimEnd('/')
+                                    hotspot.url != null && hotspot.url.contains("/products/") -> {
+                                        val idx = hotspot.url.indexOf("/products/") + "/products/".length
+                                        hotspot.url.substring(idx).trimEnd('/').substringBefore('?').substringBefore('#')
                                     }
-                                    if (handle != null && handle.isNotBlank()) {
-                                        when {
-                                            onHotspotProductClick != null -> onHotspotProductClick(handle)
-                                            else -> onProductClick?.invoke(handle)
-                                        }
-                                    } else {
-                                        val fullUrl = if (url.startsWith("http")) url else "$STORE_BASE_URL$url"
-                                        try {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
-                                        } catch (_: Exception) { }
+                                    hotspot.productHandle != null -> hotspot.productHandle
+                                    else -> null
+                                }
+                                if (handle != null && handle.isNotBlank()) {
+                                    when {
+                                        onHotspotProductClick != null -> onHotspotProductClick(handle)
+                                        else -> onProductClick?.invoke(handle)
                                     }
+                                } else if (hotspot.url != null && hotspot.url != "#" && hotspot.url.isNotBlank() && !hotspot.url.startsWith("/products/")) {
+                                    val fullUrl = if (hotspot.url.startsWith("http")) hotspot.url else "$STORE_BASE_URL${hotspot.url}"
+                                    try {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
+                                    } catch (_: Exception) { }
                                 }
                             }
                         )
@@ -284,7 +287,7 @@ fun HeroCarousel(
 @Composable
 private fun HeroHotspotsOverlay(
     hotspots: List<HeroHotspot>,
-    onHotspotClick: (String?) -> Unit,
+    onHotspotClick: (HeroHotspot) -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(
@@ -296,7 +299,7 @@ private fun HeroHotspotsOverlay(
             val yDp = (hotspot.y * maxHeight.value - halfSize).dp
 
             HeroHotspotDot(
-                onClick = { onHotspotClick(hotspot.url) },
+                onClick = { onHotspotClick(hotspot) },
                 contentDescription = hotspot.title,
                 modifier = Modifier
                     .align(Alignment.TopStart)
