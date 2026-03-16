@@ -54,13 +54,14 @@ class ShopifyProductsApi(
         limit: Int = 24,
         cursor: String? = null
     ): ProductsResult = withContext(Dispatchers.IO) {
-        val storefront = fetchFromStorefrontApi(collectionHandle, limit, cursor)
-        if (storefront.products.isNotEmpty()) {
-            return@withContext storefront
+        var result = fetchFromStorefrontApi(collectionHandle, limit, cursor)
+        if (result.products.isEmpty()) {
+            result = fetchFromProductsJson(collectionHandle, limit, cursor)
         }
-        // Fallback: products.json – mit Metafields-Anreicherung via Worker
-        val result = fetchFromProductsJson(collectionHandle, limit, cursor)
-        if (result.products.isNotEmpty()) {
+        if (result.products.isEmpty()) return@withContext result
+        // Wie Web: Enrichment wenn Design-Metadaten fehlen (Storefront oder products.json)
+        val hasDesignMeta = result.products.any { it.contentType.isNotBlank() || it.designType.isNotBlank() || it.designStyle.isNotEmpty() }
+        if (!hasDesignMeta) {
             val metafields = fetchMetafieldsFromWorker(result.products.map { it.handle })
             val enriched = result.products.map { p ->
                 val mf = metafields[p.handle]

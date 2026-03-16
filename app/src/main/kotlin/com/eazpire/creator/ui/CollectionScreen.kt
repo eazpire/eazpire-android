@@ -91,6 +91,18 @@ private data class ProductFilters(
         designLanguages.isEmpty() && categories.isEmpty() && productTypes.isEmpty()
 }
 
+/** Wie Web: normalizeValue für Vergleich (creator-inspiration-filter-modal.js, creator-mobile-filter-modal.js) */
+private fun normalizeValue(v: String?): String =
+    (v ?: "").trim().lowercase()
+
+/** Wie Web (creator-inspiration-filter-modal.js): content_type "Design + Text" -> design_text */
+private fun contentTypeToFilterKey(ct: String): String = when {
+    ct.equals("Design + Text", ignoreCase = true) || ct.equals("design_text", ignoreCase = true) || ct.equals("design-text", ignoreCase = true) -> "design_text"
+    ct.equals("Design Only", ignoreCase = true) || ct.equals("design_only", ignoreCase = true) || ct.equals("design-only", ignoreCase = true) -> "design_only"
+    ct.equals("Text Only", ignoreCase = true) || ct.equals("text_only", ignoreCase = true) || ct.equals("text-only", ignoreCase = true) -> "text_only"
+    else -> normalizeValue(ct)
+}
+
 private fun contentTypeToFilterValue(ct: String): String = when {
     ct.equals("Design + Text", ignoreCase = true) || ct.equals("design_text", ignoreCase = true) -> "Design + Text"
     ct.equals("Design Only", ignoreCase = true) || ct.equals("design_only", ignoreCase = true) -> "Design Only"
@@ -98,19 +110,21 @@ private fun contentTypeToFilterValue(ct: String): String = when {
     else -> ct
 }
 
+/** Wie Web: design_type Vergleich via normalizeValue (Classic -> classic) */
 private fun designTypeToFilterValue(dt: String): String = when {
     dt.equals("Classic", ignoreCase = true) -> "Classic"
     dt.equals("Pattern", ignoreCase = true) -> "Pattern"
     dt.equals("All Over", ignoreCase = true) || dt.equals("All-Over", ignoreCase = true) || dt.equals("all_over", ignoreCase = true) -> "All Over"
-    dt.equals("Full Surface", ignoreCase = true) || dt.equals("Full-Coverage", ignoreCase = true) -> "Full Surface"
+    dt.equals("Full Surface", ignoreCase = true) || dt.equals("Full-Coverage", ignoreCase = true) || dt.equals("full_surface", ignoreCase = true) -> "Full Surface"
     dt.equals("Panorama", ignoreCase = true) -> "Panorama"
     else -> dt
 }
 
+/** Wie Web: ratio kann "Portrait", "Landscape", "Square" oder "1:1" etc. sein */
 private fun ratioToFilterValue(r: String): String = when {
-    r.equals("Portrait", ignoreCase = true) -> "Portrait"
-    r.equals("Landscape", ignoreCase = true) -> "Landscape"
-    r.equals("Square", ignoreCase = true) -> "Square"
+    r.equals("Portrait", ignoreCase = true) || r.equals("4:5", ignoreCase = true) || r.equals("3:4", ignoreCase = true) -> "Portrait"
+    r.equals("Landscape", ignoreCase = true) || r.equals("16:9", ignoreCase = true) || r.equals("4:3", ignoreCase = true) -> "Landscape"
+    r.equals("Square", ignoreCase = true) || r.equals("1:1", ignoreCase = true) -> "Square"
     else -> r
 }
 
@@ -564,31 +578,38 @@ private fun FilterDrawer(
             .toList()
             .sortedByDescending { it.second }
     }
+    // Wie Web (creator-inspiration-filter-modal, creator-mobile-filter-modal): normalizeValue + content_type mapping
     val contentTypesCount = remember(products) {
         CONTENT_TYPE_OPTIONS.associate { (value, _) ->
-            value to products.count { contentTypeToFilterValue(it.contentType) == value }
+            val filterKey = when (value) {
+                "Design + Text" -> "design_text"
+                "Design Only" -> "design_only"
+                "Text Only" -> "text_only"
+                else -> normalizeValue(value)
+            }
+            value to products.count { normalizeValue(contentTypeToFilterKey(it.contentType)) == filterKey }
         }
     }
     val designTypesCount = remember(products) {
         DESIGN_TYPE_OPTIONS.associate { (value, _) ->
-            value to products.count { designTypeToFilterValue(it.designType) == value }
+            value to products.count { normalizeValue(designTypeToFilterValue(it.designType)) == normalizeValue(value) }
         }
     }
     val designStylesCount = remember(products) {
         DESIGN_STYLE_OPTIONS.associate { (value, _) ->
             value to products.count { p ->
-                p.designStyle.map { it.trim() }.filter { it.isNotBlank() }.any { it.equals(value, ignoreCase = true) }
+                p.designStyle.any { normalizeValue(it) == normalizeValue(value) }
             }
         }
     }
     val ratiosCount = remember(products) {
         RATIO_OPTIONS.associate { (value, _) ->
-            value to products.count { ratioToFilterValue(it.ratio) == value }
+            value to products.count { normalizeValue(ratioToFilterValue(it.ratio)) == normalizeValue(value) }
         }
     }
     val designLanguagesCount = remember(products) {
         DESIGN_LANGUAGE_OPTIONS.associate { (value, _) ->
-            value to products.count { it.designLanguage.equals(value, ignoreCase = true) }
+            value to products.count { normalizeValue(it.designLanguage) == normalizeValue(value) }
         }
     }
     val categoriesCount = remember(products) {
