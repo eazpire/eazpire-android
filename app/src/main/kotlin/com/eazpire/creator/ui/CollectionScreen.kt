@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -1018,7 +1019,7 @@ private fun CollectionProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val images = product.variantImages.ifEmpty { product.images }
+    val images = product.variantImages
     var currentIndex by remember(product.id) { mutableStateOf(0) }
 
     LaunchedEffect(product.id, images.size) {
@@ -1045,13 +1046,16 @@ private fun CollectionProductCard(
                     val isActive = index == currentIndex
                     val alpha by androidx.compose.animation.core.animateFloatAsState(
                         targetValue = if (isActive) 1f else 0f,
-                        animationSpec = androidx.compose.animation.core.tween(durationMillis = 800),
+                        animationSpec = androidx.compose.animation.core.tween(
+                            durationMillis = 1200,
+                            easing = androidx.compose.animation.core.FastOutSlowInEasing
+                        ),
                         label = "productImageAlpha"
                     )
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .alpha(alpha)
+                            .graphicsLayer(alpha = alpha)
                             .zIndex(if (isActive) 1f else 0f)
                     ) {
                         AsyncImage(

@@ -259,7 +259,10 @@ class ShopifyProductsApi(
         }
         if (images.isEmpty()) return null
 
-        val variantImages = if (imagesArr != null) filterVariantImages(imagesArr) else emptyList()
+        val variantImages = if (imagesArr != null) {
+            val filtered = filterVariantImages(imagesArr)
+            if (filtered.isNotEmpty()) filtered else listOfNotNull(images.firstOrNull())
+        } else listOfNotNull(images.firstOrNull())
         var price = 0.0
         val variants = obj.optJSONArray("variants")
         if (variants != null && variants.length() > 0) {
@@ -276,7 +279,7 @@ class ShopifyProductsApi(
             title = title,
             handle = handle,
             images = images,
-            variantImages = variantImages.ifEmpty { images },
+            variantImages = variantImages.ifEmpty { images.take(1) },
             url = "$storeUrl/products/$handle",
             price = price,
             compareAtPrice = null,
@@ -350,7 +353,7 @@ class ShopifyProductsApi(
             title = obj.optString("title", ""),
             handle = handle,
             images = images,
-            variantImages = variantImages.ifEmpty { images },
+            variantImages = variantImages.ifEmpty { images.take(1) },
             url = obj.optString("url", "").ifBlank { "$storeUrl/products/$handle" },
             price = obj.optDouble("price", 0.0),
             compareAtPrice = null,
