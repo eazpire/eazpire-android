@@ -2,10 +2,6 @@ package com.eazpire.creator.ui
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -51,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
@@ -1043,21 +1040,25 @@ private fun CollectionProductCard(
                 .clip(RoundedCornerShape(8.dp))
         ) {
             if (images.isNotEmpty()) {
-                val url = images.getOrNull(currentIndex) ?: images.first()
-                AnimatedContent(
-                    targetState = url,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "productImage"
-                ) { imgUrl ->
+                images.forEachIndexed { index, url ->
+                    val isActive = index == currentIndex
+                    val alpha by androidx.compose.animation.core.animateFloatAsState(
+                        targetValue = if (isActive) 1f else 0f,
+                        animationSpec = androidx.compose.animation.core.tween(durationMillis = 800),
+                        label = "productImageAlpha"
+                    )
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(imgUrl)
-                            .crossfade(300)
+                            .data(url)
+                            .crossfade(0)
                             .build(),
                         contentDescription = product.title,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                this.alpha = alpha
+                                this.zIndex = if (isActive) 1f else 0f
+                            }
                     )
                 }
             }

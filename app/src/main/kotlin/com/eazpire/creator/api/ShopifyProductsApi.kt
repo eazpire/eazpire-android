@@ -195,18 +195,19 @@ class ShopifyProductsApi(
     }
 
     /**
-     * Filter images to variant-only (preview view). Alt format: "Color|View" (e.g. "Black|front").
+     * Filter images to variant-only (preview view). Alt: "Color|View" or "Color|View|preview-default".
      * Same logic as eaz-product-card-redesign.liquid and getStorefrontProducts.js.
      */
     private fun filterVariantImages(imagesArr: JSONArray): List<String> {
         var primaryView = ""
+        var hasPreviewDefault = false
         for (j in 0 until imagesArr.length()) {
             val img = imagesArr.optJSONObject(j) ?: continue
-            val alt = (img.optString("alt") ?: "").trim()
-            if (alt.contains("|")) {
-                val parts = alt.split("|")
+            val alt = (img.optString("alt") ?: "").trim().lowercase()
+            if (alt.contains("preview-default")) hasPreviewDefault = true
+            if (alt.contains("|") && primaryView.isEmpty()) {
+                val parts = (img.optString("alt") ?: "").trim().split("|")
                 primaryView = (parts.getOrNull(1) ?: "").trim().lowercase()
-                break
             }
         }
         val variantImages = mutableListOf<String>()
@@ -220,7 +221,8 @@ class ShopifyProductsApi(
             val colorKey = (parts.getOrNull(0) ?: "").trim().lowercase()
             val mediaView = (parts.getOrNull(1) ?: "").trim().lowercase()
             if (colorKey.isEmpty()) continue
-            if (primaryView.isNotEmpty() && mediaView != primaryView) continue
+            if (hasPreviewDefault && !alt.lowercase().contains("preview-default")) continue
+            if (!hasPreviewDefault && primaryView.isNotEmpty() && mediaView != primaryView) continue
             val colorToken = "|$colorKey|"
             if (colorToken in usedColors) continue
             usedColors.add(colorToken)
