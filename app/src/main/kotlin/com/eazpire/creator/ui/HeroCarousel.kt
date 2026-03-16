@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
@@ -59,6 +60,7 @@ import org.json.JSONObject
 private const val HERO_AUTO_ADVANCE_MS = 3500L
 private const val HERO_ASPECT_RATIO = 2f / 3f
 private val HERO_HOTSPOT_SIZE = 14.dp
+private val HERO_HOTSPOT_TOUCH_TARGET = 48.dp
 private val HERO_HOTSPOT_RING = 3.dp
 private const val STORE_BASE_URL = "https://www.eazpire.com"
 
@@ -225,6 +227,7 @@ fun HeroCarousel(
                     )
                     if (hero.hotspots.isNotEmpty()) {
                         HeroHotspotsOverlay(
+                            modifier = Modifier.zIndex(1f),
                             hotspots = hero.hotspots,
                             onHotspotClick = { hotspot ->
                                 val handle = when {
@@ -293,10 +296,10 @@ private fun HeroHotspotsOverlay(
     BoxWithConstraints(
         modifier = modifier.fillMaxSize()
     ) {
-        val halfSize = HERO_HOTSPOT_SIZE.value / 2f
+        val halfTouch = HERO_HOTSPOT_TOUCH_TARGET.value / 2f
         hotspots.forEach { hotspot ->
-            val xDp = (hotspot.x * maxWidth.value - halfSize).dp
-            val yDp = (hotspot.y * maxHeight.value - halfSize).dp
+            val xDp = (hotspot.x * maxWidth.value - halfTouch).dp
+            val yDp = (hotspot.y * maxHeight.value - halfTouch).dp
 
             HeroHotspotDot(
                 onClick = { onHotspotClick(hotspot) },
@@ -304,7 +307,7 @@ private fun HeroHotspotsOverlay(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .offset(x = xDp, y = yDp)
-                    .size(HERO_HOTSPOT_SIZE)
+                    .size(HERO_HOTSPOT_TOUCH_TARGET)
             )
         }
     }
@@ -329,33 +332,39 @@ private fun HeroHotspotDot(
 
     Box(
         modifier = modifier
-            .drawBehind {
-                val ringPx = with(density) { HERO_HOTSPOT_RING.toPx() }
-                drawCircle(
-                    color = EazColors.Orange.copy(alpha = 0.4f),
-                    radius = size.minDimension / 2 + ringPx,
-                    center = center
-                )
-            }
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.9f))
-            .border(2.dp, Color.White, CircleShape)
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }
-            ) { onClick() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(6.dp)
+                .size(HERO_HOTSPOT_SIZE)
                 .drawBehind {
+                    val ringPx = with(density) { HERO_HOTSPOT_RING.toPx() }
                     drawCircle(
-                        color = Color.White.copy(alpha = pulseAlpha * 0.5f),
-                        radius = size.minDimension / 2,
+                        color = EazColors.Orange.copy(alpha = 0.4f),
+                        radius = size.minDimension / 2 + ringPx,
                         center = center
                     )
                 }
-        )
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.9f))
+                .border(2.dp, Color.White, CircleShape)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(6.dp)
+                    .drawBehind {
+                        drawCircle(
+                            color = Color.White.copy(alpha = pulseAlpha * 0.5f),
+                            radius = size.minDimension / 2,
+                            center = center
+                        )
+                    }
+            )
+        }
     }
 }

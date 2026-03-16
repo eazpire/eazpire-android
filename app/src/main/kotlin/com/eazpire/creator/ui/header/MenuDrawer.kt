@@ -84,18 +84,6 @@ private val ACCESSORIES_SUBMENU = listOf(
     "Bags" to "Bags", "Jewelry" to "Jewelry", "Hats & Caps" to "Hats", "Scarves" to "Scarves"
 )
 
-private val SECTION_IDS = listOf(
-    "gutscheine", "audience", "home-living", "personalize", "generate"
-)
-
-private val SECTION_LABELS = mapOf(
-    "gutscheine" to "Gift Cards & Coupons",
-    "audience" to "Audience",
-    "home-living" to "Home & Living",
-    "personalize" to "Personalize",
-    "generate" to "Generate"
-)
-
 private val DRAWER_ITEMS = listOf(
     DrawerItem("Women", "women", "https://www.eazpire.com/collections/women"),
     DrawerItem("Men", "men", "https://www.eazpire.com/collections/men"),
@@ -140,12 +128,6 @@ fun MenuDrawer(
     var viewMode by remember { mutableStateOf(viewStore.getViewMode()) }
     var greetingName by remember { mutableStateOf<String?>(null) }
     var hiddenPanelVisible by remember { mutableStateOf(false) }
-    var visibilityTrigger by remember { mutableStateOf(0) }
-    val visibilityStore = remember { SidebarVisibilityStore(context) }
-    val hiddenCount = remember(visibilityTrigger, viewMode) {
-        if (viewMode == SidebarViewMode.Grid) SECTION_IDS.count { !visibilityStore.isSectionVisible(it) }
-        else 0
-    }
 
     LaunchedEffect(Unit) {
         viewMode = viewStore.getViewMode()
@@ -232,7 +214,7 @@ fun MenuDrawer(
                         },
                         hiddenPanelVisible = hiddenPanelVisible,
                         onHiddenPanelToggle = { hiddenPanelVisible = !hiddenPanelVisible },
-                        hiddenCount = hiddenCount,
+                        hiddenCount = 0,
                         onClose = { doDismiss() }
                     )
                     Column(
@@ -244,30 +226,17 @@ fun MenuDrawer(
                         when (viewMode) {
                             SidebarViewMode.Grid -> {
                                 Column(modifier = Modifier.fillMaxWidth()) {
-                                    if (hiddenPanelVisible && hiddenCount > 0) {
-                                        MenuDrawerHiddenPanel(
-                                            visibilityStore = visibilityStore,
-                                            sectionIds = SECTION_IDS,
-                                            sectionLabels = SECTION_LABELS,
-                                            onRestore = { visibilityTrigger++ }
-                                        )
-                                    }
                                     MenuDrawerGiftCardsSection(
-                                        tokenStore = tokenStore,
-                                        visibilityStore = visibilityStore,
-                                        sectionId = "gutscheine",
-                                        onVisibilityChange = { visibilityTrigger++ }
+                                        tokenStore = tokenStore
                                     )
                                     MenuDrawerGridView(
-                                    items = DRAWER_ITEMS,
-                                    audienceHandles = AUDIENCE_HANDLES,
-                                    context = context,
-                                    onCategoryClick = onCategoryClick,
-                                    onExternalUrl = onExternalUrl,
-                                    dismissWithAnimation = { doDismiss() },
-                                    visibilityStore = visibilityStore,
-                                    onVisibilityChange = { visibilityTrigger++ }
-                                )
+                                        items = DRAWER_ITEMS,
+                                        audienceHandles = AUDIENCE_HANDLES,
+                                        context = context,
+                                        onCategoryClick = onCategoryClick,
+                                        onExternalUrl = onExternalUrl,
+                                        dismissWithAnimation = { doDismiss() }
+                                    )
                                 }
                             }
                             SidebarViewMode.List -> MenuDrawerListView(
@@ -353,33 +322,33 @@ private fun MenuDrawerGiftCardsSection(tokenStore: SecureTokenStore?) {
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Gift Cards & Coupons",
-                style = MaterialTheme.typography.titleSmall,
-                color = EazColors.TextPrimary
-            )
-            val badgeCount = giftCards.count { it.optDouble("balance", 0.0) > 0 } +
-                coupons.count { it.optString("status") == "active" }
-            if (badgeCount > 0) {
                 Text(
-                    text = "$badgeCount",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .background(EazColors.Orange, androidx.compose.foundation.shape.CircleShape)
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                    text = "Gift Cards & Coupons",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = EazColors.TextPrimary
                 )
-            }
-            Icon(
-                imageVector = Icons.Default.ExpandMore,
-                contentDescription = if (expanded) "Collapse" else "Expand",
-                tint = EazColors.TextPrimary,
-                modifier = Modifier
-                    .padding(start = 4.dp)
-                    .rotate(if (expanded) 180f else 0f)
-                    .size(20.dp)
-            )
+                val badgeCount = giftCards.count { it.optDouble("balance", 0.0) > 0 } +
+                    coupons.count { it.optString("status") == "active" }
+                if (badgeCount > 0) {
+                    Text(
+                        text = "$badgeCount",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .background(EazColors.Orange, androidx.compose.foundation.shape.CircleShape)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = EazColors.TextPrimary,
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .rotate(if (expanded) 180f else 0f)
+                        .size(20.dp)
+                )
         }
         if (expanded) {
             Row(
