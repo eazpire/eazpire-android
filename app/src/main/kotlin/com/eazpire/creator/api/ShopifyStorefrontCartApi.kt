@@ -140,6 +140,26 @@ class ShopifyStorefrontCartApi(
         }
     }
 
+    suspend fun updateBuyerIdentity(cartId: String, customerAccessToken: String): Boolean = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("cartId", cartId)
+            put("customerAccessToken", customerAccessToken)
+        }
+        val request = Request.Builder()
+            .url("$workerUrl/apps/creator-dispatch?op=storefront-cart-buyer-identity-update")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .addHeader("Content-Type", "application/json")
+            .build()
+        try {
+            val response = client.newCall(request).execute()
+            val respBody = response.body?.string() ?: "{}"
+            val json = JSONObject(respBody)
+            json.optBoolean("ok", false)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     suspend fun getCart(cartId: String): CartResult? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$workerUrl/apps/creator-dispatch?op=storefront-cart&cartId=${java.net.URLEncoder.encode(cartId, "UTF-8")}")

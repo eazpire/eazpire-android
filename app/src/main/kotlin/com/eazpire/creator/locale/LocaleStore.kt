@@ -26,7 +26,7 @@ private val COUNTRY_TO_REGION = mapOf(
     "US" to "US",
     "CA" to "CA",
     "AU" to "AU",
-    "NZ" to "AU_NZ",
+    "NZ" to "AU",
     "CN" to "CN",
 )
 

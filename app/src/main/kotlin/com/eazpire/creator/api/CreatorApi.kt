@@ -384,10 +384,11 @@ class CreatorApi(
     )
 
     /** GET ?op=get-shopify-products&shop=xxx&owner_id=xxx → { ok, products: [...] } */
-    suspend fun getShopifyProducts(shop: String? = null, ownerId: String? = null): JSONObject {
+    suspend fun getShopifyProducts(shop: String? = null, ownerId: String? = null, region: String? = null): JSONObject {
         val params = mutableMapOf<String, String>()
         shop?.let { params["shop"] = it }
         ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
+        region?.takeIf { it.isNotBlank() }?.let { params["region"] = it }
         return call("get-shopify-products", params)
     }
 
@@ -398,9 +399,12 @@ class CreatorApi(
     )
 
     /** GET ?op=hero-published-random&limit=4 → { ok, images: [{ id, image_url, thumbnail_url, title }] } */
-    suspend fun getHeroPublishedRandom(limit: Int = 4): JSONObject = call(
+    suspend fun getHeroPublishedRandom(limit: Int = 4, region: String? = null): JSONObject = call(
         "hero-published-random",
-        mapOf("limit" to limit.toString())
+        mutableMapOf<String, String>().apply {
+            put("limit", limit.toString())
+            region?.takeIf { it.isNotBlank() }?.let { put("region", it) }
+        }
     )
 
     /** POST ?op=upload-hero-image&owner_id=xxx – multipart: image, slot */
@@ -436,7 +440,8 @@ class CreatorApi(
         prompt: String,
         productImageUrls: List<String>? = null,
         modelImageUrl: String? = null,
-        backgroundImageUrl: String? = null
+        backgroundImageUrl: String? = null,
+        region: String? = null
     ): JSONObject = postJson(
         "hero-generate",
         mapOf(
@@ -445,7 +450,8 @@ class CreatorApi(
             "prompt" to prompt,
             "product_image_urls" to (productImageUrls?.let { org.json.JSONArray(it) } ?: org.json.JSONArray()),
             "model_image_url" to modelImageUrl,
-            "background_image_url" to backgroundImageUrl
+            "background_image_url" to backgroundImageUrl,
+            "region" to region
         )
     )
 

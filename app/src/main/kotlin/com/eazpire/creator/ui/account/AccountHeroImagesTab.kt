@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,14 +55,27 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private val HERO_REGION_TABS_ANDROID = listOf(
+    "EU" to "Europa",
+    "US" to "USA",
+    "GB" to "UK",
+    "CA" to "Kanada",
+    "AU" to "Australien",
+    "CN" to "China",
+    "OTHER" to "Sonstige"
+)
 
 data class HeroProduct(
     val id: String,
     val title: String,
     val image: String?,
-    val productType: String?
+    val productType: String?,
+    val productKey: String?,
+    val region: String
 )
 
 @Composable
@@ -73,6 +87,8 @@ fun AccountHeroImagesTab(
     val scope = rememberCoroutineScope()
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
+    val localeStore = remember { LocaleStore(context) }
+    val localeRegion by localeStore.regionCode.collectAsState(initial = localeStore.getRegionCodeSync())
 
     var products by remember { mutableStateOf<List<HeroProduct>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -88,6 +104,9 @@ fun AccountHeroImagesTab(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var showProductPicker by remember { mutableStateOf(false) }
     var pickerCategory by remember { mutableStateOf("top") }
+    var selectedRegion by remember { mutableStateOf(localeRegion) }
+    var lockedRegion by remember { mutableStateOf<String?>(null) }
+    var regionLockMessage by remember { mutableStateOf<String?>(null) }
     var showConfirmDialog by remember { mutableStateOf(false) }
     var confirmCost by remember { mutableStateOf(0.5) }
     var confirmBalance by remember { mutableStateOf(0.0) }
@@ -122,7 +141,20 @@ fun AccountHeroImagesTab(
             if (ownerId.isBlank()) return@launch
             loading = true
             try {
-                val resp = api.getShopifyProducts(AuthConfig.SHOP_DOMAIN, ownerId)
+                val catalogResp = api.getCatalogProducts(selectedRegion)
+                val allowedKeys = mutableSetOf<String>()
+                if (catalogResp.optBoolean("ok", false)) {
+                    val arrOnline = catalogResp.optJSONArray("products") ?: org.json.JSONArray()
+                    val arrPreview = catalogResp.optJSONArray("preview_products") ?: org.json.JSONArray()
+                    for (i in 0 until arrOnline.length()) {
+                        arrOnline.optJSONObject(i)?.optString("product_key", null)?.takeIf { it.isNotBlank() }?.let { allowedKeys.add(it) }
+                    }
+                    for (i in 0 until arrPreview.length()) {
+                        arrPreview.optJSONObject(i)?.optString("product_key", null)?.takeIf { it.isNotBlank() }?.let { allowedKeys.add(it) }
+                    }
+                }
+
+                val resp = api.getShopifyProducts(AuthConfig.SHOP_DOMAIN, ownerId, selectedRegion)
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("products") ?: org.json.JSONArray()
                     products = (0 until arr.length()).mapNotNull { i ->
@@ -134,11 +166,15 @@ fun AccountHeroImagesTab(
                         }
                         val id = obj.optString("id", "")
                         if (id.isBlank()) return@mapNotNull null
+                        val productKey = obj.optString("product_key", null).takeIf { it.isNotBlank() }
+                        if (allowedKeys.isNotEmpty() && (productKey == null || !allowedKeys.contains(productKey))) return@mapNotNull null
                         HeroProduct(
                             id = id,
                             title = obj.optString("title", ""),
                             image = img,
-                            productType = obj.optString("product_type", null).takeIf { it.isNotBlank() }
+                            productType = obj.optString("product_type", null).takeIf { it.isNotBlank() },
+                            productKey = productKey,
+                            region = selectedRegion
                         )
                     }
                 }
@@ -147,7 +183,13 @@ fun AccountHeroImagesTab(
         }
     }
 
-    LaunchedEffect(ownerId) {
+    LaunchedEffect(localeRegion) {
+        if (lockedRegion == null && selectedTop == null && selectedAddition == null) {
+            selectedRegion = localeRegion
+        }
+    }
+
+    LaunchedEffect(ownerId, selectedRegion) {
         if (ownerId.isNotBlank()) loadProducts()
     }
 
@@ -190,7 +232,8 @@ fun AccountHeroImagesTab(
                     prompt = prompt.ifBlank { "Professional product photography with natural lighting and clean background" },
                     productImageUrls = productImageUrls,
                     modelImageUrl = modelUrl,
-                    backgroundImageUrl = backgroundUrl
+                    backgroundImageUrl = backgroundUrl,
+                    region = selectedRegion
                 )
                 if (genResp.optBoolean("ok", false)) {
                     val jid = genResp.optString("job_id", null)
@@ -246,6 +289,10 @@ fun AccountHeroImagesTab(
                 onClick = { pickerCategory = "addition"; showProductPicker = true },
                 modifier = Modifier.weight(1f)
             )
+        }
+        if (!regionLockMessage.isNullOrBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(regionLockMessage!!, style = MaterialTheme.typography.bodySmall, color = EazColors.Orange)
         }
         Spacer(Modifier.height(24.dp))
 
@@ -331,12 +378,25 @@ fun AccountHeroImagesTab(
             HeroProductPickerModal(
                 products = products,
                 category = pickerCategory,
+                currentRegion = selectedRegion,
+                lockedRegion = lockedRegion,
                 loading = loading,
+                onRegionChange = { nextRegion ->
+                    if (lockedRegion != null && lockedRegion != nextRegion) {
+                        regionLockMessage = "Nur eine Region pro Hero-Entwurf erlaubt."
+                    } else {
+                        regionLockMessage = null
+                        selectedRegion = nextRegion
+                    }
+                },
                 onSelect = { product ->
                     when (pickerCategory) {
                         "top" -> selectedTop = product
                         "addition" -> selectedAddition = product
                     }
+                    lockedRegion = product.region
+                    selectedRegion = product.region
+                    regionLockMessage = null
                     showProductPicker = false
                 },
                 onDismiss = { showProductPicker = false }
@@ -441,7 +501,10 @@ private fun HeroUploadCard(
 private fun HeroProductPickerModal(
     products: List<HeroProduct>,
     category: String,
+    currentRegion: String,
+    lockedRegion: String?,
     loading: Boolean,
+    onRegionChange: (String) -> Unit,
     onSelect: (HeroProduct) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -467,6 +530,31 @@ private fun HeroProductPickerModal(
                 Text("Select $category", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Default.Close, null, tint = EazColors.TextPrimary)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                HERO_REGION_TABS_ANDROID.forEach { (code, label) ->
+                    val lockedOut = lockedRegion != null && lockedRegion != code
+                    val active = currentRegion == code
+                    Text(
+                        text = label,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .border(
+                                1.dp,
+                                if (active) EazColors.Orange else EazColors.Orange.copy(alpha = 0.4f),
+                                RoundedCornerShape(999.dp)
+                            )
+                            .background(if (active) EazColors.Orange.copy(alpha = 0.25f) else EazColors.OrangeBg.copy(alpha = 0.12f))
+                            .clickable(enabled = !lockedOut) { onRegionChange(code) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = if (lockedOut) EazColors.TextSecondary.copy(alpha = 0.6f) else EazColors.TextPrimary,
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
             }
             Spacer(Modifier.height(16.dp))

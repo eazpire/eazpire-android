@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -126,12 +128,14 @@ fun HeroCarousel(
 ) {
     val context = LocalContext.current
     val api = remember { CreatorApi() }
+    val localeStore = remember { LocaleStore(context) }
+    val heroRegion by localeStore.regionCode.collectAsState(initial = localeStore.getRegionCodeSync())
     var heroImages by remember { mutableStateOf<List<HeroImage>>(emptyList()) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(heroRegion) {
         heroImages = withContext(Dispatchers.IO) {
             try {
-                val json = api.getHeroPublishedRandom(limit = 6)
+                val json = api.getHeroPublishedRandom(limit = 6, region = heroRegion)
                 if (json.optBoolean("ok", false)) {
                     val arr = json.optJSONArray("images") ?: json.optJSONArray("items")
                     if (arr != null) {

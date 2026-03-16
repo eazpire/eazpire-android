@@ -23,9 +23,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.AuthConfig
+import com.eazpire.creator.cart.StorefrontCartStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.eazpire.creator.auth.AuthException
 import com.eazpire.creator.auth.PkceUtils
 import com.eazpire.creator.auth.SecureTokenStore
@@ -39,7 +44,10 @@ fun AuthScreen(
     onCheckUpdate: (() -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val authService = remember { ShopifyAuthService() }
+    val storefrontCartStore = remember { StorefrontCartStore(context) }
+    val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
     var showWebView by remember { mutableStateOf(false) }
     var authUrl by remember { mutableStateOf<String?>(null) }
     var codeVerifier by remember { mutableStateOf<String?>(null) }
@@ -89,6 +97,13 @@ fun AuthScreen(
                 val tokens = authService.exchangeCodeForTokens(code, verifier)
                 val result = authService.exchangeShopifyTokenForJwt(tokens.accessToken, tokens.idToken.ifBlank { null })
                 tokenStore.saveTokens(result.jwt, result.ownerId, tokens.accessToken.ifBlank { null })
+                // Link guest cart to customer for address prefill at checkout
+                val cartId = storefrontCartStore.cartId
+                if (cartId != null && tokens.accessToken.isNotBlank()) {
+                    withContext(Dispatchers.IO) {
+                        storefrontCartApi.updateBuyerIdentity(cartId, tokens.accessToken)
+                    }
+                }
                 onAuthSuccess()
             } catch (e: AuthException) {
                 error = e.message
