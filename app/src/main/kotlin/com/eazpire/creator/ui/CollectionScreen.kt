@@ -206,6 +206,7 @@ private fun sortProducts(
 fun CollectionScreen(
     title: String,
     collectionHandle: String,
+    initialProductType: String? = null,
     onBack: () -> Unit,
     onProductClick: (ShopifyProductsApi.ProductItem) -> Unit,
     modifier: Modifier = Modifier
@@ -227,12 +228,17 @@ fun CollectionScreen(
     val products = productsByPage[currentPage] ?: emptyList()
     val totalPages = maxOf(1, if (hasNextPage) currentPage + 1 else currentPage)
 
-    LaunchedEffect(collectionHandle) {
+    LaunchedEffect(collectionHandle, initialProductType) {
         productsByPage = emptyMap()
         pageCursors = listOf(null)
         hasNextPage = false
         currentPage = 1
         filterCountProducts = emptyList()
+        productFilters = if (initialProductType != null) {
+            ProductFilters(productTypes = setOf(initialProductType))
+        } else {
+            ProductFilters()
+        }
     }
 
     LaunchedEffect(collectionHandle, currentPage) {

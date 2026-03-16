@@ -46,6 +46,10 @@ fun MainHeader(
     onAccountClick: () -> Unit = {},
     onLogoClick: () -> Unit = {},
     currentPagePath: String = "/",
+    cartDrawerVisibleControl: Boolean? = null,
+    onCartDrawerChange: ((Boolean) -> Unit)? = null,
+    favoritesModalVisibleControl: Boolean? = null,
+    onFavoritesModalChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
@@ -70,7 +74,9 @@ fun MainHeader(
         } catch (_: Exception) { /* keep fallback */ }
     }
     var isCreatorMode by remember { mutableStateOf(false) }
-    var cartDrawerVisible by remember { mutableStateOf(false) }
+    var internalCartDrawerVisible by remember { mutableStateOf(false) }
+    val cartDrawerVisible = cartDrawerVisibleControl ?: internalCartDrawerVisible
+    val onCartDrawerChangeActual = onCartDrawerChange ?: { internalCartDrawerVisible = it }
     var checkoutUrl by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val storefrontCartStore = remember { StorefrontCartStore(context) }
@@ -94,7 +100,9 @@ fun MainHeader(
             }
         }
     }
-    var favoritesModalVisible by remember { mutableStateOf(false) }
+    var internalFavoritesModalVisible by remember { mutableStateOf(false) }
+    val favoritesModalVisible = favoritesModalVisibleControl ?: internalFavoritesModalVisible
+    val onFavoritesModalChangeActual = onFavoritesModalChange ?: { internalFavoritesModalVisible = it }
     var favoritesCount by remember { mutableStateOf(0) }
     val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
     val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
@@ -179,11 +187,11 @@ fun MainHeader(
                 onAccountClick = onAccountClick,
                 onFavoritesClick = {
                     DebugLog.click("Favorites icon")
-                    favoritesModalVisible = true
+                    onFavoritesModalChangeActual(true)
                 },
                 onCartClick = {
                     DebugLog.click("Cart icon")
-                    cartDrawerVisible = true
+                    onCartDrawerChangeActual(true)
                 }
             )
         }
@@ -202,10 +210,10 @@ fun MainHeader(
         CartDrawer(
             visible = cartDrawerVisible,
             tokenStore = tokenStore,
-            onDismiss = { cartDrawerVisible = false },
+            onDismiss = { onCartDrawerChangeActual(false) },
             onCheckout = { url ->
                 checkoutUrl = url
-                cartDrawerVisible = false
+                onCartDrawerChangeActual(false)
             }
         )
         if (checkoutUrl != null) {
@@ -219,7 +227,7 @@ fun MainHeader(
             visible = favoritesModalVisible,
             customerId = ownerId.ifBlank { null },
             api = api,
-            onDismiss = { favoritesModalVisible = false },
+            onDismiss = { onFavoritesModalChangeActual(false) },
             onCountChange = { favoritesCount = it }
         )
     }

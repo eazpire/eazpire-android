@@ -1,5 +1,7 @@
 package com.eazpire.creator.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -45,9 +47,11 @@ fun ShopScreen(
     var showLoginOptions by remember { mutableStateOf(false) }
     var showAuthScreen by remember { mutableStateOf(false) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
+    var cartDrawerVisible by remember { mutableStateOf(false) }
+    var favoritesModalVisible by remember { mutableStateOf(false) }
     var currentPagePath by remember { mutableStateOf("/") }
     var scrollToTopTrigger by remember { mutableStateOf(0) }
-    var selectedCollection by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     var productModalHandle by remember { mutableStateOf<String?>(null) }
 
@@ -66,6 +70,10 @@ fun ShopScreen(
                     localeStore = localeStore,
                     tokenStore = tokenStore,
                     currentPagePath = selectedCollection?.let { "/collections/${it.second}" } ?: currentPagePath,
+                    cartDrawerVisibleControl = cartDrawerVisible,
+                    onCartDrawerChange = { cartDrawerVisible = it },
+                    favoritesModalVisibleControl = favoritesModalVisible,
+                    onFavoritesModalChange = { favoritesModalVisible = it },
                     onLogoClick = {
                         accountModalVisible = false
                         showLoginOptions = false
@@ -94,7 +102,7 @@ fun ShopScreen(
                     },
                     onCategoryClick = { title, handle ->
                         selectedProductHandle = null
-                        selectedCollection = title to handle
+                        selectedCollection = Triple(title, handle, null)
                     },
                     selectedHandle = selectedCollection?.second
                 )
@@ -133,21 +141,22 @@ fun ShopScreen(
                     tokenStore = tokenStore
                 )
                 selectedCollection != null -> {
-                    val (title, handle) = selectedCollection!!
+                    val (title, handle, productType) = selectedCollection!!
                     CollectionScreen(
                         title = title,
                         collectionHandle = handle,
+                        initialProductType = productType,
                         onBack = { selectedCollection = null },
                         onProductClick = { selectedProductHandle = it.handle }
                     )
                 }
                 else -> ProductCarouselSection(
                     onCurrentPageChange = { currentPagePath = it },
-                    onCategoryClick = { title, h -> selectedCollection = title to h },
+                    onCategoryClick = { title, h -> selectedCollection = Triple(title, h, null) },
                     onProductClick = { params ->
                         selectedProductHandle = params.handle
                         if (params.collectionTitle != null && params.collectionHandle != null) {
-                            selectedCollection = params.collectionTitle to params.collectionHandle
+                            selectedCollection = Triple(params.collectionTitle, params.collectionHandle, null)
                         }
                     },
                     onHotspotProductClick = { handle -> productModalHandle = handle },
@@ -159,17 +168,36 @@ fun ShopScreen(
 
     MenuDrawer(
         visible = menuDrawerVisible,
+        tokenStore = tokenStore,
+        cartCount = com.eazpire.creator.cart.AppCartStore.itemCount,
         onDismiss = { menuDrawerVisible = false },
-        onCategoryClick = { title, handle, _ ->
+        onCategoryClick = { title, handle, productType ->
             menuDrawerVisible = false
             selectedProductHandle = null
-            selectedCollection = title to handle
+            selectedCollection = Triple(title, handle, productType)
         },
         onExternalUrl = { url ->
             menuDrawerVisible = false
             try {
-                context.startActivity(Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             } catch (_: Exception) {}
+        },
+        onHomeClick = {
+            menuDrawerVisible = false
+            selectedCollection = null
+            selectedProductHandle = null
+        },
+        onCartClick = {
+            menuDrawerVisible = false
+            cartDrawerVisible = true
+        },
+        onFavoritesClick = {
+            menuDrawerVisible = false
+            favoritesModalVisible = true
+        },
+        onAccountClick = {
+            menuDrawerVisible = false
+            accountModalVisible = true
         }
     )
 

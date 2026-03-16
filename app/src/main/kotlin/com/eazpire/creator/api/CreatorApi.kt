@@ -66,6 +66,24 @@ class CreatorApi(
     )
 
     /**
+     * GET ?op=get-customer-gift-cards&customer_id=xxx&shop=xxx
+     * Returns { ok: true, gift_cards: [...] }
+     */
+    suspend fun getCustomerGiftCards(customerId: String, shop: String): JSONObject = call(
+        "get-customer-gift-cards",
+        mapOf("customer_id" to customerId, "shop" to shop)
+    )
+
+    /**
+     * GET ?op=get-promo-slots&customer_id=xxx
+     * Returns { ok: true, slots: [...] } – creator promo codes
+     */
+    suspend fun getPromoSlots(customerId: String): JSONObject = call(
+        "get-promo-slots",
+        mapOf("customer_id" to customerId)
+    )
+
+    /**
      * GET ?op=get-customer-email&customer_id=xxx&shop=xxx
      * Returns { ok: true, email: "user@example.com" } – email from Shopify account.
      * Shop must match the shop the user logged in with (e.g. AuthConfig.SHOP_DOMAIN).
