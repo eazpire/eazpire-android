@@ -58,8 +58,65 @@ class ShopifyProductsApi(
         if (storefront.products.isNotEmpty()) {
             return@withContext storefront
         }
-        // Fallback: products.json (ohne Metafields, aber Produkte werden angezeigt)
-        fetchFromProductsJson(collectionHandle, limit, cursor)
+        // Fallback: products.json – mit Metafields-Anreicherung via Worker
+        val result = fetchFromProductsJson(collectionHandle, limit, cursor)
+        if (result.products.isNotEmpty()) {
+            val metafields = fetchMetafieldsFromWorker(result.products.map { it.handle })
+            val enriched = result.products.map { p ->
+                val mf = metafields[p.handle]
+                if (mf != null) p.copy(
+                    contentType = mf.contentType,
+                    designType = mf.designType,
+                    designStyle = mf.designStyle,
+                    ratio = mf.ratio,
+                    designLanguage = mf.designLanguage
+                ) else p
+            }
+            return@withContext result.copy(products = enriched)
+        }
+        return@withContext result
+    }
+
+    private data class ProductMetafields(
+        val contentType: String,
+        val designType: String,
+        val designStyle: List<String>,
+        val ratio: String,
+        val designLanguage: String
+    )
+
+    private fun fetchMetafieldsFromWorker(handles: List<String>): Map<String, ProductMetafields> {
+        if (handles.isEmpty()) return emptyMap()
+        val handlesParam = handles.take(50).joinToString(",") { java.net.URLEncoder.encode(it, "UTF-8") }
+        val url = "$workerUrl/apps/creator-dispatch?op=get-storefront-metafields&handles=$handlesParam"
+        return try {
+            val request = Request.Builder().url(url).build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: "{}"
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+            if (!json.optBoolean("ok", false)) return emptyMap()
+            val mfObj = json.optJSONObject("metafields") ?: return emptyMap()
+            val keys = mfObj.keys()
+            val result = mutableMapOf<String, ProductMetafields>()
+            while (keys.hasNext()) {
+                val handle = keys.next()
+                val obj = mfObj.optJSONObject(handle) ?: continue
+                val styleArr = obj.optJSONArray("designStyle")
+                val designStyle = if (styleArr != null) {
+                    (0 until styleArr.length()).mapNotNull { styleArr.optString(it).takeIf { s -> s.isNotBlank() } }
+                } else emptyList()
+                result[handle] = ProductMetafields(
+                    contentType = obj.optString("contentType", ""),
+                    designType = obj.optString("designType", ""),
+                    designStyle = designStyle,
+                    ratio = obj.optString("ratio", ""),
+                    designLanguage = obj.optString("designLanguage", "")
+                )
+            }
+            result
+        } catch (_: Exception) {
+            emptyMap()
+        }
     }
 
     private fun fetchFromStorefrontApi(
