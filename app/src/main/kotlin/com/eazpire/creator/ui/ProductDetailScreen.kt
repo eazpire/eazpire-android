@@ -71,6 +71,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.ui.footer.GlobalFooter
+import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import kotlinx.coroutines.Dispatchers
@@ -786,11 +787,12 @@ fun ProductDetailScreen(
         }
     }
 
-    // In-app Checkout WebView: add to cart, then redirect to checkout
+    // Checkout as right-side drawer (like Cart)
     val params = checkoutParams
     if (checkoutWebViewVisible && params != null) {
         val (storeBase, variantId, qty) = params
-        CheckoutWebViewScreen(
+        CheckoutDrawer(
+            visible = true,
             storeBase = storeBase,
             variantId = variantId,
             quantity = qty,
@@ -799,48 +801,6 @@ fun ProductDetailScreen(
                 checkoutParams = null
             }
         )
-    }
-}
-
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun CheckoutWebViewScreen(
-    storeBase: String,
-    variantId: Long,
-    quantity: Int,
-    onDismiss: () -> Unit
-) {
-    val cartAddUrl = "$storeBase/cart/$variantId:${quantity.coerceAtLeast(1)}"
-    val checkoutUrl = "$storeBase/checkout"
-    Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
-        AndroidView(
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    settings.javaScriptEnabled = true
-                    webViewClient = object : WebViewClient() {
-                        private var hasRedirected = false
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            if (!hasRedirected && url != null && (url.contains("/cart") || url.contains(storeBase))) {
-                                hasRedirected = true
-                                view?.loadUrl(checkoutUrl)
-                            }
-                        }
-                    }
-                    loadUrl(cartAddUrl)
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-        IconButton(
-            onClick = onDismiss,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-        ) {
-            Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
-        }
     }
 }
 
