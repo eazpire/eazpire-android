@@ -44,22 +44,28 @@ import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
 import kotlin.math.roundToInt
 
-private data class DrawerItem(val label: String, val url: String)
+private data class DrawerItem(
+    val label: String,
+    val collectionHandle: String?,
+    val url: String
+)
 
 private val DRAWER_ITEMS = listOf(
-    DrawerItem("Women", "https://www.eazpire.com/collections/women"),
-    DrawerItem("Men", "https://www.eazpire.com/collections/men"),
-    DrawerItem("Kids", "https://www.eazpire.com/collections/kids"),
-    DrawerItem("Toddler", "https://www.eazpire.com/collections/toddler"),
-    DrawerItem("Home & Living", "https://www.eazpire.com/collections/home-living"),
-    DrawerItem("Personalize", "https://www.eazpire.com/pages/design-generator"),
-    DrawerItem("Generate", "https://www.eazpire.com/pages/design-generator"),
+    DrawerItem("Women", "women", "https://www.eazpire.com/collections/women"),
+    DrawerItem("Men", "men", "https://www.eazpire.com/collections/men"),
+    DrawerItem("Kids", "kids", "https://www.eazpire.com/collections/kids"),
+    DrawerItem("Toddler", "toddler", "https://www.eazpire.com/collections/toddler"),
+    DrawerItem("Home & Living", "home-living", "https://www.eazpire.com/collections/home-living"),
+    DrawerItem("Personalize", null, "https://www.eazpire.com/pages/design-generator"),
+    DrawerItem("Generate", null, "https://www.eazpire.com/pages/design-generator"),
 )
 
 @Composable
 fun MenuDrawer(
     visible: Boolean,
     onDismiss: () -> Unit,
+    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)? = null,
+    onExternalUrl: ((url: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -150,12 +156,20 @@ fun MenuDrawer(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        try {
-                                            context.startActivity(
-                                                Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
-                                            )
+                                        if (item.collectionHandle != null && onCategoryClick != null) {
+                                            onCategoryClick(item.label, item.collectionHandle, null)
                                             dismissWithAnimation()
-                                        } catch (_: Exception) {}
+                                        } else if (onExternalUrl != null) {
+                                            onExternalUrl(item.url)
+                                            dismissWithAnimation()
+                                        } else {
+                                            try {
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
+                                                )
+                                                dismissWithAnimation()
+                                            } catch (_: Exception) {}
+                                        }
                                     }
                                     .padding(horizontal = 20.dp, vertical = 12.dp)
                             ) {

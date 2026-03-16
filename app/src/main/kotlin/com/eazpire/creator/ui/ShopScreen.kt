@@ -86,10 +86,16 @@ fun ShopScreen(
                 )
                 ShopMenuBar(
                     onAllClick = {
-                        if (selectedCollection != null) selectedCollection = null
-                        else menuDrawerVisible = true
+                        when {
+                            selectedProductHandle != null -> menuDrawerVisible = true
+                            selectedCollection != null -> selectedCollection = null
+                            else -> menuDrawerVisible = true
+                        }
                     },
-                    onCategoryClick = { title, handle -> selectedCollection = title to handle },
+                    onCategoryClick = { title, handle ->
+                        selectedProductHandle = null
+                        selectedCollection = title to handle
+                    },
                     selectedHandle = selectedCollection?.second
                 )
                 if (selectedCollection != null || selectedProductHandle != null) {
@@ -153,7 +159,18 @@ fun ShopScreen(
 
     MenuDrawer(
         visible = menuDrawerVisible,
-        onDismiss = { menuDrawerVisible = false }
+        onDismiss = { menuDrawerVisible = false },
+        onCategoryClick = { title, handle, _ ->
+            menuDrawerVisible = false
+            selectedProductHandle = null
+            selectedCollection = title to handle
+        },
+        onExternalUrl = { url ->
+            menuDrawerVisible = false
+            try {
+                context.startActivity(Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+            } catch (_: Exception) {}
+        }
     )
 
     if (accountModalVisible) {
