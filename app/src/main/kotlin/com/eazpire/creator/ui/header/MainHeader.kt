@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,27 +51,7 @@ fun MainHeader(
     onFavoritesModalChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
-    val languageCode by localeStore.languageCode.collectAsState(initial = localeStore.getLanguageCodeSync())
     var searchQuery by remember { mutableStateOf("") }
-    var languageStandard by remember { mutableStateOf(AVAILABLE_LANGUAGES) }
-    var languageChildren by remember { mutableStateOf<Map<String, LanguageChildren>>(emptyMap()) }
-
-    LaunchedEffect(Unit) {
-        try {
-            val api = CreatorApi()
-            val resp = api.getLanguages()
-            if (resp.standard.isNotEmpty()) {
-                languageStandard = resp.standard.map { LocaleModalItem(it.code, it.label, it.flagCode) }
-                languageChildren = resp.children.mapValues { (_, v) ->
-                    LanguageChildren(
-                        dialects = v.dialects.map { LocaleModalItem(it.code, it.label, it.flagCode) },
-                        scripts = v.scripts.map { LocaleModalItem(it.code, it.label, it.flagCode) }
-                    )
-                }.mapKeys { it.key.lowercase() }
-            }
-        } catch (_: Exception) { /* keep fallback */ }
-    }
     var isCreatorMode by remember { mutableStateOf(false) }
     var internalCartDrawerVisible by remember { mutableStateOf(false) }
     val cartDrawerVisible = cartDrawerVisibleControl ?: internalCartDrawerVisible
@@ -108,18 +87,12 @@ fun MainHeader(
     val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
     var shareUrl by remember { mutableStateOf<String?>(null) }
 
-    val favoritesRefreshTrigger = com.eazpire.creator.favorites.FavoritesRefreshTrigger.value
-    LaunchedEffect(ownerId, favoritesRefreshTrigger) {
+    LaunchedEffect(ownerId) {
         if (ownerId.isNotBlank()) {
             try {
-                val resp = api.getFavorites(ownerId)
-                if (resp.optBoolean("ok", false)) {
-                    favoritesCount = resp.optInt("count", 0)
-                }
                 shareUrl = getActiveRefUrl(api, ownerId)
             } catch (_: Exception) {}
         } else {
-            favoritesCount = 0
             shareUrl = null
         }
     }
@@ -138,7 +111,7 @@ fun MainHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HeaderLogo(onClick = null)
+                HeaderLogo(onClick = onLogoClick)
                 val ctx = LocalContext.current
                 IconButton(
                     onClick = {
@@ -163,36 +136,6 @@ fun MainHeader(
             CreatorSwitch(
                 isCreatorMode = isCreatorMode,
                 onModeChange = { isCreatorMode = it }
-            )
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 1.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            HeaderLocaleRow(
-                localeStore = localeStore,
-                countryCode = countryCode,
-                languageCode = languageCode,
-                standardLanguages = languageStandard,
-                languageChildren = languageChildren,
-                onCountryChange = { },
-                onLanguageChange = { }
-            )
-            HeaderActions(
-                cartCount = com.eazpire.creator.cart.AppCartStore.itemCount,
-                favoritesCount = favoritesCount,
-                onAccountClick = onAccountClick,
-                onFavoritesClick = {
-                    DebugLog.click("Favorites icon")
-                    onFavoritesModalChangeActual(true)
-                },
-                onCartClick = {
-                    DebugLog.click("Cart icon")
-                    onCartDrawerChangeActual(true)
-                }
             )
         }
         HeaderSearch(
@@ -228,7 +171,9 @@ fun MainHeader(
             customerId = ownerId.ifBlank { null },
             api = api,
             onDismiss = { onFavoritesModalChangeActual(false) },
-            onCountChange = { favoritesCount = it }
+            onCountChange = {
+                com.eazpire.creator.favorites.FavoritesRefreshTrigger.trigger()
+            }
         )
     }
 }

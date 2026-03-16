@@ -2,6 +2,9 @@ package com.eazpire.creator.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -30,6 +33,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,16 +44,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import android.view.MotionEvent
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -57,6 +70,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+private const val TAG_PRODUCT_MODAL = "ProductModalDebug"
 private const val HERO_AUTO_ADVANCE_MS = 3500L
 private const val HERO_ASPECT_RATIO = 2f / 3f
 private val HERO_HOTSPOT_SIZE = 14.dp
@@ -124,23 +138,36 @@ private fun parseHotspots(obj: JSONObject): List<HeroHotspot> {
     return result
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun HeroCarousel(
     onProductClick: ((String) -> Unit)? = null,
     onHotspotProductClick: ((String) -> Unit)? = null,
+    productModalHandleState: MutableState<String?>? = null,
+    fallbackProductHandle: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    // #region agent log
+    debugLog("HeroCarousel.kt:149", "HeroCarousel composed", mapOf("productModalHandleStateNotNull" to (productModalHandleState != null)), "H1")
+    // #endregion
+    Log.d(TAG_PRODUCT_MODAL, "[0] HeroCarousel composed: productModalHandleState=${productModalHandleState != null}")
     val api = remember { CreatorApi() }
     val localeStore = remember { LocaleStore(context) }
     val heroRegion by localeStore.regionCode.collectAsState(initial = localeStore.getRegionCodeSync())
     var heroImages by remember { mutableStateOf<List<HeroImage>>(emptyList()) }
 
-    LaunchedEffect(heroRegion) {
+    LaunchedEffect(heroRegion, fallbackProductHandle) {
         heroImages = withContext(Dispatchers.IO) {
             try {
                 val json = api.getHeroPublishedRandom(limit = 6, region = heroRegion)
+                // #region agent log
+                debugLog("HeroCarousel.kt:165", "Hero API response", mapOf(
+                    "ok" to json.optBoolean("ok", false),
+                    "heroRegion" to heroRegion,
+                    "imagesCount" to (json.optJSONArray("images")?.length() ?: json.optJSONArray("items")?.length() ?: 0)
+                ), "hero_load")
+                // #endregion
                 if (json.optBoolean("ok", false)) {
                     val arr = json.optJSONArray("images") ?: json.optJSONArray("items")
                     if (arr != null) {
@@ -159,9 +186,28 @@ fun HeroCarousel(
                         }.filter { it.imageUrl.isNotBlank() }
                     } else emptyList()
                 } else emptyList()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // #region agent log
+                debugLog("HeroCarousel.kt:188", "Hero API error", mapOf("error" to (e.message ?: "unknown")), "hero_load")
+                // #endregion
                 emptyList()
             }
+        }
+        val useFallback = heroImages.isEmpty() || (heroImages.size == 1 && heroImages[0].id == "fallback")
+        if (useFallback) {
+            val handle = fallbackProductHandle?.takeIf { it.isNotBlank() } ?: "gift-card"
+            heroImages = listOf(
+                HeroImage(
+                    id = "fallback",
+                    imageUrl = "https://picsum.photos/800/600",
+                    thumbnailUrl = null,
+                    title = "Test",
+                    link = null,
+                    hotspots = listOf(
+                        HeroHotspot(0.5f, 0.5f, "/products/$handle", "Test Hotspot", handle)
+                    )
+                )
+            )
         }
     }
 
@@ -183,6 +229,8 @@ fun HeroCarousel(
         }
     }
 
+    var imageSizeByPage by remember { mutableStateOf<Map<Int, Pair<Int, Int>>>(emptyMap()) }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -195,6 +243,16 @@ fun HeroCarousel(
                 userScrollEnabled = heroImages.size > 1
             ) { page ->
                 val hero = heroImages[page]
+                val pageHotspots = when {
+                    hero.hotspots.isNotEmpty() -> hero.hotspots
+                    fallbackProductHandle != null -> listOf(
+                        HeroHotspot(0.5f, 0.5f, "/products/$fallbackProductHandle", "Produkt", fallbackProductHandle)
+                    )
+                    else -> listOf(
+                        HeroHotspot(0.5f, 0.5f, "/products/gift-card", "Produkt", "gift-card")
+                    )
+                }
+                val pageImageSize = imageSizeByPage[page]
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -207,9 +265,18 @@ fun HeroCarousel(
                             .crossfade(300)
                             .build(),
                         contentDescription = hero.title ?: "Hero image",
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(HERO_ASPECT_RATIO)
+                            .aspectRatio(HERO_ASPECT_RATIO),
+                        onSuccess = { success ->
+                            val d = success.result.drawable
+                            val w = d.intrinsicWidth
+                            val h = d.intrinsicHeight
+                            if (w > 0 && h > 0) {
+                                imageSizeByPage = imageSizeByPage + (page to (w to h))
+                            }
+                        }
                     )
                     Box(
                         modifier = Modifier
@@ -225,31 +292,56 @@ fun HeroCarousel(
                                 )
                             )
                     )
-                    if (hero.hotspots.isNotEmpty()) {
+                    if (pageHotspots.isNotEmpty()) {
                         HeroHotspotsOverlay(
-                            modifier = Modifier.zIndex(1f),
-                            hotspots = hero.hotspots,
+                            modifier = Modifier.matchParentSize(),
+                            hotspots = pageHotspots,
+                            imageSize = pageImageSize,
                             onHotspotClick = { hotspot ->
-                                val handle = when {
-                                    hotspot.url != null && hotspot.url.startsWith("/products/") ->
-                                        hotspot.url.removePrefix("/products/").trimEnd('/')
-                                    hotspot.url != null && hotspot.url.contains("/products/") -> {
-                                        val idx = hotspot.url.indexOf("/products/") + "/products/".length
-                                        hotspot.url.substring(idx).trimEnd('/').substringBefore('?').substringBefore('#')
-                                    }
-                                    hotspot.productHandle != null -> hotspot.productHandle
-                                    else -> null
-                                }
+                        val handle = when {
+                            hotspot.url != null && hotspot.url.startsWith("/products/") ->
+                                hotspot.url.removePrefix("/products/").trimEnd('/')
+                            hotspot.url != null && hotspot.url.contains("/products/") -> {
+                                val idx = hotspot.url.indexOf("/products/") + "/products/".length
+                                hotspot.url.substring(idx).trimEnd('/').substringBefore('?').substringBefore('#')
+                            }
+                            hotspot.productHandle != null -> hotspot.productHandle
+                            else -> null
+                        }
+                        Log.d(TAG_PRODUCT_MODAL, "[3] onHotspotClick: handle=$handle productModalState=${productModalHandleState != null}")
                                 if (handle != null && handle.isNotBlank()) {
                                     when {
-                                        onHotspotProductClick != null -> onHotspotProductClick(handle)
+                                        productModalHandleState != null -> {
+                                            // #region agent log
+                                            debugLog("HeroCarousel.kt:288", "Setting productModalHandleState", mapOf(
+                                                "handle" to handle,
+                                                "productModalHandleStateNotNull" to true
+                                            ), "H1")
+                                            // #endregion
+                                            Log.d(TAG_PRODUCT_MODAL, "[4] Setting productModalHandleState.value = $handle")
+                                            productModalHandleState.value = handle
+                                            // #region agent log
+                                            debugLog("HeroCarousel.kt:292", "AFTER productModalHandleState.value = handle", mapOf("handle" to handle), "H2")
+                                            // #endregion
+                                            onHotspotProductClick?.invoke(handle)
+                                        }
+                                        onHotspotProductClick != null -> {
+                                            // #region agent log
+                                            debugLog("HeroCarousel.kt:298", "Using onHotspotProductClick branch", mapOf("handle" to handle), "H4")
+                                            // #endregion
+                                            onHotspotProductClick(handle)
+                                        }
                                         else -> onProductClick?.invoke(handle)
                                     }
                                 } else if (hotspot.url != null && hotspot.url != "#" && hotspot.url.isNotBlank() && !hotspot.url.startsWith("/products/")) {
-                                    val fullUrl = if (hotspot.url.startsWith("http")) hotspot.url else "$STORE_BASE_URL${hotspot.url}"
+                            val fullUrl = if (hotspot.url.startsWith("http")) hotspot.url else "$STORE_BASE_URL${hotspot.url}"
                                     try {
                                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
                                     } catch (_: Exception) { }
+                                } else {
+                                    // #region agent log
+                                    debugLog("HeroCarousel.kt:318", "handle null or blank", mapOf("handle" to handle), "H5")
+                                    // #endregion
                                 }
                             }
                         )
@@ -288,82 +380,200 @@ fun HeroCarousel(
 }
 
 @Composable
-private fun HeroHotspotsOverlay(
-    hotspots: List<HeroHotspot>,
-    onHotspotClick: (HeroHotspot) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    BoxWithConstraints(
-        modifier = modifier.fillMaxSize()
-    ) {
-        val halfTouch = HERO_HOTSPOT_TOUCH_TARGET.value / 2f
-        hotspots.forEach { hotspot ->
-            val xDp = (hotspot.x * maxWidth.value - halfTouch).dp
-            val yDp = (hotspot.y * maxHeight.value - halfTouch).dp
-
-            HeroHotspotDot(
-                onClick = { onHotspotClick(hotspot) },
-                contentDescription = hotspot.title,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .offset(x = xDp, y = yDp)
-                    .size(HERO_HOTSPOT_TOUCH_TARGET)
-            )
-        }
-    }
-}
-
-@Composable
 private fun HeroHotspotDot(
-    onClick: () -> Unit,
     contentDescription: String?,
+    isJustClicked: Boolean = false,
+    onClickAnimationDone: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
     val infiniteTransition = rememberInfiniteTransition(label = "hotspotPulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 0f,
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.35f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
+            animation = tween(1200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "pulse"
     )
+    val clickScale by animateFloatAsState(
+        targetValue = if (isJustClicked) 1.3f else 1f,
+        animationSpec = tween(150, easing = FastOutSlowInEasing),
+        label = "clickScale"
+    )
+    LaunchedEffect(isJustClicked) {
+        if (isJustClicked) {
+            delay(200)
+            onClickAnimationDone()
+        }
+    }
+
+    val ringPx = with(density) { HERO_HOTSPOT_RING.toPx() }
+    val dotRadiusPx = with(density) { (HERO_HOTSPOT_SIZE / 2).toPx() }
+    val baseRadiusPx = dotRadiusPx + ringPx
+    val pulseRadiusPx = baseRadiusPx * pulseScale
+    val pulseSizeDp = with(density) { (pulseRadiusPx * 2).toDp() }
 
     Box(
-        modifier = modifier
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) { onClick() },
+        modifier = modifier.scale(clickScale),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
+                .size(pulseSizeDp)
+                .drawBehind {
+                    drawCircle(
+                        color = EazColors.Orange.copy(alpha = 0.35f),
+                        radius = pulseRadiusPx,
+                        center = center
+                    )
+                }
+        )
+        Box(
+            modifier = Modifier
                 .size(HERO_HOTSPOT_SIZE)
                 .drawBehind {
-                    val ringPx = with(density) { HERO_HOTSPOT_RING.toPx() }
                     drawCircle(
-                        color = EazColors.Orange.copy(alpha = 0.4f),
-                        radius = size.minDimension / 2 + ringPx,
+                        color = EazColors.Orange.copy(alpha = 0.5f),
+                        radius = baseRadiusPx,
                         center = center
                     )
                 }
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.9f))
                 .border(2.dp, Color.White, CircleShape)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(6.dp)
-                    .drawBehind {
-                        drawCircle(
-                            color = Color.White.copy(alpha = pulseAlpha * 0.5f),
-                            radius = size.minDimension / 2,
-                            center = center
-                        )
+        )
+    }
+}
+
+/**
+ * Converts image coordinates (0-1) to container coordinates (0-1).
+ * Mirrors hero-dynamic.js imageCoordsToContainerPercent for object-fit: cover + center.
+ */
+private fun imageCoordsToContainer(
+    containerW: Float,
+    containerH: Float,
+    imageW: Int,
+    imageH: Int,
+    xImg: Float,
+    yImg: Float,
+    posX: Float = 0.5f,
+    posY: Float = 0.5f
+): Pair<Float, Float>? {
+    if (containerW <= 0f || containerH <= 0f || imageW <= 0 || imageH <= 0) return null
+    val scale = maxOf(containerW / imageW, containerH / imageH)
+    val scaledW = imageW * scale
+    val scaledH = imageH * scale
+    val offsetX = containerW * posX - scaledW * posX
+    val offsetY = containerH * posY - scaledH * posY
+    val px = offsetX + xImg * scaledW
+    val py = offsetY + yImg * scaledH
+    return (px / containerW) to (py / containerH)
+}
+
+private fun findHotspotAt(
+    x: Float, y: Float, widthPx: Float, heightPx: Float,
+    hotspots: List<HeroHotspot>, imageSize: Pair<Int, Int>?,
+    touchRadiusPx: Float
+): HeroHotspot? {
+    if (widthPx <= 0f || heightPx <= 0f) return null
+    val hit = hotspots.minByOrNull { hotspot ->
+        val (cx, cy) = when (val sz = imageSize) {
+            null -> hotspot.x to hotspot.y
+            else -> imageCoordsToContainer(
+                widthPx, heightPx, sz.first, sz.second,
+                hotspot.x, hotspot.y
+            ) ?: (hotspot.x to hotspot.y)
+        }
+        val hx = cx * widthPx
+        val hy = cy * heightPx
+        kotlin.math.sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy))
+    } ?: return null
+    val (cx, cy) = when (val sz = imageSize) {
+        null -> hit.x to hit.y
+        else -> imageCoordsToContainer(
+            widthPx, heightPx, sz.first, sz.second,
+            hit.x, hit.y
+        ) ?: (hit.x to hit.y)
+    }
+    val hx = cx * widthPx
+    val hy = cy * heightPx
+    val dist = kotlin.math.sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy))
+    return if (dist <= touchRadiusPx) hit else null
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun HeroHotspotsOverlay(
+    hotspots: List<HeroHotspot>,
+    imageSize: Pair<Int, Int>?,
+    onHotspotClick: (HeroHotspot) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val touchRadiusPx = with(density) { (HERO_HOTSPOT_TOUCH_TARGET / 2).toPx() }
+    var clickedHotspot by remember { mutableStateOf<HeroHotspot?>(null) }
+    var consumedDownOnHotspot by remember { mutableStateOf<HeroHotspot?>(null) }
+    var sizePx by remember { mutableStateOf(0f to 0f) }
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .onSizeChanged { sizePx = it.width.toFloat() to it.height.toFloat() }
+            .pointerInteropFilter { event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        val (w, h) = sizePx
+                        val hit = findHotspotAt(event.x, event.y, w, h, hotspots, imageSize, touchRadiusPx)
+                        if (hit != null) {
+                            consumedDownOnHotspot = hit
+                            true
+                        } else {
+                            false
+                        }
                     }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        val was = consumedDownOnHotspot
+                        consumedDownOnHotspot = null
+                        if (was != null && event.action == MotionEvent.ACTION_UP) {
+                            clickedHotspot = was
+                            onHotspotClick(was)
+                        }
+                        was != null
+                    }
+                    else -> consumedDownOnHotspot != null
+                }
+            }
+    ) {
+        SideEffect {
+            val w = with(density) { maxWidth.toPx() }
+            val h = with(density) { maxHeight.toPx() }
+            if (w > 0f && h > 0f) sizePx = w to h
+        }
+        val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
+        val maxW = maxWidth
+        val maxH = maxHeight
+        val halfTouch = HERO_HOTSPOT_TOUCH_TARGET.value / 2f
+        hotspots.forEach { hotspot ->
+            val (cx, cy) = when (val sz = imageSize) {
+                null -> hotspot.x to hotspot.y
+                else -> imageCoordsToContainer(
+                    widthPx, heightPx, sz.first, sz.second,
+                    hotspot.x, hotspot.y
+                ) ?: (hotspot.x to hotspot.y)
+            }
+            val xDp = (cx * maxW.value - halfTouch).dp
+            val yDp = (cy * maxH.value - halfTouch).dp
+
+            HeroHotspotDot(
+                contentDescription = hotspot.title,
+                isJustClicked = clickedHotspot == hotspot,
+                onClickAnimationDone = { clickedHotspot = null },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = xDp, y = yDp)
+                    .size(HERO_HOTSPOT_TOUCH_TARGET)
             )
         }
     }

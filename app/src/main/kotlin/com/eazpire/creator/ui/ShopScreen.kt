@@ -2,7 +2,7 @@ package com.eazpire.creator.ui
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.background
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -11,21 +11,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.account.AccountModalSheet
 import com.eazpire.creator.ui.footer.GlobalFooter
+import com.eazpire.creator.ui.footer.SubFooter
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
@@ -53,7 +54,14 @@ fun ShopScreen(
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
-    var productModalHandle by remember { mutableStateOf<String?>(null) }
+    val productModalHandleState = remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(productModalHandleState.value) {
+        // #region agent log
+        debugLog("ShopScreen.kt:59", "LaunchedEffect productModalHandleState changed", mapOf("value" to productModalHandleState.value), "H2")
+        // #endregion
+        Log.d("ProductModalDebug", "[5] ShopScreen: productModalHandleState changed to ${productModalHandleState.value}")
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -81,7 +89,7 @@ fun ShopScreen(
                         showAuthScreen = false
                         selectedCollection = null
                         selectedProductHandle = null
-                        productModalHandle = null
+                        productModalHandleState.value = null
                         scrollToTopTrigger++
                     },
                     onAccountClick = {
@@ -122,17 +130,31 @@ fun ShopScreen(
             }
         },
         bottomBar = {
-            if (selectedProductHandle == null) GlobalFooter()
+            if (selectedProductHandle == null) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SubFooter(
+                        localeStore = localeStore,
+                        tokenStore = tokenStore,
+                        cartCount = com.eazpire.creator.cart.AppCartStore.itemCount,
+                        onAccountClick = {
+                            if (tokenStore.isLoggedIn()) {
+                                accountModalVisible = true
+                            } else {
+                                showLoginOptions = true
+                            }
+                        },
+                        onFavoritesClick = { favoritesModalVisible = true },
+                        onCartClick = { cartDrawerVisible = true }
+                    )
+                    GlobalFooter()
+                }
+            }
         }
     ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { focusManager.clearFocus() }
         ) {
             when {
                 selectedProductHandle != null -> ProductDetailScreen(
@@ -159,7 +181,7 @@ fun ShopScreen(
                             selectedCollection = Triple(params.collectionTitle, params.collectionHandle, null)
                         }
                     },
-                    onHotspotProductClick = { handle -> productModalHandle = handle },
+                    productModalHandleState = productModalHandleState,
                     scrollToTopTrigger = scrollToTopTrigger
                 )
             }
@@ -227,24 +249,26 @@ fun ShopScreen(
         }
     }
 
-    if (productModalHandle != null) {
-        Dialog(
-            onDismissRequest = { productModalHandle = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+    val modalHandle = productModalHandleState.value
+    // #region agent log
+    debugLog("ShopScreen.kt:232", "ShopScreen rendering modal block", mapOf("modalHandle" to modalHandle), "H2")
+    // #endregion
+    Log.d("ProductModalDebug", "[6] ShopScreen: rendering modal block, modalHandle=$modalHandle")
+    if (modalHandle != null) {
+        // #region agent log
+        debugLog("ShopScreen.kt:236", "ShopScreen composing ProductModal", mapOf("handle" to modalHandle), "H3")
+        // #endregion
+        Log.d("ProductModalDebug", "[7] ShopScreen: composing ProductModal with handle=$modalHandle")
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(Float.MAX_VALUE)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.White)
-            ) {
-                ProductDetailScreen(
-                    productHandle = productModalHandle!!,
-                    onBack = { productModalHandle = null },
-                    tokenStore = tokenStore,
-                    showCloseButton = true,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            ProductModal(
+                productHandle = modalHandle,
+                onDismiss = { productModalHandleState.value = null },
+                tokenStore = tokenStore
+            )
         }
     }
 }

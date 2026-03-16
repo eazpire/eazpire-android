@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ fun ProductCarouselSection(
     onCategoryClick: ((title: String, handle: String) -> Unit)? = null,
     onProductClick: ((ProductClickWithCollection) -> Unit)? = null,
     onHotspotProductClick: ((String) -> Unit)? = null,
+    productModalHandleState: MutableState<String?>? = null,
     scrollToTopTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
@@ -48,29 +50,34 @@ fun ProductCarouselSection(
     LaunchedEffect(scrollToTopTrigger) {
         if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
     }
-    LaunchedEffect(listState.firstVisibleItemIndex) {
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
         val idx = listState.firstVisibleItemIndex
-        if (idx == 0) {
+        val offset = listState.firstVisibleItemScrollOffset
+        if (idx == 0 && offset == 0) {
             onCurrentPageChange?.invoke("/")
-        } else if (idx - 1 in CAROUSEL_CATEGORIES.indices) {
-            val handle = CAROUSEL_CATEGORIES[idx - 1].second
+        } else if (idx in CAROUSEL_CATEGORIES.indices) {
+            val handle = CAROUSEL_CATEGORIES[idx].second
             onCurrentPageChange?.invoke("/collections/$handle")
+        } else {
+            onCurrentPageChange?.invoke("/")
         }
     }
-    LazyColumn(
-        state = listState,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 0.dp, bottom = 0.dp)
-    ) {
-        item(key = "hero") {
-            HeroCarousel(
-                onProductClick = onProductClick?.let { callback ->
-                    { handle -> callback(ProductClickWithCollection(handle, null, null)) }
-                },
-                onHotspotProductClick = onHotspotProductClick
-            )
-        }
+    Column(modifier = modifier.fillMaxWidth()) {
+        HeroCarousel(
+            onProductClick = onProductClick?.let { callback ->
+                { handle -> callback(ProductClickWithCollection(handle, null, null)) }
+            },
+            onHotspotProductClick = onHotspotProductClick,
+            productModalHandleState = productModalHandleState,
+            fallbackProductHandle = productsByCategory["women"]?.firstOrNull()?.handle
+        )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(top = 0.dp, bottom = 0.dp)
+        ) {
         itemsIndexed(CAROUSEL_CATEGORIES) { index, (title, handle) ->
             val products = productsByCategory[handle].orEmpty()
             val isLast = index == CAROUSEL_CATEGORIES.lastIndex
@@ -82,6 +89,7 @@ fun ProductCarouselSection(
                 onProductClick = onProductClick,
                 modifier = Modifier.padding(bottom = if (isLast) 0.dp else 16.dp)
             )
+        }
         }
     }
 }
