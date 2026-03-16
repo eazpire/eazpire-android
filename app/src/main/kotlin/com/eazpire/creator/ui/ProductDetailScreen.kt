@@ -188,6 +188,7 @@ fun ProductDetailScreen(
     productHandle: String,
     onBack: () -> Unit,
     tokenStore: SecureTokenStore,
+    showCloseButton: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
@@ -256,8 +257,18 @@ fun ProductDetailScreen(
     LaunchedEffect(showFavoriteToast) { if (showFavoriteToast) { kotlinx.coroutines.delay(1500); showFavoriteToast = false } }
 
     Box(modifier = modifier.fillMaxSize()) {
+        if (showCloseButton) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+            }
+        }
     Column(modifier = Modifier.fillMaxSize()) {
-        // No back button – navigation via breadcrumb (Home / Collection)
+        // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
 
         Column(
             modifier = Modifier

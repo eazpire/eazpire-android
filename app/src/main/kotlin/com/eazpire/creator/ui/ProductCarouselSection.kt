@@ -30,7 +30,8 @@ val CAROUSEL_CATEGORIES = listOf(
 fun ProductCarouselSection(
     onCurrentPageChange: ((String) -> Unit)? = null,
     onCategoryClick: ((title: String, handle: String) -> Unit)? = null,
-    onProductClick: ((handle: String) -> Unit)? = null,
+    onProductClick: ((ProductClickWithCollection) -> Unit)? = null,
+    onHotspotProductClick: ((String) -> Unit)? = null,
     scrollToTopTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
@@ -60,19 +61,26 @@ fun ProductCarouselSection(
         state = listState,
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 0.dp, bottom = 16.dp)
+            .padding(top = 0.dp, bottom = 0.dp)
     ) {
         item(key = "hero") {
-            HeroCarousel()
+            HeroCarousel(
+                onProductClick = onProductClick?.let { callback ->
+                    { handle -> callback(ProductClickWithCollection(handle, null, null)) }
+                },
+                onHotspotProductClick = onHotspotProductClick
+            )
         }
-        itemsIndexed(CAROUSEL_CATEGORIES) { _, (title, handle) ->
+        itemsIndexed(CAROUSEL_CATEGORIES) { index, (title, handle) ->
             val products = productsByCategory[handle].orEmpty()
+            val isLast = index == CAROUSEL_CATEGORIES.lastIndex
             ProductCarousel(
                 title = title,
                 products = products,
+                collectionHandle = handle,
                 onTitleClick = onCategoryClick?.let { { it(title, handle) } },
                 onProductClick = onProductClick,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = if (isLast) 0.dp else 16.dp)
             )
         }
     }

@@ -1,5 +1,6 @@
 package com.eazpire.creator.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -8,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +49,7 @@ fun ShopScreen(
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Pair<String, String>?>(null) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
+    var productModalHandle by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -68,6 +73,7 @@ fun ShopScreen(
                         showAuthScreen = false
                         selectedCollection = null
                         selectedProductHandle = null
+                        productModalHandle = null
                         scrollToTopTrigger++
                     },
                     onAccountClick = {
@@ -132,7 +138,13 @@ fun ShopScreen(
                 else -> ProductCarouselSection(
                     onCurrentPageChange = { currentPagePath = it },
                     onCategoryClick = { title, h -> selectedCollection = title to h },
-                    onProductClick = { selectedProductHandle = it },
+                    onProductClick = { params ->
+                        selectedProductHandle = params.handle
+                        if (params.collectionTitle != null && params.collectionHandle != null) {
+                            selectedCollection = params.collectionTitle to params.collectionHandle
+                        }
+                    },
+                    onHotspotProductClick = { handle -> productModalHandle = handle },
                     scrollToTopTrigger = scrollToTopTrigger
                 )
             }
@@ -167,6 +179,27 @@ fun ShopScreen(
                 tokenStore = tokenStore,
                 onAuthSuccess = { showAuthScreen = false }
             )
+        }
+    }
+
+    if (productModalHandle != null) {
+        Dialog(
+            onDismissRequest = { productModalHandle = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White)
+            ) {
+                ProductDetailScreen(
+                    productHandle = productModalHandle!!,
+                    onBack = { productModalHandle = null },
+                    tokenStore = tokenStore,
+                    showCloseButton = true,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }

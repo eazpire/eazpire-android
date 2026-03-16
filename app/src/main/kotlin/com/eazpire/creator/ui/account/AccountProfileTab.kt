@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Female
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Male
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -147,6 +149,7 @@ fun AccountProfileTab(
     tokenStore: SecureTokenStore,
     onSaveActionReady: ((() -> Unit) -> Unit)? = null,
     onSavingStateChange: ((Boolean) -> Unit)? = null,
+    onLogout: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -321,13 +324,55 @@ fun AccountProfileTab(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Sub-header: Email + Logout (docked to top, only in Profile tab)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(EazColors.TopbarBorder.copy(alpha = 0.08f))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = email.ifBlank { "—" },
+                style = MaterialTheme.typography.bodyLarge,
+                color = EazColors.TextPrimary
+            )
+            Text(
+                text = "Your account email (from Shopify)",
+                style = MaterialTheme.typography.bodySmall,
+                color = EazColors.TextSecondary
+            )
+            if (onLogout != null) {
+                OutlinedButton(
+                    onClick = onLogout,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Default.ExitToApp,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = EazColors.TextSecondary
+                    )
+                    Text(
+                        text = "Log out",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = EazColors.TextSecondary,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+        }
+
+        // Scrollable form content
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
         if (isLoading) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -339,27 +384,6 @@ fun AccountProfileTab(
                 )
             }
         } else {
-            OutlinedTextField(
-                value = email,
-                onValueChange = { },
-                label = { Text("Email") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                readOnly = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = EazColors.TopbarBorder,
-                    unfocusedBorderColor = EazColors.TopbarBorder,
-                    cursorColor = EazColors.Orange,
-                    focusedLabelColor = EazColors.TextSecondary,
-                    unfocusedLabelColor = EazColors.TextSecondary
-                )
-            )
-            Text(
-                text = "Your account email (from Shopify)",
-                style = MaterialTheme.typography.bodySmall,
-                color = EazColors.TextSecondary,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
             OutlinedTextField(
                 value = firstName,
                 onValueChange = { firstName = it },
@@ -646,6 +670,7 @@ fun AccountProfileTab(
                     )
                 }
             }
+        }
         }
     }
 

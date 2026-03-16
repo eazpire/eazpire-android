@@ -130,7 +130,12 @@ fun AccountModalSheet(
                             AccountTab.Profile -> AccountProfileTab(
                                 tokenStore = tokenStore,
                                 onSaveActionReady = { footerSaveAction = it },
-                                onSavingStateChange = { footerSaveInProgress = it }
+                                onSavingStateChange = { footerSaveInProgress = it },
+                                onLogout = {
+                                    tokenStore.clear()
+                                    SecureTokenStore.clearAuthCookies()
+                                    onDismiss()
+                                }
                             )
                             AccountTab.SizeAI -> AccountSizeAITab(
                                 tokenStore = tokenStore,

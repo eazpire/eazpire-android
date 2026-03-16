@@ -41,12 +41,20 @@ import kotlinx.coroutines.delay
 private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
 private const val CAROUSEL_SCROLL_PX_PER_SEC = 48f
 
+/** Optional collection context for breadcrumb when navigating to product. */
+data class ProductClickWithCollection(
+    val handle: String,
+    val collectionTitle: String?,
+    val collectionHandle: String?
+)
+
 @Composable
 fun ProductCarousel(
     title: String,
     products: List<ShopifyProductsApi.ProductItem>,
+    collectionHandle: String? = null,
     onTitleClick: (() -> Unit)? = null,
-    onProductClick: ((handle: String) -> Unit)? = null,
+    onProductClick: ((ProductClickWithCollection) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (products.isEmpty()) return
@@ -81,7 +89,13 @@ fun ProductCarousel(
                         product = product,
                         onClick = {
                             if (onProductClick != null) {
-                                onProductClick(product.handle)
+                                onProductClick(
+                                    ProductClickWithCollection(
+                                        handle = product.handle,
+                                        collectionTitle = title.takeIf { collectionHandle != null },
+                                        collectionHandle = collectionHandle
+                                    )
+                                )
                             } else {
                                 try {
                                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(product.url)))

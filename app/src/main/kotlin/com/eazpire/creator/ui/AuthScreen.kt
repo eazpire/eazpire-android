@@ -88,7 +88,7 @@ fun AuthScreen(
             try {
                 val tokens = authService.exchangeCodeForTokens(code, verifier)
                 val result = authService.exchangeShopifyTokenForJwt(tokens.accessToken, tokens.idToken.ifBlank { null })
-                tokenStore.saveJwt(result.jwt, result.ownerId)
+                tokenStore.saveTokens(result.jwt, result.ownerId, tokens.accessToken.ifBlank { null })
                 onAuthSuccess()
             } catch (e: AuthException) {
                 error = e.message
