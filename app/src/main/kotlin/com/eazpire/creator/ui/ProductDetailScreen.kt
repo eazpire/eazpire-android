@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -57,7 +58,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.annotation.SuppressLint
 import android.text.Html
+import android.view.ViewGroup
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.TextView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -140,6 +145,37 @@ private fun getMediaAltColorKey(img: ShopifyProductsApi.ProductImage): String {
     return normalizeColorKey(alt.split("|").firstOrNull() ?: "")
 }
 
+/** Split product title into design title + product type (like web eaz-pdp-main.liquid). */
+private fun splitProductTitle(title: String, productType: String, productKey: String?): Pair<String, String> {
+    val designTitle: String
+    val productTypeTitle: String
+    val normalized = title
+        .replace(" — ", " | ")
+        .replace(" – ", " | ")
+        .replace(" - ", " | ")
+    val parts = normalized.split(" | ")
+    designTitle = parts.firstOrNull()?.trim()?.ifBlank { title } ?: title
+    val productNameFromKey = when (productKey?.lowercase()) {
+        "unisex-softstyle-cotton-tee" -> "Unisex Softstyle Cotton Tee"
+        "womens-favorite-tee" -> "Women's Favorite Tee"
+        "backprint-unisex-hooded-sweatshirt" -> "Unisex Hooded Sweatshirt"
+        "unisex-crewneck-sweatshirt" -> "Unisex Crewneck Sweatshirt"
+        "unisex-jersey-tank" -> "Unisex Jersey Tank"
+        "tote-bag" -> "Tote Bag"
+        "coffee-mug" -> "Coffee Mug"
+        "color-changing-mug" -> "Color Changing Mug"
+        "mouse-pad" -> "Mouse Pad"
+        else -> productKey?.replace("-", " ")?.split(" ")?.joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }?.trim()
+    }
+    productTypeTitle = when {
+        productNameFromKey != null && productNameFromKey.isNotBlank() -> productNameFromKey
+        parts.size > 1 -> parts.drop(1).joinToString(" - ").trim()
+        productType.isNotBlank() -> productType
+        else -> ""
+    }
+    return designTitle to productTypeTitle
+}
+
 /**
  * Product Detail Screen – 1:1 wie Web Mobile PDP (eaz-pdp-main.liquid, eaz-redesign-pdp.css).
  * Layout: Info oben, Gallery, Mobile Options (Color/Size), Footer mit Qty + Add to Cart.
@@ -163,6 +199,8 @@ fun ProductDetailScreen(
     var quantity by remember { mutableIntStateOf(1) }
     var showCartToast by remember { mutableStateOf(false) }
     var showFavoriteToast by remember { mutableStateOf(false) }
+    var checkoutWebViewVisible by remember { mutableStateOf(false) }
+    var checkoutParams by remember { mutableStateOf<Triple<String, Long, Int>?>(null) }
 
     LaunchedEffect(productHandle) {
         isLoading = true
@@ -253,21 +291,33 @@ fun ProductDetailScreen(
                     )
                 }
 
-                // Title row + Product Details btn
+                // Title row: Design Title + Product Details btn (like web pdp-title-row)
+                val (designTitle, productTypeTitle) = remember(p.title, p.productType, p.productKey) {
+                    splitProductTitle(p.title, p.productType, p.productKey)
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        p.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        color = EazColors.TextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            designTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = EazColors.TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (productTypeTitle.isNotBlank()) {
+                            Text(
+                                productTypeTitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = EazColors.TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(100.dp))
@@ -281,15 +331,6 @@ fun ProductDetailScreen(
                     }
                 }
 
-                // Subtitle (product type)
-                if (p.productType.isNotBlank()) {
-                    Text(
-                        p.productType,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = EazColors.TextSecondary,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -579,7 +620,10 @@ fun ProductDetailScreen(
                     .clip(RoundedCornerShape(10.dp))
                     .background(EazColors.Orange)
                     .clickable(enabled = available) {
-                        try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${p.url}?variant=${selectedVariant?.id}"))) } catch (_: Exception) {}
+                        val vid = selectedVariant?.id ?: return@clickable
+                        val storeBase = p.url.substringBefore("/products/")
+                        checkoutParams = Triple(storeBase, vid, quantity)
+                        checkoutWebViewVisible = true
                     }
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
@@ -711,20 +755,25 @@ fun ProductDetailScreen(
                 ) {
                     val (_, content) = sections.getOrNull(selectedTabIndex) ?: ("" to "")
                     if (content.isNotBlank()) {
-                        AndroidView(
-                            factory = { ctx ->
-                                TextView(ctx).apply {
-                                    setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
-                                    textSize = 14f
-                                    setLineSpacing(4f, 1.2f)
-                                }
-                            },
-                            update = { tv ->
-                                @Suppress("DEPRECATION")
-                                tv.text = Html.fromHtml(content)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        val isTableContent = content.contains("<table", ignoreCase = true)
+                        if (isTableContent) {
+                            HtmlWebView(content = content, modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp))
+                        } else {
+                            AndroidView(
+                                factory = { ctx ->
+                                    TextView(ctx).apply {
+                                        setTextColor(android.graphics.Color.parseColor("#1A1A1A"))
+                                        textSize = 14f
+                                        setLineSpacing(4f, 1.2f)
+                                    }
+                                },
+                                update = { tv ->
+                                    @Suppress("DEPRECATION")
+                                    tv.text = Html.fromHtml(content)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     } else {
                         Text(
                             "Not available",
@@ -734,6 +783,63 @@ fun ProductDetailScreen(
                     }
                 }
             }
+        }
+    }
+
+    // In-app Checkout WebView: add to cart, then redirect to checkout
+    val params = checkoutParams
+    if (checkoutWebViewVisible && params != null) {
+        val (storeBase, variantId, qty) = params
+        CheckoutWebViewScreen(
+            storeBase = storeBase,
+            variantId = variantId,
+            quantity = qty,
+            onDismiss = {
+                checkoutWebViewVisible = false
+                checkoutParams = null
+            }
+        )
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun CheckoutWebViewScreen(
+    storeBase: String,
+    variantId: Long,
+    quantity: Int,
+    onDismiss: () -> Unit
+) {
+    val cartAddUrl = "$storeBase/cart/$variantId:${quantity.coerceAtLeast(1)}"
+    val checkoutUrl = "$storeBase/checkout"
+    Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    settings.javaScriptEnabled = true
+                    webViewClient = object : WebViewClient() {
+                        private var hasRedirected = false
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            if (!hasRedirected && url != null && (url.contains("/cart") || url.contains(storeBase))) {
+                                hasRedirected = true
+                                view?.loadUrl(checkoutUrl)
+                            }
+                        }
+                    }
+                    loadUrl(cartAddUrl)
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        IconButton(
+            onClick = onDismiss,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+        ) {
+            Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
         }
     }
 }
@@ -768,6 +874,42 @@ private fun parseDescriptionSections(bodyHtml: String): List<Pair<String, String
             ?: if (i == 0 && fallback != null) fallback else "Not available"
         title to content
     }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun HtmlWebView(content: String, modifier: Modifier = Modifier) {
+    val htmlWithStyle = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+        body { font-family: sans-serif; font-size: 14px; color: #1A1A1A; line-height: 1.4; margin: 0; padding: 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; }
+        th { background: #f5f5f5; font-weight: 600; }
+        </style>
+        </head>
+        <body>$content</body>
+        </html>
+    """.trimIndent()
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        view?.evaluateJavascript("document.body.offsetHeight") { }
+                    }
+                }
+                loadDataWithBaseURL(null, htmlWithStyle, "text/html", "UTF-8", null)
+            }
+        },
+        modifier = modifier
+    )
 }
 
 private fun colorForName(name: String): Color {

@@ -1016,6 +1016,22 @@ private fun CollectionComingSoon(
     }
 }
 
+/** Split product title into design title + product type (like web eaz-product-card-redesign.liquid). */
+private fun splitProductTitleForCard(title: String, productType: String): Pair<String, String> {
+    val normalized = title
+        .replace(" — ", " | ")
+        .replace(" – ", " | ")
+        .replace(" - ", " | ")
+    val parts = normalized.split(" | ")
+    val designTitle = parts.firstOrNull()?.trim()?.ifBlank { title } ?: title
+    val productTypeTitle = when {
+        parts.size > 1 -> parts.drop(1).joinToString(" - ").trim()
+        productType.isNotBlank() -> productType
+        else -> ""
+    }
+    return designTitle to productTypeTitle
+}
+
 @Composable
 private fun CollectionProductCard(
     product: ShopifyProductsApi.ProductItem,
@@ -1073,12 +1089,28 @@ private fun CollectionProductCard(
                 }
             }
         }
-        Text(
-            text = product.title,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+        val (designTitle, productTypeTitle) = remember(product.title, product.productType) {
+            splitProductTitleForCard(product.title, product.productType)
+        }
+        Column(modifier = Modifier.padding(top = 8.dp)) {
+            Text(
+                text = designTitle,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (productTypeTitle.isNotBlank()) {
+                Text(
+                    text = productTypeTitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = EazColors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
         if (product.price > 0) {
             Text(
                 text = "CHF %.2f".format(product.price),

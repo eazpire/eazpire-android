@@ -309,7 +309,9 @@ class ShopifyProductsApi(
         val options: List<ProductOption>,
         val vendor: String,
         val productType: String,
-        val url: String
+        val url: String,
+        /** Product key from metafields (e.g. unisex-softstyle-cotton-tee) for display name. */
+        val productKey: String? = null
     ) {
         data class ProductVariant(
             val id: Long,
@@ -352,14 +354,14 @@ class ShopifyProductsApi(
         if (mediaArr != null) {
             for (j in 0 until mediaArr.length()) {
                 val m = mediaArr.optJSONObject(j)
-                val mediaType = m?.optString("media_type", "image") ?: "image"
-                if (mediaType != "image" && mediaType.isNotBlank()) continue
+                val mediaType = m?.optString("media_type", "image")
+                if (mediaType != null && mediaType != "image") continue
                 val src = m?.optString("src")
                     ?: m?.optJSONObject("preview_image")?.optString("src")
                     ?: m?.optJSONObject("image")?.optString("src")
                     ?: m?.optJSONObject("featured_image")?.optString("src")
                 val srcVal = src?.takeIf { it.isNotBlank() } ?: continue
-                val alt = m.optString("alt").takeIf { it.isNotBlank() }
+                val alt = m?.optString("alt")?.takeIf { it.isNotBlank() }
                 images.add(ProductImage(src = srcVal, variantIds = emptyList(), alt = alt))
             }
         }
@@ -433,6 +435,16 @@ class ShopifyProductsApi(
             }
         }
 
+        val productKey = obj.optJSONObject("metafields")
+            ?.optJSONObject("custom")
+            ?.optJSONObject("product_key")
+            ?.optString("value")
+            ?.takeIf { it.isNotBlank() }
+            ?: obj.optJSONArray("metafields")?.let { arr ->
+                (0 until arr.length()).mapNotNull { i ->
+                    (arr.optJSONObject(i)?.takeIf { it.optString("namespace") == "custom" && it.optString("key") == "product_key" })
+                }.firstOrNull()?.optString("value")?.takeIf { it.isNotBlank() }
+            }
         return ProductDetail(
             id = obj.optLong("id", 0L),
             title = obj.optString("title", ""),
@@ -443,7 +455,8 @@ class ShopifyProductsApi(
             options = options,
             vendor = obj.optString("vendor", ""),
             productType = obj.optString("product_type", ""),
-            url = "$storeUrl/products/$h"
+            url = "$storeUrl/products/$h",
+            productKey = productKey
         )
     }
 

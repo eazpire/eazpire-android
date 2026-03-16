@@ -93,7 +93,7 @@ fun ShopScreen(
                             selectedCollection = null
                             selectedProductHandle = null
                         },
-                        productTitle = if (selectedProductHandle != null) "Product" else null,
+                        productTitle = null,
                         onCollectionClick = if (selectedProductHandle != null && selectedCollection != null) {
                             { selectedProductHandle = null }
                         } else null
