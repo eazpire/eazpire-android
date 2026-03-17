@@ -89,6 +89,7 @@ fun ShopScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
+            key(languageCode, translations.size) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -151,6 +152,7 @@ fun ShopScreen(
                     )
                 }
             }
+            }
         },
         bottomBar = {
             if (selectedProductHandle == null) {
@@ -177,6 +179,7 @@ fun ShopScreen(
             }
         }
     ) { padding ->
+        key(languageCode, translations.size) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -211,6 +214,7 @@ fun ShopScreen(
                     scrollToTopTrigger = scrollToTopTrigger
                 )
             }
+        }
         }
     }
 
