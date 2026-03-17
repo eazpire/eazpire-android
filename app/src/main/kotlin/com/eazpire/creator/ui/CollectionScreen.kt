@@ -942,7 +942,7 @@ private fun PaginationDots(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(0xFFF5F5F5))
-            .padding(vertical = 16.dp)
+            .padding(vertical = 8.dp)
             .pointerInput(currentPage, totalPages) {
                 var totalDrag = 0f
                 val thresholdPx = with(density) { 60.dp.toPx() }

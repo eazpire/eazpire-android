@@ -36,15 +36,23 @@ class TranslationStore(
      * Get translated string. Lookup order: ui:key, key.
      * Fallback: English map (loaded when lang != en), then default.
      */
-    /** Alternative keys for API compatibility (API uses pdp.*, topbar.* etc.) */
+    /** Alternative keys for API compatibility (API uses pdp.*, topbar.*, creator.*, eaz.* etc.) */
     private fun resolveKey(key: String): List<String> = buildList {
         add(if (key.startsWith("ui:")) key else "ui:$key")
         add(key)
         when (key) {
             "product.details" -> add("ui:pdp.product_details")
             "product.not_found" -> add("ui:collection.no_products")
+            "product.buy_now" -> add("ui:eaz.pdp.buy_now")
             "cart.title" -> add("ui:topbar.cart")
             "cart.added" -> add("ui:pdp.add_to_cart")
+            "common.close" -> add("ui:creator.common.close")
+            "collection.min" -> { add("ui:creator.product_filters.min"); add("ui:eaz.collection.price_min") }
+            "collection.max" -> { add("ui:creator.product_filters.max"); add("ui:eaz.collection.price_max") }
+            "collection.price" -> add("ui:creator.product_filters.price")
+            "collection.product_category" -> add("ui:creator.product_filters.category")
+            "collection.products" -> add("ui:search.products")
+            else -> {}
         }
     }
 

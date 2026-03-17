@@ -352,7 +352,7 @@ fun ProductDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(Icons.Default.Info, contentDescription = null, tint = EazColors.TextPrimary, modifier = Modifier.size(14.dp))
-                        Text("Product Details", style = MaterialTheme.typography.labelMedium, color = EazColors.TextPrimary)
+                        Text(t("product.details", "Product Details"), style = MaterialTheme.typography.labelMedium, color = EazColors.TextPrimary)
                     }
                 }
 
