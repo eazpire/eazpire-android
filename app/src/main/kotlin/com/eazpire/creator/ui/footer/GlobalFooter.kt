@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,7 +41,9 @@ fun GlobalFooter(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val t = com.eazpire.creator.i18n.LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
+    val store = com.eazpire.creator.i18n.LocalTranslationStore.current
+    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
+    val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
 
     Row(

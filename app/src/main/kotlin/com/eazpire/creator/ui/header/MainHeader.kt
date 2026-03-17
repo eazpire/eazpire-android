@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -143,7 +144,11 @@ fun MainHeader(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
             onSearch = { },
-            placeholder = LocalTranslationStore.current?.t("search.placeholder", "Search...") ?: "Search..."
+            placeholder = run {
+                val store = LocalTranslationStore.current
+                val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
+                store?.t("search.placeholder", "Search...") ?: "Search..."
+            }
         )
         Box(
             modifier = Modifier

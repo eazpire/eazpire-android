@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,7 +73,9 @@ fun CartDrawer(
     if (!visible) return
 
     val context = LocalContext.current
-    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
+    val store = LocalTranslationStore.current
+    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
+    val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val cartStore = remember { StorefrontCartStore(context) }
     val api = remember { ShopifyStorefrontCartApi() }
     val accessToken = tokenStore?.getAccessToken()

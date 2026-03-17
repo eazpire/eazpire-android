@@ -231,7 +231,9 @@ fun ProductDetailScreen(
     }
 
     val p = product
-    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
+    val store = LocalTranslationStore.current
+    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
+    val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     if (p == null) {
         Box(
             modifier = modifier.fillMaxSize(),

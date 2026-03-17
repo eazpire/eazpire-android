@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -212,7 +213,9 @@ fun CollectionScreen(
     onProductClick: (ShopifyProductsApi.ProductItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
+    val store = LocalTranslationStore.current
+    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
+    val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val api = remember { ShopifyProductsApi() }
     var productsByPage by remember { mutableStateOf<Map<Int, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
     var pageCursors by remember { mutableStateOf(listOf<String?>(null)) }

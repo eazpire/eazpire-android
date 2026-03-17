@@ -36,21 +36,26 @@ class TranslationStore(
      * Get translated string. Lookup order: ui:key, key.
      * Fallback: English map (loaded when lang != en), then default.
      */
+    /** Alternative keys for API compatibility (API uses pdp.*, topbar.* etc.) */
+    private fun resolveKey(key: String): List<String> = buildList {
+        add(if (key.startsWith("ui:")) key else "ui:$key")
+        add(key)
+        when (key) {
+            "product.details" -> add("ui:pdp.product_details")
+            "product.not_found" -> add("ui:collection.no_products")
+            "cart.title" -> add("ui:topbar.cart")
+            "cart.added" -> add("ui:pdp.add_to_cart")
+        }
+    }
+
     fun t(key: String, default: String? = null): String {
         val map = _translations.value
-        val uiKey = if (key.startsWith("ui:")) key else "ui:$key"
-        val result = map[uiKey]
-            ?: map[key]
-            ?: _enFallback.value[uiKey]
-            ?: _enFallback.value[key]
-            ?: default
-            ?: key
-        // #region agent log
-        if (key == "topbar.cart" || key == "eaz.sidebar.nav_home") {
-            langDebug("TranslationStore.kt:t", "Lookup", mapOf("key" to key, "result" to result, "mapSize" to map.size), "H6")
+        val enMap = _enFallback.value
+        for (k in resolveKey(key)) {
+            map[k]?.let { return it }
+            enMap[k]?.let { return it }
         }
-        // #endregion
-        return result
+        return default ?: key
     }
 
     /**
