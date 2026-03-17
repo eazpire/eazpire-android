@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 
 private data class MenuItem(
     val label: String,
@@ -43,6 +44,12 @@ private val MENU_ITEMS = listOf(
     MenuItem("Generate", null, "https://www.eazpire.com/pages/design-generator"),
 )
 
+private val MENU_ITEM_KEYS = mapOf(
+    "Women" to "sidebar.women", "Men" to "sidebar.men", "Kids" to "sidebar.kids",
+    "Toddler" to "eaz.header.toddler", "Home & Living" to "menu.home-living",
+    "Personalize" to "header.personalize", "Generate" to "header.generate"
+)
+
 @Composable
 fun ShopMenuBar(
     onAllClick: () -> Unit,
@@ -51,6 +58,7 @@ fun ShopMenuBar(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val menuBg = EazColors.Orange.copy(alpha = 0.95f)
 
     Row(
@@ -72,12 +80,12 @@ fun ShopMenuBar(
             ) {
                 Icon(
                     Icons.Default.Menu,
-                    contentDescription = "All",
+                    contentDescription = t("header.all", "All"),
                     tint = Color.White,
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
-                    text = "Alle",
+                    text = t("header.all", "All"),
                     color = Color.White,
                     style = androidx.compose.material3.MaterialTheme.typography.labelLarge
                 )
@@ -121,8 +129,9 @@ fun ShopMenuBar(
                             .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         val isSelected = item.collectionHandle != null && item.collectionHandle == selectedHandle
+                        val label = t(MENU_ITEM_KEYS[item.label] ?: item.label, item.label)
                         Text(
-                            text = item.label,
+                            text = label,
                             color = if (isSelected) Color.White else Color.White.copy(alpha = 0.95f),
                             style = androidx.compose.material3.MaterialTheme.typography.labelLarge
                         )

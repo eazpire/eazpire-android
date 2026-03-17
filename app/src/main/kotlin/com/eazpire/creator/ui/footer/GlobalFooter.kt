@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 
 private val FooterBg = Color(0xFFF2F2F2) // light, matches shop content-footer
 private val FooterBorder = Color(0xFFE8E8E8)
@@ -39,6 +40,7 @@ fun GlobalFooter(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val t = com.eazpire.creator.i18n.LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
 
     Row(
@@ -60,7 +62,7 @@ fun GlobalFooter(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "Terms & Policies",
+            text = t("footer.terms_policies", "Terms & Policies"),
             color = FooterTextSecondary,
             fontSize = 9.sp,
             fontWeight = FontWeight.Medium,

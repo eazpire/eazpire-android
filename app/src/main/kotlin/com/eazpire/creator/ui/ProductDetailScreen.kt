@@ -68,6 +68,7 @@ import android.widget.TextView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
@@ -230,12 +231,13 @@ fun ProductDetailScreen(
     }
 
     val p = product
+    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     if (p == null) {
         Box(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Text("Product not found", color = EazColors.TextSecondary)
+            Text(t("product.not_found", "Product not found"), color = EazColors.TextSecondary)
         }
         return
     }
@@ -272,7 +274,7 @@ fun ProductDetailScreen(
                     .align(Alignment.TopEnd)
                     .padding(8.dp)
             ) {
-                Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                Icon(Icons.Default.Close, contentDescription = t("common.close", "Close"), tint = EazColors.TextPrimary)
             }
         }
     Column(modifier = Modifier.fillMaxSize()) {
@@ -689,7 +691,7 @@ fun ProductDetailScreen(
                     }
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
-                Text("Buy now", style = MaterialTheme.typography.labelMedium, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text(t("product.buy_now", "Buy now"), style = MaterialTheme.typography.labelMedium, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
             }
         }
         }
@@ -715,7 +717,7 @@ fun ProductDetailScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
-                    Text("Added to cart", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                    Text(t("cart.added", "Added to cart"), style = MaterialTheme.typography.bodyLarge, color = Color.White)
                 }
             }
         }
@@ -769,13 +771,13 @@ fun ProductDetailScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        "Product Details",
+                        t("product.details", "Product Details"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                         color = EazColors.TextPrimary
                     )
                     IconButton(onClick = { detailsSheetVisible = false }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                        Icon(Icons.Default.Close, contentDescription = t("common.close", "Close"), tint = EazColors.TextPrimary)
                     }
                 }
                 Box(modifier = Modifier.height(1.dp).fillMaxWidth().background(Color(0xFFE8E8E8)))

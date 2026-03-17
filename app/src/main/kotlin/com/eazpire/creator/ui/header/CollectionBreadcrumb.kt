@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 
 @Composable
 fun CollectionBreadcrumb(
@@ -23,6 +24,7 @@ fun CollectionBreadcrumb(
     onCollectionClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -31,7 +33,7 @@ fun CollectionBreadcrumb(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "Home",
+            text = t("eaz.sidebar.nav_home", "Home"),
             style = MaterialTheme.typography.bodySmall,
             color = EazColors.Orange,
             modifier = Modifier.clickable(onClick = onHomeClick)

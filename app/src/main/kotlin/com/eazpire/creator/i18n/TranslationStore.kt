@@ -1,6 +1,7 @@
 package com.eazpire.creator.i18n
 
 import android.content.Context
+import com.eazpire.creator.debug.langDebug
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -38,12 +39,18 @@ class TranslationStore(
     fun t(key: String, default: String? = null): String {
         val map = _translations.value
         val uiKey = if (key.startsWith("ui:")) key else "ui:$key"
-        return map[uiKey]
+        val result = map[uiKey]
             ?: map[key]
             ?: _enFallback.value[uiKey]
             ?: _enFallback.value[key]
             ?: default
             ?: key
+        // #region agent log
+        if (key == "topbar.cart" || key == "eaz.sidebar.nav_home") {
+            langDebug("TranslationStore.kt:t", "Lookup", mapOf("key" to key, "result" to result, "mapSize" to map.size), "H6")
+        }
+        // #endregion
+        return result
     }
 
     /**
@@ -52,8 +59,14 @@ class TranslationStore(
      */
     suspend fun load(lang: String) = withContext(Dispatchers.IO) {
         val normalizedLang = lang.trim().lowercase()
+        // #region agent log
+        langDebug("TranslationStore.kt:load", "Entry", mapOf("lang" to normalizedLang), "H4")
+        // #endregion
         try {
             val main = api.getTranslations(normalizedLang, "ui")
+            // #region agent log
+            langDebug("TranslationStore.kt:load", "API success", mapOf("count" to main.size, "sampleKeys" to main.keys.take(5).toString()), "H4")
+            // #endregion
             _translations.value = main
 
             if (normalizedLang != "en") {
@@ -62,7 +75,10 @@ class TranslationStore(
             } else {
                 _enFallback.value = main
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // #region agent log
+            langDebug("TranslationStore.kt:load", "API error", mapOf("error" to (e.message ?: "unknown")), "H4")
+            // #endregion
             if (_translations.value.isEmpty()) {
                 try {
                     val en = api.getTranslations("en", "ui")

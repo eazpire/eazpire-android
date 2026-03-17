@@ -1,6 +1,7 @@
 package com.eazpire.creator.locale
 
 import android.content.Context
+import com.eazpire.creator.debug.langDebug
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -15,6 +16,9 @@ private val Context.localeDataStore: DataStore<Preferences> by preferencesDataSt
 /** In-memory cache for sync reads – updated by setRegionOverride and on first Flow emission. */
 @Volatile
 private var cachedCountryOverride: String? = null
+
+@Volatile
+private var cachedLanguageOverride: String? = null
 
 /**
  * Country code (ISO 3166-1 alpha-2) to region code mapping.
@@ -78,7 +82,9 @@ class LocaleStore(context: Context) {
     }
 
     val languageCode: Flow<String> = dataStore.data.map { prefs ->
-        prefs[KEY_LANGUAGE_OVERRIDE] ?: detectLanguageFromDevice()
+        val lang = prefs[KEY_LANGUAGE_OVERRIDE] ?: detectLanguageFromDevice()
+        cachedLanguageOverride = prefs[KEY_LANGUAGE_OVERRIDE]
+        lang
     }
 
     /** Country code for display (DE, CH, US, etc.). */
@@ -95,7 +101,12 @@ class LocaleStore(context: Context) {
     }
 
     suspend fun setLanguageOverride(langCode: String) {
-        dataStore.edit { it[KEY_LANGUAGE_OVERRIDE] = langCode.lowercase().take(12) }
+        // #region agent log
+        langDebug("LocaleStore.kt:setLanguageOverride", "Entry", mapOf("langCode" to langCode), "H1")
+        // #endregion
+        val code = langCode.lowercase().take(12)
+        cachedLanguageOverride = code
+        dataStore.edit { it[KEY_LANGUAGE_OVERRIDE] = code }
     }
 
     suspend fun clearOverrides() {
@@ -107,7 +118,7 @@ class LocaleStore(context: Context) {
 
     fun getRegionCodeSync(): String = mapCountryToRegion(getCountryCodeSync())
 
-    fun getLanguageCodeSync(): String = detectLanguageFromDevice()
+    fun getLanguageCodeSync(): String = cachedLanguageOverride ?: detectLanguageFromDevice()
 
     fun getCountryCodeSync(): String = cachedCountryOverride ?: detectCountryFromDevice()
 

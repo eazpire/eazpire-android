@@ -11,12 +11,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.debug.initDebugLog
+import com.eazpire.creator.debug.initLangSwitchDebug
 import com.eazpire.creator.ui.ShopScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initDebugLog(this)
+        initLangSwitchDebug(this)
         val tokenStore = SecureTokenStore(this)
         setContent {
             EazpireCreatorTheme {

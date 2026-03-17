@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.api.ShopifyProductsApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -211,6 +212,7 @@ fun CollectionScreen(
     onProductClick: (ShopifyProductsApi.ProductItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val api = remember { ShopifyProductsApi() }
     var productsByPage by remember { mutableStateOf<Map<Int, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
     var pageCursors by remember { mutableStateOf(listOf<String?>(null)) }
@@ -295,7 +297,7 @@ fun CollectionScreen(
     val filteredProducts = remember(sortedProducts, productFilters) {
         applyFilters(sortedProducts, productFilters)
     }
-    val currentSortLabel = SORT_OPTIONS.find { it.value == sortBy }?.label ?: "Sort by"
+    val currentSortLabel = SORT_OPTIONS.find { it.value == sortBy }?.label?.let { t("collection.sort_$sortBy", it) } ?: t("collection.sort_by", "Sort by")
 
     Column(modifier = modifier.fillMaxSize()) {
         if (isLoading && products.isEmpty()) {
@@ -315,6 +317,7 @@ fun CollectionScreen(
                 totalCount = if (filterCountProducts.isNotEmpty()) filterCountProducts.size else productsToFilter.size,
                 sortBy = sortBy,
                 sortLabel = currentSortLabel,
+                t = t,
                 onFilterClick = { filterDrawerVisible = true },
                 onSortClick = { sortSheetVisible = true }
             )
@@ -368,7 +371,8 @@ fun CollectionScreen(
             filters = productFilters,
             products = productsForCounts,
             onFiltersChange = { productFilters = it },
-            onDismiss = { filterDrawerVisible = false }
+            onDismiss = { filterDrawerVisible = false },
+            t = t
         )
     }
 
@@ -379,7 +383,7 @@ fun CollectionScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    "Sort by",
+                    t("collection.sort_by", "Sort by"),
                     style = MaterialTheme.typography.titleMedium,
                     color = EazColors.TextPrimary,
                     modifier = Modifier.padding(bottom = 16.dp)
@@ -396,7 +400,7 @@ fun CollectionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            opt.label,
+                            t("collection.sort_${opt.value}", opt.label),
                             style = MaterialTheme.typography.bodyLarge,
                             color = if (sortBy == opt.value) EazColors.Orange else EazColors.TextPrimary
                         )
@@ -413,6 +417,7 @@ private fun ResultsBar(
     totalCount: Int,
     sortBy: String,
     sortLabel: String,
+    t: (String, String) -> String = { _, d -> d },
     onFilterClick: () -> Unit,
     onSortClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -436,13 +441,13 @@ private fun ResultsBar(
             ) {
                 Icon(
                     Icons.Default.FilterList,
-                    contentDescription = "Filter",
+                    contentDescription = t("collection.filter", "Filter"),
                     tint = EazColors.TextSecondary,
                     modifier = Modifier.size(20.dp)
                 )
             }
             Text(
-                text = "$filteredCount/$totalCount products",
+                text = "$filteredCount/$totalCount ${t("collection.products", "products")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = EazColors.TextSecondary,
                 maxLines = 1,
@@ -575,6 +580,7 @@ private fun FilterDrawer(
     products: List<ShopifyProductsApi.ProductItem>,
     onFiltersChange: (ProductFilters) -> Unit,
     onDismiss: () -> Unit,
+    t: (String, String) -> String = { _, d -> d },
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -658,13 +664,13 @@ private fun FilterDrawer(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        "Filters",
+                        t("collection.filter", "Filters"),
                         style = MaterialTheme.typography.titleMedium,
                         color = EazColors.TextPrimary
                     )
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextSecondary)
+                    Icon(Icons.Default.Close, contentDescription = t("common.close", "Close"), tint = EazColors.TextSecondary)
                 }
             }
 
@@ -676,7 +682,7 @@ private fun FilterDrawer(
                     .padding(horizontal = 20.dp)
             ) {
             Text(
-                "Price",
+                t("collection.price", "Price"),
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -689,7 +695,7 @@ private fun FilterDrawer(
                 TextField(
                     value = filters.priceMin,
                     onValueChange = { onFiltersChange(filters.copy(priceMin = it)) },
-                    placeholder = { Text("Min", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text(t("collection.min", "Min"), style = MaterialTheme.typography.bodySmall) },
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 44.dp),
@@ -700,7 +706,7 @@ private fun FilterDrawer(
                 TextField(
                     value = filters.priceMax,
                     onValueChange = { onFiltersChange(filters.copy(priceMax = it)) },
-                    placeholder = { Text("Max", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text(t("collection.max", "Max"), style = MaterialTheme.typography.bodySmall) },
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 44.dp),
@@ -710,7 +716,7 @@ private fun FilterDrawer(
             }
 
             Text(
-                "Content Type",
+                t("collection.content_type", "Content Type"),
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -734,7 +740,7 @@ private fun FilterDrawer(
             }
 
             Text(
-                "Design Type",
+                t("collection.design_type", "Design Type"),
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -781,7 +787,7 @@ private fun FilterDrawer(
             }
 
             Text(
-                "Ratio",
+                t("collection.ratio", "Ratio"),
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -805,7 +811,7 @@ private fun FilterDrawer(
             }
 
             Text(
-                "Design Language",
+                t("collection.design_language", "Design Language"),
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -828,7 +834,7 @@ private fun FilterDrawer(
             }
 
             Text(
-                "Product Category",
+                t("collection.product_category", "Product Category"),
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -852,7 +858,7 @@ private fun FilterDrawer(
             }
 
             Text(
-                "Product Type",
+                t("collection.product_type", "Product Type"),
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -894,7 +900,7 @@ private fun FilterDrawer(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "Reset",
+                        t("collection.reset", "Reset"),
                         style = MaterialTheme.typography.labelLarge,
                         color = EazColors.Orange
                     )
@@ -909,7 +915,7 @@ private fun FilterDrawer(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "Apply ($filteredCount)",
+                        t("collection.apply_count", "Apply (%d)").format(filteredCount),
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White
                     )

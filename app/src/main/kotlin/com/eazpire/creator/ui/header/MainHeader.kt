@@ -33,6 +33,7 @@ import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.Dispatchers
@@ -141,7 +142,8 @@ fun MainHeader(
         HeaderSearch(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
-            onSearch = { }
+            onSearch = { },
+            placeholder = LocalTranslationStore.current?.t("search.placeholder", "Search...") ?: "Search..."
         )
         Box(
             modifier = Modifier

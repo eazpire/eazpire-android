@@ -16,6 +16,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -25,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.debug.debugLog
+import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
@@ -52,9 +54,19 @@ fun ShopScreen(
     val languageCode by localeStore.languageCode.collectAsState(initial = java.util.Locale.getDefault().language.lowercase())
 
     LaunchedEffect(languageCode) {
+        // #region agent log
+        langDebug("ShopScreen.kt:LaunchedEffect", "languageCode changed, loading", mapOf("languageCode" to languageCode), "H3")
+        // #endregion
         translationStore.load(languageCode)
     }
     CompositionLocalProvider(LocalTranslationStore provides translationStore) {
+    // Recomposition trigger: when translations load, UI must update
+    val translations by translationStore.translations.collectAsState(initial = emptyMap())
+    // #region agent log
+    LaunchedEffect(translations) {
+        langDebug("ShopScreen.kt:translations", "translations updated", mapOf("count" to translations.size, "sample" to translations.keys.take(3).toString()), "H5")
+    }
+    // #endregion
     var accountModalVisible by remember { mutableStateOf(false) }
     var showLoginOptions by remember { mutableStateOf(false) }
     var showAuthScreen by remember { mutableStateOf(false) }
@@ -142,22 +154,25 @@ fun ShopScreen(
         },
         bottomBar = {
             if (selectedProductHandle == null) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    SubFooter(
-                        localeStore = localeStore,
-                        tokenStore = tokenStore,
-                        cartCount = com.eazpire.creator.cart.AppCartStore.itemCount,
-                        onAccountClick = {
-                            if (tokenStore.isLoggedIn()) {
-                                accountModalVisible = true
-                            } else {
-                                showLoginOptions = true
-                            }
-                        },
-                        onFavoritesClick = { favoritesModalVisible = true },
-                        onCartClick = { cartDrawerVisible = true }
-                    )
-                    GlobalFooter()
+                key(languageCode, translations.size) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        SubFooter(
+                            localeStore = localeStore,
+                            translationStore = translationStore,
+                            tokenStore = tokenStore,
+                            cartCount = com.eazpire.creator.cart.AppCartStore.itemCount,
+                            onAccountClick = {
+                                if (tokenStore.isLoggedIn()) {
+                                    accountModalVisible = true
+                                } else {
+                                    showLoginOptions = true
+                                }
+                            },
+                            onFavoritesClick = { favoritesModalVisible = true },
+                            onCartClick = { cartDrawerVisible = true }
+                        )
+                        GlobalFooter()
+                    }
                 }
             }
         }
@@ -201,6 +216,7 @@ fun ShopScreen(
 
     MenuDrawer(
         visible = menuDrawerVisible,
+        translationStore = translationStore,
         tokenStore = tokenStore,
         cartCount = com.eazpire.creator.cart.AppCartStore.itemCount,
         onDismiss = { menuDrawerVisible = false },

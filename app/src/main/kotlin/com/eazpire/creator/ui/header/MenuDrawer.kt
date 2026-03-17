@@ -50,9 +50,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.debug.langDebug
+import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.sidebar.SidebarViewMode
@@ -94,6 +98,17 @@ private val DRAWER_ITEMS = listOf(
     DrawerItem("Generate", null, "https://www.eazpire.com/pages/design-generator"),
 )
 
+/** Maps drawer label to DB translation key (ui:key format used by API) */
+private val DRAWER_ITEM_KEYS = mapOf(
+    "Women" to "sidebar.women",
+    "Men" to "sidebar.men",
+    "Kids" to "sidebar.kids",
+    "Toddler" to "eaz.header.toddler",
+    "Home & Living" to "menu.home-living",
+    "Personalize" to "header.personalize",
+    "Generate" to "header.generate",
+)
+
 private val LIST_VIEW_ITEMS = listOf(
     "Accessories" to "accessories",
     "Bags" to "bags",
@@ -111,6 +126,7 @@ private val LIST_VIEW_ITEMS = listOf(
 fun MenuDrawer(
     visible: Boolean,
     onDismiss: () -> Unit,
+    translationStore: TranslationStore? = null,
     tokenStore: SecureTokenStore? = null,
     cartCount: Int = 0,
     onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)? = null,
@@ -160,6 +176,10 @@ fun MenuDrawer(
             dismissOnClickOutside = true
         )
     ) {
+        // #region agent log
+        langDebug("MenuDrawer.kt:Dialog", "Dialog composing", mapOf("translationStoreNull" to (translationStore == null), "mapSize" to (translationStore?.getTranslationsSync()?.size ?: 0)), "H6")
+        // #endregion
+        CompositionLocalProvider(LocalTranslationStore provides translationStore) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
             val drawerWidthPx = with(density) {
@@ -235,7 +255,8 @@ fun MenuDrawer(
                                         context = context,
                                         onCategoryClick = onCategoryClick,
                                         onExternalUrl = onExternalUrl,
-                                        dismissWithAnimation = { doDismiss() }
+                                        dismissWithAnimation = { doDismiss() },
+                                        t = (translationStore ?: LocalTranslationStore.current)?.let { store -> { k: String, d: String -> store.t(k, d) } } ?: { _: String, d: String -> d }
                                     )
                                 }
                             }
@@ -248,6 +269,7 @@ fun MenuDrawer(
                     }
                     MenuDrawerFooter(
                         cartCount = cartCount,
+                        t = (translationStore ?: LocalTranslationStore.current)?.let { store -> { k: String, d: String -> store.t(k, d) } } ?: { _: String, d: String -> d },
                         onHomeClick = {
                             onHomeClick()
                             doDismiss()
@@ -271,6 +293,7 @@ fun MenuDrawer(
                     )
                 }
             }
+        }
         }
     }
 }
@@ -503,7 +526,8 @@ private fun MenuDrawerGridView(
     context: android.content.Context,
     onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
     onExternalUrl: ((url: String) -> Unit)?,
-    dismissWithAnimation: () -> Unit
+    dismissWithAnimation: () -> Unit,
+    t: (String, String) -> String = { _, d -> d }
 ) {
     var expandedAudience by remember { mutableStateOf<String?>(null) }
     items.forEach { item ->
@@ -530,7 +554,7 @@ private fun MenuDrawerGridView(
                             }
                     ) {
                         Text(
-                            text = item.label,
+                            text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
                             style = MaterialTheme.typography.bodyLarge,
                             color = EazColors.TextPrimary
                         )
@@ -614,7 +638,7 @@ private fun MenuDrawerGridView(
                     .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
                 Text(
-                    text = item.label,
+                    text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
                     style = MaterialTheme.typography.bodyLarge,
                     color = EazColors.TextPrimary
                 )
@@ -651,6 +675,7 @@ private fun MenuDrawerListView(
 @Composable
 private fun MenuDrawerFooter(
     cartCount: Int,
+    t: (String, String) -> String = { _, d -> d },
     onHomeClick: () -> Unit,
     onSearchClick: () -> Unit,
     onFavoritesClick: () -> Unit,
@@ -665,11 +690,11 @@ private fun MenuDrawerFooter(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        FooterNavItem(icon = Icons.Default.Home, label = "Home", onClick = onHomeClick)
-        FooterNavItem(icon = Icons.Default.Search, label = "Search", onClick = onSearchClick)
-        FooterNavItem(icon = Icons.Default.Favorite, label = "Favorites", onClick = onFavoritesClick)
+        FooterNavItem(icon = Icons.Default.Home, label = t("eaz.sidebar.nav_home", "Home"), onClick = onHomeClick)
+        FooterNavItem(icon = Icons.Default.Search, label = t("eaz.sidebar.nav_search", "Search"), onClick = onSearchClick)
+        FooterNavItem(icon = Icons.Default.Favorite, label = t("topbar.favorites", "Favorites"), onClick = onFavoritesClick)
         Box(contentAlignment = Alignment.Center) {
-            FooterNavItem(icon = Icons.Default.ShoppingCart, label = "Cart", onClick = onCartClick)
+            FooterNavItem(icon = Icons.Default.ShoppingCart, label = t("topbar.cart", "Cart"), onClick = onCartClick)
             if (cartCount > 0) {
                 Text(
                     text = if (cartCount < 100) "$cartCount" else "99+",
@@ -683,7 +708,7 @@ private fun MenuDrawerFooter(
                 )
             }
         }
-        FooterNavItem(icon = Icons.Default.Person, label = "Account", onClick = onAccountClick)
+        FooterNavItem(icon = Icons.Default.Person, label = t("eaz.topbar.account", "Account"), onClick = onAccountClick)
     }
 }
 

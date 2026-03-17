@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.i18n.LocalTranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -25,6 +26,10 @@ val CAROUSEL_CATEGORIES = listOf(
     "Kids" to "kids",
     "Toddler" to "toddler",
     "Home & Living" to "home-living",
+)
+private val CAROUSEL_TITLE_KEYS = mapOf(
+    "Women" to "sidebar.women", "Men" to "sidebar.men", "Kids" to "sidebar.kids",
+    "Toddler" to "eaz.header.toddler", "Home & Living" to "menu.home-living"
 )
 
 @Composable
@@ -37,6 +42,7 @@ fun ProductCarouselSection(
     scrollToTopTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
+    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val api = remember { ShopifyProductsApi() }
     var productsByCategory by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
 
@@ -81,8 +87,9 @@ fun ProductCarouselSection(
         itemsIndexed(CAROUSEL_CATEGORIES) { index, (title, handle) ->
             val products = productsByCategory[handle].orEmpty()
             val isLast = index == CAROUSEL_CATEGORIES.lastIndex
+            val displayTitle = t(CAROUSEL_TITLE_KEYS[title] ?: title, title)
             ProductCarousel(
-                title = title,
+                title = displayTitle,
                 products = products,
                 collectionHandle = handle,
                 onTitleClick = onCategoryClick?.let { { it(title, handle) } },

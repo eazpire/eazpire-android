@@ -25,7 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.components.GlassCircularFlag
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.launch
@@ -38,6 +40,7 @@ fun HeaderLocaleRow(
     localeStore: LocaleStore,
     countryCode: String,
     languageCode: String,
+    translationStore: TranslationStore? = null,
     standardLanguages: List<LocaleModalItem> = AVAILABLE_LANGUAGES,
     languageChildren: Map<String, LanguageChildren> = emptyMap(),
     onCountryChange: (String) -> Unit,
@@ -48,8 +51,8 @@ fun HeaderLocaleRow(
     var showLanguageModal by remember { mutableStateOf(false) }
     val flagCountryForLang = localeStore.getFlagCountryForLanguage(languageCode)
     val scope = rememberCoroutineScope()
-    val translationStore = LocalTranslationStore.current
-    val t = { key: String, default: String -> translationStore?.t(key, default) ?: default }
+    val store = translationStore ?: LocalTranslationStore.current
+    val t = { key: String, default: String -> store?.t(key, default) ?: default }
 
     Row(
         modifier = modifier,
@@ -117,7 +120,7 @@ fun HeaderLocaleRow(
 
     if (showCountryModal) {
         LocaleModal(
-            title = t("creator.locale.deliver_to", "Deliver to"),
+            title = t("topbar.delivery_to", "Deliver to"),
             items = AVAILABLE_COUNTRIES,
             selectedCode = countryCode,
             onDismiss = { showCountryModal = false },
@@ -133,18 +136,21 @@ fun HeaderLocaleRow(
 
     if (showLanguageModal) {
         LanguageModal(
-            title = t("creator.locale.select_language", "Select language"),
+            title = t("eaz.topbar.select_language", "Select language"),
             standardLanguages = standardLanguages,
             languageChildren = languageChildren,
             selectedCode = languageCode,
             onDismiss = { showLanguageModal = false },
             onSelect = { code ->
+                // #region agent log
+                langDebug("HeaderLocaleRow.kt:onSelect", "Language selected", mapOf("code" to code), "H1")
+                // #endregion
                 scope.launch {
                     localeStore.setLanguageOverride(code)
                     onLanguageChange(code)
                 }
             },
-            searchPlaceholder = t("creator.locale.search_language", "Search language...")
+            searchPlaceholder = t("eaz.topbar.search_language", "Search language...")
         )
     }
 }

@@ -52,6 +52,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
@@ -71,6 +72,7 @@ fun CartDrawer(
     if (!visible) return
 
     val context = LocalContext.current
+    val t = LocalTranslationStore.current?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val cartStore = remember { StorefrontCartStore(context) }
     val api = remember { ShopifyStorefrontCartApi() }
     val accessToken = tokenStore?.getAccessToken()
@@ -157,7 +159,7 @@ fun CartDrawer(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Warenkorb",
+                            text = t("cart.title", "Cart"),
                             style = MaterialTheme.typography.titleLarge,
                             color = EazColors.TextPrimary
                         )
@@ -167,7 +169,7 @@ fun CartDrawer(
                         }) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Schließen",
+                                contentDescription = t("common.close", "Close"),
                                 tint = EazColors.TextPrimary
                             )
                         }
@@ -218,7 +220,7 @@ fun CartDrawer(
                                             modifier = Modifier.size(48.dp)
                                         )
                                         Text(
-                                            text = "Dein Warenkorb ist leer",
+                                            text = t("cart.empty", "Your cart is empty"),
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = EazColors.TextSecondary
                                         )
@@ -255,7 +257,7 @@ fun CartDrawer(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Gesamt: $totalText",
+                                    text = "${t("cart.total", "Total")}: $totalText",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = EazColors.TextPrimary
@@ -271,7 +273,7 @@ fun CartDrawer(
                                         .padding(horizontal = 20.dp, vertical = 12.dp)
                                 ) {
                                     Text(
-                                        text = "Zur Kasse",
+                                        text = t("cart.checkout", "Checkout"),
                                         style = MaterialTheme.typography.labelLarge,
                                         color = Color.White,
                                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold

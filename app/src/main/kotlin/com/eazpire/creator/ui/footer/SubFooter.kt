@@ -22,6 +22,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.cart.AppCartStore
+import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.header.HeaderActions
 import com.eazpire.creator.ui.header.HeaderLocaleRow
@@ -39,7 +40,8 @@ private val SubFooterBorder = Color(0xFFE8E8E8)
 @Composable
 fun SubFooter(
     localeStore: LocaleStore,
-    tokenStore: SecureTokenStore?,
+    translationStore: TranslationStore? = null,
+    tokenStore: SecureTokenStore? = null,
     cartCount: Int,
     onAccountClick: () -> Unit,
     onFavoritesClick: () -> Unit,
@@ -102,6 +104,7 @@ fun SubFooter(
             localeStore = localeStore,
             countryCode = countryCode,
             languageCode = languageCode,
+            translationStore = translationStore,
             standardLanguages = languageStandard,
             languageChildren = languageChildren,
             onCountryChange = { },
