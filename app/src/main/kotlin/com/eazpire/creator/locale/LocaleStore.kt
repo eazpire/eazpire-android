@@ -12,6 +12,10 @@ import java.util.Locale
 
 private val Context.localeDataStore: DataStore<Preferences> by preferencesDataStore(name = "locale_prefs")
 
+/** In-memory cache for sync reads – updated by setRegionOverride and on first Flow emission. */
+@Volatile
+private var cachedCountryOverride: String? = null
+
 /**
  * Country code (ISO 3166-1 alpha-2) to region code mapping.
  * Aligned with [src/features/admin/catalogConstants.js] COUNTRY_TO_REGION.
@@ -69,6 +73,7 @@ class LocaleStore(context: Context) {
     /** Region code for API (EU, US, GB, etc.). */
     val regionCode: Flow<String> = dataStore.data.map { prefs ->
         val country = prefs[KEY_REGION_OVERRIDE] ?: detectCountryFromDevice()
+        cachedCountryOverride = country
         mapCountryToRegion(country)
     }
 
@@ -78,11 +83,15 @@ class LocaleStore(context: Context) {
 
     /** Country code for display (DE, CH, US, etc.). */
     val countryCode: Flow<String> = dataStore.data.map { prefs ->
-        prefs[KEY_REGION_OVERRIDE] ?: detectCountryFromDevice()
+        val country = prefs[KEY_REGION_OVERRIDE] ?: detectCountryFromDevice()
+        cachedCountryOverride = country
+        country
     }
 
     suspend fun setRegionOverride(countryCode: String) {
-        dataStore.edit { it[KEY_REGION_OVERRIDE] = countryCode.uppercase().take(2) }
+        val code = countryCode.uppercase().take(2)
+        cachedCountryOverride = code
+        dataStore.edit { it[KEY_REGION_OVERRIDE] = code }
     }
 
     suspend fun setLanguageOverride(langCode: String) {
@@ -96,11 +105,11 @@ class LocaleStore(context: Context) {
         }
     }
 
-    fun getRegionCodeSync(): String = mapCountryToRegion(detectCountryFromDevice())
+    fun getRegionCodeSync(): String = mapCountryToRegion(getCountryCodeSync())
 
     fun getLanguageCodeSync(): String = detectLanguageFromDevice()
 
-    fun getCountryCodeSync(): String = detectCountryFromDevice()
+    fun getCountryCodeSync(): String = cachedCountryOverride ?: detectCountryFromDevice()
 
     fun getFlagCountryForLanguage(lang: String): String {
         val key = lang.lowercase()

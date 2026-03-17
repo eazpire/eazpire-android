@@ -69,7 +69,8 @@ class ShopifyStorefrontCartApi(
 
     suspend fun createCart(
         lines: List<Pair<Long, Int>>,
-        customerAccessToken: String? = null
+        customerAccessToken: String? = null,
+        countryCode: String? = null
     ): CreateResult = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("lines", JSONArray().apply {
@@ -81,6 +82,7 @@ class ShopifyStorefrontCartApi(
                 }
             })
             customerAccessToken?.takeIf { it.isNotBlank() }?.let { put("customerAccessToken", it) }
+            countryCode?.takeIf { it.isNotBlank() }?.let { put("countryCode", it) }
         }
         val request = Request.Builder()
             .url("$workerUrl/apps/creator-dispatch?op=storefront-cart-create")

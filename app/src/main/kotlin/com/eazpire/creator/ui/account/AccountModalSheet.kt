@@ -23,12 +23,15 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,8 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
 
@@ -53,6 +54,7 @@ enum class AccountTab(val label: String) {
     Balance("Balance & Payouts")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountModalSheet(
     tokenStore: SecureTokenStore,
@@ -71,15 +73,13 @@ fun AccountModalSheet(
     var wardrobeCanGenerate by remember { mutableStateOf(false) }
     var wardrobeSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var wardrobeCanSave by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    Dialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false
-        )
+        sheetState = sheetState,
+        containerColor = Color.White,
+        modifier = modifier.fillMaxHeight(0.95f)
     ) {
         Surface(
             modifier = modifier.fillMaxSize().padding(0.dp),
@@ -263,7 +263,7 @@ fun AccountModalSheet(
                     }
                 }
 
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = drawerOpen,
                     enter = slideInHorizontally(initialOffsetX = { -it }),
                     exit = slideOutHorizontally(targetOffsetX = { -it })

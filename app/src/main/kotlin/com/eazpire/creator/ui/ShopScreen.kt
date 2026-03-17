@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.debug.debugLog
+import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.account.AccountModalSheet
 import com.eazpire.creator.ui.footer.GlobalFooter
@@ -44,6 +48,13 @@ fun ShopScreen(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val localeStore = remember { LocaleStore(context) }
+    val translationStore = remember { TranslationStore(context) }
+    val languageCode by localeStore.languageCode.collectAsState(initial = java.util.Locale.getDefault().language.lowercase())
+
+    LaunchedEffect(languageCode) {
+        translationStore.load(languageCode)
+    }
+    CompositionLocalProvider(LocalTranslationStore provides translationStore) {
     var accountModalVisible by remember { mutableStateOf(false) }
     var showLoginOptions by remember { mutableStateOf(false) }
     var showAuthScreen by remember { mutableStateOf(false) }
@@ -270,5 +281,6 @@ fun ShopScreen(
                 tokenStore = tokenStore
             )
         }
+    }
     }
 }

@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.ui.footer.GlobalFooter
@@ -207,6 +209,8 @@ fun ProductDetailScreen(
     var checkoutUrl by remember { mutableStateOf<String?>(null) }
     val storefrontCartStore = remember { StorefrontCartStore(context) }
     val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
+    val localeStore = remember { LocaleStore(context) }
+    val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
     val accessToken = tokenStore.getAccessToken()
 
     LaunchedEffect(productHandle) {
@@ -639,7 +643,7 @@ fun ProductDetailScreen(
                                 }
                             } else {
                                 val result = withContext(Dispatchers.IO) {
-                                    storefrontCartApi.createCart(listOf(vid to quantity), accessToken)
+                                    storefrontCartApi.createCart(listOf(vid to quantity), accessToken, countryCode)
                                 }
                                 if (result.ok && result.cartId != null) {
                                     storefrontCartStore.cartId = result.cartId
@@ -672,7 +676,7 @@ fun ProductDetailScreen(
                                 } else null
                             } else {
                                 val result = withContext(Dispatchers.IO) {
-                                    storefrontCartApi.createCart(listOf(vid to quantity), accessToken)
+                                    storefrontCartApi.createCart(listOf(vid to quantity), accessToken, countryCode)
                                 }
                                 if (result.ok && result.cartId != null && result.checkoutUrl != null) {
                                     storefrontCartStore.cartId = result.cartId

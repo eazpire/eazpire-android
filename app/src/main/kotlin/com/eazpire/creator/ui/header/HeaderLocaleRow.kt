@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.ui.components.GlassCircularFlag
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.launch
@@ -47,6 +48,8 @@ fun HeaderLocaleRow(
     var showLanguageModal by remember { mutableStateOf(false) }
     val flagCountryForLang = localeStore.getFlagCountryForLanguage(languageCode)
     val scope = rememberCoroutineScope()
+    val translationStore = LocalTranslationStore.current
+    val t = { key: String, default: String -> translationStore?.t(key, default) ?: default }
 
     Row(
         modifier = modifier,
@@ -114,7 +117,7 @@ fun HeaderLocaleRow(
 
     if (showCountryModal) {
         LocaleModal(
-            title = "Deliver to",
+            title = t("creator.locale.deliver_to", "Deliver to"),
             items = AVAILABLE_COUNTRIES,
             selectedCode = countryCode,
             onDismiss = { showCountryModal = false },
@@ -124,13 +127,13 @@ fun HeaderLocaleRow(
                     onCountryChange(code)
                 }
             },
-            searchPlaceholder = "Search country..."
+            searchPlaceholder = t("creator.locale.search_country", "Search country...")
         )
     }
 
     if (showLanguageModal) {
         LanguageModal(
-            title = "Select language",
+            title = t("creator.locale.select_language", "Select language"),
             standardLanguages = standardLanguages,
             languageChildren = languageChildren,
             selectedCode = languageCode,
@@ -141,7 +144,7 @@ fun HeaderLocaleRow(
                     onLanguageChange(code)
                 }
             },
-            searchPlaceholder = "Search language..."
+            searchPlaceholder = t("creator.locale.search_language", "Search language...")
         )
     }
 }

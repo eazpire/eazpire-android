@@ -628,6 +628,30 @@ class CreatorApi(
     }
 
     /**
+     * GET /translations?lang=de&type=ui – Pre-computed translations from DB.
+     * Fallback chain (server-side): lang → base → en (dialect/script → main → English).
+     */
+    suspend fun getTranslations(lang: String, type: String = "ui"): Map<String, String> = withContext(Dispatchers.IO) {
+        val encodedLang = java.net.URLEncoder.encode(lang, "UTF-8")
+        val url = "$baseUrl/translations?lang=$encodedLang&type=$type"
+        val request = Request.Builder().url(url).get().build()
+        val response = client.newCall(request).execute()
+        val body = response.body?.string()
+        if (body.isNullOrBlank() || !response.isSuccessful) return@withContext emptyMap()
+        try {
+            val json = JSONObject(body)
+            val trans = json.optJSONObject("translations") ?: return@withContext emptyMap()
+            val map = mutableMapOf<String, String>()
+            trans.keys().asSequence().forEach { key ->
+                trans.optString(key, "").takeIf { it.isNotBlank() }?.let { map[key] = it }
+            }
+            map
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    /**
      * GET /api/languages – All developed languages, dialects, and scripts from our DB.
      * Returns standard (base languages), children (dialects/scripts per base), and all.
      */
