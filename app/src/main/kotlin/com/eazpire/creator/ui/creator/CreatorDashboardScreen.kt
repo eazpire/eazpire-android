@@ -28,23 +28,25 @@ fun CreatorDashboardScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 24.dp)
     ) {
         CreatorLevelBadge(
+            translationStore = translationStore,
+            tokenStore = tokenStore,
+            ownerId = tokenStore.getOwnerId(),
+            isLoggedIn = tokenStore.isLoggedIn()
+        )
+        CreatorJourneySection(
             translationStore = translationStore,
             ownerId = tokenStore.getOwnerId(),
             isLoggedIn = tokenStore.isLoggedIn()
         )
         CreatorStatsSection(
             translationStore = translationStore,
+            tokenStore = tokenStore,
             ownerId = tokenStore.getOwnerId(),
             isLoggedIn = tokenStore.isLoggedIn(),
             onOpenSalesModal = onOpenSalesModal
-        )
-        CreatorJourneySection(
-            translationStore = translationStore,
-            ownerId = tokenStore.getOwnerId(),
-            isLoggedIn = tokenStore.isLoggedIn()
         )
         CreatorQuickActionsSection(
             translationStore = translationStore,

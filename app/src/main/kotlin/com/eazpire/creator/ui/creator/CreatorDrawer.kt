@@ -2,7 +2,9 @@ package com.eazpire.creator.ui.creator
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +20,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -38,15 +42,18 @@ fun CreatorDrawer(
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
+    val shape = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp)
     Box(
         modifier = modifier
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { }
             .width(280.dp)
             .fillMaxHeight()
-            .shadow(40.dp)
-            .background(Color(0xFF0F0C1C).copy(alpha = 0.65f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f))
+            .shadow(40.dp, shape)
+            .clip(shape)
+            .background(Color(0xFF0F0C1C).copy(alpha = 0.92f))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), shape)
     ) {
-        DrawerAquarium(modifier = Modifier.fillMaxSize())
+        DrawerAquarium(visible = visible, modifier = Modifier.fillMaxSize())
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier

@@ -2,10 +2,8 @@ package com.eazpire.creator.ui
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,22 +22,32 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.imageLoader
 import com.eazpire.creator.api.ShopifyProductsApi
 import kotlinx.coroutines.delay
 
+// Web-Parameter aus eaz-home-sections.liquid
 private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
+private const val IMAGE_FADE_DURATION_MS = 1200
+private const val IMAGE_FADE_CLEANUP_MS = 1250L
 private const val CAROUSEL_SCROLL_PX_PER_SEC = 48f
+private const val CAROUSEL_TICK_MS = 50L
+private const val PAUSE_AFTER_MANUAL_SCROLL_MS = 1000L
 
 /** Optional collection context for breadcrumb when navigating to product. */
 data class ProductClickWithCollection(
@@ -62,7 +70,6 @@ fun ProductCarousel(
     val density = LocalDensity.current
     val listState = rememberLazyListState()
 
-    // Endloses Karussell: doppelte Liste für nahtlose Schleife
     val infiniteProducts = remember(products) { products + products }
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -108,14 +115,27 @@ fun ProductCarousel(
                     )
                 }
             }
-            // Endlos-Scroll: rechts nach links, bei Ende zurückspringen (nahtlos)
+            var lastManualScrollEnd by remember { mutableLongStateOf(0L) }
+            var wasUserScrolling by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) {
-                val scrollPxPerTick = with(density) { (CAROUSEL_SCROLL_PX_PER_SEC * 0.1f).toDp().toPx() }
+                snapshotFlow { listState.isScrollInProgress }.collect { inProgress ->
+                    if (wasUserScrolling && !inProgress) lastManualScrollEnd = System.currentTimeMillis()
+                    wasUserScrolling = inProgress
+                }
+            }
+            // Web-Logik: scrollBy mit kleinem Intervall (wie CSS animation linear infinite)
+            // 48px/Sek, Tick alle 50ms → ~2.4px pro Tick
+            LaunchedEffect(Unit) {
+                val scrollPxPerTick = with(density) {
+                    (CAROUSEL_SCROLL_PX_PER_SEC * CAROUSEL_TICK_MS / 1000f).toDp().toPx()
+                }
                 while (true) {
-                    delay(100)
+                    delay(CAROUSEL_TICK_MS)
+                    val sinceLastManual = System.currentTimeMillis() - lastManualScrollEnd
+                    if (sinceLastManual < PAUSE_AFTER_MANUAL_SCROLL_MS) continue
+                    if (listState.isScrollInProgress) continue
                     val firstIndex = listState.firstVisibleItemIndex
                     val firstOffset = listState.firstVisibleItemScrollOffset
-                    // Nach erstem Durchlauf (Index >= products.size): zurückspringen
                     if (firstIndex >= products.size) {
                         listState.scrollToItem(0, firstOffset)
                         delay(50)
@@ -134,22 +154,43 @@ fun ProductCarousel(
     }
 }
 
-
 @Composable
 private fun ProductCard(
     product: ShopifyProductsApi.ProductItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Varianten-Wechsel: variantImages (Farben) bevorzugt, sonst images
     val images = (product.variantImages.ifEmpty { product.images })
-    var currentIndex by remember(product.id) { mutableStateOf(0) }
+    var displayIndex by remember(product.id) { mutableStateOf(0) }
+    var isTransitioning by remember(product.id) { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    LaunchedEffect(product.id, images.size) {
+    LaunchedEffect(product.id, images) {
+        images.forEach { url ->
+            context.imageLoader.enqueue(
+                ImageRequest.Builder(context).data(url).build()
+            )
+        }
+    }
+    LaunchedEffect(product.id, images.size, displayIndex, isTransitioning) {
         if (images.size <= 1) return@LaunchedEffect
-        while (true) {
-            delay(IMAGE_ROTATE_INTERVAL_MS)
-            currentIndex = (currentIndex + 1) % images.size
+        if (isTransitioning) return@LaunchedEffect
+        delay(IMAGE_ROTATE_INTERVAL_MS)
+        isTransitioning = true
+    }
+
+    val nextIndex = (displayIndex + 1) % images.size
+    // Web: new slide fades IN (0->1) over 1.2s, old stays visible until cleanup
+    val incomingAlpha by animateFloatAsState(
+        targetValue = if (isTransitioning) 1f else 0f,
+        animationSpec = tween(durationMillis = IMAGE_FADE_DURATION_MS),
+        label = "variantIncoming"
+    )
+    LaunchedEffect(isTransitioning) {
+        if (isTransitioning) {
+            delay(IMAGE_FADE_CLEANUP_MS)
+            displayIndex = nextIndex
+            isTransitioning = false
         }
     }
 
@@ -165,21 +206,31 @@ private fun ProductCard(
                 .clip(RoundedCornerShape(8.dp))
         ) {
             if (images.isNotEmpty()) {
-                val url = images.getOrNull(currentIndex) ?: images.first()
-                AnimatedContent(
-                    targetState = url,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "productImage"
-                ) { imgUrl ->
+                // Untere Ebene: aktuelles Bild (bleibt sichtbar während Transition, Web: old stays)
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(images.getOrNull(displayIndex) ?: images.first())
+                        .crossfade(0)
+                        .build(),
+                    contentDescription = product.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                )
+                // Obere Ebene: nächstes Bild blendet ein (Web: new fades in 0->1 über 1.2s)
+                key(displayIndex) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(imgUrl)
-                            .crossfade(300)
+                        model = ImageRequest.Builder(context)
+                            .data(images.getOrNull(nextIndex) ?: images.first())
+                            .crossfade(0)
                             .build(),
                         contentDescription = product.title,
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
+                            .graphicsLayer(alpha = incomingAlpha)
                     )
                 }
             }

@@ -159,7 +159,11 @@ class CreatorApi(
             val respBody = response.body?.string() ?: "{}"
             JSONObject(respBody)
         }
-    suspend fun getSettings(): JSONObject = call("get-settings")
+    /** GET ?op=get-settings&owner_id=xxx → { ok, settings: { creator_names, ... } } */
+    suspend fun getSettings(ownerId: String? = null): JSONObject {
+        val params = if (!ownerId.isNullOrBlank()) mapOf("owner_id" to ownerId) else emptyMap()
+        return call("get-settings", params)
+    }
 
     /**
      * GET ?op=get-customer-profile&owner_id=xxx
@@ -262,6 +266,43 @@ class CreatorApi(
         "get-referral-code",
         mapOf("owner_id" to ownerId)
     )
+
+    /** GET ?op=get-creator-code&owner_id=xxx → { is_creator, can_generate, active_code?, ref_url? } */
+    suspend fun getCreatorCode(ownerId: String): JSONObject = call(
+        "get-creator-code",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** POST ?op=generate-creator-code&owner_id=xxx → { ok, code?, ref_url? } */
+    suspend fun generateCreatorCode(ownerId: String): JSONObject =
+        postJson("generate-creator-code", emptyMap(), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=redeem-creator-code&owner_id=xxx Body: { code } */
+    suspend fun redeemCreatorCode(ownerId: String, code: String): JSONObject =
+        postJson("redeem-creator-code", mapOf("code" to code), mapOf("owner_id" to ownerId))
+
+    /** GET ?op=get-creator-code-stats&owner_id=xxx → { ok, stats: { total_generated, total_redeemed, community_size } } */
+    suspend fun getCreatorCodeStats(ownerId: String): JSONObject = call(
+        "get-creator-code-stats",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=list-interests → { ok, categories: [{ key, interests: [{ id, name }] }] } */
+    suspend fun listInterests(): JSONObject = call("list-interests")
+
+    /** GET ?op=get-user-interests&owner_id=xxx → { ok, interests: [{ id, name }] } */
+    suspend fun getUserInterests(ownerId: String): JSONObject = call(
+        "get-user-interests",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** POST ?op=set-user-interests&owner_id=xxx Body: { interest_ids: [1,2,3] } */
+    suspend fun setUserInterests(ownerId: String, interestIds: List<Long>): JSONObject =
+        postJson("set-user-interests", mapOf("interest_ids" to org.json.JSONArray(interestIds)), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=add-creator-name&owner_id=xxx Body: { name } */
+    suspend fun addCreatorName(ownerId: String, name: String): JSONObject =
+        postJson("add-creator-name", mapOf("name" to name), mapOf("owner_id" to ownerId))
 
     /** GET ?op=get-customer-setting&owner_id=xxx&key=xxx → { ok, key, value } */
     suspend fun getCustomerSetting(ownerId: String, key: String): JSONObject = call(
@@ -369,15 +410,16 @@ class CreatorApi(
         return call("get-community-analytics-events", params)
     }
 
-    /** GET ?op=get-creator-payout-overview&owner_id=xxx&days=30&scope=community_only */
+    /** GET ?op=get-creator-payout-overview&owner_id=xxx&days=90 – fiat balance (availableAmount, currency) */
     suspend fun getCreatorPayoutOverview(
         ownerId: String,
-        days: Int = 30,
-        scope: String = "community_only"
-    ): JSONObject = call(
-        "get-creator-payout-overview",
-        mapOf("owner_id" to ownerId, "days" to days.toString(), "scope" to scope)
-    )
+        days: Int = 90,
+        scope: String? = null
+    ): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId, "days" to days.toString())
+        scope?.takeIf { it.isNotBlank() }?.let { params["scope"] = it }
+        return call("get-creator-payout-overview", params)
+    }
 
     /** GET ?op=get-shop-credits-summary&owner_id=xxx */
     suspend fun getShopCreditsSummary(ownerId: String): JSONObject =
@@ -417,6 +459,12 @@ class CreatorApi(
     suspend fun listGenerated(ownerId: String, limit: Int = 50): JSONObject = call(
         "list-generated",
         mapOf("owner_id" to ownerId, "limit" to limit.toString())
+    )
+
+    /** GET ?op=list-public&limit=40 → { ok, items: [{ preview_url, original_url }] } Public designs for drawer aquarium */
+    suspend fun listPublic(limit: Int = 40): JSONObject = call(
+        "list-public",
+        mapOf("limit" to limit.toString())
     )
 
     /** GET ?op=list&owner_id=xxx&limit=100 → { ok, items: [...] } Creator designs */
@@ -687,6 +735,44 @@ class CreatorApi(
         val response = client.newCall(request).execute()
         JSONObject(response.body?.string() ?: "{}")
     }
+
+    /** GET ?op=list-audio-files → { ok, files: [{ id, title, url, duration_sec, owner_id, cover_url? }] } */
+    suspend fun listAudioFiles(): JSONObject = call("list-audio-files")
+
+    /** POST ?op=upload-audio-file&owner_id=xxx – multipart: audio, duration_sec? */
+    suspend fun uploadAudioFile(ownerId: String, audioBytes: ByteArray, contentType: String, durationSec: Int? = null): JSONObject =
+        withContext(Dispatchers.IO) {
+            val ext = when {
+                contentType.contains("mp3") || contentType.contains("mpeg") -> "mp3"
+                contentType.contains("wav") -> "wav"
+                contentType.contains("ogg") -> "ogg"
+                contentType.contains("webm") -> "webm"
+                else -> "mp3"
+            }
+            val mediaType = contentType.toMediaType()
+            val bodyBuilder = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("audio", "audio.$ext", okhttp3.RequestBody.create(mediaType, audioBytes))
+            durationSec?.let { bodyBuilder.addFormDataPart("duration_sec", it.toString()) }
+            val body = bodyBuilder.build()
+            val url = "$baseUrl/apps/creator-dispatch?op=upload-audio-file&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+            val request = Request.Builder()
+                .url(url)
+                .post(body)
+                .addHeader("Accept", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    /** POST ?op=set-creator-audio&owner_id=xxx – Body: { audio_id } */
+    suspend fun setCreatorAudio(ownerId: String, audioId: String): JSONObject =
+        postJson("set-creator-audio", mapOf("audio_id" to audioId), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=delete-audio-file&owner_id=xxx – Body: { audio_id } */
+    suspend fun deleteAudioFile(ownerId: String, audioId: String): JSONObject =
+        postJson("delete-audio-file", mapOf("audio_id" to audioId), mapOf("owner_id" to ownerId))
 
     /** GET ?op=get-catalog-products&region=EU&design_type=classic */
     suspend fun getCatalogProducts(

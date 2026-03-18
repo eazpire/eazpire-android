@@ -236,7 +236,8 @@ data class PartnerItem(
 @Composable
 fun AccountCommunityTab(
     tokenStore: SecureTokenStore,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scrollable: Boolean = true
 ) {
     val context = LocalContext.current
     val jwt = remember { tokenStore.getJwt() }
@@ -298,10 +299,11 @@ fun AccountCommunityTab(
         }
     }
 
+    val scrollModifier = if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .then(scrollModifier)
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

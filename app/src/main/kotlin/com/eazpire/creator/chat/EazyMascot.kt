@@ -1,5 +1,9 @@
 package com.eazpire.creator.chat
 
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.forEachGesture
 import androidx.compose.foundation.layout.Box
@@ -23,6 +27,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -33,6 +38,38 @@ import kotlin.math.roundToInt
 
 private val MascotSize = 48.dp
 private val EazyOrange = Color(0xFFF97316)
+
+/** Leichte Vibration beim Long-Press (Snap-Mode aktiv) – wie Web: 30ms */
+private fun vibrateSnapMode(context: android.content.Context) {
+    val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        (context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? Vibrator
+    } ?: return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        vibrator.vibrate(VibrationEffect.createOneShot(30, VibrationEffect.DEFAULT_AMPLITUDE))
+    } else {
+        @Suppress("DEPRECATION")
+        vibrator.vibrate(30)
+    }
+}
+
+/** Vibration beim Snappen – wie Web: [50, 80, 50, 80, 100] ms */
+private fun vibrateSnap(context: android.content.Context) {
+    val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        (context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? Vibrator
+    } ?: return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(50, 80, 50, 80, 100), -1))
+    } else {
+        @Suppress("DEPRECATION")
+        vibrator.vibrate(longArrayOf(50, 80, 50, 80, 100), -1)
+    }
+}
 private val EazyOrangeLight = Color(0xFFFF9A2A)
 private val SNAP_DISTANCE_DP = 80f
 private val LONG_PRESS_MS = 300L
@@ -60,6 +97,7 @@ fun EazyMascot(
     contentHeightPx: Float? = null,
     contentBoundsInRoot: Rect? = null
 ) {
+    val context = LocalContext.current
     val density = LocalDensity.current
     val config = LocalConfiguration.current
     val screenWidthPx = with(density) { config.screenWidthDp.dp.toPx() }
@@ -107,6 +145,7 @@ fun EazyMascot(
         val slotCenterY = slot.top + slot.height / 2
         val dist = hypot(mascotCenterX - slotCenterX, mascotCenterY - slotCenterY)
         if (dist < snapDistancePx) {
+            vibrateSnap(context)
             onDockedChange(true)
         }
     }
@@ -140,6 +179,7 @@ fun EazyMascot(
                             val lpJob = scope.launch {
                                 delay(LONG_PRESS_MS)
                                 snapMode = true
+                                vibrateSnapMode(context)
                                 onSnapModeChange(true)
                             }
                             outer@ while (true) {

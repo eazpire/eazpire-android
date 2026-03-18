@@ -21,10 +21,8 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
-import com.eazpire.creator.ui.header.HeaderActions
 import com.eazpire.creator.ui.header.HeaderLocaleRow
 import com.eazpire.creator.ui.header.LocaleModalItem
 import com.eazpire.creator.ui.header.LanguageChildren
@@ -34,27 +32,20 @@ private val SubFooterBg = Color.White
 private val SubFooterBorder = Color(0xFFE8E8E8)
 
 /**
- * Sub-footer: Location, Language, Account, Favorites, Cart – docked above GlobalFooter.
- * Mirrors web eaz-sub-footer.
+ * Sub-footer: Location, Language – docked above GlobalFooter.
+ * Account, Favorites, Cart sind im Header.
  */
 @Composable
 fun SubFooter(
     localeStore: LocaleStore,
     translationStore: TranslationStore? = null,
     tokenStore: SecureTokenStore? = null,
-    cartCount: Int,
-    onAccountClick: () -> Unit,
-    onFavoritesClick: () -> Unit,
-    onCartClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
     val languageCode by localeStore.languageCode.collectAsState(initial = localeStore.getLanguageCodeSync())
     var languageStandard by remember { mutableStateOf(AVAILABLE_LANGUAGES) }
     var languageChildren by remember { mutableStateOf<Map<String, LanguageChildren>>(emptyMap()) }
-    var favoritesCount by remember { mutableStateOf(0) }
-    val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
-    val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
 
     LaunchedEffect(Unit) {
         try {
@@ -69,19 +60,6 @@ fun SubFooter(
                 }.mapKeys { it.key.lowercase() }
             }
         } catch (_: Exception) { /* keep fallback */ }
-    }
-
-    LaunchedEffect(ownerId, com.eazpire.creator.favorites.FavoritesRefreshTrigger.value) {
-        if (ownerId.isNotBlank()) {
-            try {
-                val resp = api.getFavorites(ownerId)
-                if (resp.optBoolean("ok", false)) {
-                    favoritesCount = resp.optInt("count", 0)
-                }
-            } catch (_: Exception) {}
-        } else {
-            favoritesCount = 0
-        }
     }
 
     Row(
@@ -109,13 +87,6 @@ fun SubFooter(
             languageChildren = languageChildren,
             onCountryChange = { },
             onLanguageChange = { }
-        )
-        HeaderActions(
-            cartCount = cartCount,
-            favoritesCount = favoritesCount,
-            onAccountClick = onAccountClick,
-            onFavoritesClick = onFavoritesClick,
-            onCartClick = onCartClick
         )
     }
 }

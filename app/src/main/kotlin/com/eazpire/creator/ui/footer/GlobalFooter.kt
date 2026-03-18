@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,14 +21,13 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
-import com.eazpire.creator.i18n.LocalTranslationStore
 
 private val FooterBg = Color(0xFFF2F2F2) // light, matches shop content-footer
 private val FooterBorder = Color(0xFFE8E8E8)
 private val FooterTextSecondary = Color(0xFF6B7280) // text-secondary
 private val FooterBrand = EazColors.Orange
 
-private const val TERMS_URL = "https://allyoucanpink.com/policies/terms-of-service"
+private const val SHOP_BASE_URL = "https://allyoucanpink.com"
 
 /**
  * Global footer – matches shop content-footer (eaz-content-footer.liquid).
@@ -38,12 +36,10 @@ private const val TERMS_URL = "https://allyoucanpink.com/policies/terms-of-servi
  */
 @Composable
 fun GlobalFooter(
+    onTermsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val store = com.eazpire.creator.i18n.LocalTranslationStore.current
-    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
-    val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
 
     Row(
@@ -65,16 +61,20 @@ fun GlobalFooter(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = t("footer.terms_policies", "Terms & Policies"),
+            text = "Terms & Policies",
             color = FooterTextSecondary,
             fontSize = 9.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.clickable {
-                try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TERMS_URL)))
-                } catch (_: Exception) { }
+                if (onTermsClick != null) {
+                    onTermsClick()
+                } else {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$SHOP_BASE_URL/policies/terms-of-service")))
+                    } catch (_: Exception) { }
+                }
             }
         )
         Text(

@@ -1,6 +1,8 @@
 package com.eazpire.creator.ui.header
 
 import android.content.Intent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
@@ -32,6 +34,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -46,6 +49,7 @@ import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
+import com.eazpire.creator.ui.header.HeaderActions
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.i18n.LocalTranslationStore
@@ -112,6 +116,14 @@ fun MainHeader(
     val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
     var shareUrl by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val boomScale = remember { Animatable(1f) }
+
+    LaunchedEffect(eazyDocked) {
+        if (eazyDocked) {
+            boomScale.snapTo(1.15f)
+            boomScale.animateTo(1f, tween(400))
+        }
+    }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isNotBlank()) {
@@ -160,6 +172,7 @@ fun MainHeader(
                 }
                 Box(
                         modifier = Modifier
+                            .scale(boomScale.value)
                             .padding(horizontal = 4.dp)
                             .size(36.dp)
                             .onGloballyPositioned { coordinates ->
@@ -202,16 +215,30 @@ fun MainHeader(
                 onModeChange = onCreatorModeChange
             )
         }
-        HeaderSearch(
-            query = searchQuery,
-            onQueryChange = { searchQuery = it },
-            onSearch = { },
-            placeholder = run {
-                val store = LocalTranslationStore.current
-                val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
-                store?.t("search.placeholder", "Search...") ?: "Search..."
-            }
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            HeaderSearch(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                onSearch = { },
+                placeholder = run {
+                    val store = LocalTranslationStore.current
+                    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
+                    store?.t("search.placeholder", "Search...") ?: "Search..."
+                },
+                modifier = Modifier.weight(1f)
+            )
+            HeaderActions(
+                cartCount = AppCartStore.itemCount,
+                favoritesCount = favoritesCount,
+                onAccountClick = onAccountClick,
+                onFavoritesClick = { onFavoritesModalChangeActual(true) },
+                onCartClick = { onCartDrawerChangeActual(true) }
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()

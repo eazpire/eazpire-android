@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,8 +20,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +33,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun CreatorStatsSection(
     translationStore: TranslationStore,
+    tokenStore: SecureTokenStore,
     ownerId: String?,
     isLoggedIn: Boolean,
     onOpenSalesModal: () -> Unit,
@@ -44,7 +49,7 @@ fun CreatorStatsSection(
     var heroesOnline by remember { mutableStateOf("–") }
 
     if (isLoggedIn && !ownerId.isNullOrBlank()) {
-        val api = remember { CreatorApi() }
+        val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
         LaunchedEffect(ownerId) {
             try {
                 val srcData = withContext(Dispatchers.IO) { api.getDesignSourceCounts(ownerId!!) }
@@ -78,16 +83,46 @@ fun CreatorStatsSection(
         }
     }
 
-    Text(
-        text = translationStore.t("creator.mobile.overview", "Overview"),
-        style = MaterialTheme.typography.titleSmall,
-        color = Color.White,
-        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-    )
-
+    // Container wie Web .creator-container
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 16.dp)
+            .background(
+                Color(0xFF1C1F2B).copy(alpha = 0.9f),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(1.dp)
+            .background(
+                Color(0xFF1C1F2B).copy(alpha = 0.9f),
+                RoundedCornerShape(15.dp)
+            )
+    ) {
+        // Header: padding 14,18
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.15f))
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = translationStore.t("creator.mobile.overview", "Overview"),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = EazColors.Orange
+            )
+        }
+        // Stats grid: padding 16, gap 12
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         CreatorStatCard(
             icon = "💰",
@@ -112,8 +147,8 @@ fun CreatorStatsSection(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         CreatorStatCard(
             icon = "📦",
@@ -136,6 +171,8 @@ fun CreatorStatsSection(
             modifier = Modifier.weight(1f)
         )
     }
+        }
+    }
 }
 
 @Composable
@@ -151,10 +188,10 @@ private fun CreatorStatCard(
 ) {
     val baseModifier = modifier
         .background(
-            color = Color.White.copy(alpha = 0.06f),
-            shape = RoundedCornerShape(12.dp)
+            color = Color(0xFF232634).copy(alpha = 0.8f),
+            shape = RoundedCornerShape(14.dp)
         )
-        .padding(12.dp)
+        .padding(16.dp)
     val clickModifier = if (onClick != null) {
         baseModifier.clickable(
             indication = null,
@@ -164,13 +201,16 @@ private fun CreatorStatCard(
     Column(modifier = clickModifier) {
         Text(
             text = icon,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 4.dp)
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(bottom = 6.dp)
         )
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.8f)
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp
+            ),
+            color = Color.White
         )
         Text(
             text = "$primaryLabel: $primaryValue",

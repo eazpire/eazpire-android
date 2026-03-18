@@ -57,16 +57,18 @@ private val TrackBgCreator = Color(0xFF020617)
 private val TrackBorderCreator = Color(0xFF0B1120)
 private val LabelInactive = Color(0xFF4B5563)
 
+/** @param compact true = Drawer (130x44), false = Header (150x50) wie Web */
 @Composable
 fun CreatorSwitch(
     isCreatorMode: Boolean,
     onModeChange: (Boolean) -> Unit,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val trackWidth = 126.dp
-    val trackHeight = 34.dp
+    val trackWidth = if (compact) 130.dp else 150.dp
+    val trackHeight = if (compact) 44.dp else 50.dp
     val padding = 2.dp
     val thumbWidth = (trackWidth - padding * 2) / 2 - 2.dp
     val shopThumbOffset = padding
@@ -266,7 +268,7 @@ fun CreatorSwitch(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text("Shop", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) LabelInactive else Color.White)
+                Text("Shop", fontSize = if (compact) 12.sp else 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) LabelInactive else Color.White)
             }
             Box(
                 modifier = Modifier
@@ -285,7 +287,7 @@ fun CreatorSwitch(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text("Creator", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) Color.White else LabelInactive)
+                Text("Creator", fontSize = if (compact) 12.sp else 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) Color.White else LabelInactive)
             }
         }
     }

@@ -194,6 +194,7 @@ fun ProductDetailScreen(
     onBack: () -> Unit,
     tokenStore: SecureTokenStore,
     showCloseButton: Boolean = false,
+    onTermsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
@@ -699,7 +700,7 @@ fun ProductDetailScreen(
         }
 
         // Main Footer – ganz unten (wie Web)
-        GlobalFooter()
+        GlobalFooter(onTermsClick = onTermsClick)
     }
 
         // Toast overlays – mittig

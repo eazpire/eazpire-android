@@ -1,5 +1,10 @@
 package com.eazpire.creator.ui.creator
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -20,10 +25,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -33,6 +40,8 @@ import com.eazpire.creator.R
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.ui.creator.CreatorDrawer
+import com.eazpire.creator.ui.footer.TermsModal
 import kotlinx.coroutines.launch
 
 private val GalaxyGradient = Brush.verticalGradient(
@@ -51,10 +60,20 @@ fun CreatorMainScreen(
     onSwitchToShop: () -> Unit,
     onAccountClick: () -> Unit,
     onEazyChatOpen: () -> Unit,
+    eazyDocked: Boolean = false,
+    eazySnapModeActive: Boolean = false,
+    onEazySnapModeChange: (Boolean) -> Unit = {},
+    onEazyLongPress: () -> Unit = {},
+    slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
     modifier: Modifier = Modifier
 ) {
     var drawerVisible by remember { mutableStateOf(false) }
     var salesModalVisible by remember { mutableStateOf(false) }
+    var creatorSettingsVisible by remember { mutableStateOf(false) }
+    var audioModalVisible by remember { mutableStateOf(false) }
+    var languageModalVisible by remember { mutableStateOf(false) }
+    var termsModalVisible by remember { mutableStateOf(false) }
+    val audioStore = remember { com.eazpire.creator.audio.CreatorAudioStore() }
     var currentScreen by remember { mutableIntStateOf(0) }
     val pagerState = rememberPagerState(pageCount = { 4 }, initialPage = 0)
     val scope = rememberCoroutineScope()
@@ -89,19 +108,25 @@ fun CreatorMainScreen(
             )
         }
         Column(modifier = Modifier.fillMaxSize()) {
-            CreatorHeader(
-                currentScreen = currentScreen,
-                screenLabels = listOf(
-                    translationStore.t("creator.mobile.dashboard", "Dashboard"),
-                    translationStore.t("creator.mobile.generator", "Generator"),
-                    translationStore.t("creator.mobile.creations", "Creations"),
-                    translationStore.t("creator.mobile.marketing", "Marketing")
-                ),
-                onDrawerClick = { drawerVisible = true },
-                onBalanceClick = { salesModalVisible = true },
-                onAccountClick = onAccountClick,
-                tokenStore = tokenStore
-            )
+                CreatorHeader(
+                    currentScreen = currentScreen,
+                    screenLabels = listOf(
+                        translationStore.t("creator.mobile.dashboard", "Dashboard"),
+                        translationStore.t("creator.mobile.generator", "Generator"),
+                        translationStore.t("creator.mobile.creations", "Creations"),
+                        translationStore.t("creator.mobile.marketing", "Marketing")
+                    ),
+                    translationStore = translationStore,
+                    onMenuClick = { drawerVisible = true },
+                    onBalanceClick = { salesModalVisible = true },
+                    onAccountClick = { creatorSettingsVisible = true },
+                    tokenStore = tokenStore,
+                    eazyDocked = eazyDocked,
+                    eazySnapModeActive = eazySnapModeActive,
+                    onEazyClick = onEazyChatOpen,
+                    onEazyLongPress = onEazyLongPress,
+                    slotBoundsState = slotBoundsState
+                )
 
             LaunchedEffect(pagerState.currentPage) {
                 currentScreen = pagerState.currentPage
@@ -113,6 +138,7 @@ fun CreatorMainScreen(
                     .weight(1f),
                 userScrollEnabled = true
             ) { page ->
+                Box(modifier = Modifier.fillMaxSize()) {
                 when (page) {
                     0 -> CreatorDashboardScreen(
                         tokenStore = tokenStore,
@@ -132,21 +158,31 @@ fun CreatorMainScreen(
                         hint = translationStore.t("creator.common.coming_soon", "Coming soon")
                     )
                 }
+                }
             }
 
             CreatorFooter(
                 localeStore = localeStore,
-                tokenStore = tokenStore
+                tokenStore = tokenStore,
+                translationStore = translationStore,
+                onTermsClick = { termsModalVisible = true }
             )
         }
 
-        // Drawer + Backdrop: Row-Layout wie Web (drawer z-index 201, backdrop 200)
-        // Backdrop nur rechts vom Drawer, damit Drawer-Interaktion möglich ist
-        if (drawerVisible) {
-            Row(
+        AnimatedVisibility(
+            visible = drawerVisible,
+            enter = fadeIn() + slideInHorizontally(initialOffsetX = { -it }),
+            exit = fadeOut() + slideOutHorizontally(targetOffsetX = { -it })
+        ) {
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(0.dp)
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { drawerVisible = false },
+                contentAlignment = Alignment.CenterStart
             ) {
                 CreatorDrawer(
                     visible = true,
@@ -158,34 +194,52 @@ fun CreatorMainScreen(
                         translationStore.t("creator.mobile.marketing", "Marketing")
                     ),
                     onDismiss = { drawerVisible = false },
-                    onSwitchToShop = {
-                        drawerVisible = false
-                        onSwitchToShop()
-                    },
+                    onSwitchToShop = onSwitchToShop,
                     onScreenSelect = { index ->
-                        scope.launch {
-                            pagerState.animateScrollToPage(index)
-                            drawerVisible = false
-                        }
+                        drawerVisible = false
+                        scope.launch { pagerState.animateScrollToPage(index) }
                     }
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) { drawerVisible = false }
                 )
             }
         }
-
+        if (termsModalVisible) {
+            TermsModal(
+                visible = true,
+                baseUrl = "https://www.eazpire.com",
+                translationStore = translationStore,
+                onDismiss = { termsModalVisible = false }
+            )
+        }
         if (salesModalVisible) {
             CreatorSalesModal(
                 tokenStore = tokenStore,
+                translationStore = translationStore,
                 onDismiss = { salesModalVisible = false }
+            )
+        }
+        if (creatorSettingsVisible) {
+            CreatorSettingsModal(
+                tokenStore = tokenStore,
+                translationStore = translationStore,
+                onDismiss = { creatorSettingsVisible = false }
+            )
+        }
+        if (audioModalVisible) {
+            CreatorAudioModal(
+                store = audioStore,
+                tokenStore = tokenStore,
+                translationStore = translationStore,
+                onDismiss = { audioModalVisible = false }
+            )
+        }
+        if (languageModalVisible) {
+            val langCode by localeStore.languageCode.collectAsState(initial = "en")
+            CreatorLanguageModal(
+                localeStore = localeStore,
+                translationStore = translationStore,
+                currentLang = langCode,
+                onDismiss = { languageModalVisible = false },
+                onLanguageSelected = { /* triggers reload via LaunchedEffect(languageCode) in ShopScreen */ }
             )
         }
     }

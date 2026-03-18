@@ -1,5 +1,7 @@
 package com.eazpire.creator.ui
 
+import android.app.Activity
+import android.graphics.Color as AndroidColor
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
@@ -45,6 +47,7 @@ import com.eazpire.creator.chat.EazyMascotStore
 import com.eazpire.creator.ui.account.AccountModalSheet
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.footer.SubFooter
+import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.creator.CreatorMainScreen
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.header.MainHeader
@@ -72,6 +75,7 @@ fun ShopScreen(
         // #endregion
         translationStore.load(languageCode)
     }
+
     CompositionLocalProvider(LocalTranslationStore provides translationStore) {
     // Recomposition trigger: when translations load, UI must update
     val translations by translationStore.translations.collectAsState(initial = emptyMap())
@@ -101,6 +105,21 @@ fun ShopScreen(
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     val productModalHandleState = remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
+    var termsModalVisible by remember { mutableStateOf(false) }
+
+    // Creator-Bereich: Dark Mode für Status/Nav-Bar; Shop: Orange
+    LaunchedEffect(isCreatorMode) {
+        val activity = context as? Activity
+        activity?.window?.let { window ->
+            if (isCreatorMode) {
+                window.statusBarColor = AndroidColor.parseColor("#0A0514")
+                window.navigationBarColor = AndroidColor.parseColor("#0A0514")
+            } else {
+                window.statusBarColor = AndroidColor.parseColor("#F97316")
+                window.navigationBarColor = AndroidColor.parseColor("#F97316")
+            }
+        }
+    }
 
     LaunchedEffect(productModalHandleState.value) {
         // #region agent log
@@ -109,7 +128,13 @@ fun ShopScreen(
         Log.d("ProductModalDebug", "[5] ShopScreen: productModalHandleState changed to ${productModalHandleState.value}")
     }
 
+    LaunchedEffect(isCreatorMode) {
+        if (isCreatorMode) slotBoundsState.value = null
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
     if (isCreatorMode) {
+        key("creator") {
         CreatorMainScreen(
             tokenStore = tokenStore,
             localeStore = localeStore,
@@ -122,10 +147,15 @@ fun ShopScreen(
                     showLoginOptions = true
                 }
             },
-            onEazyChatOpen = { eazyChatVisible = true }
+            onEazyChatOpen = { eazyChatVisible = true },
+            eazyDocked = eazyDocked,
+            eazySnapModeActive = eazySnapModeActive,
+            onEazySnapModeChange = { eazySnapModeActive = it },
+            onEazyLongPress = { eazyMascotStore.setDockedSync(false) },
+            slotBoundsState = slotBoundsState
         )
+        }
     } else {
-    Box(modifier = modifier.fillMaxSize()) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -208,19 +238,9 @@ fun ShopScreen(
                         SubFooter(
                             localeStore = localeStore,
                             translationStore = translationStore,
-                            tokenStore = tokenStore,
-                            cartCount = com.eazpire.creator.cart.AppCartStore.itemCount,
-                            onAccountClick = {
-                                if (tokenStore.isLoggedIn()) {
-                                    accountModalVisible = true
-                                } else {
-                                    showLoginOptions = true
-                                }
-                            },
-                            onFavoritesClick = { favoritesModalVisible = true },
-                            onCartClick = { cartDrawerVisible = true }
+                            tokenStore = tokenStore
                         )
-                        GlobalFooter()
+                        GlobalFooter(onTermsClick = { termsModalVisible = true })
                     }
                 }
             }
@@ -236,7 +256,8 @@ fun ShopScreen(
                 selectedProductHandle != null -> ProductDetailScreen(
                     productHandle = selectedProductHandle!!,
                     onBack = { selectedProductHandle = null },
-                    tokenStore = tokenStore
+                    tokenStore = tokenStore,
+                    onTermsClick = { termsModalVisible = true }
                 )
                 selectedCollection != null -> {
                     val (title, handle, productType) = selectedCollection!!
@@ -249,6 +270,7 @@ fun ShopScreen(
                     )
                 }
                 else -> ProductCarouselSection(
+                    modifier = Modifier.fillMaxSize(),
                     onCurrentPageChange = { currentPagePath = it },
                     onCategoryClick = { title, h -> selectedCollection = Triple(title, h, null) },
                     onProductClick = { params ->
@@ -263,6 +285,7 @@ fun ShopScreen(
             }
         }
         }
+    }
     }
     if (!eazyDocked) {
         val contentBoundsState = remember { mutableStateOf<Rect?>(null) }
@@ -291,7 +314,6 @@ fun ShopScreen(
                 contentBoundsInRoot = contentBoundsState.value
             )
         }
-    }
     }
     }
 
@@ -342,6 +364,15 @@ fun ShopScreen(
             accountModalVisible = true
         }
     )
+
+    if (termsModalVisible) {
+        TermsModal(
+            visible = true,
+            baseUrl = "https://allyoucanpink.com",
+            translationStore = translationStore,
+            onDismiss = { termsModalVisible = false }
+        )
+    }
 
     if (accountModalVisible) {
         AccountModalSheet(
