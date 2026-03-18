@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.PaddingValues
@@ -52,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
@@ -102,8 +104,10 @@ private val VIEW_MODES = listOf("grid2", "grid3", "grid4", "list")
 fun CreatorCreationsScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
+    maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {
+    val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val ownerId = remember { runCatching { tokenStore.getOwnerId() }.getOrNull() ?: "" }
@@ -305,7 +309,11 @@ fun CreatorCreationsScreen(
     }
     val isListMode = VIEW_MODES[viewMode] == "list"
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .heightIn(max = boundedHeight)
+    ) {
         // Tabs
         Row(
             modifier = Modifier
@@ -362,7 +370,10 @@ fun CreatorCreationsScreen(
                     }
                 } else if (isListMode) {
                     LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxSize(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .heightIn(max = boundedHeight),
                         contentPadding = PaddingValues(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -432,7 +443,10 @@ fun CreatorCreationsScreen(
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(gridCols),
-                        modifier = Modifier.weight(1f).fillMaxSize(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .heightIn(max = boundedHeight),
                         contentPadding = PaddingValues(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -520,7 +534,10 @@ fun CreatorCreationsScreen(
                     }
                 } else if (isListMode) {
                     LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxSize(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .heightIn(max = boundedHeight),
                         contentPadding = PaddingValues(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -585,7 +602,10 @@ fun CreatorCreationsScreen(
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(gridCols),
-                        modifier = Modifier.weight(1f).fillMaxSize(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .heightIn(max = boundedHeight),
                         contentPadding = PaddingValues(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
