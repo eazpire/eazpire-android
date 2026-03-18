@@ -15,8 +15,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -91,6 +97,7 @@ data class CreationProduct(
 
 private val VIEW_MODES = listOf("grid2", "grid3", "grid4", "list")
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreatorCreationsScreen(
     tokenStore: SecureTokenStore,
@@ -297,8 +304,6 @@ fun CreatorCreationsScreen(
         else -> 2
     }
     val isListMode = VIEW_MODES[viewMode] == "list"
-    val designsScrollState = rememberScrollState()
-    val productsScrollState = rememberScrollState()
 
     Column(modifier = modifier.fillMaxSize()) {
         // Tabs
@@ -337,15 +342,14 @@ fun CreatorCreationsScreen(
             }
         }
 
-        Box(modifier = Modifier.weight(1f)) {
         when (currentTab) {
             "designs" -> {
                 if (designsLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = EazColors.Orange)
                     }
                 } else if (filteredDesigns.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.5f))
                             Spacer(Modifier.size(8.dp))
@@ -356,112 +360,154 @@ fun CreatorCreationsScreen(
                             )
                         }
                     }
-                } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF262930).copy(alpha = 0.68f))
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            BasicTextField(
-                                value = designsSearch,
-                                onValueChange = { designsSearch = it },
+                } else if (isListMode) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f).fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.Black.copy(alpha = 0.3f))
-                                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF262930).copy(alpha = 0.68f))
                                     .padding(10.dp),
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                                decorationBox = { inner ->
-                                    if (designsSearch.text.isEmpty()) {
-                                        Text(
-                                            translationStore.t("creator.common.search", "Search…"),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Color.White.copy(alpha = 0.5f)
-                                        )
-                                    }
-                                    inner()
-                                }
-                            )
-                            IconButton(
-                                onClick = { filterModalVisible = true },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
-                            }
-                            IconButton(
-                                onClick = { /* TODO: Design Upload */ },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .background(EazColors.Orange.copy(alpha = 0.2f))
-                                    .border(1.dp, EazColors.Orange, RoundedCornerShape(8.dp))
-                            ) {
-                                Icon(Icons.Default.Upload, contentDescription = null, tint = Color.White)
-                            }
-                            Text(
-                                "${filteredDesigns.size} ${translationStore.t("creator.mobile.designs", "Designs")}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.8f)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(designsScrollState)
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                if (isListMode) {
-                                    filteredDesigns.forEach { design ->
-                                    CreationDesignListItem(
-                                        design = design,
-                                        translationStore = translationStore,
-                                        onClick = { designPreviewDesign = design }
-                                    )
-                                    }
-                                } else {
-                                    filteredDesigns.chunked(gridCols).forEach { rowDesigns ->
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                        rowDesigns.forEach { design ->
-                                            CreationDesignCard(
-                                                design = design,
-                                                onClick = { designPreviewDesign = design },
-                                                modifier = Modifier.weight(1f)
+                                BasicTextField(
+                                    value = designsSearch,
+                                    onValueChange = { designsSearch = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.3f))
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                        .padding(10.dp),
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                                    decorationBox = { inner ->
+                                        if (designsSearch.text.isEmpty()) {
+                                            Text(
+                                                translationStore.t("creator.common.search", "Search…"),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color.White.copy(alpha = 0.5f)
                                             )
                                         }
-                                        repeat(gridCols - rowDesigns.size) {
-                                            Spacer(modifier = Modifier.weight(1f))
-                                        }
-                                        }
+                                        inner()
                                     }
+                                )
+                                IconButton(
+                                    onClick = { filterModalVisible = true },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
                                 }
+                                IconButton(
+                                    onClick = { /* TODO */ },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(EazColors.Orange.copy(alpha = 0.2f))
+                                        .border(1.dp, EazColors.Orange, RoundedCornerShape(8.dp))
+                                ) {
+                                    Icon(Icons.Default.Upload, contentDescription = null, tint = Color.White)
+                                }
+                                Text(
+                                    "${filteredDesigns.size} ${translationStore.t("creator.mobile.designs", "Designs")}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.8f)
+                                )
                             }
+                        }
+                        items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
+                            CreationDesignListItem(
+                                design = design,
+                                translationStore = translationStore,
+                                onClick = { designPreviewDesign = design }
+                            )
+                        }
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(gridCols),
+                        modifier = Modifier.weight(1f).fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item(span = { GridItemSpan(gridCols) }) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF262930).copy(alpha = 0.68f))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                BasicTextField(
+                                    value = designsSearch,
+                                    onValueChange = { designsSearch = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.3f))
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                        .padding(10.dp),
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                                    decorationBox = { inner ->
+                                        if (designsSearch.text.isEmpty()) {
+                                            Text(
+                                                translationStore.t("creator.common.search", "Search…"),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color.White.copy(alpha = 0.5f)
+                                            )
+                                        }
+                                        inner()
+                                    }
+                                )
+                                IconButton(
+                                    onClick = { filterModalVisible = true },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                                }
+                                IconButton(
+                                    onClick = { /* TODO */ },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(EazColors.Orange.copy(alpha = 0.2f))
+                                        .border(1.dp, EazColors.Orange, RoundedCornerShape(8.dp))
+                                ) {
+                                    Icon(Icons.Default.Upload, contentDescription = null, tint = Color.White)
+                                }
+                                Text(
+                                    "${filteredDesigns.size} ${translationStore.t("creator.mobile.designs", "Designs")}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                        items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
+                            CreationDesignCard(
+                                design = design,
+                                onClick = { designPreviewDesign = design }
+                            )
                         }
                     }
                 }
             }
             "products" -> {
                 if (productsLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = EazColors.Orange)
                     }
                 } else if (filteredProducts.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.5f))
                             Spacer(Modifier.size(8.dp))
@@ -472,105 +518,137 @@ fun CreatorCreationsScreen(
                             )
                         }
                     }
-                } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF262930).copy(alpha = 0.68f))
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            BasicTextField(
-                                value = productsSearch,
-                                onValueChange = { productsSearch = it },
+                } else if (isListMode) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f).fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.Black.copy(alpha = 0.3f))
-                                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF262930).copy(alpha = 0.68f))
                                     .padding(10.dp),
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                                decorationBox = { inner ->
-                                    if (productsSearch.text.isEmpty()) {
-                                        Text(
-                                            translationStore.t("creator.common.search", "Search…"),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Color.White.copy(alpha = 0.5f)
-                                        )
-                                    }
-                                    inner()
-                                }
-                            )
-                            IconButton(
-                                onClick = { filterModalVisible = true },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                                BasicTextField(
+                                    value = productsSearch,
+                                    onValueChange = { productsSearch = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.3f))
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                        .padding(10.dp),
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                                    decorationBox = { inner ->
+                                        if (productsSearch.text.isEmpty()) {
+                                            Text(
+                                                translationStore.t("creator.common.search", "Search…"),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color.White.copy(alpha = 0.5f)
+                                            )
+                                        }
+                                        inner()
+                                    }
+                                )
+                                IconButton(
+                                    onClick = { filterModalVisible = true },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                                }
+                                Text(
+                                    "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.8f)
+                                )
                             }
-                            Text(
-                                "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.8f)
+                        }
+                        items(filteredProducts, key = { it.id }) { product ->
+                            CreationProductListItem(
+                                product = product,
+                                translationStore = translationStore,
+                                onClick = {
+                                    product.storefrontUrl?.let { url ->
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                    }
+                                }
                             )
                         }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                        ) {
-                            Column(
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(gridCols),
+                        modifier = Modifier.weight(1f).fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item(span = { GridItemSpan(gridCols) }) {
+                            Row(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(productsScrollState)
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF262930).copy(alpha = 0.68f))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                if (isListMode) {
-                                    filteredProducts.forEach { product ->
-                                        CreationProductListItem(
-                                            product = product,
-                                            translationStore = translationStore,
-                                            onClick = {
-                                                product.storefrontUrl?.let { url ->
-                                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                                }
-                                            }
-                                        )
-                                    }
-                                } else {
-                                    filteredProducts.chunked(gridCols).forEach { rowProducts ->
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            rowProducts.forEach { product ->
-                                                CreationProductCard(
-                                                    product = product,
-                                                    onClick = {
-                                                        product.storefrontUrl?.let { url ->
-                                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                                        }
-                                                    },
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                            }
-                                            repeat(gridCols - rowProducts.size) {
-                                                Spacer(modifier = Modifier.weight(1f))
-                                            }
+                                BasicTextField(
+                                    value = productsSearch,
+                                    onValueChange = { productsSearch = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.3f))
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                        .padding(10.dp),
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                                    decorationBox = { inner ->
+                                        if (productsSearch.text.isEmpty()) {
+                                            Text(
+                                                translationStore.t("creator.common.search", "Search…"),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color.White.copy(alpha = 0.5f)
+                                            )
                                         }
+                                        inner()
+                                    }
+                                )
+                                IconButton(
+                                    onClick = { filterModalVisible = true },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                                }
+                                Text(
+                                    "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                        items(filteredProducts, key = { it.id }) { product ->
+                            CreationProductCard(
+                                product = product,
+                                onClick = {
+                                    product.storefrontUrl?.let { url ->
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                                     }
                                 }
-                            }
+                            )
                         }
                     }
                 }
             }
-        }
         }
     }
 

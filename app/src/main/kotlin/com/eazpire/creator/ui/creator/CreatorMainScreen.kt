@@ -11,11 +11,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -166,17 +168,25 @@ fun CreatorMainScreen(
                 currentScreen = pagerState.currentPage
                 if (pagerState.currentPage != 3) marketingTitleOverride = null
             }
-            HorizontalPager(
-                state = pagerState,
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                userScrollEnabled = true,
-                beyondBoundsPageCount = 0
-            ) { page ->
-                Box(modifier = Modifier.fillMaxSize()) {
-                    when (page) {
-                        0 -> CreatorDashboardScreen(
+                    .weight(1f)
+            ) {
+                val maxHeight = maxHeight
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    userScrollEnabled = true,
+                    beyondBoundsPageCount = 0
+                ) { page ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .heightIn(max = maxHeight)
+                    ) {
+                        when (page) {
+                            0 -> CreatorDashboardScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onOpenSalesModal = { salesModalVisible = true }
@@ -197,6 +207,7 @@ fun CreatorMainScreen(
                         )
                     }
                 }
+            }
             }
 
             CreatorFooter(
