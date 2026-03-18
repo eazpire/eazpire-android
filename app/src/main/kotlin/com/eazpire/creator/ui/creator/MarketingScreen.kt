@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -101,7 +103,7 @@ fun MarketingScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0x4D1C2434))
+                    .background(Color(0xBF1C2434))
                     .padding(horizontal = 18.dp),
                 horizontalArrangement = Arrangement.spacedBy(0.dp)
             ) {
@@ -112,7 +114,6 @@ fun MarketingScreen(
                     val isActive = currentSubTab == subtab
                     Column(
                         modifier = Modifier
-                            .weight(1f)
                             .clickable { currentSubTab = subtab }
                     ) {
                         Box(
@@ -353,6 +354,7 @@ data class HeroImageItem(
     val imageUrl: String?,
     val thumbnailUrl: String?,
     val title: String,
+    val productKey: String?,
     val region: String
 )
 
@@ -362,10 +364,24 @@ private fun MarketingHeroImagesGrid(
     translationStore: TranslationStore,
     modifier: Modifier = Modifier
 ) {
+    data class RegionTab(val code: String, val label: String)
+
+    val regionTabs = listOf(
+        RegionTab("ALL", "Alle"),
+        RegionTab("EU", "Europa"),
+        RegionTab("US", "USA"),
+        RegionTab("GB", "UK"),
+        RegionTab("CA", "Kanada"),
+        RegionTab("AU", "Australien"),
+        RegionTab("CN", "China"),
+        RegionTab("OTHER", "Sonstige")
+    )
+
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     var items by remember { mutableStateOf<List<HeroImageItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var currentRegionFilter by remember { mutableStateOf("ALL") }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isBlank()) {
@@ -381,9 +397,10 @@ private fun MarketingHeroImagesGrid(
                     val obj = arr.optJSONObject(i) ?: return@mapNotNull null
                     HeroImageItem(
                         id = obj.optString("id", ""),
-                        imageUrl = obj.optString("image_url", null).takeIf { it.isNotBlank() },
-                        thumbnailUrl = obj.optString("thumbnail_url", null).takeIf { it.isNotBlank() },
+                        imageUrl = obj.optString("image_url", "").takeIf { it.isNotBlank() },
+                        thumbnailUrl = obj.optString("thumbnail_url", "").takeIf { it.isNotBlank() },
                         title = obj.optString("title", obj.optString("user_prompt", "Hero #${obj.optString("id", "")}")),
+                        productKey = obj.optString("product_key", "").takeIf { it.isNotBlank() },
                         region = obj.optString("region", "OTHER").uppercase()
                     )
                 }
@@ -392,11 +409,92 @@ private fun MarketingHeroImagesGrid(
         loading = false
     }
 
-    Box(
+    val regionCounts = remember(items) {
+        val counts = mutableMapOf<String, Int>()
+        counts["ALL"] = items.size
+        regionTabs.forEach { tab ->
+            if (tab.code != "ALL") counts[tab.code] = 0
+        }
+        items.forEach { item ->
+            val code = item.region.uppercase()
+            counts[code] = (counts[code] ?: 0) + 1
+        }
+        counts
+    }
+
+    val filteredItems = remember(items, currentRegionFilter) {
+        val byRegion = if (currentRegionFilter == "ALL") {
+            items
+        } else {
+            items.filter { it.region.uppercase() == currentRegionFilter }
+        }
+        byRegion
+    }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 18.dp, vertical = 16.dp)
+            .padding(vertical = 0.dp)
     ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            regionTabs.forEach { tab ->
+                val active = currentRegionFilter == tab.code
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .border(
+                            1.dp,
+                            if (active) EazColors.Orange else EazColors.Orange.copy(alpha = 0.4f),
+                            RoundedCornerShape(999.dp)
+                        )
+                        .background(
+                            if (active) EazColors.Orange.copy(alpha = 0.25f)
+                            else EazColors.Orange.copy(alpha = 0.08f),
+                            RoundedCornerShape(999.dp)
+                        )
+                        .clickable { currentRegionFilter = tab.code }
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = tab.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (active) Color.White else Color.White.copy(alpha = 0.9f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0x52020617))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = (regionCounts[tab.code] ?: 0).toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.95f)
+                        )
+                    }
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.1f))
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+        ) {
         when {
             loading -> Box(
                 modifier = Modifier.fillMaxSize(),
@@ -407,12 +505,16 @@ private fun MarketingHeroImagesGrid(
                     color = Color.White.copy(alpha = 0.6f)
                 )
             }
-            items.isEmpty() -> Box(
+            filteredItems.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
+                val emptyText = when {
+                    items.isEmpty() -> "Noch keine Hero Images."
+                    else -> "Keine Hero Images in dieser Region."
+                }
                 Text(
-                    text = translationStore.t("creator.marketing.no_hero_images", "No hero images yet."),
+                    text = emptyText,
                     color = Color.White.copy(alpha = 0.6f)
                 )
             }
@@ -422,14 +524,14 @@ private fun MarketingHeroImagesGrid(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(items) { item ->
+                items(filteredItems) { item ->
                     val url = item.thumbnailUrl ?: item.imageUrl
                     Box(
                         modifier = Modifier
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(Color.White.copy(alpha = 0.08f))
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
                     ) {
                         if (url != null) {
                             AsyncImage(
@@ -451,6 +553,7 @@ private fun MarketingHeroImagesGrid(
                     }
                 }
             }
+        }
         }
     }
 }
