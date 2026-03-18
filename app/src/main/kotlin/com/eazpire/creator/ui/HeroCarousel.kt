@@ -214,12 +214,16 @@ fun HeroCarousel(
     var currentPairIndex by remember { mutableStateOf(0) }
     val slideProgress = remember { Animatable(1f) }
     var imageSizeBySlot by remember { mutableStateOf<Map<Int, Pair<Int, Int>>>(emptyMap()) }
+    val isModalOpen = productModalHandleState?.value != null
 
-    LaunchedEffect(heroImages.size) {
+    LaunchedEffect(heroImages.size, isModalOpen) {
         if (pairCount < 2) return@LaunchedEffect
         while (true) {
+            if (productModalHandleState?.value != null) {
+                delay(100)
+                continue
+            }
             delay(HERO_PAIR_ADVANCE_MS)
-            val prev = currentPairIndex
             currentPairIndex = (currentPairIndex + 1) % pairCount
             slideProgress.snapTo(0f)
             slideProgress.animateTo(
