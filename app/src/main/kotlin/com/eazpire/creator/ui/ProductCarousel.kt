@@ -80,7 +80,7 @@ fun ProductCarousel(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(EazColors.Orange.copy(alpha = 0.35f))
-                .padding(vertical = 12.dp)
+                .padding(vertical = 6.dp)
                 .then(
                     if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick)
                     else Modifier
@@ -96,7 +96,7 @@ fun ProductCarousel(
         Box(modifier = Modifier.fillMaxWidth()) {
             LazyRow(
                 state = listState,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {

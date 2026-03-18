@@ -123,7 +123,12 @@ fun CreatorCreationsScreen(
     val shop = AuthConfig.SHOP_DOMAIN
 
     LaunchedEffect(ownerId, currentTab) {
-        if (ownerId.isBlank()) return@LaunchedEffect
+        if (ownerId.isBlank()) {
+            designsLoading = false
+            productsLoading = false
+            return@LaunchedEffect
+        }
+        try {
         when (currentTab) {
             "designs" -> {
                 designsLoading = true
@@ -263,6 +268,12 @@ fun CreatorCreationsScreen(
                 }
             }
         }
+        } catch (e: Exception) {
+            designs = emptyList()
+            products = emptyList()
+            designsLoading = false
+            productsLoading = false
+        }
     }
 
     val filteredDesigns = remember(designs, designsSearch.text, productsCountByDesignId) {
@@ -303,7 +314,11 @@ fun CreatorCreationsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(modifier = Modifier.weight(1f)) {
-                listOf("designs" to translationStore.t("creator.mobile.designs", "Designs"), "products" to translationStore.t("creator.mobile.products", "Products")).forEach { (tab, label) ->
+                val tabs = listOf(
+                    "designs" to translationStore.t("creator.mobile.designs", "Designs"),
+                    "products" to translationStore.t("creator.mobile.products", "Products")
+                )
+                for ((tab, label) in tabs) {
                     val active = currentTab == tab
                     Box(
                         modifier = Modifier
@@ -325,6 +340,7 @@ fun CreatorCreationsScreen(
             }
         }
 
+        Column(modifier = Modifier.weight(1f)) {
         when (currentTab) {
             "designs" -> {
                 // Toolbar
@@ -382,7 +398,7 @@ fun CreatorCreationsScreen(
                     )
                 }
 
-                Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                Box(modifier = Modifier.fillMaxSize()) {
                     if (designsLoading) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = EazColors.Orange)
@@ -405,7 +421,7 @@ fun CreatorCreationsScreen(
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filteredDesigns) { design ->
+                            items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
                                 CreationDesignListItem(
                                     design = design,
                                     translationStore = translationStore,
@@ -421,7 +437,7 @@ fun CreatorCreationsScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filteredDesigns) { design ->
+                            items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
                                 CreationDesignCard(
                                     design = design,
                                     onClick = { designPreviewDesign = design }
@@ -478,7 +494,7 @@ fun CreatorCreationsScreen(
                     )
                 }
 
-                Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                Box(modifier = Modifier.fillMaxSize()) {
                     if (productsLoading) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = EazColors.Orange)
@@ -501,7 +517,7 @@ fun CreatorCreationsScreen(
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filteredProducts) { product ->
+                            items(filteredProducts, key = { it.id }) { product ->
                                 CreationProductListItem(
                                     product = product,
                                     translationStore = translationStore,
@@ -521,7 +537,7 @@ fun CreatorCreationsScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filteredProducts) { product ->
+                            items(filteredProducts, key = { it.id }) { product ->
                                 CreationProductCard(
                                     product = product,
                                     onClick = {
@@ -535,6 +551,7 @@ fun CreatorCreationsScreen(
                     }
                 }
             }
+        }
         }
     }
 

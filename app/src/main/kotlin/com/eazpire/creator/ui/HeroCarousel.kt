@@ -229,8 +229,9 @@ fun HeroCarousel(
         }
     }
 
+    /** Unterer Teil mehr abgeschnitten als oberer → Alignment nach oben */
     fun hotspotAlignmentFromCentroid(hotspots: List<HeroHotspot>): Alignment =
-        if (hotspots.isEmpty()) Alignment.Center else {
+        if (hotspots.isEmpty()) Alignment.TopCenter else {
             val avgX = hotspots.map { it.x }.average().toFloat()
             val avgY = hotspots.map { it.y }.average().toFloat()
             when {
@@ -240,14 +241,14 @@ fun HeroCarousel(
                     else -> Alignment.TopCenter
                 }
                 avgY > 0.66f -> when {
-                    avgX < 0.33f -> Alignment.BottomStart
-                    avgX > 0.66f -> Alignment.BottomEnd
-                    else -> Alignment.BottomCenter
+                    avgX < 0.33f -> Alignment.TopStart
+                    avgX > 0.66f -> Alignment.TopEnd
+                    else -> Alignment.TopCenter
                 }
                 else -> when {
-                    avgX < 0.33f -> Alignment.CenterStart
-                    avgX > 0.66f -> Alignment.CenterEnd
-                    else -> Alignment.Center
+                    avgX < 0.33f -> Alignment.TopStart
+                    avgX > 0.66f -> Alignment.TopEnd
+                    else -> Alignment.TopCenter
                 }
             }
         }
@@ -293,14 +294,13 @@ fun HeroCarousel(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             listOf(0, 1).forEach { slot ->
                 BoxWithConstraints(
                     modifier = Modifier
                         .weight(1f)
                         .aspectRatio(HERO_CELL_ASPECT_RATIO)
-                        .clip(RoundedCornerShape(8.dp))
                 ) {
                     val cellHeightPx = with(density) { maxHeight.toPx() }
                     val leftOffsetY = (slideProgress.value - 1f) * cellHeightPx
@@ -385,9 +385,7 @@ private fun HeroCell(
             contentDescription = hero.title ?: "Hero image",
             contentScale = ContentScale.Crop,
             alignment = alignment,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(8.dp)),
+            modifier = Modifier.fillMaxSize(),
             onSuccess = { success ->
                 val d = success.result.drawable
                 val w = d.intrinsicWidth

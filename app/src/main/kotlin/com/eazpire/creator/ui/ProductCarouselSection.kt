@@ -124,7 +124,7 @@ fun ProductCarouselSection(
                 collectionHandle = section.collectionHandle,
                 onTitleClick = null,
                 onProductClick = onProductClick,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 6.dp)
             )
         }
         CAROUSEL_CATEGORIES.forEachIndexed { index, (title, handle) ->
@@ -137,7 +137,7 @@ fun ProductCarouselSection(
                 collectionHandle = handle,
                 onTitleClick = onCategoryClick?.let { { it(title, handle) } },
                 onProductClick = onProductClick,
-                modifier = Modifier.padding(bottom = if (isLast) 24.dp else 16.dp)
+                modifier = Modifier.padding(bottom = if (isLast) 24.dp else 6.dp)
             )
         }
     }

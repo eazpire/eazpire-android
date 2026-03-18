@@ -171,30 +171,31 @@ fun CreatorMainScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                userScrollEnabled = true
+                userScrollEnabled = true,
+                beyondBoundsPageCount = 0
             ) { page ->
                 Box(modifier = Modifier.fillMaxSize()) {
-                when (page) {
-                    0 -> CreatorDashboardScreen(
-                        tokenStore = tokenStore,
-                        translationStore = translationStore,
-                        onOpenSalesModal = { salesModalVisible = true }
-                    )
-                    1 -> CreatorGeneratorScreen(
-                        tokenStore = tokenStore,
-                        translationStore = translationStore,
-                        onOpenEazyChat = onEazyChatOpen
-                    )
-                    2 -> CreatorCreationsScreen(
-                        tokenStore = tokenStore,
-                        translationStore = translationStore
-                    )
-                    3 -> MarketingScreen(
-                        tokenStore = tokenStore,
-                        translationStore = translationStore,
-                        onHeaderTitleChange = { marketingTitleOverride = it }
-                    )
-                }
+                    when (page) {
+                        0 -> CreatorDashboardScreen(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore,
+                            onOpenSalesModal = { salesModalVisible = true }
+                        )
+                        1 -> CreatorGeneratorScreen(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore,
+                            onOpenEazyChat = onEazyChatOpen
+                        )
+                        2 -> CreatorCreationsScreen(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore
+                        )
+                        3 -> MarketingScreen(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore,
+                            onHeaderTitleChange = { marketingTitleOverride = it }
+                        )
+                    }
                 }
             }
 
