@@ -3,6 +3,7 @@ package com.eazpire.creator.ui
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -11,7 +12,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,8 +27,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -39,17 +37,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -66,15 +62,14 @@ import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 private const val TAG_PRODUCT_MODAL = "ProductModalDebug"
-private const val HERO_AUTO_ADVANCE_MS = 3500L
-/** Querformat: 16:9 – ca. 2/3 kleiner als vorher (2:3), oberer/unterer Bereich abgeschnitten */
-private const val HERO_ASPECT_RATIO = 16f / 9f
+/** Zwei Bilder nebeneinander: jedes quadratisch, gleich groß */
+private const val HERO_CELL_ASPECT_RATIO = 1f
+private const val HERO_PAIR_ADVANCE_MS = 3500L
+private const val HERO_SLIDE_DURATION_MS = 450
 private val HERO_HOTSPOT_SIZE = 14.dp
 private val HERO_HOTSPOT_TOUCH_TARGET = 48.dp
 private val HERO_HOTSPOT_RING = 3.dp
@@ -140,7 +135,7 @@ private fun parseHotspots(obj: JSONObject): List<HeroHotspot> {
     return result
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HeroCarousel(
     onProductClick: ((String) -> Unit)? = null,
@@ -215,179 +210,212 @@ fun HeroCarousel(
 
     if (heroImages.isEmpty()) return
 
-    val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(
-        pageCount = { heroImages.size },
-        initialPage = 0
-    )
+    val pairCount = (heroImages.size + 1) / 2
+    var currentPairIndex by remember { mutableStateOf(0) }
+    val slideProgress = remember { Animatable(1f) }
+    var imageSizeBySlot by remember { mutableStateOf<Map<Int, Pair<Int, Int>>>(emptyMap()) }
 
-    LaunchedEffect(heroImages.size, pagerState) {
-        if (heroImages.size < 2) return@LaunchedEffect
+    LaunchedEffect(heroImages.size) {
+        if (pairCount < 2) return@LaunchedEffect
         while (true) {
-            delay(HERO_AUTO_ADVANCE_MS)
-            val currentPage = snapshotFlow { pagerState.currentPage }.first()
-            val next = (currentPage + 1) % heroImages.size
-            pagerState.animateScrollToPage(next)
+            delay(HERO_PAIR_ADVANCE_MS)
+            val prev = currentPairIndex
+            currentPairIndex = (currentPairIndex + 1) % pairCount
+            slideProgress.snapTo(0f)
+            slideProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(HERO_SLIDE_DURATION_MS, easing = FastOutSlowInEasing)
+            )
         }
     }
 
-    var imageSizeByPage by remember { mutableStateOf<Map<Int, Pair<Int, Int>>>(emptyMap()) }
+    fun hotspotAlignmentFromCentroid(hotspots: List<HeroHotspot>): Alignment =
+        if (hotspots.isEmpty()) Alignment.Center else {
+            val avgX = hotspots.map { it.x }.average().toFloat()
+            val avgY = hotspots.map { it.y }.average().toFloat()
+            when {
+                avgY < 0.33f -> when {
+                    avgX < 0.33f -> Alignment.TopStart
+                    avgX > 0.66f -> Alignment.TopEnd
+                    else -> Alignment.TopCenter
+                }
+                avgY > 0.66f -> when {
+                    avgX < 0.33f -> Alignment.BottomStart
+                    avgX > 0.66f -> Alignment.BottomEnd
+                    else -> Alignment.BottomCenter
+                }
+                else -> when {
+                    avgX < 0.33f -> Alignment.CenterStart
+                    avgX > 0.66f -> Alignment.CenterEnd
+                    else -> Alignment.Center
+                }
+            }
+        }
+
+    fun handleHotspotClick(hotspot: HeroHotspot) {
+        val handle = when {
+            hotspot.url != null && hotspot.url.startsWith("/products/") ->
+                hotspot.url.removePrefix("/products/").trimEnd('/')
+            hotspot.url != null && hotspot.url.contains("/products/") -> {
+                val idx = hotspot.url.indexOf("/products/") + "/products/".length
+                hotspot.url.substring(idx).trimEnd('/').substringBefore('?').substringBefore('#')
+            }
+            hotspot.productHandle != null -> hotspot.productHandle
+            else -> null
+        }
+        Log.d(TAG_PRODUCT_MODAL, "[3] onHotspotClick: handle=$handle productModalState=${productModalHandleState != null}")
+        if (handle != null && handle.isNotBlank()) {
+            when {
+                productModalHandleState != null -> {
+                    debugLog("HeroCarousel.kt", "Setting productModalHandleState", mapOf("handle" to handle), "H1")
+                    productModalHandleState!!.value = handle
+                    onHotspotProductClick?.invoke(handle)
+                }
+                onHotspotProductClick != null -> onHotspotProductClick!!(handle)
+                else -> onProductClick?.invoke(handle)
+            }
+        } else if (hotspot.url != null && hotspot.url != "#" && hotspot.url.isNotBlank() && !hotspot.url.startsWith("/products/")) {
+            val fullUrl = if (hotspot.url.startsWith("http")) hotspot.url else "$STORE_BASE_URL${hotspot.url}"
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
+            } catch (_: Exception) { }
+        }
+    }
+
+    val density = LocalDensity.current
+    val basePairIndex = if (slideProgress.value < 1f) (currentPairIndex - 1 + pairCount) % pairCount else currentPairIndex
+    val showOverlay = pairCount >= 2 && slideProgress.value < 1f
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(bottom = 16.dp)
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxWidth(),
-                userScrollEnabled = heroImages.size > 1
-            ) { page ->
-                val hero = heroImages[page]
-                val pageHotspots = when {
-                    hero.hotspots.isNotEmpty() -> hero.hotspots
-                    fallbackProductHandle != null -> listOf(
-                        HeroHotspot(0.5f, 0.5f, "/products/$fallbackProductHandle", "Produkt", fallbackProductHandle)
-                    )
-                    else -> listOf(
-                        HeroHotspot(0.5f, 0.5f, "/products/gift-card", "Produkt", "gift-card")
-                    )
-                }
-                val pageImageSize = imageSizeByPage[page]
-                val hotspotAlignment = remember(pageHotspots) {
-                    if (pageHotspots.isEmpty()) Alignment.Center else {
-                        val avgX = pageHotspots.map { it.x }.average().toFloat()
-                        val avgY = pageHotspots.map { it.y }.average().toFloat()
-                        BiasAlignment(
-                            (avgX - 0.5f) * 2,
-                            (avgY - 0.5f) * 2
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            listOf(0, 1).forEach { slot ->
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(HERO_CELL_ASPECT_RATIO)
+                        .clip(RoundedCornerShape(8.dp))
+                ) {
+                    val cellHeightPx = with(density) { maxHeight.toPx() }
+                    val leftOffsetY = (slideProgress.value - 1f) * cellHeightPx
+                    val rightOffsetY = (1f - slideProgress.value) * cellHeightPx
+                    val offsetY = if (slot == 0) leftOffsetY else rightOffsetY
+
+                    val baseLeft = basePairIndex * 2
+                    val baseRight = basePairIndex * 2 + 1
+                    val baseHero = heroImages[(if (slot == 0) baseLeft else baseRight) % heroImages.size]
+                    val baseHotspots = when {
+                        baseHero.hotspots.isNotEmpty() -> baseHero.hotspots
+                        fallbackProductHandle != null -> listOf(
+                            HeroHotspot(0.5f, 0.5f, "/products/$fallbackProductHandle", "Produkt", fallbackProductHandle)
+                        )
+                        else -> listOf(
+                            HeroHotspot(0.5f, 0.5f, "/products/gift-card", "Produkt", "gift-card")
                         )
                     }
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(HERO_ASPECT_RATIO)
-                        .clip(RoundedCornerShape(0.dp))
-                ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(hero.imageUrl)
-                            .crossfade(300)
-                            .build(),
-                        contentDescription = hero.title ?: "Hero image",
-                        contentScale = ContentScale.Crop,
-                        alignment = hotspotAlignment,
+                    val baseImageSize = imageSizeBySlot[slot]
+                    val baseAlignment = hotspotAlignmentFromCentroid(baseHotspots)
+
+                    HeroCell(
+                        hero = baseHero,
+                        slotHotspots = baseHotspots,
+                        slotImageSize = baseImageSize,
+                        alignment = baseAlignment,
+                        onHotspotClick = { handleHotspotClick(it) },
+                        onImageSize = { w, h -> if (w > 0 && h > 0) imageSizeBySlot = imageSizeBySlot + (slot to (w to h)) },
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(HERO_ASPECT_RATIO),
-                        onSuccess = { success ->
-                            val d = success.result.drawable
-                            val w = d.intrinsicWidth
-                            val h = d.intrinsicHeight
-                            if (w > 0 && h > 0) {
-                                imageSizeByPage = imageSizeByPage + (page to (w to h))
-                            }
-                        }
+                            .fillMaxSize()
+                            .zIndex(0f)
                     )
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(
-                                androidx.compose.ui.graphics.Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.Black.copy(alpha = 0.4f)
-                                    ),
-                                    startY = 0f,
-                                    endY = 1000f
-                                )
+                    if (showOverlay) {
+                        val overlayLeft = currentPairIndex * 2
+                        val overlayRight = currentPairIndex * 2 + 1
+                        val overlayHero = heroImages[(if (slot == 0) overlayLeft else overlayRight) % heroImages.size]
+                        val overlayHotspots = when {
+                            overlayHero.hotspots.isNotEmpty() -> overlayHero.hotspots
+                            fallbackProductHandle != null -> listOf(
+                                HeroHotspot(0.5f, 0.5f, "/products/$fallbackProductHandle", "Produkt", fallbackProductHandle)
                             )
-                    )
-                    if (pageHotspots.isNotEmpty()) {
-                        HeroHotspotsOverlay(
-                            modifier = Modifier.matchParentSize(),
-                            hotspots = pageHotspots,
-                            imageSize = pageImageSize,
-                            onHotspotClick = { hotspot ->
-                        val handle = when {
-                            hotspot.url != null && hotspot.url.startsWith("/products/") ->
-                                hotspot.url.removePrefix("/products/").trimEnd('/')
-                            hotspot.url != null && hotspot.url.contains("/products/") -> {
-                                val idx = hotspot.url.indexOf("/products/") + "/products/".length
-                                hotspot.url.substring(idx).trimEnd('/').substringBefore('?').substringBefore('#')
-                            }
-                            hotspot.productHandle != null -> hotspot.productHandle
-                            else -> null
+                            else -> listOf(
+                                HeroHotspot(0.5f, 0.5f, "/products/gift-card", "Produkt", "gift-card")
+                            )
                         }
-                        Log.d(TAG_PRODUCT_MODAL, "[3] onHotspotClick: handle=$handle productModalState=${productModalHandleState != null}")
-                                if (handle != null && handle.isNotBlank()) {
-                                    when {
-                                        productModalHandleState != null -> {
-                                            // #region agent log
-                                            debugLog("HeroCarousel.kt:288", "Setting productModalHandleState", mapOf(
-                                                "handle" to handle,
-                                                "productModalHandleStateNotNull" to true
-                                            ), "H1")
-                                            // #endregion
-                                            Log.d(TAG_PRODUCT_MODAL, "[4] Setting productModalHandleState.value = $handle")
-                                            productModalHandleState.value = handle
-                                            // #region agent log
-                                            debugLog("HeroCarousel.kt:292", "AFTER productModalHandleState.value = handle", mapOf("handle" to handle), "H2")
-                                            // #endregion
-                                            onHotspotProductClick?.invoke(handle)
-                                        }
-                                        onHotspotProductClick != null -> {
-                                            // #region agent log
-                                            debugLog("HeroCarousel.kt:298", "Using onHotspotProductClick branch", mapOf("handle" to handle), "H4")
-                                            // #endregion
-                                            onHotspotProductClick(handle)
-                                        }
-                                        else -> onProductClick?.invoke(handle)
-                                    }
-                                } else if (hotspot.url != null && hotspot.url != "#" && hotspot.url.isNotBlank() && !hotspot.url.startsWith("/products/")) {
-                            val fullUrl = if (hotspot.url.startsWith("http")) hotspot.url else "$STORE_BASE_URL${hotspot.url}"
-                                    try {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
-                                    } catch (_: Exception) { }
-                                } else {
-                                    // #region agent log
-                                    debugLog("HeroCarousel.kt:318", "handle null or blank", mapOf("handle" to handle), "H5")
-                                    // #endregion
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-            if (heroImages.size > 1) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 14.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    heroImages.forEachIndexed { index, _ ->
-                        val isActive = pagerState.currentPage == index
-                        Box(
+                        val overlayAlignment = hotspotAlignmentFromCentroid(overlayHotspots)
+                        HeroCell(
+                            hero = overlayHero,
+                            slotHotspots = overlayHotspots,
+                            slotImageSize = null,
+                            alignment = overlayAlignment,
+                            onHotspotClick = { handleHotspotClick(it) },
+                            onImageSize = { _, _ -> },
                             modifier = Modifier
-                                .padding(horizontal = 3.dp)
-                                .size(
-                                    width = if (isActive) 20.dp else 8.dp,
-                                    height = 8.dp
-                                )
-                                .clip(if (isActive) RoundedCornerShape(4.dp) else CircleShape)
-                                .background(
-                                    if (isActive) androidx.compose.ui.graphics.Color.White
-                                    else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.5f)
-                                )
-                                .clickable { scope.launch { pagerState.animateScrollToPage(index) } }
+                                .fillMaxSize()
+                                .graphicsLayer { translationY = offsetY }
+                                .zIndex(1f)
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HeroCell(
+    hero: HeroImage,
+    slotHotspots: List<HeroHotspot>,
+    slotImageSize: Pair<Int, Int>?,
+    alignment: Alignment,
+    onHotspotClick: (HeroHotspot) -> Unit,
+    onImageSize: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(hero.imageUrl)
+                .crossfade(300)
+                .build(),
+            contentDescription = hero.title ?: "Hero image",
+            contentScale = ContentScale.Crop,
+            alignment = alignment,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(8.dp)),
+            onSuccess = { success ->
+                val d = success.result.drawable
+                val w = d.intrinsicWidth
+                val h = d.intrinsicHeight
+                onImageSize(w, h)
+            }
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.4f)
+                        ),
+                        startY = 0f,
+                        endY = 1000f
+                    )
+                )
+        )
+        if (slotHotspots.isNotEmpty()) {
+            HeroHotspotsOverlay(
+                modifier = Modifier.matchParentSize(),
+                hotspots = slotHotspots,
+                imageSize = slotImageSize,
+                onHotspotClick = onHotspotClick
+            )
         }
     }
 }
