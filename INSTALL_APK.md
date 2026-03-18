@@ -20,10 +20,10 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 $apk = "$env:TEMP\eazpire-android-build\app\outputs\apk\debug\app-debug.apk"
 
 # Verbinden (IP:Port von Wireless Debugging)
-& $adb connect 192.168.3.12:36731
+& $adb connect 192.168.3.12:43695
 
 # Installieren
-& $adb -s 192.168.3.12:36731 install -r $apk
+& $adb -s 192.168.3.12:43695 install -r $apk
 ```
 
 ## Hinweis

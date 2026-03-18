@@ -57,6 +57,42 @@ class CreatorApi(
         return call("get-balance", params)
     }
 
+    /** GET ?op=get-level&owner_id=xxx – Level/XP for Creator dashboard */
+    suspend fun getLevel(ownerId: String): JSONObject = call(
+        "get-level",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=get-design-source-counts&owner_id=xxx – generated/uploaded design counts */
+    suspend fun getDesignSourceCounts(ownerId: String): JSONObject = call(
+        "get-design-source-counts",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=get-publish-stats&owner_id=xxx – products online/offline */
+    suspend fun getPublishStats(ownerId: String): JSONObject = call(
+        "get-publish-stats",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=get-creator-sales&owner_id=xxx – sales/balance for Creator */
+    suspend fun getCreatorSales(ownerId: String): JSONObject = call(
+        "get-creator-sales",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=get-hero-analytics-summary&owner_id=xxx&days=90 */
+    suspend fun getHeroAnalyticsSummary(ownerId: String, days: Int = 90): JSONObject = call(
+        "get-hero-analytics-summary",
+        mapOf("owner_id" to ownerId, "days" to days.toString())
+    )
+
+    /** GET ?op=get-onboarding-progress&owner_id=xxx – Creator Journey todos */
+    suspend fun getOnboardingProgress(ownerId: String): JSONObject = call(
+        "get-onboarding-progress",
+        mapOf("owner_id" to ownerId)
+    )
+
     /**
      * GET ?op=get-customer-account-profile&owner_id=xxx
      */
@@ -616,6 +652,41 @@ class CreatorApi(
     /** POST ensure-favorite-list-share-token Body: { customer_id, list_id } → { ok, share_token } */
     suspend fun ensureFavoriteListShareToken(customerId: String, listId: Long): JSONObject =
         postJson("ensure-favorite-list-share-token", mapOf("customer_id" to customerId, "list_id" to listId))
+
+    // ── Eazy Chat ─────────────────────────────────────────
+    /** GET ?op=eazy-conv&user_id=X – Load active conversation + messages */
+    suspend fun getEazyConversation(userId: String): JSONObject = call(
+        "eazy-conv",
+        mapOf("user_id" to userId)
+    )
+
+    /** POST ?op=chat-completion – Send message, get AI reply. Body: messages, user_id, conversation_id?, context */
+    suspend fun chatCompletion(
+        userId: String,
+        messages: List<Pair<String, String>>,
+        conversationId: String?,
+        context: Map<String, Any?> = emptyMap()
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/apps/creator-dispatch?op=chat-completion&_t=${System.currentTimeMillis()}"
+        val msgArray = org.json.JSONArray()
+        messages.forEach { (role, content) ->
+            msgArray.put(org.json.JSONObject().put("role", role).put("content", content))
+        }
+        val body = org.json.JSONObject()
+            .put("user_id", userId)
+            .put("messages", msgArray)
+            .put("conversation_id", conversationId ?: org.json.JSONObject.NULL)
+            .put("context", org.json.JSONObject(context))
+        val request = Request.Builder()
+            .url(url)
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
 
     /** GET ?op=get-catalog-products&region=EU&design_type=classic */
     suspend fun getCatalogProducts(

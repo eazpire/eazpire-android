@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,8 +20,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -30,9 +38,14 @@ import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.chat.EazyChatModal
+import com.eazpire.creator.chat.EazyChatStore
+import com.eazpire.creator.chat.EazyMascot
+import com.eazpire.creator.chat.EazyMascotStore
 import com.eazpire.creator.ui.account.AccountModalSheet
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.footer.SubFooter
+import com.eazpire.creator.ui.creator.CreatorMainScreen
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
@@ -73,11 +86,21 @@ fun ShopScreen(
     var menuDrawerVisible by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
     var favoritesModalVisible by remember { mutableStateOf(false) }
+    var eazyChatVisible by remember { mutableStateOf(false) }
+    val eazyChatStore = remember { EazyChatStore(context) }
+    val eazyMascotStore = remember { EazyMascotStore(context) }
+    val eazyDocked by eazyMascotStore.isDocked.collectAsState(initial = false)
+    val eazyPosX by eazyMascotStore.positionX.collectAsState(initial = null)
+    val eazyPosY by eazyMascotStore.positionY.collectAsState(initial = null)
+    var eazySnapModeActive by remember { mutableStateOf(false) }
+    val slotBoundsState = remember { mutableStateOf<Rect?>(null) }
+    val scope = rememberCoroutineScope()
     var currentPagePath by remember { mutableStateOf("/") }
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     val productModalHandleState = remember { mutableStateOf<String?>(null) }
+    var isCreatorMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(productModalHandleState.value) {
         // #region agent log
@@ -86,8 +109,25 @@ fun ShopScreen(
         Log.d("ProductModalDebug", "[5] ShopScreen: productModalHandleState changed to ${productModalHandleState.value}")
     }
 
+    if (isCreatorMode) {
+        CreatorMainScreen(
+            tokenStore = tokenStore,
+            localeStore = localeStore,
+            translationStore = translationStore,
+            onSwitchToShop = { isCreatorMode = false },
+            onAccountClick = {
+                if (tokenStore.isLoggedIn()) {
+                    accountModalVisible = true
+                } else {
+                    showLoginOptions = true
+                }
+            },
+            onEazyChatOpen = { eazyChatVisible = true }
+        )
+    } else {
+    Box(modifier = modifier.fillMaxSize()) {
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         topBar = {
             key(languageCode, translations.size) {
             Column(
@@ -106,6 +146,13 @@ fun ShopScreen(
                     onCartDrawerChange = { cartDrawerVisible = it },
                     favoritesModalVisibleControl = favoritesModalVisible,
                     onFavoritesModalChange = { favoritesModalVisible = it },
+                    eazyDocked = eazyDocked,
+                    eazySnapModeActive = eazySnapModeActive,
+                    onEazyClick = { eazyChatVisible = true },
+                    onEazyLongPress = { eazyMascotStore.setDockedSync(false) },
+                    slotBoundsState = slotBoundsState,
+                    isCreatorMode = isCreatorMode,
+                    onCreatorModeChange = { isCreatorMode = it },
                     onLogoClick = {
                         accountModalVisible = false
                         showLoginOptions = false
@@ -217,6 +264,48 @@ fun ShopScreen(
         }
         }
     }
+    if (!eazyDocked) {
+        val contentBoundsState = remember { mutableStateOf<Rect?>(null) }
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(100f)
+                .onGloballyPositioned { contentBoundsState.value = it.boundsInRoot() }
+        ) {
+            val density = LocalDensity.current
+            val contentW = with(density) { maxWidth.toPx() }
+            val contentH = with(density) { maxHeight.toPx() }
+            EazyMascot(
+                modifier = Modifier.align(Alignment.TopStart),
+                isDocked = false,
+                positionX = eazyPosX,
+                positionY = eazyPosY,
+                onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
+                onDockedChange = { eazyMascotStore.setDockedSync(it) },
+                onOpenChat = { eazyChatVisible = true },
+                slotBoundsInRoot = slotBoundsState.value,
+                onSnapModeChange = { eazySnapModeActive = it },
+                scope = scope,
+                contentWidthPx = contentW,
+                contentHeightPx = contentH,
+                contentBoundsInRoot = contentBoundsState.value
+            )
+        }
+    }
+    }
+    }
+
+    EazyChatModal(
+        visible = eazyChatVisible,
+        tokenStore = tokenStore,
+        chatStore = eazyChatStore,
+        onDismiss = { eazyChatVisible = false },
+        onLoginClick = {
+            eazyChatVisible = false
+            showLoginOptions = true
+        },
+        onResetMascot = { eazyMascotStore.resetSync() }
+    )
 
     MenuDrawer(
         visible = menuDrawerVisible,

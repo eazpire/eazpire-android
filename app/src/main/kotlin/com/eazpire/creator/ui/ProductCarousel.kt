@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +62,9 @@ fun ProductCarousel(
     val density = LocalDensity.current
     val listState = rememberLazyListState()
 
+    // Endloses Karussell: doppelte Liste für nahtlose Schleife
+    val infiniteProducts = remember(products) { products + products }
+
     Column(modifier = modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
@@ -84,7 +87,7 @@ fun ProductCarousel(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(products) { product ->
+                itemsIndexed(infiniteProducts, key = { index, p -> "${p.id}-$index" }) { index, product ->
                     ProductCard(
                         product = product,
                         onClick = {
@@ -105,18 +108,25 @@ fun ProductCarousel(
                     )
                 }
             }
+            // Endlos-Scroll: rechts nach links, bei Ende zurückspringen (nahtlos)
             LaunchedEffect(Unit) {
                 val scrollPxPerTick = with(density) { (CAROUSEL_SCROLL_PX_PER_SEC * 0.1f).toDp().toPx() }
                 while (true) {
                     delay(100)
+                    val firstIndex = listState.firstVisibleItemIndex
+                    val firstOffset = listState.firstVisibleItemScrollOffset
+                    // Nach erstem Durchlauf (Index >= products.size): zurückspringen
+                    if (firstIndex >= products.size) {
+                        listState.scrollToItem(0, firstOffset)
+                        delay(50)
+                        continue
+                    }
                     val layoutInfo = listState.layoutInfo
                     val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                    val canScrollMore = lastVisible < products.lastIndex ||
-                        listState.firstVisibleItemScrollOffset < (layoutInfo.visibleItemsInfo.lastOrNull()?.size ?: 0)
+                    val canScrollMore = lastVisible < infiniteProducts.lastIndex ||
+                        firstOffset < (layoutInfo.visibleItemsInfo.lastOrNull()?.size ?: 0)
                     if (canScrollMore) {
                         listState.scroll { scrollBy(scrollPxPerTick) }
-                    } else {
-                        listState.animateScrollToItem(0)
                     }
                 }
             }
@@ -131,7 +141,8 @@ private fun ProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val images = product.images
+    // Varianten-Wechsel: variantImages (Farben) bevorzugt, sonst images
+    val images = (product.variantImages.ifEmpty { product.images })
     var currentIndex by remember(product.id) { mutableStateOf(0) }
 
     LaunchedEffect(product.id, images.size) {

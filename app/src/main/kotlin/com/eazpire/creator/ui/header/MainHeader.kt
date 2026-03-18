@@ -8,25 +8,39 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -38,6 +52,9 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -51,10 +68,16 @@ fun MainHeader(
     onCartDrawerChange: ((Boolean) -> Unit)? = null,
     favoritesModalVisibleControl: Boolean? = null,
     onFavoritesModalChange: ((Boolean) -> Unit)? = null,
+    eazyDocked: Boolean = false,
+    eazySnapModeActive: Boolean = false,
+    onEazyClick: () -> Unit = {},
+    onEazyLongPress: () -> Unit = {},
+    slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
+    isCreatorMode: Boolean = false,
+    onCreatorModeChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var isCreatorMode by remember { mutableStateOf(false) }
     var internalCartDrawerVisible by remember { mutableStateOf(false) }
     val cartDrawerVisible = cartDrawerVisibleControl ?: internalCartDrawerVisible
     val onCartDrawerChangeActual = onCartDrawerChange ?: { internalCartDrawerVisible = it }
@@ -88,6 +111,7 @@ fun MainHeader(
     val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
     val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
     var shareUrl by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(ownerId) {
         if (ownerId.isNotBlank()) {
@@ -134,10 +158,48 @@ fun MainHeader(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = "Share")
                 }
+                Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .size(36.dp)
+                            .onGloballyPositioned { coordinates ->
+                                slotBoundsState?.value = coordinates.boundsInRoot()
+                            }
+                            .then(
+                                if (eazySnapModeActive && !eazyDocked) Modifier
+                                    .background(EazColors.Orange.copy(alpha = 0.15f), CircleShape)
+                                    .border(2.dp, EazColors.Orange.copy(alpha = 0.5f), CircleShape)
+                                else Modifier
+                            )
+                            .then(
+                                if (eazyDocked) Modifier
+                                    .pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onTap = { onEazyClick() },
+                                            onPress = {
+                                                var job: Job? = null
+                                                job = coroutineScope.launch {
+                                                    delay(300)
+                                                    onEazyLongPress()
+                                                }
+                                                try {
+                                                    awaitRelease()
+                                                } catch (_: Exception) {}
+                                                job?.cancel()
+                                            }
+                                        )
+                                    }
+                                else Modifier
+                            )
+                    ) {
+                        if (eazyDocked) {
+                            EazyMascotIcon(modifier = Modifier.fillMaxSize())
+                        }
+                    }
             }
             CreatorSwitch(
                 isCreatorMode = isCreatorMode,
-                onModeChange = { isCreatorMode = it }
+                onModeChange = onCreatorModeChange
             )
         }
         HeaderSearch(
