@@ -21,24 +21,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlin.random.Random
 
-/** Web-ähnliche Home-Sektionen: Newcomer, Neuheiten, Coming Soon (Karussell) */
+/** Home-Sektion: New Arrivals (neueste Produkte). Kategorien: zufällig gemischt. */
 private data class HomeSectionData(
     val id: String,
     val titleKey: String,
-    val collectionHandle: String,
+    val collectionHandle: String?,
     val maxProducts: Int = 10
 )
 
 private val HOME_SECTION_DEFAULTS = mapOf(
-    "newcomer" to "Newcomer",
-    "neuheiten" to "Neuheiten",
-    "coming_soon" to "Coming Soon"
+    "newcomer" to "New Arrivals"
 )
 private val HOME_SECTIONS = listOf(
-    HomeSectionData("newcomer", "home.newcomer", "bestseller", 10),
-    HomeSectionData("neuheiten", "home.neuheiten", "all", 10),
-    HomeSectionData("coming_soon", "home.coming_soon", "coming-soon", 10)
+    HomeSectionData("newcomer", "home.newcomer", null, 10)
 )
 
 val CAROUSEL_CATEGORIES = listOf(
@@ -74,19 +71,24 @@ fun ProductCarouselSection(
             coroutineScope {
                 val homeDeferred = async {
                     HOME_SECTIONS.associate { section ->
-                        val handle = section.collectionHandle.ifBlank { "all" }
                         val result = api.getProducts(
-                            collectionHandle = if (handle == "all") null else handle,
-                            limit = section.maxProducts
+                            collectionHandle = section.collectionHandle,
+                            limit = section.maxProducts * 2
                         )
-                        val fallback = if (result.products.isEmpty()) {
-                            api.getProducts(limit = section.maxProducts).products
+                        val list = if (result.products.isEmpty()) {
+                            api.getProducts(limit = section.maxProducts * 2).products
                         } else result.products
-                        section.id to fallback
+                        val sorted = list
+                            .sortedByDescending { it.createdAt.ifBlank { "0" } }
+                            .take(section.maxProducts)
+                        section.id to sorted
                     }
                 }
                 val catDeferred = async {
-                    api.getProductsByCategories(CAROUSEL_CATEGORIES, limitPerCategory = 12)
+                    val raw = api.getProductsByCategories(CAROUSEL_CATEGORIES, limitPerCategory = 12)
+                    raw.mapValues { (_, products) ->
+                        products.shuffled(Random.Default)
+                    }
                 }
                 productsByHomeSection = homeDeferred.await()
                 productsByCategory = catDeferred.await()

@@ -449,6 +449,36 @@ class CreatorApi(
     suspend fun requestPayPalPayout(body: Map<String, Any?>): JSONObject =
         postJson("request-paypal-payout", body)
 
+    /** GET ?op=suggest-prompt → { ok, suggestedPrompt } – AI prompt suggestion */
+    suspend fun suggestPrompt(): JSONObject = call("suggest-prompt")
+
+    /**
+     * POST ?op=accept – Submit design generation job.
+     * Payload: prompt, image_url?, design_type, target_product, ratio, content_type, styles, design_colors,
+     * background_colors, background, language, reference_images?, owner_id
+     * Returns: { jobId } or { error, message }
+     */
+    suspend fun submitGenerateJob(
+        ownerId: String,
+        payload: Map<String, Any?>
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=accept")
+            append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&_t=${System.currentTimeMillis()}")
+        }
+        val body = org.json.JSONObject(payload.filterValues { it != null }.mapValues { it.value!! }).toString()
+        val request = Request.Builder()
+            .url(url)
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toByteArray()))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
+
     /** GET ?op=list-jobs&owner_id=xxx&limit=20 → { ok, items: [...] } */
     suspend fun listJobs(ownerId: String, limit: Int = 20): JSONObject = call(
         "list-jobs",

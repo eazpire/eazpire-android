@@ -145,9 +145,10 @@ fun CreatorMainScreen(
                         translationStore = translationStore,
                         onOpenSalesModal = { salesModalVisible = true }
                     )
-                    1 -> CreatorPlaceholderScreen(
-                        title = translationStore.t("creator.mobile.generator", "Generator"),
-                        hint = translationStore.t("creator.common.coming_soon", "Coming soon")
+                    1 -> CreatorGeneratorScreen(
+                        tokenStore = tokenStore,
+                        translationStore = translationStore,
+                        onOpenEazyChat = onEazyChatOpen
                     )
                     2 -> CreatorPlaceholderScreen(
                         title = translationStore.t("creator.mobile.creations", "Creations"),
