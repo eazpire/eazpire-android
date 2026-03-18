@@ -1,11 +1,14 @@
 package com.eazpire.creator.ui.creator
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,9 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
-import com.eazpire.creator.EazColors
+import com.eazpire.creator.R
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
@@ -56,10 +60,34 @@ fun CreatorMainScreen(
     val scope = rememberCoroutineScope()
 
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(GalaxyGradient)
+        modifier = modifier.fillMaxSize()
     ) {
+        // Galaxy background (wie Web: creator-mobile.css)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(GalaxyGradient)
+        ) {
+            Image(
+                painter = painterResource(R.drawable.galaxy_nebula_bg),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                alpha = 0.85f
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0x660A0514),
+                                Color(0x9905020F)
+                            )
+                        )
+                    )
+            )
+        }
         Column(modifier = Modifier.fillMaxSize()) {
             CreatorHeader(
                 currentScreen = currentScreen,
@@ -112,40 +140,47 @@ fun CreatorMainScreen(
             )
         }
 
+        // Drawer + Backdrop: Row-Layout wie Web (drawer z-index 201, backdrop 200)
+        // Backdrop nur rechts vom Drawer, damit Drawer-Interaktion möglich ist
         if (drawerVisible) {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(98f)
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { drawerVisible = false },
-                content = {}
-            )
-        }
-        CreatorDrawer(
-            visible = drawerVisible,
-            currentScreen = currentScreen,
-            screenLabels = listOf(
-                translationStore.t("creator.mobile.dashboard", "Dashboard"),
-                translationStore.t("creator.mobile.generator", "Generator"),
-                translationStore.t("creator.mobile.creations", "Creations"),
-                translationStore.t("creator.mobile.marketing", "Marketing")
-            ),
-            onDismiss = { drawerVisible = false },
-            onSwitchToShop = {
-                drawerVisible = false
-                onSwitchToShop()
-            },
-            onScreenSelect = { index ->
-                scope.launch {
-                    pagerState.animateScrollToPage(index)
-                    drawerVisible = false
-                }
+                    .padding(0.dp)
+            ) {
+                CreatorDrawer(
+                    visible = true,
+                    currentScreen = currentScreen,
+                    screenLabels = listOf(
+                        translationStore.t("creator.mobile.dashboard", "Dashboard"),
+                        translationStore.t("creator.mobile.generator", "Generator"),
+                        translationStore.t("creator.mobile.creations", "Creations"),
+                        translationStore.t("creator.mobile.marketing", "Marketing")
+                    ),
+                    onDismiss = { drawerVisible = false },
+                    onSwitchToShop = {
+                        drawerVisible = false
+                        onSwitchToShop()
+                    },
+                    onScreenSelect = { index ->
+                        scope.launch {
+                            pagerState.animateScrollToPage(index)
+                            drawerVisible = false
+                        }
+                    }
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { drawerVisible = false }
+                )
             }
-        )
+        }
 
         if (salesModalVisible) {
             CreatorSalesModal(

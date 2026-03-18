@@ -131,12 +131,14 @@ fun CreatorSwitch(
             .pointerInput(Unit) {
                 var totalDrag = 0f
                 var startOffsetPx = 0f
+                var tapStartX = 0f
                 val switchThresholdPx = with(density) { 30.dp.toPx() }
                 val tapThresholdPx = with(density) { 8.dp.toPx() }
                 detectHorizontalDragGestures(
-                    onDragStart = {
+                    onDragStart = { offset ->
                         totalDrag = 0f
                         isDragging = true
+                        tapStartX = offset.x
                         startOffsetPx = thumbOffsetPx.value
                         dragPositionPx = startOffsetPx
                     },
@@ -173,8 +175,16 @@ fun CreatorSwitch(
                             else -> {
                                 val wasTap = kotlin.math.abs(totalDrag) <= tapThresholdPx
                                 if (wasTap) {
-                                    useDragPositionForDisplay = true
-                                    triggerTutorial++
+                                    val tappedLeftHalf = tapStartX < (trackSize.width / 2f)
+                                    val wantShop = tappedLeftHalf
+                                    if (wantShop && isCreatorMode) {
+                                        onModeChange(false)
+                                    } else if (!wantShop && !isCreatorMode) {
+                                        onModeChange(true)
+                                    } else {
+                                        useDragPositionForDisplay = true
+                                        triggerTutorial++
+                                    }
                                 } else {
                                     useDragPositionForDisplay = true
                                     scope.launch {
