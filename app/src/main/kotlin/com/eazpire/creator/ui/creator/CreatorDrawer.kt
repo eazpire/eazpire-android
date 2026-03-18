@@ -56,8 +56,7 @@ fun CreatorDrawer(
             ) {
             CreatorSwitch(
                 isCreatorMode = true,
-                onModeChange = { if (!it) onSwitchToShop() },
-                compact = true
+                onModeChange = { if (!it) onSwitchToShop() }
             )
             IconButton(
                 onClick = onDismiss,
