@@ -411,28 +411,32 @@ fun CreatorCreationsScreen(
                                 color = Color.White.copy(alpha = 0.8f)
                             )
                         }
-                        Column(
+                        Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .verticalScroll(designsScrollState)
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (isListMode) {
-                                filteredDesigns.forEach { design ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(designsScrollState)
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (isListMode) {
+                                    filteredDesigns.forEach { design ->
                                     CreationDesignListItem(
                                         design = design,
                                         translationStore = translationStore,
                                         onClick = { designPreviewDesign = design }
                                     )
-                                }
-                            } else {
-                                filteredDesigns.chunked(gridCols).forEach { rowDesigns ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
+                                    }
+                                } else {
+                                    filteredDesigns.chunked(gridCols).forEach { rowDesigns ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
                                         rowDesigns.forEach { design ->
                                             CreationDesignCard(
                                                 design = design,
@@ -442,6 +446,7 @@ fun CreatorCreationsScreen(
                                         }
                                         repeat(gridCols - rowDesigns.size) {
                                             Spacer(modifier = Modifier.weight(1f))
+                                        }
                                         }
                                     }
                                 }
@@ -513,45 +518,50 @@ fun CreatorCreationsScreen(
                                 color = Color.White.copy(alpha = 0.8f)
                             )
                         }
-                        Column(
+                        Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .verticalScroll(productsScrollState)
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (isListMode) {
-                                filteredProducts.forEach { product ->
-                                    CreationProductListItem(
-                                        product = product,
-                                        translationStore = translationStore,
-                                        onClick = {
-                                            product.storefrontUrl?.let { url ->
-                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(productsScrollState)
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (isListMode) {
+                                    filteredProducts.forEach { product ->
+                                        CreationProductListItem(
+                                            product = product,
+                                            translationStore = translationStore,
+                                            onClick = {
+                                                product.storefrontUrl?.let { url ->
+                                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                                }
                                             }
-                                        }
-                                    )
-                                }
-                            } else {
-                                filteredProducts.chunked(gridCols).forEach { rowProducts ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        rowProducts.forEach { product ->
-                                            CreationProductCard(
-                                                product = product,
-                                                onClick = {
-                                                    product.storefrontUrl?.let { url ->
-                                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                                    }
-                                                },
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                        repeat(gridCols - rowProducts.size) {
-                                            Spacer(modifier = Modifier.weight(1f))
+                                        )
+                                    }
+                                } else {
+                                    filteredProducts.chunked(gridCols).forEach { rowProducts ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            rowProducts.forEach { product ->
+                                                CreationProductCard(
+                                                    product = product,
+                                                    onClick = {
+                                                        product.storefrontUrl?.let { url ->
+                                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                                        }
+                                                    },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                            repeat(gridCols - rowProducts.size) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
                                         }
                                     }
                                 }
