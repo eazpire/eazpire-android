@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.ui.header.CreatorSwitch
 
@@ -47,15 +48,16 @@ fun CreatorDrawer(
     ) {
         DrawerAquarium(modifier = Modifier.fillMaxSize())
         Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
+            Row(
+                modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-        ) {
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
             CreatorSwitch(
                 isCreatorMode = true,
-                onModeChange = { if (!it) onSwitchToShop() }
+                onModeChange = { if (!it) onSwitchToShop() },
+                compact = true
             )
             IconButton(
                 onClick = onDismiss,
@@ -64,21 +66,26 @@ fun CreatorDrawer(
                 Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
             }
         }
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
                 screenLabels.forEachIndexed { index, label ->
                     val isActive = index == currentScreen
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (isActive) EazColors.Orange else Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+                        color = if (isActive) EazColors.Orange else Color.White.copy(alpha = 0.85f),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                onScreenSelect(index)
-                            }
-                            .padding(vertical = 12.dp)
+                            .clickable { onScreenSelect(index) }
+                            .background(
+                                color = if (isActive) EazColors.Orange.copy(alpha = 0.2f) else Color.Transparent,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
                     )
                 }
             }
         }
     }
+}

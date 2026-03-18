@@ -8,10 +8,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import kotlin.math.PI
@@ -22,7 +20,7 @@ import kotlin.math.sin
  * Vereinfachte native Umsetzung: schwebende Partikel.
  */
 @Composable
-fun DrawerAquarium(modifier: Modifier = Modifier) {
+fun DrawerAquarium(modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
     val transition = rememberInfiniteTransition(label = "aquarium")
     val phase by transition.animateFloat(
         initialValue = 0f,
