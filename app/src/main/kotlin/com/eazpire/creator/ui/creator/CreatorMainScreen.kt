@@ -202,17 +202,20 @@ fun CreatorMainScreen(
                             0 -> CreatorDashboardScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
-                            onOpenSalesModal = { salesModalVisible = true }
+                            onOpenSalesModal = { salesModalVisible = true },
+                            maxHeight = maxHeight
                         )
                         1 -> CreatorGeneratorScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
-                            onOpenEazyChat = onEazyChatOpen
+                            onOpenEazyChat = onEazyChatOpen,
+                            maxHeight = maxHeight
                         )
                         2 -> MarketingScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
-                            onHeaderTitleChange = { marketingTitleOverride = it }
+                            onHeaderTitleChange = { marketingTitleOverride = it },
+                            maxHeight = maxHeight
                         )
                     }
                 }
@@ -251,7 +254,12 @@ fun CreatorMainScreen(
                             Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White)
                         }
                     }
-                    Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f)
+                            .padding(top = 100.dp)
+                    ) {
                         CreatorCreationsScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,

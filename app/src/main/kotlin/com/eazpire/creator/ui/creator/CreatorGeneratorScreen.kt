@@ -20,6 +20,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -55,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
@@ -123,8 +125,10 @@ fun CreatorGeneratorScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onOpenEazyChat: () -> Unit = {},
+    maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {
+    val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
@@ -379,6 +383,7 @@ fun CreatorGeneratorScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .heightIn(max = boundedHeight)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -32,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -65,8 +67,10 @@ fun MarketingScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onHeaderTitleChange: (String) -> Unit,
+    maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {
+    val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     var currentSubTab by remember { mutableStateOf<MarketingSubTab>(SUBTAB_CONTENT_CREATION) }
     var currentContentTab by remember { mutableStateOf<MarketingContentTab>(CONTENT_HERO_IMAGES) }
 
@@ -89,7 +93,11 @@ fun MarketingScreen(
         updateHeaderTitle()
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .heightIn(max = boundedHeight)
+    ) {
         // Main tabs: Content Creation | Content Publish (wie .creator-marketing-tabs)
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
