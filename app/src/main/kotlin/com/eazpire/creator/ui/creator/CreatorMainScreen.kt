@@ -14,18 +14,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,7 +33,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.dp
 import com.eazpire.creator.R
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -64,7 +54,6 @@ private val GalaxyGradient = Brush.verticalGradient(
     )
 )
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreatorMainScreen(
     tokenStore: SecureTokenStore,
@@ -91,7 +80,6 @@ fun CreatorMainScreen(
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     var currentScreen by remember { mutableIntStateOf(0) }
-    var creationsOverlayVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isBlank()) return@LaunchedEffect
@@ -114,7 +102,6 @@ fun CreatorMainScreen(
             }
         } catch (_: Exception) {}
     }
-    val pagerState = rememberPagerState(pageCount = { 3 }, initialPage = 0)
     val scope = rememberCoroutineScope()
 
     Box(
@@ -170,56 +157,46 @@ fun CreatorMainScreen(
                     marketingTitleOverride = marketingTitleOverride
                 )
 
-            LaunchedEffect(pagerState.currentPage, creationsOverlayVisible) {
-                currentScreen = when {
-                    creationsOverlayVisible -> 2
-                    else -> when (pagerState.currentPage) {
-                        0 -> 0
-                        1 -> 1
-                        else -> 3
-                    }
-                }
-                if (pagerState.currentPage != 2) marketingTitleOverride = null
+            LaunchedEffect(currentScreen) {
+                if (currentScreen != 3) marketingTitleOverride = null
             }
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                val maxHeight = maxHeight
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    userScrollEnabled = true,
-                    beyondBoundsPageCount = 0
-                ) { page ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .heightIn(max = maxHeight)
-                    ) {
-                        when (page) {
-                            0 -> CreatorDashboardScreen(
+                val contentMaxHeight = maxHeight
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when (currentScreen) {
+                        0 -> CreatorDashboardScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onOpenSalesModal = { salesModalVisible = true },
-                            maxHeight = maxHeight
+                            maxHeight = contentMaxHeight,
+                            modifier = Modifier.fillMaxSize()
                         )
                         1 -> CreatorGeneratorScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onOpenEazyChat = onEazyChatOpen,
-                            maxHeight = maxHeight
+                            maxHeight = contentMaxHeight,
+                            modifier = Modifier.fillMaxSize()
                         )
-                        2 -> MarketingScreen(
+                        2 -> CreatorCreationsScreen(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore,
+                            maxHeight = contentMaxHeight,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        else -> MarketingScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onHeaderTitleChange = { marketingTitleOverride = it },
-                            maxHeight = maxHeight
+                            maxHeight = contentMaxHeight,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
-            }
             }
 
             CreatorFooter(
@@ -231,44 +208,6 @@ fun CreatorMainScreen(
             )
         }
 
-        AnimatedVisibility(
-            visible = creationsOverlayVisible,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-            ) {
-                val overlayMaxHeight = maxHeight
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.3f))
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { creationsOverlayVisible = false }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White)
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .weight(1f)
-                            .padding(top = 100.dp)
-                    ) {
-                        CreatorCreationsScreen(
-                            tokenStore = tokenStore,
-                            translationStore = translationStore,
-                            maxHeight = overlayMaxHeight
-                        )
-                    }
-                }
-            }
-        }
         AnimatedVisibility(
             visible = drawerVisible,
             enter = fadeIn() + slideInHorizontally(initialOffsetX = { -it }),
@@ -297,15 +236,7 @@ fun CreatorMainScreen(
                     onSwitchToShop = onSwitchToShop,
                     onScreenSelect = { index ->
                         drawerVisible = false
-                        when (index) {
-                            2 -> creationsOverlayVisible = true
-                            else -> {
-                                creationsOverlayVisible = false
-                                scope.launch {
-                                    pagerState.animateScrollToPage(if (index < 2) index else 2)
-                                }
-                            }
-                        }
+                        currentScreen = index
                     }
                 )
             }
