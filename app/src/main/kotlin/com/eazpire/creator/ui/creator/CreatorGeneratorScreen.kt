@@ -43,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -55,9 +56,9 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.launch
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.Base64
 
 private val TARGET_PRODUCT_OPTIONS = listOf(
     "all" to "Anything",
@@ -197,7 +198,7 @@ fun CreatorGeneratorScreen(
             try {
                 val payload = buildPayload()
                 val resp = api.submitGenerateJob(ownerId, payload)
-                val jobId = resp.optString("jobId", null).takeIf { it?.isNotBlank() == true }
+                val jobId = resp.optString("jobId", "").takeIf { it.isNotBlank() }
                 if (jobId != null) {
                     lastJobId = jobId
                     prompt = ""
@@ -343,11 +344,13 @@ fun CreatorGeneratorScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             GenPill(
+                modifier = Modifier.weight(1f),
                 label = translationStore.t("creator.generator.target_product", "Target product"),
                 value = TARGET_PRODUCT_OPTIONS.find { it.first == targetProduct }?.second ?: "Anything",
                 onClick = { showTargetProductModal = true }
             )
             GenPill(
+                modifier = Modifier.weight(1f),
                 label = translationStore.t("creator.generator.design_type", "Design type"),
                 value = DESIGN_TYPE_OPTIONS.find { it.first == designType }?.second ?: "Classic",
                 onClick = { showDesignTypeModal = true }
@@ -401,7 +404,7 @@ fun CreatorGeneratorScreen(
                                     .align(Alignment.TopEnd)
                                     .size(24.dp)
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = null, tint = androidx.compose.ui.graphics.Color.White)
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
                             }
                         }
                     }
@@ -521,7 +524,6 @@ private fun GenPill(
 ) {
     Box(
         modifier = modifier
-            .weight(1f)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0x55232334))
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
@@ -603,8 +605,8 @@ private fun GenCard(
     title: String,
     count: Int? = null,
     actions: @Composable (() -> Unit)? = null,
-    content: @Composable () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
 ) {
     Column(
         modifier = modifier
