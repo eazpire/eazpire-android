@@ -234,7 +234,7 @@ fun CreatorSwitch(
                 tint = if (isCreatorMode) Color.White.copy(alpha = 0.9f) else LabelInactive
             )
         }
-        // Labels (Klick → Tutorial-Animation direkt)
+        // Labels (Klick → Wechsel wie Web: Ziel-Label tippen = umschalten)
         Row(
             modifier = Modifier.fillMaxHeight().zIndex(1f),
             verticalAlignment = Alignment.CenterVertically
@@ -247,8 +247,12 @@ fun CreatorSwitch(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) {
-                        useDragPositionForDisplay = true
-                        triggerTutorial++
+                        if (isCreatorMode) {
+                            onModeChange(false)
+                        } else {
+                            useDragPositionForDisplay = true
+                            triggerTutorial++
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -262,8 +266,12 @@ fun CreatorSwitch(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) {
-                        useDragPositionForDisplay = true
-                        triggerTutorial++
+                        if (!isCreatorMode) {
+                            onModeChange(true)
+                        } else {
+                            useDragPositionForDisplay = true
+                            triggerTutorial++
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {

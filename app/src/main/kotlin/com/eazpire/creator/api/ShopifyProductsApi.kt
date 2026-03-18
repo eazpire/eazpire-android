@@ -467,7 +467,7 @@ class ShopifyProductsApi(
         categories: List<Pair<String, String>>,
         limitPerCategory: Int = 12
     ): Map<String, List<ProductItem>> = withContext(Dispatchers.IO) {
-        categories.associate { (handle, _) ->
+        categories.associate { (title, handle) ->
             val result = getProducts(collectionHandle = handle, limit = limitPerCategory)
             val fallback = if (result.products.isEmpty()) {
                 getProducts(limit = limitPerCategory).products

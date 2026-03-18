@@ -20,12 +20,17 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 $apk = "$env:TEMP\eazpire-android-build\app\outputs\apk\debug\app-debug.apk"
 
 # Verbinden (IP:Port von Wireless Debugging)
-& $adb connect 192.168.3.12:43695
+& $adb connect 192.168.3.12:46175
 
-# Installieren
-& $adb -s 192.168.3.12:43695 install -r $apk
+# Optional: Alte Version entfernen
+& $adb -s 192.168.3.12:46175 uninstall com.eazpire.creator
+
+# Zuerst bauen: .\gradlew assembleDebug
+# Dann installieren
+& $adb -s 192.168.3.12:46175 install -r $apk
 ```
 
 ## Hinweis
 
-Die Datei `app-debug.apk` im Projektordner ist **nicht** die aktuelle Build-Ausgabe.
+- **RICHTIG:** APK aus `%TEMP%\eazpire-android-build\app\outputs\apk\debug\app-debug.apk` (buildDir in build.gradle.kts)
+- **FALSCH:** `android/app/build/outputs/apk/debug/app-debug.apk` – veraltete/leere Build-Ausgabe, nicht verwenden

@@ -1,6 +1,7 @@
 package com.eazpire.creator.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -121,7 +122,7 @@ fun ProductCarouselSection(
         }
     }
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth().fillMaxSize()) {
         HeroCarousel(
             onProductClick = onProductClick?.let { callback ->
                 { handle -> callback(ProductClickWithCollection(handle, null, null)) }
