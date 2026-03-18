@@ -133,14 +133,12 @@ fun CreatorSwitch(
             .pointerInput(Unit) {
                 var totalDrag = 0f
                 var startOffsetPx = 0f
-                var tapStartX = 0f
                 val switchThresholdPx = with(density) { 30.dp.toPx() }
                 val tapThresholdPx = with(density) { 8.dp.toPx() }
                 detectHorizontalDragGestures(
-                    onDragStart = { offset ->
+                    onDragStart = {
                         totalDrag = 0f
                         isDragging = true
-                        tapStartX = offset.x
                         startOffsetPx = thumbOffsetPx.value
                         dragPositionPx = startOffsetPx
                     },
@@ -177,16 +175,8 @@ fun CreatorSwitch(
                             else -> {
                                 val wasTap = kotlin.math.abs(totalDrag) <= tapThresholdPx
                                 if (wasTap) {
-                                    val tappedLeftHalf = tapStartX < (trackSize.width / 2f)
-                                    val wantShop = tappedLeftHalf
-                                    if (wantShop && isCreatorMode) {
-                                        onModeChange(false)
-                                    } else if (!wantShop && !isCreatorMode) {
-                                        onModeChange(true)
-                                    } else {
-                                        useDragPositionForDisplay = true
-                                        triggerTutorial++
-                                    }
+                                    useDragPositionForDisplay = true
+                                    triggerTutorial++
                                 } else {
                                     useDragPositionForDisplay = true
                                     scope.launch {
@@ -259,12 +249,8 @@ fun CreatorSwitch(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) {
-                        if (isCreatorMode) {
-                            onModeChange(false)
-                        } else {
-                            useDragPositionForDisplay = true
-                            triggerTutorial++
-                        }
+                        useDragPositionForDisplay = true
+                        triggerTutorial++
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -278,12 +264,8 @@ fun CreatorSwitch(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) {
-                        if (!isCreatorMode) {
-                            onModeChange(true)
-                        } else {
-                            useDragPositionForDisplay = true
-                            triggerTutorial++
-                        }
+                        useDragPositionForDisplay = true
+                        triggerTutorial++
                     },
                 contentAlignment = Alignment.Center
             ) {

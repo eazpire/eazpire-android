@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -81,8 +82,11 @@ data class HeroProduct(
 @Composable
 fun AccountHeroImagesTab(
     tokenStore: SecureTokenStore,
+    darkMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val textPrimary = if (darkMode) Color.White else EazColors.TextPrimary
+    val textSecondary = if (darkMode) Color.White.copy(alpha = 0.7f) else EazColors.TextSecondary
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
@@ -269,25 +273,29 @@ fun AccountHeroImagesTab(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text("Hero Images", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
+        Text("Hero Images", style = MaterialTheme.typography.titleMedium, color = textPrimary)
         Spacer(Modifier.height(8.dp))
-        Text("Generate marketing images with AI. Select products and optional model/background.", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+        Text("Generate marketing images with AI. Select products and optional model/background.", style = MaterialTheme.typography.bodySmall, color = textSecondary)
         Spacer(Modifier.height(24.dp))
 
-        Text("Products", style = MaterialTheme.typography.labelLarge, color = EazColors.TextSecondary)
+        Text("Products", style = MaterialTheme.typography.labelLarge, color = textSecondary)
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             HeroProductCard(
                 label = "Top",
                 product = selectedTop,
                 onClick = { pickerCategory = "top"; showProductPicker = true },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
             )
             HeroProductCard(
                 label = "Addition",
                 product = selectedAddition,
                 onClick = { pickerCategory = "addition"; showProductPicker = true },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
             )
         }
         if (!regionLockMessage.isNullOrBlank()) {
@@ -296,7 +304,7 @@ fun AccountHeroImagesTab(
         }
         Spacer(Modifier.height(24.dp))
 
-        Text("Optional uploads", style = MaterialTheme.typography.labelLarge, color = EazColors.TextSecondary)
+        Text("Optional uploads", style = MaterialTheme.typography.labelLarge, color = textSecondary)
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             HeroUploadCard(
@@ -304,14 +312,18 @@ fun AccountHeroImagesTab(
                 imageUri = modelImageUri,
                 onPick = { modelPicker.launch("image/*") },
                 onClear = { modelImageUri = null; modelImageBytes = null },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
             )
             HeroUploadCard(
                 label = "Background",
                 imageUri = backgroundImageUri,
                 onPick = { backgroundPicker.launch("image/*") },
                 onClear = { backgroundImageUri = null; backgroundImageBytes = null },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -410,7 +422,9 @@ private fun HeroProductCard(
     label: String,
     product: HeroProduct?,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    textPrimary: Color = EazColors.TextPrimary,
+    textSecondary: Color = EazColors.TextSecondary
 ) {
     Box(
         modifier = modifier
@@ -458,7 +472,9 @@ private fun HeroUploadCard(
     imageUri: Uri?,
     onPick: () -> Unit,
     onClear: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    textPrimary: Color = EazColors.TextPrimary,
+    textSecondary: Color = EazColors.TextSecondary
 ) {
     Box(
         modifier = modifier
@@ -481,7 +497,7 @@ private fun HeroUploadCard(
                     .align(Alignment.TopEnd)
                     .size(28.dp)
             ) {
-                Icon(Icons.Default.Close, null, tint = EazColors.TextPrimary, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Close, null, tint = textPrimary, modifier = Modifier.size(16.dp))
             }
         } else {
             Column(
@@ -491,7 +507,7 @@ private fun HeroUploadCard(
             ) {
                 Icon(Icons.Default.Image, null, tint = EazColors.Orange.copy(alpha = 0.7f), modifier = Modifier.size(32.dp))
                 Spacer(Modifier.height(4.dp))
-                Text(label, style = MaterialTheme.typography.labelMedium, color = EazColors.TextSecondary)
+                Text(label, style = MaterialTheme.typography.labelMedium, color = textSecondary)
             }
         }
     }

@@ -7,7 +7,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Pause
@@ -25,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -37,12 +36,14 @@ import com.eazpire.creator.EazColors
 fun CreatorAudioWidget(
     isPlaying: Boolean,
     hasAudio: Boolean,
+    visualizerLevels: List<Float> = emptyList(),
     onOpenModal: () -> Unit,
     onPlayPause: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val barCount = 16
     val transition = rememberInfiniteTransition(label = "audio-vis")
     val phase by transition.animateFloat(
         initialValue = 0f,
@@ -53,34 +54,35 @@ fun CreatorAudioWidget(
         ),
         label = "phase"
     )
+    val staticHeights = remember { listOf(0.15f, 0.35f, 0.5f, 0.4f, 0.6f, 0.3f, 0.45f, 0.55f, 0.25f, 0.4f, 0.5f, 0.35f, 0.45f, 0.3f, 0.4f, 0.25f) }
+    val heights = when {
+        isPlaying && visualizerLevels.size == barCount -> visualizerLevels
+        isPlaying -> staticHeights.mapIndexed { i, base ->
+            val t = (phase + i * 0.08f) % 1f
+            base * (0.6f + 0.4f * kotlin.math.sin(t * 2 * kotlin.math.PI.toFloat()))
+        }
+        else -> staticHeights
+    }
 
     Column(
-        modifier = modifier
-            .clickable(
-                indication = null,
-                interactionSource = androidx.compose.runtime.remember { MutableInteractionSource() }
-            ) { onOpenModal() }
-            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
-            .padding(6.dp),
+        modifier = modifier.padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Canvas(
-            modifier = Modifier.size(72.dp, 22.dp),
+            modifier = Modifier
+                .size(72.dp, 22.dp)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onOpenModal() },
             onDraw = {
                 val w = size.width
                 val h = size.height
-                val barCount = 16
                 val barW = ((w - 6) / barCount - 1).coerceAtLeast(2f)
                 val centerY = h / 2
-                val staticHeights = listOf(0.15f, 0.35f, 0.5f, 0.4f, 0.6f, 0.3f, 0.45f, 0.55f, 0.25f, 0.4f, 0.5f, 0.35f, 0.45f, 0.3f, 0.4f, 0.25f)
                 for (i in 0 until barCount) {
-                    val amp = if (isPlaying) {
-                        val t = (phase + i * 0.08f) % 1f
-                        (staticHeights.getOrElse(i) { 0.3f } * (0.6f + 0.4f * kotlin.math.sin(t * 2 * kotlin.math.PI.toFloat())))
-                    } else {
-                        staticHeights.getOrElse(i) { 0.3f }
-                    }
+                    val amp = heights.getOrElse(i) { 0.3f }
                     val barH = (amp * h * 0.5f).coerceAtLeast(3f)
                     val x = 3 + (i.toFloat() / barCount) * (w - 6)
                     val t = i.toFloat() / barCount
@@ -111,7 +113,10 @@ fun CreatorAudioWidget(
                 )
             }
             IconButton(
-                onClick = { if (hasAudio) onPlayPause() else onOpenModal() },
+                onClick = {
+                    if (hasAudio) onPlayPause()
+                    else onOpenModal()
+                },
                 modifier = Modifier.size(28.dp)
             ) {
                 Icon(

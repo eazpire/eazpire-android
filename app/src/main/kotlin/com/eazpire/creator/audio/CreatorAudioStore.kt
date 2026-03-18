@@ -1,6 +1,7 @@
 package com.eazpire.creator.audio
 
 import android.media.MediaPlayer
+import android.media.audiofx.Visualizer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,11 +24,17 @@ class CreatorAudioStore {
     val volume = MutableStateFlow(1f)
     val muted = MutableStateFlow(false)
     val currentPlaybackId = MutableStateFlow<String?>(null)
+    /** Aktuell abgespieltes Item (auch wenn nicht in list, z.B. Auto-Play) */
+    val currentPlaybackItem = MutableStateFlow<CreatorAudioItem?>(null)
     val currentPositionSec = MutableStateFlow(0)
     val isLoading = MutableStateFlow(false)
     val loadError = MutableStateFlow<String?>(null)
 
+    /** Echte Audio-Levels vom Visualizer (16 Balken, 0f–1f), leer wenn nicht verfügbar */
+    val visualizerLevels = MutableStateFlow<List<Float>>(emptyList())
+
     private var mediaPlayer: MediaPlayer? = null
+    private var visualizer: Visualizer? = null
 
     fun getItem(id: String): CreatorAudioItem? = list.value.find { it.id == id }
 
@@ -57,7 +64,9 @@ class CreatorAudioStore {
                 setOnPreparedListener {
                     start()
                     this@CreatorAudioStore.currentPlaybackId.value = item.id
+                    this@CreatorAudioStore.currentPlaybackItem.value = item
                     this@CreatorAudioStore.isPlaying.value = true
+                    attachVisualizer(this)
                 }
                 setOnCompletionListener { }
                 prepareAsync()
@@ -78,7 +87,8 @@ class CreatorAudioStore {
         isPlaying.value = true
     }
 
-    fun togglePlay(item: CreatorAudioItem) {
+    fun togglePlay(item: CreatorAudioItem?) {
+        if (item == null) return
         if (currentPlaybackId.value == item.id) {
             if (isPlaying.value) pause() else resume()
         } else {
@@ -100,6 +110,7 @@ class CreatorAudioStore {
     }
 
     fun stop() {
+        releaseVisualizer()
         mediaPlayer?.apply {
             stop()
             release()
@@ -108,6 +119,57 @@ class CreatorAudioStore {
         currentPlaybackId.value = null
         isPlaying.value = false
         currentPositionSec.value = 0
+        visualizerLevels.value = emptyList()
+    }
+
+    private fun attachVisualizer(mp: MediaPlayer) {
+        releaseVisualizer()
+        try {
+            val sessionId = mp.audioSessionId
+            if (sessionId == 0) return
+            val range = Visualizer.getCaptureSizeRange()
+            val captureSize = range[0]
+            val store = this@CreatorAudioStore
+            val viz = Visualizer(sessionId).apply {
+                this.captureSize = captureSize
+                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                    override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+                        if (waveform != null) {
+                            store.visualizerLevels.value = store.waveformToBars(waveform, 16)
+                        }
+                    }
+                    override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
+                }, Visualizer.getMaxCaptureRate() / 2, true, false)
+                enabled = true
+            }
+            visualizer = viz
+        } catch (_: Exception) {
+            visualizerLevels.value = emptyList()
+        }
+    }
+
+    private fun releaseVisualizer() {
+        try {
+            visualizer?.enabled = false
+            visualizer?.release()
+        } catch (_: Exception) {}
+        visualizer = null
+    }
+
+    private fun waveformToBars(waveform: ByteArray, barCount: Int): List<Float> {
+        if (waveform.isEmpty()) return List(barCount) { 0.3f }
+        val groupSize = waveform.size / barCount
+        if (groupSize < 1) return List(barCount) { 0.3f }
+        return (0 until barCount).map { i ->
+            val start = i * groupSize
+            val end = (start + groupSize).coerceAtMost(waveform.size)
+            var sum = 0f
+            for (j in start until end) {
+                val b = waveform[j].toInt() and 0xFF
+                sum += kotlin.math.abs(b - 128) / 128f
+            }
+            (sum / (end - start)).coerceIn(0.1f, 1f)
+        }
     }
 
     fun release() = stop()

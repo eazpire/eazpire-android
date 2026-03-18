@@ -41,6 +41,8 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.creator.ui.share.buildShareUrl
+import com.eazpire.creator.ui.share.getActiveRefUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -54,6 +56,7 @@ fun CreatorLevelBadge(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    var shareUrl by remember { mutableStateOf<String?>(null) }
     var levelNum by remember { mutableStateOf(1) }
     var levelName by remember { mutableStateOf(translationStore.t("creator.overview.loading", "Loading…")) }
     var xpValue by remember { mutableStateOf("0 / 50") }
@@ -63,6 +66,7 @@ fun CreatorLevelBadge(
     if (isLoggedIn && !ownerId.isNullOrBlank()) {
         val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
         LaunchedEffect(ownerId) {
+            shareUrl = getActiveRefUrl(api, ownerId!!)
             try {
                 val r = withContext(Dispatchers.IO) { api.getLevel(ownerId!!) }
                 if (r.optBoolean("ok", false)) {
@@ -234,7 +238,7 @@ fun CreatorLevelBadge(
                 }
             }
         }
-        // creator-level-share-row: nur Share (kein Copy)
+        // creator-level-share-row: nur Share (kein Copy) – mit Ref-Link + Zielseite
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -245,9 +249,11 @@ fun CreatorLevelBadge(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) {
+                    val urlToShare = shareUrl?.let { buildShareUrl(it, "/pages/creator-dashboard") }
+                        ?: "https://www.eazpire.com/pages/creator-dashboard"
                     val sendIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, "https://www.eazpire.com")
+                        putExtra(Intent.EXTRA_TEXT, urlToShare)
                     }
                     context.startActivity(Intent.createChooser(sendIntent, null))
                 },

@@ -485,23 +485,42 @@ class CreatorApi(
         mapOf("owner_id" to ownerId, "limit" to limit.toString())
     )
 
-    /** GET ?op=list-generated&owner_id=xxx → { ok, items: [...] } */
-    suspend fun listGenerated(ownerId: String, limit: Int = 50): JSONObject = call(
+    /** GET ?op=list-generated&owner_id=xxx&path_prefix=/apps/creator-dispatch → { ok, items: [...] } */
+    suspend fun listGenerated(ownerId: String, limit: Int = 200): JSONObject = call(
         "list-generated",
-        mapOf("owner_id" to ownerId, "limit" to limit.toString())
+        mapOf(
+            "owner_id" to ownerId,
+            "limit" to limit.toString(),
+            "path_prefix" to "/apps/creator-dispatch"
+        )
     )
 
-    /** GET ?op=list-public&limit=40 → { ok, items: [{ preview_url, original_url }] } Public designs for drawer aquarium */
-    suspend fun listPublic(limit: Int = 40): JSONObject = call(
-        "list-public",
-        mapOf("limit" to limit.toString())
-    )
+    /** GET ?op=list-public&limit=100&search=... → { ok, items: [{ preview_url, original_url }] } Public designs */
+    suspend fun listPublic(limit: Int = 100, search: String? = null): JSONObject {
+        val params = mutableMapOf("limit" to limit.toString())
+        search?.takeIf { it.isNotBlank() }?.let { params["search"] = it }
+        return call("list-public", params)
+    }
 
     /** GET ?op=list&owner_id=xxx&limit=100 → { ok, items: [...] } Creator designs */
     suspend fun listDesigns(ownerId: String, limit: Int = 100): JSONObject = call(
         "list",
         mapOf("owner_id" to ownerId, "limit" to limit.toString())
     )
+
+    /** GET ?op=get-published-summary&owner_id=xxx&shop=xxx → { ok, designs: [{ design_id, products_count }] } */
+    suspend fun getPublishedSummary(ownerId: String, shop: String? = null): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId)
+        shop?.takeIf { it.isNotBlank() }?.let { params["shop"] = it }
+        return call("get-published-summary", params)
+    }
+
+    /** GET ?op=get-published-products&owner_id=xxx&shop=xxx → { ok, products: [...] } */
+    suspend fun getPublishedProducts(ownerId: String, shop: String? = null): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId)
+        shop?.takeIf { it.isNotBlank() }?.let { params["shop"] = it }
+        return call("get-published-products", params)
+    }
 
     /** GET ?op=get-customer-designs&owner_id=xxx → { ok, designs: [...] } Customer designs */
     suspend fun getCustomerDesigns(ownerId: String): JSONObject = call(
@@ -528,6 +547,16 @@ class CreatorApi(
     suspend fun getHeroUsedProducts(ownerId: String): JSONObject = call(
         "hero-used-products",
         mapOf("owner_id" to ownerId)
+    )
+
+    /** GET ?op=hero-list&owner_id=xxx&limit=100&status=active → { ok, items: [...] } */
+    suspend fun heroList(ownerId: String, limit: Int = 100, status: String? = "active"): JSONObject = call(
+        "hero-list",
+        mutableMapOf<String, String>().apply {
+            put("owner_id", ownerId)
+            put("limit", limit.toString())
+            status?.takeIf { it.isNotBlank() }?.let { put("status", it) }
+        }
     )
 
     /** GET ?op=hero-published-random&limit=4 → { ok, images: [{ id, image_url, thumbnail_url, title }] } */
@@ -766,8 +795,42 @@ class CreatorApi(
         JSONObject(response.body?.string() ?: "{}")
     }
 
+    // ── Mascot ─────────────────────────────────────────
+    /** GET ?op=mascot-inventory&owner_id=xxx → { ok, mascots, mood, next_levels, locked_mascots } */
+    suspend fun mascotInventory(ownerId: String?): JSONObject {
+        val params = if (!ownerId.isNullOrBlank()) mapOf("owner_id" to ownerId) else emptyMap()
+        return call("mascot-inventory", params)
+    }
+
+    /** POST ?op=mascot-init&owner_id=xxx – Initialize mascot for new user */
+    suspend fun mascotInit(ownerId: String): JSONObject =
+        call("mascot-init", mapOf("owner_id" to ownerId), "POST")
+
+    /** GET ?op=mascot-quests&owner_id=xxx → { ok, quests } */
+    suspend fun mascotQuests(ownerId: String): JSONObject =
+        call("mascot-quests", mapOf("owner_id" to ownerId))
+
+    /** POST ?op=mascot-select – Body: { mascot_id } */
+    suspend fun mascotSelect(ownerId: String, mascotId: Int): JSONObject =
+        postJson("mascot-select", mapOf("mascot_id" to mascotId), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=mascot-interact – Body: { action } (pet, feed, play) */
+    suspend fun mascotInteract(ownerId: String, action: String): JSONObject =
+        postJson("mascot-interact", mapOf("action" to action), mapOf("owner_id" to ownerId))
+
+    /** GET ?op=mascot-config → { ok, abilities_by_type } */
+    suspend fun mascotConfig(): JSONObject = call("mascot-config")
+
+    /** POST ?op=mascot-complete-quest – Body: { quest_id } */
+    suspend fun mascotCompleteQuest(ownerId: String, questId: String): JSONObject =
+        postJson("mascot-complete-quest", mapOf("quest_id" to questId), mapOf("owner_id" to ownerId))
+
     /** GET ?op=list-audio-files → { ok, files: [{ id, title, url, duration_sec, owner_id, cover_url? }] } */
     suspend fun listAudioFiles(): JSONObject = call("list-audio-files")
+
+    /** GET ?op=get-creator-audio&owner_id=xxx → { ok, url?, audio_id? } Creator's active audio for auto-play */
+    suspend fun getCreatorAudio(ownerId: String): JSONObject =
+        call("get-creator-audio", mapOf("owner_id" to ownerId))
 
     /** POST ?op=upload-audio-file&owner_id=xxx – multipart: audio, duration_sec? */
     suspend fun uploadAudioFile(ownerId: String, audioBytes: ByteArray, contentType: String, durationSec: Int? = null): JSONObject =

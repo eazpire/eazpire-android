@@ -69,4 +69,7 @@ dependencies {
     // Coil for images (logo from URL, flags)
     implementation("io.coil-kt:coil:2.5.0")
     implementation("io.coil-kt:coil-compose:2.5.0")
+
+    // Jsoup for HTML parsing (policy content extraction)
+    implementation("org.jsoup:jsoup:1.17.2")
 }

@@ -4,9 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -32,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.components.GlassCircularFlag
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -78,14 +78,6 @@ fun CreatorFooter(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .drawBehind {
-                drawLine(
-                    color = EazColors.Orange,
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, 0f),
-                    strokeWidth = 2f
-                )
-            }
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
@@ -139,24 +131,22 @@ fun CreatorFooter(
                 }
             )
         }
-        // Right: LANG (clickable) + coin + balance (wie .creator-global-footer__balance)
+        // Right: LANG (flag only, clickable) + coin + balance (wie .creator-global-footer__balance)
         Row(
             modifier = Modifier.padding(start = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = langCode.uppercase(),
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                ),
-                color = Color.White.copy(alpha = 0.8f),
-                modifier = Modifier.clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { onLanguageClick() }
-            )
+            val flagCode = localeStore.getFlagCountryForLanguage(langCode)
+            Box(
+                modifier = Modifier
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onLanguageClick() }
+            ) {
+                GlassCircularFlag(countryCode = flagCode, size = 24.dp)
+            }
             Row(
                 modifier = Modifier
                     .background(

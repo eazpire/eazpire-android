@@ -21,6 +21,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -40,6 +41,7 @@ import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.chat.EazyChatContext
 import com.eazpire.creator.chat.EazyChatModal
 import com.eazpire.creator.chat.EazyChatStore
 import com.eazpire.creator.chat.EazyMascot
@@ -58,9 +60,15 @@ import com.eazpire.creator.ui.header.ShopMenuBar
  * Shop-Screen: Direkt zugänglich ohne Login.
  * Zeigt MainHeader und Platzhalter-Content (native UI).
  */
+private val COLLECTION_HANDLE_TO_TITLE = mapOf(
+    "women" to "Women", "men" to "Men", "kids" to "Kids",
+    "toddler" to "Toddler", "home-living" to "Home & Living"
+)
+
 @Composable
 fun ShopScreen(
     tokenStore: SecureTokenStore,
+    pendingDeepLink: MutableState<android.net.Uri?>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -107,16 +115,22 @@ fun ShopScreen(
     var isCreatorMode by remember { mutableStateOf(false) }
     var termsModalVisible by remember { mutableStateOf(false) }
 
-    // Creator-Bereich: Dark Mode für Status/Nav-Bar; Shop: Orange
+    // Creator: StatusBar + NavBar dunkel (#0A0514), ohne Kontrastlinie; Shop: Orange
     LaunchedEffect(isCreatorMode) {
         val activity = context as? Activity
         activity?.window?.let { window ->
             if (isCreatorMode) {
                 window.statusBarColor = AndroidColor.parseColor("#0A0514")
                 window.navigationBarColor = AndroidColor.parseColor("#0A0514")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    window.isNavigationBarContrastEnforced = false
+                }
             } else {
                 window.statusBarColor = AndroidColor.parseColor("#F97316")
                 window.navigationBarColor = AndroidColor.parseColor("#F97316")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    window.isNavigationBarContrastEnforced = true
+                }
             }
         }
     }
@@ -130,6 +144,37 @@ fun ShopScreen(
 
     LaunchedEffect(isCreatorMode) {
         if (isCreatorMode) slotBoundsState.value = null
+    }
+
+    LaunchedEffect(pendingDeepLink?.value) {
+        val uri = pendingDeepLink?.value ?: return@LaunchedEffect
+        pendingDeepLink.value = null
+        val path = when (uri.host) {
+            "join.eazpire.com" -> {
+                val urlParam = uri.getQueryParameter("url")
+                urlParam?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+                    ?.substringAfter("www.eazpire.com")
+                    ?.substringAfter("eazpire.com")
+                    ?: "/"
+            }
+            "www.eazpire.com", "eazpire.com" -> uri.path ?: "/"
+            else -> uri.path ?: "/"
+        }
+        when {
+            path.startsWith("/products/") -> {
+                val handle = path.removePrefix("/products/").trimEnd('/').substringBefore("?")
+                if (handle.isNotBlank()) selectedProductHandle = handle
+            }
+            path.startsWith("/collections/") -> {
+                val handle = path.removePrefix("/collections/").trimEnd('/').substringBefore("?")
+                if (handle.isNotBlank()) {
+                    val title = COLLECTION_HANDLE_TO_TITLE[handle] ?: handle.replaceFirstChar { it.uppercase() }
+                    selectedCollection = Triple(title, handle, null)
+                }
+            }
+            path.startsWith("/pages/creator-dashboard") || path == "/pages/creator" -> isCreatorMode = true
+            path.startsWith("/pages/design-generator") -> isCreatorMode = true
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -326,7 +371,8 @@ fun ShopScreen(
             eazyChatVisible = false
             showLoginOptions = true
         },
-        onResetMascot = { eazyMascotStore.resetSync() }
+        onResetMascot = { eazyMascotStore.resetSync() },
+        chatContext = if (isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop
     )
 
     MenuDrawer(
@@ -418,7 +464,8 @@ fun ShopScreen(
             ProductModal(
                 productHandle = modalHandle,
                 onDismiss = { productModalHandleState.value = null },
-                tokenStore = tokenStore
+                tokenStore = tokenStore,
+                onTermsClick = { termsModalVisible = true }
             )
         }
     }

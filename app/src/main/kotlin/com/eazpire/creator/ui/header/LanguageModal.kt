@@ -35,9 +35,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.ui.components.GlassCircularFlag
+
+private val DarkBg = Color(0xFF0B1220)
+private val DarkTextPrimary = Color.White
+private val DarkTextSecondary = Color.White.copy(alpha = 0.7f)
+private val DarkBorder = Color.White.copy(alpha = 0.15f)
+private val DarkSelectedBg = EazColors.Orange.copy(alpha = 0.2f)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,7 +55,8 @@ fun LanguageModal(
     selectedCode: String,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
-    searchPlaceholder: String = "Search language..."
+    searchPlaceholder: String = "Search language...",
+    darkMode: Boolean = false
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var dialectModalBaseLang by remember { mutableStateOf<String?>(null) }
@@ -70,9 +78,15 @@ fun LanguageModal(
         }
     }
 
+    val containerColor = if (darkMode) DarkBg else Color.White
+    val textColor = if (darkMode) DarkTextPrimary else EazColors.TextPrimary
+    val textSecondaryColor = if (darkMode) DarkTextSecondary else EazColors.TextSecondary
+    val selectedBg = if (darkMode) DarkSelectedBg else EazColors.OrangeBg
+    val borderColor = if (darkMode) DarkBorder else EazColors.TopbarBorder
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = androidx.compose.ui.graphics.Color.White
+        containerColor = containerColor
     ) {
         Column(
             modifier = Modifier
@@ -87,10 +101,10 @@ fun LanguageModal(
                 Text(
                     text = title,
                     style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                    color = EazColors.TextPrimary
+                    color = textColor
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = textColor)
                 }
             }
             OutlinedTextField(
@@ -99,20 +113,20 @@ fun LanguageModal(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 12.dp, bottom = 8.dp),
-                placeholder = { Text(searchPlaceholder, color = EazColors.TextSecondary) },
+                placeholder = { Text(searchPlaceholder, color = textSecondaryColor) },
                 leadingIcon = {
-                    Icon(Icons.Filled.Search, contentDescription = null, tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = textSecondaryColor, modifier = Modifier.size(20.dp))
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = EazColors.TopbarBorder,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                    unfocusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    unfocusedBorderColor = borderColor,
+                    focusedContainerColor = containerColor,
+                    unfocusedContainerColor = containerColor,
                     cursorColor = EazColors.Orange,
-                    focusedTextColor = EazColors.TextPrimary,
-                    unfocusedTextColor = EazColors.TextPrimary
+                    focusedTextColor = textColor,
+                    unfocusedTextColor = textColor
                 ),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { focusManager.clearFocus() })
@@ -134,8 +148,8 @@ fun LanguageModal(
                             .background(
                                 if (item.code.equals(selectedCode, ignoreCase = true) ||
                                     selectedCode.startsWith("$baseLang-") && baseLang == item.code.lowercase()
-                                ) EazColors.OrangeBg
-                                else androidx.compose.ui.graphics.Color.Transparent,
+                                ) selectedBg
+                                else Color.Transparent,
                                 RoundedCornerShape(8.dp)
                             )
                             .clickable {
@@ -153,7 +167,7 @@ fun LanguageModal(
                             Text(
                                 text = item.label,
                                 style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                                color = EazColors.TextPrimary
+                                color = textColor
                             )
                             val dialectBadge = if (selectedCode.startsWith("${baseLang}-") && baseLang == item.code.lowercase())
                                 getDialectScriptBadge(getDialectScriptLabel(selectedCode, languageChildren)) else null
@@ -161,7 +175,7 @@ fun LanguageModal(
                                 Text(
                                     text = " · $dialectBadge",
                                     style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
-                                    color = EazColors.TextSecondary
+                                    color = textSecondaryColor
                                 )
                             }
                         }
@@ -203,7 +217,8 @@ fun LanguageModal(
                     onSelect(code)
                     dialectModalBaseLang = null
                     onDismiss()
-                }
+                },
+                darkMode = darkMode
             )
         }
     }
@@ -218,16 +233,22 @@ private fun DialectModal(
     children: LanguageChildren,
     selectedCode: String,
     onDismiss: () -> Unit,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    darkMode: Boolean = false
 ) {
     fun selectAndClose(code: String) {
         onSelect(code)
         onDismiss()
     }
 
+    val containerColor = if (darkMode) DarkBg else Color.White
+    val textColor = if (darkMode) DarkTextPrimary else EazColors.TextPrimary
+    val textSecondaryColor = if (darkMode) DarkTextSecondary else EazColors.TextSecondary
+    val selectedBg = if (darkMode) DarkSelectedBg else EazColors.OrangeBg
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = androidx.compose.ui.graphics.Color.White
+        containerColor = containerColor
     ) {
         Column(
             modifier = Modifier
@@ -246,11 +267,11 @@ private fun DialectModal(
                         text = baseLabel,
                         modifier = Modifier.padding(start = 12.dp),
                         style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                        color = EazColors.TextPrimary
+                        color = textColor
                     )
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = textColor)
                 }
             }
 
@@ -259,7 +280,7 @@ private fun DialectModal(
                     text = "Dialect",
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                     style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
-                    color = EazColors.TextSecondary
+                    color = textSecondaryColor
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
@@ -269,13 +290,13 @@ private fun DialectModal(
                             .background(
                                 if (!children.dialects.any { it.code.equals(selectedCode, ignoreCase = true) } &&
                                     !children.scripts.any { it.code.equals(selectedCode, ignoreCase = true) }
-                                ) EazColors.OrangeBg else androidx.compose.ui.graphics.Color.Transparent,
+                                ) selectedBg else Color.Transparent,
                                 RoundedCornerShape(8.dp)
                             )
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Standard", modifier = Modifier.padding(start = 8.dp), color = EazColors.TextPrimary)
+                        Text("Standard", modifier = Modifier.padding(start = 8.dp), color = textColor)
                     }
                     children.dialects.forEach { d ->
                         val isSelected = d.code.equals(selectedCode, ignoreCase = true)
@@ -284,7 +305,7 @@ private fun DialectModal(
                                 .fillMaxWidth()
                                 .clickable { selectAndClose(d.code) }
                                 .background(
-                                    if (isSelected) EazColors.OrangeBg else androidx.compose.ui.graphics.Color.Transparent,
+                                    if (isSelected) selectedBg else Color.Transparent,
                                     RoundedCornerShape(8.dp)
                                 )
                                 .padding(8.dp),
@@ -294,7 +315,7 @@ private fun DialectModal(
                             Text(
                                 d.label,
                                 modifier = Modifier.padding(start = 8.dp),
-                                color = EazColors.TextPrimary
+                                color = textColor
                             )
                             if (isSelected) Text("✓", modifier = Modifier.padding(start = 8.dp), color = EazColors.Orange)
                         }
@@ -307,7 +328,7 @@ private fun DialectModal(
                     text = "Script",
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                     style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
-                    color = EazColors.TextSecondary
+                    color = textSecondaryColor
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
@@ -317,13 +338,13 @@ private fun DialectModal(
                             .background(
                                 if (!children.scripts.any { it.code.equals(selectedCode, ignoreCase = true) } &&
                                     !children.dialects.any { it.code.equals(selectedCode, ignoreCase = true) }
-                                ) EazColors.OrangeBg else androidx.compose.ui.graphics.Color.Transparent,
+                                ) selectedBg else Color.Transparent,
                                 RoundedCornerShape(8.dp)
                             )
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Standard", modifier = Modifier.padding(start = 8.dp), color = EazColors.TextPrimary)
+                        Text("Standard", modifier = Modifier.padding(start = 8.dp), color = textColor)
                     }
                     children.scripts.forEach { s ->
                         val isSelected = s.code.equals(selectedCode, ignoreCase = true)
@@ -332,13 +353,13 @@ private fun DialectModal(
                                 .fillMaxWidth()
                                 .clickable { selectAndClose(s.code) }
                                 .background(
-                                    if (isSelected) EazColors.OrangeBg else androidx.compose.ui.graphics.Color.Transparent,
+                                    if (isSelected) selectedBg else Color.Transparent,
                                     RoundedCornerShape(8.dp)
                                 )
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(s.label, modifier = Modifier.padding(start = 8.dp), color = EazColors.TextPrimary)
+                            Text(s.label, modifier = Modifier.padding(start = 8.dp), color = textColor)
                             if (isSelected) Text("✓", modifier = Modifier.padding(start = 8.dp), color = EazColors.Orange)
                         }
                     }

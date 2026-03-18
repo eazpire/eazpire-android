@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
@@ -72,7 +73,8 @@ import org.json.JSONObject
 
 private const val TAG_PRODUCT_MODAL = "ProductModalDebug"
 private const val HERO_AUTO_ADVANCE_MS = 3500L
-private const val HERO_ASPECT_RATIO = 2f / 3f
+/** Querformat: 16:9 – ca. 2/3 kleiner als vorher (2:3), oberer/unterer Bereich abgeschnitten */
+private const val HERO_ASPECT_RATIO = 16f / 9f
 private val HERO_HOTSPOT_SIZE = 14.dp
 private val HERO_HOTSPOT_TOUCH_TARGET = 48.dp
 private val HERO_HOTSPOT_RING = 3.dp
@@ -253,6 +255,16 @@ fun HeroCarousel(
                     )
                 }
                 val pageImageSize = imageSizeByPage[page]
+                val hotspotAlignment = remember(pageHotspots) {
+                    if (pageHotspots.isEmpty()) Alignment.Center else {
+                        val avgX = pageHotspots.map { it.x }.average().toFloat()
+                        val avgY = pageHotspots.map { it.y }.average().toFloat()
+                        BiasAlignment(
+                            (avgX - 0.5f) * 2,
+                            (avgY - 0.5f) * 2
+                        )
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -266,6 +278,7 @@ fun HeroCarousel(
                             .build(),
                         contentDescription = hero.title ?: "Hero image",
                         contentScale = ContentScale.Crop,
+                        alignment = hotspotAlignment,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(HERO_ASPECT_RATIO),

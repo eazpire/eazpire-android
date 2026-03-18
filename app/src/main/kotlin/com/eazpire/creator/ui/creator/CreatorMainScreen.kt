@@ -37,12 +37,18 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.R
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.creator.CreatorDrawer
 import com.eazpire.creator.ui.footer.TermsModal
+import com.eazpire.creator.ui.header.LanguageModal
+import com.eazpire.creator.ui.header.LocaleModalItem
+import com.eazpire.creator.ui.header.LanguageChildren
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val GalaxyGradient = Brush.verticalGradient(
     colors = listOf(
@@ -73,8 +79,33 @@ fun CreatorMainScreen(
     var audioModalVisible by remember { mutableStateOf(false) }
     var languageModalVisible by remember { mutableStateOf(false) }
     var termsModalVisible by remember { mutableStateOf(false) }
+    var marketingTitleOverride by remember { mutableStateOf<String?>(null) }
     val audioStore = remember { com.eazpire.creator.audio.CreatorAudioStore() }
+    val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
+    val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     var currentScreen by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(ownerId) {
+        if (ownerId.isBlank()) return@LaunchedEffect
+        try {
+            val res = withContext(Dispatchers.IO) { api.getCreatorAudio(ownerId) }
+            if (res.optBoolean("ok", false)) {
+                val url = res.optString("url", "").takeIf { it.isNotBlank() }
+                val audioId = res.optString("audio_id", "").takeIf { it.isNotBlank() }
+                if (url != null && audioId != null) {
+                    val item = com.eazpire.creator.audio.CreatorAudioItem(
+                        id = audioId,
+                        title = "",
+                        url = url,
+                        durationSec = 0,
+                        ownerId = ownerId,
+                        coverUrl = null
+                    )
+                    audioStore.play(item)
+                }
+            }
+        } catch (_: Exception) {}
+    }
     val pagerState = rememberPagerState(pageCount = { 4 }, initialPage = 0)
     val scope = rememberCoroutineScope()
 
@@ -125,11 +156,15 @@ fun CreatorMainScreen(
                     eazySnapModeActive = eazySnapModeActive,
                     onEazyClick = onEazyChatOpen,
                     onEazyLongPress = onEazyLongPress,
-                    slotBoundsState = slotBoundsState
+                    slotBoundsState = slotBoundsState,
+                    audioStore = audioStore,
+                    onAudioModalOpen = { audioModalVisible = true },
+                    marketingTitleOverride = marketingTitleOverride
                 )
 
             LaunchedEffect(pagerState.currentPage) {
                 currentScreen = pagerState.currentPage
+                if (pagerState.currentPage != 3) marketingTitleOverride = null
             }
             HorizontalPager(
                 state = pagerState,
@@ -150,13 +185,14 @@ fun CreatorMainScreen(
                         translationStore = translationStore,
                         onOpenEazyChat = onEazyChatOpen
                     )
-                    2 -> CreatorPlaceholderScreen(
-                        title = translationStore.t("creator.mobile.creations", "Creations"),
-                        hint = translationStore.t("creator.common.coming_soon", "Coming soon")
+                    2 -> CreatorCreationsScreen(
+                        tokenStore = tokenStore,
+                        translationStore = translationStore
                     )
-                    3 -> CreatorPlaceholderScreen(
-                        title = translationStore.t("creator.mobile.marketing", "Marketing"),
-                        hint = translationStore.t("creator.common.coming_soon", "Coming soon")
+                    3 -> MarketingScreen(
+                        tokenStore = tokenStore,
+                        translationStore = translationStore,
+                        onHeaderTitleChange = { marketingTitleOverride = it }
                     )
                 }
                 }
@@ -166,6 +202,7 @@ fun CreatorMainScreen(
                 localeStore = localeStore,
                 tokenStore = tokenStore,
                 translationStore = translationStore,
+                onLanguageClick = { languageModalVisible = true },
                 onTermsClick = { termsModalVisible = true }
             )
         }
@@ -208,7 +245,8 @@ fun CreatorMainScreen(
                 visible = true,
                 baseUrl = "https://www.eazpire.com",
                 translationStore = translationStore,
-                onDismiss = { termsModalVisible = false }
+                onDismiss = { termsModalVisible = false },
+                isDarkMode = true
             )
         }
         if (salesModalVisible) {
@@ -235,13 +273,38 @@ fun CreatorMainScreen(
         }
         if (languageModalVisible) {
             val langCode by localeStore.languageCode.collectAsState(initial = "en")
-            CreatorLanguageModal(
-                localeStore = localeStore,
-                translationStore = translationStore,
-                currentLang = langCode,
-                onDismiss = { languageModalVisible = false },
-                onLanguageSelected = { /* triggers reload via LaunchedEffect(languageCode) in ShopScreen */ }
-            )
+            var languageStandard by remember { mutableStateOf(com.eazpire.creator.ui.header.AVAILABLE_LANGUAGES) }
+            var languageChildren by remember { mutableStateOf<Map<String, LanguageChildren>>(emptyMap()) }
+            LaunchedEffect(languageModalVisible) {
+                if (languageModalVisible) {
+                    try {
+                        val resp = api.getLanguages()
+                        if (resp.standard.isNotEmpty()) {
+                            languageStandard = resp.standard.map { LocaleModalItem(it.code, it.label, it.flagCode) }
+                            languageChildren = resp.children.mapValues { (_, v) ->
+                                LanguageChildren(
+                                    dialects = v.dialects.map { LocaleModalItem(it.code, it.label, it.flagCode) },
+                                    scripts = v.scripts.map { LocaleModalItem(it.code, it.label, it.flagCode) }
+                                )
+                            }.mapKeys { it.key.lowercase() }
+                        }
+                    } catch (_: Exception) { /* keep fallback */ }
+                }
+            }
+            LanguageModal(
+                    title = translationStore.t("eaz.topbar.select_language", "Select language"),
+                    standardLanguages = languageStandard,
+                    languageChildren = languageChildren,
+                    selectedCode = langCode,
+                    onDismiss = { languageModalVisible = false },
+                    onSelect = { code ->
+                        scope.launch {
+                            localeStore.setLanguageOverride(code)
+                        }
+                    },
+                    searchPlaceholder = translationStore.t("eaz.topbar.search_language", "Search language..."),
+                    darkMode = true
+                )
         }
     }
 }

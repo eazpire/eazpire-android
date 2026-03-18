@@ -76,6 +76,7 @@ fun CreatorHeader(
     slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
     audioStore: com.eazpire.creator.audio.CreatorAudioStore? = null,
     onAudioModalOpen: () -> Unit = {},
+    marketingTitleOverride: String? = null,
     modifier: Modifier = Modifier
 ) {
     var fiatText by remember { mutableStateOf("…") }
@@ -273,14 +274,17 @@ fun CreatorHeader(
                     audioStore?.let { store ->
                         val isPlaying by store.isPlaying.collectAsState()
                         val currentPlaybackId by store.currentPlaybackId.collectAsState()
+                        val currentPlaybackItem by store.currentPlaybackItem.collectAsState()
+                        val visualizerLevels by store.visualizerLevels.collectAsState()
                         val hasAudio = currentPlaybackId != null
                         CreatorAudioWidget(
                             isPlaying = isPlaying,
                             hasAudio = hasAudio,
+                            visualizerLevels = visualizerLevels,
                             onOpenModal = onAudioModalOpen,
                             onPlayPause = {
-                                val id = currentPlaybackId as? String ?: return@CreatorAudioWidget
-                                val item = store.getItem(id) ?: return@CreatorAudioWidget
+                                val item = store.getItem(currentPlaybackId as? String ?: "")
+                                    ?: currentPlaybackItem
                                 store.togglePlay(item)
                             },
                             onSeekBack = { store.seekBack() },
@@ -290,7 +294,11 @@ fun CreatorHeader(
                     }
                 }
                 Text(
-                    text = screenLabels.getOrElse(currentScreen) { "" },
+                    text = if (currentScreen == 3 && marketingTitleOverride != null) {
+                        marketingTitleOverride
+                    } else {
+                        screenLabels.getOrElse(currentScreen) { "" }
+                    },
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold

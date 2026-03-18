@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
@@ -38,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.imageLoader
+import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ShopifyProductsApi
 import kotlinx.coroutines.delay
 
@@ -76,15 +79,18 @@ fun ProductCarousel(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .background(EazColors.Orange.copy(alpha = 0.35f))
+                .padding(vertical = 12.dp)
                 .then(
                     if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick)
                     else Modifier
-                )
+                ),
+            contentAlignment = Alignment.Center
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
         Box(modifier = Modifier.fillMaxWidth()) {

@@ -1,8 +1,13 @@
 package com.eazpire.creator.ui.creator
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,11 +28,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,28 +43,31 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import androidx.compose.foundation.Image
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.graphics.BitmapFactory
 import android.util.Base64
-import org.json.JSONArray
-import org.json.JSONObject
+import java.io.File
 
 private val TARGET_PRODUCT_OPTIONS = listOf(
     "all" to "Anything",
@@ -79,6 +88,37 @@ data class RefImage(
 )
 
 @Composable
+private fun DataUrlImage(
+    dataUrl: String,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop
+) {
+    var bitmap by remember(dataUrl) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(dataUrl) {
+        if (dataUrl.isBlank()) bitmap = null
+        else {
+            bitmap = withContext(Dispatchers.Default) {
+                try {
+                    val base64 = dataUrl.substringAfter(",", "")
+                    if (base64.isBlank()) return@withContext null
+                    val bytes = Base64.decode(base64, Base64.DEFAULT)
+                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    bmp?.asImageBitmap()
+                } catch (_: Exception) { null }
+            }
+        }
+    }
+    bitmap?.let { bmp ->
+        Image(
+            bitmap = bmp,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = contentScale
+        )
+    }
+}
+
+@Composable
 fun CreatorGeneratorScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
@@ -89,21 +129,54 @@ fun CreatorGeneratorScreen(
     val scope = rememberCoroutineScope()
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
-    val isLoggedIn = tokenStore.isLoggedIn()
 
     var targetProduct by remember { mutableStateOf("all") }
     var designType by remember { mutableStateOf("classic") }
+    var ratio by remember { mutableStateOf("portrait") }
+    var contentType by remember { mutableStateOf("design-text") }
     var prompt by remember { mutableStateOf("") }
     var selectedImages by remember { mutableStateOf<List<RefImage>>(emptyList()) }
     var suggestLoading by remember { mutableStateOf(false) }
-    var generateLoading by remember { mutableStateOf(false) }
     var showTargetProductModal by remember { mutableStateOf(false) }
     var showDesignTypeModal by remember { mutableStateOf(false) }
     var showRefSourceModal by remember { mutableStateOf(false) }
-    var showConfirmModal by remember { mutableStateOf(false) }
-    var confirmBalance by remember { mutableStateOf("—") }
-    var lastJobId by remember { mutableStateOf<String?>(null) }
+    var showOptionsModal by remember { mutableStateOf(false) }
+    var showInspirationModal by remember { mutableStateOf(false) }
+    var showMyDesignsModal by remember { mutableStateOf(false) }
+    var showCanvasModal by remember { mutableStateOf(false) }
+    var showCanvasEditModal by remember { mutableStateOf(false) }
+    var canvasEditIndex by remember { mutableStateOf(0) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    var lastCameraUri by remember { mutableStateOf<Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            lastCameraUri?.let { uri ->
+                scope.launch {
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            val bytes = stream.readBytes()
+                            val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                            val dataUrl = "data:image/jpeg;base64,$base64"
+                            selectedImages = selectedImages + RefImage(dataUrl)
+                        }
+                    } catch (_: Exception) {}
+                    lastCameraUri = null
+                }
+            }
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val file = File(context.cacheDir, "capture_${System.currentTimeMillis()}.jpg")
+            lastCameraUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            lastCameraUri?.let { cameraLauncher.launch(it) }
+        }
+    }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -123,19 +196,6 @@ fun CreatorGeneratorScreen(
         }
     }
 
-    fun loadBalance() {
-        if (ownerId.isBlank()) return
-        scope.launch {
-            try {
-                val resp = api.getBalance(ownerId)
-                if (resp.optBoolean("ok", false)) {
-                    val bal = resp.optDouble("balance_eaz", 0.0)
-                    confirmBalance = if (bal % 1 == 0.0) bal.toInt().toString() else "%.2f".format(bal)
-                }
-            } catch (_: Exception) {}
-        }
-    }
-
     fun onSuggest() {
         scope.launch {
             suggestLoading = true
@@ -150,179 +210,162 @@ fun CreatorGeneratorScreen(
         }
     }
 
-    fun buildPayload(): Map<String, Any?> {
-        val refs = selectedImages.mapIndexed { i, img ->
-            mapOf(
-                "url" to img.dataUrl,
-                "label" to ('A' + i).toString(),
-                "similarity" to img.similarity
-            )
-        }
-        val refsArray = JSONArray().apply { refs.forEach { put(JSONObject(it)) } }
-        val primary = selectedImages.firstOrNull()
-        return mapOf(
-            "prompt" to prompt.trim(),
-            "image_url" to (primary?.dataUrl ?: ""),
-            "design_type" to designType,
-            "target_product" to if (targetProduct == "all") "tshirt" else targetProduct,
-            "ratio" to "portrait",
-            "content_type" to "design-text",
-            "styles" to JSONArray(),
-            "design_colors" to JSONArray(),
-            "background_colors" to JSONArray(),
-            "background" to mapOf("mode" to "transparent"),
-            "language" to mapOf("mode" to "as-design"),
-            "reference_images" to refsArray,
-            "owner_id" to ownerId
-        )
-    }
-
-    fun onGenerate() {
-        if (!prompt.isNotBlank() && selectedImages.isEmpty()) {
-            errorMessage = translationStore.t("creator.generator.please_prompt_or_image", "Please enter a prompt or add a reference image.")
-            return
-        }
-        if (!isLoggedIn || ownerId.isBlank()) {
-            errorMessage = translationStore.t("eazy_chat.login_required_title", "Login required")
-            return
-        }
-        showConfirmModal = true
-        loadBalance()
-    }
-
-    fun doGenerate() {
-        scope.launch {
-            showConfirmModal = false
-            generateLoading = true
-            errorMessage = null
-            try {
-                val payload = buildPayload()
-                val resp = api.submitGenerateJob(ownerId, payload)
-                val jobId = resp.optString("jobId", "").takeIf { it.isNotBlank() }
-                if (jobId != null) {
-                    lastJobId = jobId
-                    prompt = ""
-                    selectedImages = emptyList()
-                    targetProduct = "all"
-                    designType = "classic"
-                    onOpenEazyChat()
-                } else {
-                    errorMessage = resp.optString("message", resp.optString("error", "Unknown error"))
-                }
-            } catch (e: Exception) {
-                errorMessage = e.message ?: translationStore.t("chat.generic_error_retry_later", "Something went wrong. Please try again.")
-            }
-            generateLoading = false
-        }
-    }
-
     fun removeImage(index: Int) {
         selectedImages = selectedImages.toMutableList().apply { removeAt(index) }
     }
 
-    if (showTargetProductModal) {
-        AlertDialog(
-            onDismissRequest = { showTargetProductModal = false },
-            title = { Text(translationStore.t("creator.generator.target_product", "Target product")) },
-            text = {
-                Column {
-                    TARGET_PRODUCT_OPTIONS.forEach { (value, label) ->
-                        Text(
-                            text = label,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    targetProduct = value
-                                    showTargetProductModal = false
-                                }
-                                .padding(12.dp),
-                            color = if (targetProduct == value) EazColors.Orange else MaterialTheme.colorScheme.onSurface
-                        )
+    GenRefSourceModal(
+        visible = showRefSourceModal,
+        onDismiss = { showRefSourceModal = false },
+        translationStore = translationStore,
+        onDevice = {
+            showRefSourceModal = false
+            imagePicker.launch("image/*")
+        },
+        onCamera = {
+            showRefSourceModal = false
+            val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            if (hasPermission) {
+                val file = File(context.cacheDir, "capture_${System.currentTimeMillis()}.jpg")
+                lastCameraUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                cameraLauncher.launch(lastCameraUri!!)
+            } else {
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        },
+        onInspirations = {
+            showRefSourceModal = false
+            showInspirationModal = true
+        },
+        onMyDesigns = {
+            showRefSourceModal = false
+            showMyDesignsModal = true
+        },
+        onCanvas = {
+            showRefSourceModal = false
+            showCanvasModal = true
+        }
+    )
+
+    GenInspirationModal(
+        visible = showInspirationModal,
+        onDismiss = { showInspirationModal = false },
+        api = api,
+        translationStore = translationStore,
+        onSelect = { imageUrl ->
+            scope.launch {
+                try {
+                    val fullUrl = when {
+                        imageUrl.startsWith("http") -> imageUrl
+                        imageUrl.startsWith("//") -> "https:$imageUrl"
+                        else -> "https://www.eazpire.com${if (imageUrl.startsWith("/")) imageUrl else "/$imageUrl"}"
                     }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showTargetProductModal = false }) { Text("OK") } }
-        )
-    }
-
-    if (showDesignTypeModal) {
-        AlertDialog(
-            onDismissRequest = { showDesignTypeModal = false },
-            title = { Text(translationStore.t("creator.generator.design_type", "Design type")) },
-            text = {
-                Column {
-                    DESIGN_TYPE_OPTIONS.forEach { (value, label) ->
-                        Text(
-                            text = label,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    designType = value
-                                    showDesignTypeModal = false
-                                }
-                                .padding(12.dp),
-                            color = if (designType == value) EazColors.Orange else MaterialTheme.colorScheme.onSurface
-                        )
+                    val bytes = withContext(Dispatchers.IO) {
+                        java.net.URL(fullUrl).openStream().readBytes()
                     }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showDesignTypeModal = false }) { Text("OK") } }
-        )
-    }
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    val mime = when {
+                        imageUrl.contains(".png") -> "image/png"
+                        else -> "image/jpeg"
+                    }
+                    selectedImages = selectedImages + RefImage("data:$mime;base64,$base64")
+                    showInspirationModal = false
+                } catch (_: Exception) {}
+            }
+        }
+    )
 
-    if (showRefSourceModal) {
-        AlertDialog(
-            onDismissRequest = { showRefSourceModal = false },
-            title = { Text(translationStore.t("creator.generator.select_reference", "Select reference image")) },
-            text = {
-                Column {
-                    Text(
-                        text = translationStore.t("creator.generator.source_device", "Device"),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showRefSourceModal = false
-                                imagePicker.launch("image/*")
-                            }
-                            .padding(12.dp),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            },
-            confirmButton = { TextButton(onClick = { showRefSourceModal = false }) { Text("OK") } }
-        )
-    }
+    GenMyDesignsModal(
+        visible = showMyDesignsModal,
+        onDismiss = { showMyDesignsModal = false },
+        api = api,
+        ownerId = ownerId,
+        translationStore = translationStore,
+        onSelect = { imageUrl ->
+            scope.launch {
+                try {
+                    val fullUrl = when {
+                        imageUrl.startsWith("http") -> imageUrl
+                        imageUrl.startsWith("//") -> "https:$imageUrl"
+                        else -> "https://www.eazpire.com${if (imageUrl.startsWith("/")) imageUrl else "/$imageUrl"}"
+                    }
+                    val bytes = withContext(Dispatchers.IO) {
+                        java.net.URL(fullUrl).openStream().readBytes()
+                    }
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    val mime = when {
+                        imageUrl.contains(".png") -> "image/png"
+                        else -> "image/jpeg"
+                    }
+                    selectedImages = selectedImages + RefImage("data:$mime;base64,$base64")
+                    showMyDesignsModal = false
+                } catch (_: Exception) {}
+            }
+        }
+    )
 
-    if (showConfirmModal) {
-        val targetLabel = TARGET_PRODUCT_OPTIONS.find { it.first == targetProduct }?.second ?: "Anything"
-        val designLabel = DESIGN_TYPE_OPTIONS.find { it.first == designType }?.second ?: "Classic"
-        val promptTrunc = if (prompt.length > 80) prompt.take(77) + "…" else prompt.ifBlank { "—" }
-        AlertDialog(
-            onDismissRequest = { showConfirmModal = false },
-            title = { Text(translationStore.t("creator.generator.confirm_title", "Generate design?")) },
-            text = {
-                Column {
-                    Text("${translationStore.t("creator.generator.confirm_summary_target", "Target product")}: $targetLabel" )
-                    Text("${translationStore.t("creator.generator.confirm_summary_design", "Design type")}: $designLabel")
-                    Text("${translationStore.t("creator.generator.confirm_summary_prompt", "Prompt")}: $promptTrunc")
-                    Text("${translationStore.t("creator.generator.confirm_summary_refs", "Reference images")}: ${selectedImages.size}")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(translationStore.t("creator.generator.confirm_cost", "Cost: {{ cost }} EAZ").replace("{{ cost }}", "0.5"))
-                    Text(translationStore.t("creator.generator.confirm_balance", "Available: {{ balance }} EAZ").replace("{{ balance }}", confirmBalance))
+    GenCanvasModal(
+        visible = showCanvasModal,
+        onDismiss = { showCanvasModal = false },
+        translationStore = translationStore,
+        onConfirm = { dataUrl ->
+            selectedImages = selectedImages + RefImage(dataUrl)
+            showCanvasModal = false
+        }
+    )
+
+    GenCanvasEditModal(
+        visible = showCanvasEditModal,
+        backgroundImageDataUrl = selectedImages.getOrNull(canvasEditIndex)?.dataUrl,
+        onDismiss = { showCanvasEditModal = false },
+        translationStore = translationStore,
+        onConfirm = { dataUrl ->
+            if (canvasEditIndex in selectedImages.indices) {
+                scope.launch {
+                    try {
+                        val base64 = dataUrl.substringAfter(",", "")
+                        if (base64.isNotBlank()) {
+                            val bytes = Base64.decode(base64, Base64.DEFAULT)
+                            val file = File(context.cacheDir, "ref_edit_${canvasEditIndex}_${System.currentTimeMillis()}.png")
+                            file.writeBytes(bytes)
+                        }
+                    } catch (_: Exception) {}
                 }
-            },
-            confirmButton = {
-                Button(onClick = { doGenerate() }) {
-                    Text(translationStore.t("creator.generator.confirm_generate", "Generate"))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmModal = false }) {
-                    Text(translationStore.t("creator.common.cancel", "Cancel"))
+                selectedImages = selectedImages.toMutableList().apply {
+                    set(canvasEditIndex, RefImage(dataUrl))
                 }
             }
-        )
-    }
+            showCanvasEditModal = false
+        }
+    )
+
+    GenTargetProductModal(
+        visible = showTargetProductModal,
+        currentValue = targetProduct,
+        onDismiss = { showTargetProductModal = false },
+        onSelect = { targetProduct = it },
+        translationStore = translationStore
+    )
+
+    GenDesignTypeModal(
+        visible = showDesignTypeModal,
+        currentValue = designType,
+        onDismiss = { showDesignTypeModal = false },
+        onSelect = { designType = it },
+        translationStore = translationStore
+    )
+
+    GenOptionsModal(
+        visible = showOptionsModal,
+        ratio = ratio,
+        contentType = contentType,
+        onDismiss = { showOptionsModal = false },
+        onApply = { showOptionsModal = false },
+        onRatioChange = { ratio = it },
+        onContentTypeChange = { contentType = it },
+        translationStore = translationStore
+    )
 
     errorMessage?.let { msg ->
         AlertDialog(
@@ -365,52 +408,15 @@ fun CreatorGeneratorScreen(
             onClick = { showRefSourceModal = true }
         )
 
-        if (selectedImages.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            GenCard(
-                title = translationStore.t("creator.generator.reference_images", "Reference images"),
-                count = selectedImages.size
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    selectedImages.forEachIndexed { i, img ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .aspectRatio(1f)
-                        ) {
-                            AsyncImage(
-                                model = img.dataUrl,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(10.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                            Text(
-                                text = ('A' + i).toString(),
-                                color = EazColors.Orange,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(4.dp)
-                            )
-                            IconButton(
-                                onClick = { removeImage(i) },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .size(24.dp)
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
-                            }
-                        }
-                    }
-                }
+        GenSelectedImagesBar(
+            selectedImages = selectedImages,
+            translationStore = translationStore,
+            onRemove = { removeImage(it) },
+            onDraw = { i ->
+                canvasEditIndex = i
+                showCanvasEditModal = true
             }
-        }
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -462,53 +468,93 @@ fun CreatorGeneratorScreen(
                 ),
                 minLines = 4
             )
-            TextButton(onClick = { }) {
+            TextButton(onClick = { showOptionsModal = true }) {
                 Text(
                     translationStore.t("creator.generator.more_options", "More options"),
                     color = Color.White.copy(alpha = 0.6f)
                 )
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Box(
+@Composable
+private fun GenSelectedImagesBar(
+    selectedImages: List<RefImage>,
+    translationStore: TranslationStore,
+    onRemove: (Int) -> Unit,
+    onDraw: (Int) -> Unit
+) {
+    if (selectedImages.isEmpty()) return
+    Spacer(modifier = Modifier.height(16.dp))
+    GenCard(
+        title = translationStore.t("creator.generator.reference_images", "Reference images"),
+        count = selectedImages.size
+    ) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Button(
-                onClick = { onGenerate() },
-                enabled = !generateLoading,
-                modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .height(48.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = EazColors.Orange,
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                if (generateLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(
-                        translationStore.t("creator.generator.generate_btn", "Generate"),
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.size(10.dp))
+            selectedImages.forEachIndexed { i, img ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
                     Box(
                         modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.Black.copy(alpha = 0.3f))
                     ) {
-                        Text("0.5 EAZ", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        DataUrlImage(
+                            dataUrl = img.dataUrl,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(10.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(4.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(EazColors.Orange.copy(alpha = 0.9f))
+                                .clickable { onDraw(i) }
+                                .padding(6.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Brush,
+                                contentDescription = translationStore.t("creator.generator.draw", "Draw"),
+                                tint = Color(0xFF0B1220),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.Black.copy(alpha = 0.7f))
+                                .clickable { onRemove(i) }
+                                .padding(5.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = translationStore.t("creator.common.remove", "Remove"),
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
+                    Text(
+                        text = ('A' + i).toString(),
+                        color = EazColors.Orange,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
         }

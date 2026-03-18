@@ -19,18 +19,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,6 +67,14 @@ import kotlinx.coroutines.withContext
 
 enum class EazySidebarTab { Chat, Notifications, Jobs, Settings, Functions, Mascot }
 
+enum class EazyChatContext { Shop, Creator }
+
+private fun formatResetTime(seconds: Int): String {
+    val m = seconds / 60
+    val s = seconds % 60
+    return "%d:%02d".format(m, s)
+}
+
 private val ChatBg = Color(0xFF1F2937)
 private val ChatHeader = Color(0xFF111827)
 private val ChatAccent = Color(0xFFF97316)
@@ -81,6 +91,7 @@ fun EazyChatModal(
     onDismiss: () -> Unit,
     onLoginClick: () -> Unit,
     onResetMascot: () -> Unit = {},
+    chatContext: EazyChatContext = EazyChatContext.Shop,
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -96,7 +107,9 @@ fun EazyChatModal(
     val isLoading by chatStore.isLoading.collectAsState()
     val isTyping by chatStore.isTyping.collectAsState()
     val limitReached by chatStore.limitReached.collectAsState()
+    val rateLimit by chatStore.rateLimit.collectAsState()
     val isLoggedIn = tokenStore?.isLoggedIn() == true
+    val pagePath = if (chatContext == EazyChatContext.Creator) "/creator" else "/shop"
 
     LaunchedEffect(visible) {
         if (!visible) return@LaunchedEffect
@@ -156,10 +169,10 @@ fun EazyChatModal(
                             listOf(
                                 EazySidebarTab.Chat to Icons.Default.Chat,
                                 EazySidebarTab.Notifications to Icons.Default.Notifications,
-                                EazySidebarTab.Jobs to Icons.Default.Build,
+                                EazySidebarTab.Jobs to Icons.Default.Bolt,
                                 EazySidebarTab.Settings to Icons.Default.Settings,
                                 EazySidebarTab.Functions to Icons.Default.Build,
-                                EazySidebarTab.Mascot to Icons.Default.Star
+                                EazySidebarTab.Mascot to Icons.Default.Pets
                             ).forEach { (tab, icon) ->
                                 IconButton(
                                     onClick = { selectedTab = tab },
@@ -254,6 +267,52 @@ fun EazyChatModal(
                         )
                     }
                 } else {
+                // Rate limit bar (like web creator-chat__rate-limit)
+                if (rateLimit != null) {
+                    val rl = rateLimit!!
+                    val rem = rl.remaining
+                    val lim = rl.limit
+                    val pct = if (lim > 0) (rem.toFloat() / lim * 100).toInt() else 100
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(ChatHeader)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "$rem ${t("eazy_chat.ui_messages_of", "of")} $lim ${t("eazy_chat.ui_messages", "messages")}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ChatMuted
+                            )
+                            if (rl.resetIn > 0) {
+                                Text(
+                                    text = "${t("eazy_chat.ui_reset_in", "Reset in")} ${formatResetTime(rl.resetIn)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ChatMuted
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(ChatMuted.copy(alpha = 0.2f))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(pct / 100f)
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(if (pct <= 10) ChatMuted else ChatAccent)
+                            )
+                        }
+                    }
+                }
                 // Messages
                 val listState = rememberLazyListState()
                 LaunchedEffect(messages.size) {
@@ -346,7 +405,7 @@ fun EazyChatModal(
                                             messages = msgList,
                                             conversationId = conversationId,
                                             context = mapOf(
-                                                "page" to "/shop",
+                                                "page" to pagePath,
                                                 "locale" to java.util.Locale.getDefault().language
                                             )
                                         )
@@ -396,7 +455,11 @@ fun EazyChatModal(
                     EazySidebarTab.Jobs -> EazyPlaceholderView(t("creator.notifications.active_jobs", "Active Jobs"), t("creator.notifications.empty_jobs", "No active jobs"))
                     EazySidebarTab.Settings -> EazySettingsView(t, onDismiss, onResetMascot)
                     EazySidebarTab.Functions -> EazyPlaceholderView(t("eazy_chat.ui_functions_tab", "Functions"), t("eazy_chat.functions_hint", "Functions coming soon"))
-                    EazySidebarTab.Mascot -> EazyPlaceholderView(t("eazy_chat.ui_mascot_tab", "Mascot"), t("eazy_chat.mascot_hint", "Mascot tab coming soon"))
+                    EazySidebarTab.Mascot -> EazyMascotTabView(
+                        ownerId = tokenStore?.getOwnerId(),
+                        api = api,
+                        t = t
+                    )
                 }
                     }
                 }
@@ -414,12 +477,14 @@ private fun EazySettingsView(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        // Placement (like web eazy-settings__section)
         Text(
-            text = t("eazy_chat.settings_hint", "Settings coming soon"),
-            style = MaterialTheme.typography.bodyMedium,
+            text = t("eazy_chat.settings_placement", "Placement"),
+            style = MaterialTheme.typography.titleSmall,
             color = ChatMuted
         )
         androidx.compose.material3.TextButton(
@@ -431,6 +496,18 @@ private fun EazySettingsView(
         ) {
             Text(t("eazy_chat.settings_reset_mascot", "Reset mascot position"))
         }
+
+        // Privacy (like web)
+        Text(
+            text = t("eazy_chat.settings_privacy", "Privacy"),
+            style = MaterialTheme.typography.titleSmall,
+            color = ChatMuted
+        )
+        Text(
+            text = t("eazy_chat.settings_clear_history_hint", "Clear chat history and memory. Coming soon."),
+            style = MaterialTheme.typography.bodySmall,
+            color = ChatMuted
+        )
     }
 }
 
