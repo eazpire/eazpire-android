@@ -16,9 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -155,13 +153,19 @@ fun MarketingScreen(
                 currentContentTab = currentContentTab,
                 onContentTabChange = { currentContentTab = it; updateHeaderTitle() },
                 tokenStore = tokenStore,
-                translationStore = translationStore
+                translationStore = translationStore,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
             )
             SUBTAB_CONTENT_PUBLISH -> MarketingContentPublishPanel(
                 currentContentTab = currentContentTab,
                 onContentTabChange = { currentContentTab = it; updateHeaderTitle() },
                 tokenStore = tokenStore,
-                translationStore = translationStore
+                translationStore = translationStore,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
             )
         }
     }
@@ -172,9 +176,10 @@ private fun MarketingContentCreationPanel(
     currentContentTab: MarketingContentTab,
     onContentTabChange: (MarketingContentTab) -> Unit,
     tokenStore: SecureTokenStore,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize()) {
         MarketingUnderTabs(
             currentContentTab = currentContentTab,
             onContentTabChange = onContentTabChange,
@@ -183,8 +188,8 @@ private fun MarketingContentCreationPanel(
         when (currentContentTab) {
             CONTENT_HERO_IMAGES -> Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
+                    .weight(1f)
             ) {
                 AccountHeroImagesTab(
                     tokenStore = tokenStore,
@@ -192,16 +197,22 @@ private fun MarketingContentCreationPanel(
                     modifier = Modifier.padding(20.dp)
                 )
             }
-            CONTENT_VIDEOS, CONTENT_IMAGES -> MarketingComingSoonBlock(
-                label = translationStore.t(
-                    when (currentContentTab) {
-                        CONTENT_VIDEOS -> "creator.marketing.videos"
-                        else -> "creator.marketing.images"
-                    },
-                    currentContentTab.replaceFirstChar { it.uppercase() }
-                ),
-                translationStore = translationStore
-            )
+            CONTENT_VIDEOS, CONTENT_IMAGES -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                MarketingComingSoonBlock(
+                    label = translationStore.t(
+                        when (currentContentTab) {
+                            CONTENT_VIDEOS -> "creator.marketing.videos"
+                            else -> "creator.marketing.images"
+                        },
+                        currentContentTab.replaceFirstChar { it.uppercase() }
+                    ),
+                    translationStore = translationStore
+                )
+            }
         }
     }
 }
@@ -211,9 +222,10 @@ private fun MarketingContentPublishPanel(
     currentContentTab: MarketingContentTab,
     onContentTabChange: (MarketingContentTab) -> Unit,
     tokenStore: SecureTokenStore,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize()) {
         MarketingUnderTabs(
             currentContentTab = currentContentTab,
             onContentTabChange = onContentTabChange,
@@ -222,18 +234,27 @@ private fun MarketingContentPublishPanel(
         when (currentContentTab) {
             CONTENT_HERO_IMAGES -> MarketingHeroImagesGrid(
                 tokenStore = tokenStore,
-                translationStore = translationStore
+                translationStore = translationStore,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
             )
-            CONTENT_VIDEOS, CONTENT_IMAGES -> MarketingComingSoonBlock(
-                label = translationStore.t(
-                    when (currentContentTab) {
-                        CONTENT_VIDEOS -> "creator.marketing.videos"
-                        else -> "creator.marketing.images"
-                    },
-                    currentContentTab.replaceFirstChar { it.uppercase() }
-                ),
-                translationStore = translationStore
-            )
+            CONTENT_VIDEOS, CONTENT_IMAGES -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                MarketingComingSoonBlock(
+                    label = translationStore.t(
+                        when (currentContentTab) {
+                            CONTENT_VIDEOS -> "creator.marketing.videos"
+                            else -> "creator.marketing.images"
+                        },
+                        currentContentTab.replaceFirstChar { it.uppercase() }
+                    ),
+                    translationStore = translationStore
+                )
+            }
         }
     }
 }
@@ -338,7 +359,8 @@ data class HeroImageItem(
 @Composable
 private fun MarketingHeroImagesGrid(
     tokenStore: SecureTokenStore,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier
 ) {
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
@@ -371,7 +393,7 @@ private fun MarketingHeroImagesGrid(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {

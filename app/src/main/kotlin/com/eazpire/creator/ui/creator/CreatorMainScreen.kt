@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.eazpire.creator.R
@@ -166,7 +168,48 @@ fun CreatorMainScreen(
                     .weight(1f)
             ) {
                 val contentMaxHeight = maxHeight
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(
+                            currentScreen,
+                            drawerVisible,
+                            salesModalVisible,
+                            creatorSettingsVisible,
+                            audioModalVisible,
+                            languageModalVisible,
+                            termsModalVisible
+                        ) {
+                            var dragX = 0f
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { change, amount ->
+                                    val modalVisible = drawerVisible ||
+                                        salesModalVisible ||
+                                        creatorSettingsVisible ||
+                                        audioModalVisible ||
+                                        languageModalVisible ||
+                                        termsModalVisible
+                                    if (modalVisible) return@detectHorizontalDragGestures
+                                    dragX += amount
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    val modalVisible = drawerVisible ||
+                                        salesModalVisible ||
+                                        creatorSettingsVisible ||
+                                        audioModalVisible ||
+                                        languageModalVisible ||
+                                        termsModalVisible
+                                    if (modalVisible) return@detectHorizontalDragGestures
+                                    when {
+                                        dragX <= -120f -> currentScreen = (currentScreen + 1).coerceAtMost(3)
+                                        dragX >= 120f -> currentScreen = (currentScreen - 1).coerceAtLeast(0)
+                                    }
+                                    dragX = 0f
+                                }
+                            )
+                        }
+                ) {
                     when (currentScreen) {
                         0 -> CreatorDashboardScreen(
                             tokenStore = tokenStore,
