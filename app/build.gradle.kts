@@ -7,8 +7,10 @@ plugins {
 android {
     namespace = "com.eazpire.creator"
     compileSdk = 34
-    // Build in temp – vermeidet OneDrive-Sperren im Projektordner
-    buildDir = file("${System.getProperty("java.io.tmpdir")}/eazpire-android-build/${project.name}")
+    // Build in temp – vermeidet OneDrive-Sperren im Projektordner (nur lokal, nicht in CI)
+    if (System.getenv("CI") != "true") {
+        buildDir = file("${System.getProperty("java.io.tmpdir")}/eazpire-android-build/${project.name}")
+    }
 
     defaultConfig {
         applicationId = "com.eazpire.creator"
