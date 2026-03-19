@@ -2,6 +2,8 @@ package com.eazpire.creator.ui.creator
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +63,9 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -83,7 +88,10 @@ data class CreationDesign(
     val source: String, // generated, uploaded, saved
     val designSource: String,
     val creatorName: String?,
-    val productsCount: Int
+    val productsCount: Int,
+    val ratio: String? = null,
+    val designType: String? = null,
+    val contentType: String? = null
 )
 
 data class CreationProduct(
@@ -94,7 +102,8 @@ data class CreationProduct(
     val imageUrl: String?,
     val storefrontUrl: String?,
     val shopifyHandle: String?,
-    val publishedAt: Long?
+    val publishedAt: Long?,
+    val publishedCount: Int = 0
 )
 
 private val VIEW_MODES = listOf("grid2", "grid3", "grid4", "list")
@@ -125,10 +134,45 @@ fun CreatorCreationsScreen(
     var filterModalVisible by remember { mutableStateOf(false) }
     var viewModeOverlayVisible by remember { mutableStateOf(false) }
     var designPreviewDesign by remember { mutableStateOf<CreationDesign?>(null) }
+    var creationsFilter by remember { mutableStateOf(CreationsFilterState()) }
+    var designsRefreshTrigger by remember { mutableIntStateOf(0) }
+    var uploadInProgress by remember { mutableStateOf(false) }
+    var uploadModalVisible by remember { mutableStateOf(false) }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var productImageOverrides by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val scope = rememberCoroutineScope()
 
     val shop = AuthConfig.SHOP_DOMAIN
+    val storefrontShop = AuthConfig.STOREFRONT_SHOP
 
-    LaunchedEffect(ownerId, currentTab) {
+    LaunchedEffect(products, storefrontShop) {
+        val needFetch = products.filter { p ->
+            (p.imageUrl.isNullOrBlank() || p.imageUrl.isBlank()) &&
+            !p.shopifyHandle.isNullOrBlank()
+        }
+        if (needFetch.isEmpty()) return@LaunchedEffect
+        val newOverrides = mutableMapOf<String, String>()
+        for (p in needFetch) {
+            val handle = p.shopifyHandle ?: continue
+            val resp = runCatching {
+                withContext(Dispatchers.IO) { api.getProductImage(storefrontShop, handle) }
+            }.getOrNull() ?: continue
+            val raw = resp.optString("image_url", "").takeIf { it.isNotBlank() } ?: continue
+            val img = if (raw.startsWith("//")) "https:$raw" else raw
+            newOverrides[p.id] = img
+        }
+        if (newOverrides.isNotEmpty()) {
+            productImageOverrides = productImageOverrides + newOverrides
+        }
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        selectedImageUri = uri
+        uploadModalVisible = true
+    }
+
+    LaunchedEffect(ownerId, currentTab, designsRefreshTrigger) {
         if (ownerId.isBlank()) {
             designsLoading = false
             productsLoading = false
@@ -140,8 +184,8 @@ fun CreatorCreationsScreen(
                 designsLoading = true
                 try {
                     val (designsList, summary) = withContext(Dispatchers.IO) {
+                        // Nur gespeicherte/uploaded Designs laden (wie Web My Creations)
                         val listRes = api.listDesigns(ownerId, 100)
-                        val genRes = api.listGenerated(ownerId, 200)
                         val summaryRes = api.getPublishedSummary(ownerId, shop)
 
                         val savedItems = (listRes.optJSONArray("items") ?: JSONArray()).let { arr ->
@@ -164,6 +208,14 @@ fun CreatorCreationsScreen(
                                 }
                                 val preview = obj.optString("preview_url", "").ifBlank { obj.optString("original_url", "") }
                                 if (preview.isBlank()) return@mapNotNull null
+                                val ct = meta.optString("content_type", "").let { c ->
+                                    when (c) {
+                                        "Design + Text" -> "design_text"
+                                        "Text Only" -> "text_only"
+                                        "Design Only" -> "design_only"
+                                        else -> c.ifBlank { null }
+                                    }
+                                }
                                 CreationDesign(
                                     id = obj.optString("id", "").takeIf { it.isNotBlank() },
                                     designId = obj.optString("id", "").takeIf { it.isNotBlank() },
@@ -183,37 +235,14 @@ fun CreatorCreationsScreen(
                                     },
                                     creatorName = meta.optString("creator_name", "").takeIf { it.isNotBlank() }
                                         ?: obj.optString("creator_name", "").takeIf { it.isNotBlank() },
-                                    productsCount = 0
+                                    productsCount = 0,
+                                    ratio = meta.optString("ratio", "").takeIf { it.isNotBlank() }?.lowercase(),
+                                    designType = meta.optString("design_type", "").takeIf { it.isNotBlank() }?.lowercase(),
+                                    contentType = ct
                                 )
                             }
                         }
-                        val savedJobIds = savedItems.mapNotNull { it.jobId }.toSet()
-                        val genItems = (genRes.optJSONArray("items") ?: JSONArray()).let { arr ->
-                            (0 until arr.length()).mapNotNull { g ->
-                                val obj = arr.optJSONObject(g) ?: return@mapNotNull null
-                                val jid = obj.optString("job_id", "").takeIf { it.isNotBlank() }
-                                if (jid != null && savedJobIds.contains(jid)) return@mapNotNull null
-                                val img = obj.optString("image_url", "").ifBlank { obj.optString("preview_url", "") }
-                                if (img.isBlank()) return@mapNotNull null
-                                CreationDesign(
-                                    id = null,
-                                    designId = null,
-                                    jobId = jid,
-                                    imageUrl = img,
-                                    previewUrl = img,
-                                    originalUrl = img,
-                                    title = obj.optString("prompt", obj.optString("design_prompt", "Design")).take(80),
-                                    prompt = obj.optString("prompt").takeIf { it.isNotBlank() },
-                                    designPrompt = obj.optString("design_prompt").takeIf { it.isNotBlank() },
-                                    createdAt = (obj.opt("created_at") as? Number)?.toLong() ?: (obj.opt("finished") as? Number)?.toLong() ?: 0L,
-                                    source = "generated",
-                                    designSource = "Generated",
-                                    creatorName = obj.optString("creator_name").takeIf { it.isNotBlank() },
-                                    productsCount = 0
-                                )
-                            }
-                        }
-                        val merged = (savedItems + genItems).sortedByDescending { it.createdAt }
+                        val merged = savedItems.sortedByDescending { it.createdAt }
                         val summaryMap = mutableMapOf<String, Int>()
                         if (summaryRes.optBoolean("ok", false)) {
                             (summaryRes.optJSONArray("designs") ?: JSONArray()).let { arr ->
@@ -244,15 +273,28 @@ fun CreatorCreationsScreen(
                     }
                     products = if (resp.optBoolean("ok", false)) {
                         (resp.optJSONArray("products") ?: JSONArray()).let { arr ->
+                            fun toImageStr(v: Any?): String? = when (v) {
+                                is String -> v.takeIf { it.isNotBlank() }
+                                is JSONObject -> (v.optString("src", "").takeIf { it.isNotBlank() }
+                                    ?: v.optString("url", "").takeIf { it.isNotBlank() }
+                                    ?: v.optString("image_url", "").takeIf { it.isNotBlank() }
+                                    ?: v.optString("preview_url", "").takeIf { it.isNotBlank() })
+                                else -> null
+                            }
+                            fun resolveProductImageUrl(obj: JSONObject): String? =
+                                toImageStr(obj.opt("image_url")) ?: toImageStr(obj.opt("featured_image"))
+                                    ?: toImageStr(obj.opt("preview_url")) ?: toImageStr(obj.opt("thumbnail_url"))
+                                    ?: toImageStr(obj.opt("main_image")) ?: toImageStr(obj.opt("product_image"))
+                                    ?: obj.optJSONArray("images")?.opt(0)?.let { toImageStr(it) }
+                                    ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image")?.let { toImageStr(it) }
+                                    ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image_url")?.let { toImageStr(it) }
+                            fun normalizeImageUrl(url: String?): String? {
+                                if (url.isNullOrBlank()) return null
+                                return if (url.startsWith("//")) "https:$url" else url
+                            }
                             (0 until arr.length()).mapNotNull { i ->
                                 val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-                                fun toStr(v: Any?): String? = when (v) {
-                                    is String -> v.takeIf { it.isNotBlank() }
-                                    else -> null
-                                }
-                                val img = toStr(obj.opt("image_url")) ?: toStr(obj.opt("featured_image")) ?: toStr(obj.opt("preview_url"))
-                                    ?: (obj.optJSONArray("images")?.opt(0)?.let { toStr(it) })
-                                    ?: (obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image")?.let { toStr(it) })
+                                val img = normalizeImageUrl(resolveProductImageUrl(obj))
                                 CreationProduct(
                                     id = obj.optString("shopify_product_id", obj.optString("product_key", "") + "-product"),
                                     title = obj.optString("product_name", obj.optString("product_key", "Product")),
@@ -262,7 +304,8 @@ fun CreatorCreationsScreen(
                                     storefrontUrl = obj.optString("storefront_url").takeIf { it.isNotBlank() },
                                     shopifyHandle = obj.optString("shopify_handle").takeIf { it.isNotBlank() },
                                     publishedAt = (obj.opt("last_published_at") as? Number)?.toLong()
-                                        ?: (obj.optString("last_published_at").takeIf { it.isNotBlank() }?.let { try { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(it)?.time } catch (_: Exception) { null } })
+                                        ?: (obj.optString("last_published_at").takeIf { it.isNotBlank() }?.let { try { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(it)?.time } catch (_: Exception) { null } }),
+                                    publishedCount = obj.optInt("published_count", 0)
                                 )
                             }.sortedByDescending { it.publishedAt ?: 0L }
                         }
@@ -282,23 +325,66 @@ fun CreatorCreationsScreen(
         }
     }
 
-    val filteredDesigns = remember(designs, designsSearch.text, productsCountByDesignId) {
+    val filteredDesigns = remember(designs, designsSearch.text, productsCountByDesignId, creationsFilter) {
         val q = designsSearch.text.trim().lowercase()
         val withCount = designs.map { d ->
             d.copy(productsCount = (d.id ?: d.designId)?.let { productsCountByDesignId[it] ?: 0 } ?: 0)
         }
-        if (q.isBlank()) withCount
-        else withCount.filter { d ->
+        var list = if (q.isBlank()) withCount else withCount.filter { d ->
             (d.title.lowercase().contains(q) || (d.prompt?.lowercase()?.contains(q) == true))
         }
+        val f = creationsFilter
+        if (!f.isEmpty()) {
+            list = list.filter { d ->
+                if (f.designArt.isNotEmpty()) {
+                    val src = when (d.designSource.lowercase()) {
+                        "generated" -> "generated"
+                        "uploaded" -> "uploaded"
+                        "saved" -> "personalized"
+                        else -> d.designSource.lowercase()
+                    }
+                    if (src !in f.designArt.map { it.lowercase() }) return@filter false
+                }
+                if (f.ratio.isNotEmpty() && d.ratio != null) {
+                    if (d.ratio !in f.ratio.map { it.lowercase() }) return@filter false
+                }
+                if (f.designType.isNotEmpty() && d.designType != null) {
+                    if (d.designType !in f.designType.map { it.lowercase() }) return@filter false
+                }
+                if (f.contentType.isNotEmpty() && d.contentType != null) {
+                    if (d.contentType !in f.contentType.map { it.lowercase() }) return@filter false
+                }
+                true
+            }
+        }
+        list
     }
 
-    val filteredProducts = remember(products, productsSearch.text) {
+    val filteredProducts = remember(products, productsSearch.text, creationsFilter) {
         val q = productsSearch.text.trim().lowercase()
-        if (q.isBlank()) products
-        else products.filter { p ->
+        var list = if (q.isBlank()) products else products.filter { p ->
             p.title.lowercase().contains(q) || p.productName.lowercase().contains(q) || p.productKey.lowercase().contains(q)
         }
+        val f = creationsFilter
+        if (!f.isEmpty()) {
+            list = list.filter { p ->
+                if (f.sales.isNotEmpty()) {
+                    val ok = f.sales.any { range ->
+                        when (range) {
+                            "0" -> p.publishedCount == 0
+                            "1-10" -> p.publishedCount in 1..10
+                            "11-50" -> p.publishedCount in 11..50
+                            "51-100" -> p.publishedCount in 51..100
+                            "100+" -> p.publishedCount >= 100
+                            else -> false
+                        }
+                    }
+                    if (!ok) return@filter false
+                }
+                true
+            }
+        }
+        list
     }
 
     val gridCols = when (VIEW_MODES[viewMode]) {
@@ -333,8 +419,7 @@ fun CreatorCreationsScreen(
                     Box(
                         modifier = Modifier
                             .clickable { currentTab = tab }
-                            .padding(vertical = 12.dp, horizontal = 20.dp)
-                            .then(if (active) Modifier.border(2.dp, EazColors.Orange, RoundedCornerShape(0.dp)) else Modifier),
+                            .padding(vertical = 12.dp, horizontal = 20.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -417,7 +502,9 @@ fun CreatorCreationsScreen(
                                     Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
                                 }
                                 IconButton(
-                                    onClick = { /* TODO */ },
+                                    onClick = {
+                                        if (!uploadInProgress) imagePicker.launch("image/*")
+                                    },
                                     modifier = Modifier
                                         .size(40.dp)
                                         .background(EazColors.Orange.copy(alpha = 0.2f))
@@ -491,7 +578,9 @@ fun CreatorCreationsScreen(
                                     Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
                                 }
                                 IconButton(
-                                    onClick = { /* TODO */ },
+                                    onClick = {
+                                        if (!uploadInProgress) imagePicker.launch("image/*")
+                                    },
                                     modifier = Modifier
                                         .size(40.dp)
                                         .background(EazColors.Orange.copy(alpha = 0.2f))
@@ -590,6 +679,7 @@ fun CreatorCreationsScreen(
                         items(filteredProducts, key = { it.id }) { product ->
                             CreationProductListItem(
                                 product = product,
+                                imageUrl = productImageOverrides[product.id] ?: product.imageUrl,
                                 translationStore = translationStore,
                                 onClick = {
                                     product.storefrontUrl?.let { url ->
@@ -659,6 +749,7 @@ fun CreatorCreationsScreen(
                         items(filteredProducts, key = { it.id }) { product ->
                             CreationProductCard(
                                 product = product,
+                                imageUrl = productImageOverrides[product.id] ?: product.imageUrl,
                                 onClick = {
                                     product.storefrontUrl?.let { url ->
                                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -676,7 +767,44 @@ fun CreatorCreationsScreen(
         CreatorFilterModal(
             onDismiss = { filterModalVisible = false },
             source = currentTab,
-            translationStore = translationStore
+            translationStore = translationStore,
+            initialFilter = creationsFilter,
+            onApply = { creationsFilter = it },
+            designs = designs,
+            products = products
+        )
+    }
+
+    if (uploadModalVisible) {
+        CreatorDesignUploadModal(
+            onDismiss = {
+                uploadModalVisible = false
+                selectedImageUri = null
+            },
+            selectedImageUri = selectedImageUri,
+            onSelectImage = { imagePicker.launch("image/*") },
+            onRemoveImage = { selectedImageUri = null },
+            onUpload = { creatorName, visibility, imageBytes, mimeType ->
+                if (ownerId.isBlank()) return@CreatorDesignUploadModal
+                scope.launch {
+                    uploadInProgress = true
+                    try {
+                        val name = selectedImageUri?.lastPathSegment ?: "upload.png"
+                        val resp = api.uploadDesign(ownerId, imageBytes, mimeType, name, creatorName, visibility)
+                        if (resp.optBoolean("ok", false)) {
+                            designsRefreshTrigger++
+                            uploadModalVisible = false
+                            selectedImageUri = null
+                        }
+                    } finally {
+                        uploadInProgress = false
+                    }
+                }
+            },
+            uploadInProgress = uploadInProgress,
+            translationStore = translationStore,
+            api = api,
+            ownerId = ownerId
         )
     }
 
@@ -712,12 +840,18 @@ private fun CreationDesignCard(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF353D4C)),
+            contentAlignment = Alignment.Center
+        ) {
             AsyncImage(
                 model = design.imageUrl,
                 contentDescription = design.title,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Fit,
+                alignment = Alignment.Center
             )
             if (design.productsCount > 0) {
                 Box(
@@ -787,6 +921,7 @@ private fun CreationDesignListItem(
 @Composable
 private fun CreationProductCard(
     product: CreationProduct,
+    imageUrl: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -803,13 +938,16 @@ private fun CreationProductCard(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .background(Color(0xFF353D4C)),
+                contentAlignment = Alignment.Center
             ) {
-                if (!product.imageUrl.isNullOrBlank()) {
+                if (!imageUrl.isNullOrBlank()) {
                     AsyncImage(
-                        model = product.imageUrl,
+                        model = imageUrl,
                         contentDescription = product.title,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.Center
                     )
                 } else {
                     Box(
@@ -836,6 +974,7 @@ private fun CreationProductCard(
 @Composable
 private fun CreationProductListItem(
     product: CreationProduct,
+    imageUrl: String?,
     translationStore: TranslationStore,
     onClick: () -> Unit
 ) {
@@ -848,9 +987,9 @@ private fun CreationProductListItem(
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!product.imageUrl.isNullOrBlank()) {
+        if (!imageUrl.isNullOrBlank()) {
             AsyncImage(
-                model = product.imageUrl,
+                model = imageUrl,
                 contentDescription = product.title,
                 modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop

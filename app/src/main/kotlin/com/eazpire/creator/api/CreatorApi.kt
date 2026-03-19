@@ -522,6 +522,12 @@ class CreatorApi(
         return call("get-published-products", params)
     }
 
+    /** GET ?op=get-product-image&shop=xxx&handle=xxx → { ok, image_url } Fallback für Shop-Bilder */
+    suspend fun getProductImage(shop: String, handle: String): JSONObject = call(
+        "get-product-image",
+        mapOf("shop" to shop, "handle" to handle)
+    )
+
     /** GET ?op=get-customer-designs&owner_id=xxx → { ok, designs: [...] } Customer designs */
     suspend fun getCustomerDesigns(ownerId: String): JSONObject = call(
         "get-customer-designs",
@@ -567,6 +573,100 @@ class CreatorApi(
             region?.takeIf { it.isNotBlank() }?.let { put("region", it) }
         }
     )
+
+    /** POST ?path_prefix=/tools/1.0/crop-image&owner_id=xxx – multipart: image
+     *  Returns cropped PNG bytes (auto-crop to visible content). */
+    suspend fun cropImage(ownerId: String, imageBytes: ByteArray, fileName: String = "upload.png"): ByteArray =
+        withContext(Dispatchers.IO) {
+            val url = "$baseUrl?path_prefix=%2Ftools%2F1.0%2Fcrop-image&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}"
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("image", fileName, okhttp3.RequestBody.create("image/png".toMediaType(), imageBytes))
+                .addFormDataPart("owner_id", ownerId)
+                .build()
+            val request = Request.Builder()
+                .url(url)
+                .post(body)
+                .addHeader("Accept", "image/png, application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                val errBody = response.body?.string() ?: ""
+                val errMsg = try {
+                    org.json.JSONObject(errBody).optString("error", errBody.take(200))
+                } catch (_: Exception) { errBody.take(200) }
+                throw RuntimeException(errMsg.ifBlank { "Crop failed (${response.code})" })
+            }
+            response.body?.bytes() ?: throw RuntimeException("Empty crop response")
+        }
+
+    /** POST ?path_prefix=/tools/1.0/remove-background&owner_id=xxx – multipart: image, format=PNG
+     *  Returns PNG bytes (background removed via Picsart). Consumes EAZ. */
+    suspend fun removeBackground(ownerId: String, imageBytes: ByteArray, fileName: String = "upload.png"): ByteArray =
+        withContext(Dispatchers.IO) {
+            val url = "$baseUrl?path_prefix=%2Ftools%2F1.0%2Fremove-background&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}"
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("image", fileName, okhttp3.RequestBody.create("image/png".toMediaType(), imageBytes))
+                .addFormDataPart("format", "PNG")
+                .addFormDataPart("owner_id", ownerId)
+                .build()
+            val request = Request.Builder()
+                .url(url)
+                .post(body)
+                .addHeader("Accept", "image/png, application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                val errBody = response.body?.string() ?: ""
+                val errMsg = try {
+                    val jo = org.json.JSONObject(errBody)
+                    if (jo.optString("code") == "INSUFFICIENT_EAZ") {
+                        "Insufficient EAZ balance. Required: ${jo.opt("required")}, Available: ${jo.opt("balance_eaz")}"
+                    } else jo.optString("error", errBody.take(200))
+                } catch (_: Exception) { errBody.take(200) }
+                throw RuntimeException(errMsg.ifBlank { "Remove background failed (${response.code})" })
+            }
+            response.body?.bytes() ?: throw RuntimeException("Empty remove-background response")
+        }
+
+    /** POST ?op=upload-design&owner_id=xxx – multipart: image, creator_name?, visibility? (My Creations)
+     *  → R2 upload, Job in KV, Queue creator-jobs-upload-design (Metadata, Upscale, DB-Save) */
+    suspend fun uploadDesign(
+        ownerId: String,
+        imageBytes: ByteArray,
+        contentType: String,
+        fileName: String? = null,
+        creatorName: String? = null,
+        visibility: String = "public"
+    ): JSONObject = withContext(Dispatchers.IO) {
+            val ext = when {
+                contentType.contains("png") -> "png"
+                contentType.contains("jpeg") || contentType.contains("jpg") -> "jpg"
+                contentType.contains("svg") -> "svg"
+                else -> "png"
+            }
+            val mediaType = contentType.toMediaType()
+            val name = fileName?.takeIf { it.isNotBlank() } ?: "upload.$ext"
+            val effectiveVisibility = if (visibility == "private") "private" else "public"
+            val bodyBuilder = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("image", name, okhttp3.RequestBody.create(mediaType, imageBytes))
+                .addFormDataPart("visibility", effectiveVisibility)
+            creatorName?.takeIf { it.isNotBlank() }?.let { bodyBuilder.addFormDataPart("creator_name", it) }
+            val body = bodyBuilder.build()
+            val url = "$baseUrl/apps/creator-dispatch?op=upload-design&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+            val request = Request.Builder()
+                .url(url)
+                .post(body)
+                .addHeader("Accept", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
 
     /** POST ?op=upload-hero-image&owner_id=xxx – multipart: image, slot */
     suspend fun uploadHeroImage(ownerId: String, slot: String, imageBytes: ByteArray, contentType: String): JSONObject =

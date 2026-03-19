@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -34,7 +35,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.R
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -78,10 +82,28 @@ fun CreatorMainScreen(
     var languageModalVisible by remember { mutableStateOf(false) }
     var termsModalVisible by remember { mutableStateOf(false) }
     var marketingTitleOverride by remember { mutableStateOf<String?>(null) }
+    var marketingSessionKey by remember { mutableIntStateOf(0) }
     val audioStore = remember { com.eazpire.creator.audio.CreatorAudioStore() }
+    val lifecycleOwner = LocalLifecycleOwner.current
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     var currentScreen by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(lifecycleOwner, audioStore) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> audioStore.setAppActive(true)
+                Lifecycle.Event.ON_STOP -> audioStore.setAppActive(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            audioStore.setAppActive(false)
+            audioStore.release()
+        }
+    }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isBlank()) return@LaunchedEffect
@@ -160,7 +182,11 @@ fun CreatorMainScreen(
                 )
 
             LaunchedEffect(currentScreen) {
-                if (currentScreen != 3) marketingTitleOverride = null
+                if (currentScreen == 3) {
+                    marketingSessionKey++
+                } else {
+                    marketingTitleOverride = null
+                }
             }
             BoxWithConstraints(
                 modifier = Modifier
@@ -235,6 +261,7 @@ fun CreatorMainScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onHeaderTitleChange = { marketingTitleOverride = it },
+                            sessionKey = marketingSessionKey,
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )

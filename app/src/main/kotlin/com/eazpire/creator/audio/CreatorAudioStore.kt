@@ -35,6 +35,8 @@ class CreatorAudioStore {
 
     private var mediaPlayer: MediaPlayer? = null
     private var visualizer: Visualizer? = null
+    @Volatile
+    private var appIsActive: Boolean = true
 
     fun getItem(id: String): CreatorAudioItem? = list.value.find { it.id == id }
 
@@ -54,7 +56,15 @@ class CreatorAudioStore {
 
     fun toggleMute() = setMuted(!muted.value)
 
+    fun setAppActive(active: Boolean) {
+        appIsActive = active
+        if (!active) {
+            stop()
+        }
+    }
+
     fun play(item: CreatorAudioItem) {
+        if (!appIsActive) return
         stop()
         try {
             val mp = MediaPlayer().apply {
@@ -62,6 +72,13 @@ class CreatorAudioStore {
                 setVolume(if (muted.value) 0f else volume.value, volume.value)
                 isLooping = true
                 setOnPreparedListener {
+                    if (!appIsActive) {
+                        try {
+                            stop()
+                            release()
+                        } catch (_: Exception) {}
+                        return@setOnPreparedListener
+                    }
                     start()
                     this@CreatorAudioStore.currentPlaybackId.value = item.id
                     this@CreatorAudioStore.currentPlaybackItem.value = item
@@ -83,6 +100,7 @@ class CreatorAudioStore {
     }
 
     fun resume() {
+        if (!appIsActive) return
         mediaPlayer?.start()
         isPlaying.value = true
     }

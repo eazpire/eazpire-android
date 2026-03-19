@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -27,15 +28,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,14 +54,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val HERO_REGION_TABS_ANDROID = listOf(
@@ -70,21 +75,32 @@ private val HERO_REGION_TABS_ANDROID = listOf(
     "OTHER" to "Sonstige"
 )
 
+private fun extractNumericProductId(value: String?): String {
+    if (value.isNullOrBlank()) return ""
+    val gidMatch = Regex("gid://shopify/Product/(\\d+)", RegexOption.IGNORE_CASE).find(value)
+    if (gidMatch != null) return gidMatch.groupValues.getOrNull(1).orEmpty()
+    return value.filter { it.isDigit() }
+}
+
 data class HeroProduct(
     val id: String,
     val title: String,
     val image: String?,
     val productType: String?,
     val productKey: String?,
-    val region: String
+    val region: String,
+    val used: Boolean = false
 )
 
 @Composable
 fun AccountHeroImagesTab(
     tokenStore: SecureTokenStore,
+    translationStore: TranslationStore? = null,
     darkMode: Boolean = false,
+    onGenerated: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    fun t(key: String, fallback: String): String = translationStore?.t(key, fallback) ?: fallback
     val textPrimary = if (darkMode) Color.White else EazColors.TextPrimary
     val textSecondary = if (darkMode) Color.White.copy(alpha = 0.7f) else EazColors.TextSecondary
     val context = LocalContext.current
@@ -103,17 +119,14 @@ fun AccountHeroImagesTab(
     var modelImageBytes by remember { mutableStateOf<ByteArray?>(null) }
     var backgroundImageBytes by remember { mutableStateOf<ByteArray?>(null) }
     var prompt by remember { mutableStateOf("") }
-    var generating by remember { mutableStateOf(false) }
-    var jobId by remember { mutableStateOf<String?>(null) }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
     var showProductPicker by remember { mutableStateOf(false) }
     var pickerCategory by remember { mutableStateOf("top") }
     var selectedRegion by remember { mutableStateOf(localeRegion) }
     var lockedRegion by remember { mutableStateOf<String?>(null) }
     var regionLockMessage by remember { mutableStateOf<String?>(null) }
-    var showConfirmDialog by remember { mutableStateOf(false) }
-    var confirmCost by remember { mutableStateOf(0.5) }
-    var confirmBalance by remember { mutableStateOf(0.0) }
+    var usedProductIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var usageFilter by remember { mutableStateOf("unused") } // unused | used
+    var modalSearchQuery by remember { mutableStateOf("") }
 
     val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
@@ -145,43 +158,109 @@ fun AccountHeroImagesTab(
             if (ownerId.isBlank()) return@launch
             loading = true
             try {
+                try {
+                    val usedResp = api.getHeroUsedProducts(ownerId)
+                    if (usedResp.optBoolean("ok", false)) {
+                        val usedArr = usedResp.optJSONArray("used_product_ids") ?: org.json.JSONArray()
+                        val usedSet = mutableSetOf<String>()
+                        for (i in 0 until usedArr.length()) {
+                            val raw = usedArr.optString(i, "").trim()
+                            if (raw.isNotBlank()) {
+                                usedSet.add(raw)
+                                extractNumericProductId(raw).takeIf { it.isNotBlank() }?.let { usedSet.add(it) }
+                            }
+                        }
+                        usedProductIds = usedSet
+                    } else {
+                        usedProductIds = emptySet()
+                    }
+                } catch (_: Exception) {
+                    usedProductIds = emptySet()
+                }
+
                 val catalogResp = api.getCatalogProducts(selectedRegion)
                 val allowedKeys = mutableSetOf<String>()
                 if (catalogResp.optBoolean("ok", false)) {
                     val arrOnline = catalogResp.optJSONArray("products") ?: org.json.JSONArray()
                     val arrPreview = catalogResp.optJSONArray("preview_products") ?: org.json.JSONArray()
                     for (i in 0 until arrOnline.length()) {
-                        arrOnline.optJSONObject(i)?.optString("product_key", null)?.takeIf { it.isNotBlank() }?.let { allowedKeys.add(it) }
+                        arrOnline.optJSONObject(i)?.optString("product_key", "")?.takeIf { it.isNotBlank() }?.let { allowedKeys.add(it) }
                     }
                     for (i in 0 until arrPreview.length()) {
-                        arrPreview.optJSONObject(i)?.optString("product_key", null)?.takeIf { it.isNotBlank() }?.let { allowedKeys.add(it) }
+                        arrPreview.optJSONObject(i)?.optString("product_key", "")?.takeIf { it.isNotBlank() }?.let { allowedKeys.add(it) }
                     }
                 }
 
-                val resp = api.getShopifyProducts(AuthConfig.SHOP_DOMAIN, ownerId, selectedRegion)
-                if (resp.optBoolean("ok", false)) {
-                    val arr = resp.optJSONArray("products") ?: org.json.JSONArray()
-                    products = (0 until arr.length()).mapNotNull { i ->
+                fun mapShopifyArray(arr: org.json.JSONArray): List<HeroProduct> {
+                    return (0 until arr.length()).mapNotNull { i ->
                         val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-                        val imgObj = obj.optJSONObject("image")
+                        val imageObj = obj.optJSONObject("image")
                         val img = when {
-                            imgObj != null -> imgObj.optString("src", null).takeIf { it.isNotBlank() }
-                            else -> obj.optString("image", null).takeIf { it.isNotBlank() }
+                            imageObj != null -> imageObj.optString("src", "").takeIf { it.isNotBlank() }
+                            else -> obj.optString("image", "").takeIf { it.isNotBlank() }
                         }
                         val id = obj.optString("id", "")
                         if (id.isBlank()) return@mapNotNull null
-                        val productKey = obj.optString("product_key", null).takeIf { it.isNotBlank() }
+                        val productKey = obj.optString("product_key", "").takeIf { it.isNotBlank() }
                         if (allowedKeys.isNotEmpty() && (productKey == null || !allowedKeys.contains(productKey))) return@mapNotNull null
+                        val numericId = extractNumericProductId(id)
+                        val isUsed = usedProductIds.contains(id) || (numericId.isNotBlank() && usedProductIds.contains(numericId))
                         HeroProduct(
                             id = id,
                             title = obj.optString("title", ""),
                             image = img,
-                            productType = obj.optString("product_type", null).takeIf { it.isNotBlank() },
+                            productType = obj.optString("product_type", "").takeIf { it.isNotBlank() },
                             productKey = productKey,
-                            region = selectedRegion
+                            region = obj.optString("region", selectedRegion).ifBlank { selectedRegion },
+                            used = isUsed
                         )
                     }
                 }
+
+                fun mapPublishedArray(arr: org.json.JSONArray): List<HeroProduct> {
+                    return (0 until arr.length()).mapNotNull { i ->
+                        val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                        val rawId = obj.optString("shopify_product_id", "")
+                            .ifBlank { obj.optString("product_key", "") }
+                            .ifBlank { obj.optString("id", "") }
+                        if (rawId.isBlank()) return@mapNotNull null
+                        val productKey = obj.optString("product_key", "").takeIf { it.isNotBlank() }
+                        if (allowedKeys.isNotEmpty() && (productKey == null || !allowedKeys.contains(productKey))) return@mapNotNull null
+                        val image = obj.optString("featured_image", "")
+                            .ifBlank { obj.optString("image_url", "") }
+                            .ifBlank { obj.optString("preview_url", "") }
+                            .ifBlank { obj.optString("image", "") }
+                            .takeIf { it.isNotBlank() }
+                        val numericId = extractNumericProductId(rawId)
+                        val isUsed = usedProductIds.contains(rawId) || (numericId.isNotBlank() && usedProductIds.contains(numericId))
+                        HeroProduct(
+                            id = rawId,
+                            title = obj.optString("product_name", obj.optString("title", productKey ?: rawId)),
+                            image = image,
+                            productType = obj.optString("product_type", "").takeIf { it.isNotBlank() },
+                            productKey = productKey,
+                            region = obj.optString("region", selectedRegion).ifBlank { selectedRegion },
+                            used = isUsed
+                        )
+                    }
+                }
+
+                val shopifyResp = api.getShopifyProducts(AuthConfig.SHOP_DOMAIN, ownerId, null)
+                var nextProducts = if (shopifyResp.optBoolean("ok", false)) {
+                    mapShopifyArray(shopifyResp.optJSONArray("products") ?: org.json.JSONArray())
+                } else {
+                    emptyList()
+                }
+
+                // Web parity: fallback to published products when Shopify source is empty.
+                if (nextProducts.isEmpty()) {
+                    val publishedResp = api.getPublishedProducts(ownerId, AuthConfig.SHOP_DOMAIN)
+                    if (publishedResp.optBoolean("ok", false)) {
+                        nextProducts = mapPublishedArray(publishedResp.optJSONArray("products") ?: org.json.JSONArray())
+                    }
+                }
+
+                products = nextProducts.distinctBy { it.id }
             } catch (_: Exception) {}
             loading = false
         }
@@ -197,194 +276,141 @@ fun AccountHeroImagesTab(
         if (ownerId.isNotBlank()) loadProducts()
     }
 
-    fun extractImageUrl(product: HeroProduct?): String? = product?.image
-
-    fun doGenerate() {
-        val productIds = listOfNotNull(selectedTop?.id, selectedAddition?.id).distinct()
-        if (productIds.isEmpty()) return
-
-        val productImageUrls = listOfNotNull(
-            extractImageUrl(selectedTop),
-            extractImageUrl(selectedAddition)
-        ).distinct()
-
-        var modelUrl: String? = null
-        var backgroundUrl: String? = null
-
-        scope.launch {
-            generating = true
-            statusMessage = "Uploading..."
-            try {
-                if (modelImageBytes != null && modelImageUri != null) {
-                    val mimeType = context.contentResolver.getType(modelImageUri!!) ?: "image/jpeg"
-                    val resp = api.uploadHeroImage(ownerId, "model", modelImageBytes!!, mimeType)
-                    if (resp.optBoolean("ok", false)) {
-                        modelUrl = resp.optString("image_url", null).takeIf { it.isNotBlank() }
-                    }
-                }
-                if (backgroundImageBytes != null && backgroundImageUri != null) {
-                    val mimeType = context.contentResolver.getType(backgroundImageUri!!) ?: "image/jpeg"
-                    val resp = api.uploadHeroImage(ownerId, "background", backgroundImageBytes!!, mimeType)
-                    if (resp.optBoolean("ok", false)) {
-                        backgroundUrl = resp.optString("image_url", null).takeIf { it.isNotBlank() }
-                    }
-                }
-                statusMessage = "Generating..."
-                val genResp = api.heroGenerate(
-                    ownerId = ownerId,
-                    productIds = productIds,
-                    prompt = prompt.ifBlank { "Professional product photography with natural lighting and clean background" },
-                    productImageUrls = productImageUrls,
-                    modelImageUrl = modelUrl,
-                    backgroundImageUrl = backgroundUrl,
-                    region = selectedRegion
-                )
-                if (genResp.optBoolean("ok", false)) {
-                    val jid = genResp.optString("job_id", null)
-                    if (!jid.isNullOrBlank()) {
-                        jobId = jid
-                        statusMessage = "Running..."
-                        while (true) {
-                            delay(1500)
-                            val status = api.pollJob(jid)
-                            if (status.optBoolean("not_found", false)) break
-                            statusMessage = status.optString("message", "Running...")
-                            if (status.optBoolean("done", false)) {
-                                statusMessage = if (status.optString("message", "").lowercase().contains("fail"))
-                                    status.optString("message", "Failed")
-                                else "Done!"
-                                break
-                            }
-                        }
-                    }
-                } else {
-                    statusMessage = genResp.optString("error", "Failed")
-                }
-            } catch (e: Exception) {
-                statusMessage = e.message ?: "Error"
-            }
-            generating = false
-        }
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text("Hero Images", style = MaterialTheme.typography.titleMedium, color = textPrimary)
-        Spacer(Modifier.height(8.dp))
-        Text("Generate marketing images with AI. Select products and optional model/background.", style = MaterialTheme.typography.bodySmall, color = textSecondary)
-        Spacer(Modifier.height(24.dp))
-
-        Text("Products", style = MaterialTheme.typography.labelLarge, color = textSecondary)
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HeroProductCard(
-                label = "Top",
-                product = selectedTop,
-                onClick = { pickerCategory = "top"; showProductPicker = true },
-                modifier = Modifier.weight(1f),
-                textPrimary = textPrimary,
-                textSecondary = textSecondary
-            )
-            HeroProductCard(
-                label = "Addition",
-                product = selectedAddition,
-                onClick = { pickerCategory = "addition"; showProductPicker = true },
-                modifier = Modifier.weight(1f),
-                textPrimary = textPrimary,
-                textSecondary = textSecondary
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                .background(Color(0x99312937))
+                .padding(16.dp)
+        ) {
+            Column {
+                Text(
+                    text = t("creator.marketing.select_products", "Select products"),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = textPrimary,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                Spacer(Modifier.height(16.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        HeroProductCard(
+                            label = "Top",
+                            product = selectedTop,
+                            onClick = {
+                                pickerCategory = "top"
+                                usageFilter = "unused"
+                                modalSearchQuery = ""
+                                showProductPicker = true
+                            },
+                            onClear = {
+                                selectedTop = null
+                                lockedRegion = selectedAddition?.region
+                                if (lockedRegion == null) selectedRegion = localeRegion
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        HeroProductCard(
+                            label = "Bottom",
+                            product = null,
+                            onClick = {},
+                            showSoon = true,
+                            disabled = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        HeroProductCard(
+                            label = "Feet",
+                            product = null,
+                            onClick = {},
+                            showSoon = true,
+                            disabled = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        HeroProductCard(
+                            label = "Addition",
+                            product = selectedAddition,
+                            onClick = {
+                                pickerCategory = "addition"
+                                usageFilter = "unused"
+                                modalSearchQuery = ""
+                                showProductPicker = true
+                            },
+                            onClear = {
+                                selectedAddition = null
+                                lockedRegion = selectedTop?.region
+                                if (lockedRegion == null) selectedRegion = localeRegion
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
         }
         if (!regionLockMessage.isNullOrBlank()) {
             Spacer(Modifier.height(8.dp))
             Text(regionLockMessage!!, style = MaterialTheme.typography.bodySmall, color = EazColors.Orange)
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
 
-        Text("Optional uploads", style = MaterialTheme.typography.labelLarge, color = textSecondary)
-        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             HeroUploadCard(
-                label = "Model",
+                label = t("creator.marketing.model", "Model"),
+                iconEmoji = "\uD83D\uDC64",
                 imageUri = modelImageUri,
                 onPick = { modelPicker.launch("image/*") },
                 onClear = { modelImageUri = null; modelImageBytes = null },
-                modifier = Modifier.weight(1f),
-                textPrimary = textPrimary,
-                textSecondary = textSecondary
+                helperText = t("creator.marketing.upload_mock_model", "Upload your mock model image"),
+                modifier = Modifier.weight(1f)
             )
             HeroUploadCard(
-                label = "Background",
+                label = t("creator.marketing.background", "Background"),
+                iconEmoji = "\uD83C\uDF05",
                 imageUri = backgroundImageUri,
                 onPick = { backgroundPicker.launch("image/*") },
                 onClear = { backgroundImageUri = null; backgroundImageBytes = null },
-                modifier = Modifier.weight(1f),
-                textPrimary = textPrimary,
-                textSecondary = textSecondary
+                helperText = t("creator.marketing.upload_mock_background", "Upload your mock background image"),
+                modifier = Modifier.weight(1f)
             )
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(14.dp))
 
         OutlinedTextField(
             value = prompt,
             onValueChange = { prompt = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Additional prompt (optional)") },
-            minLines = 2,
-            maxLines = 4
-        )
-        Spacer(Modifier.height(24.dp))
-
-        if (statusMessage != null) {
-            Text(statusMessage!!, style = MaterialTheme.typography.bodySmall, color = EazColors.Orange)
-            Spacer(Modifier.height(8.dp))
-        }
-
-        Button(
-            onClick = {
-                scope.launch {
-                    val balResp = api.getBalance(ownerId)
-                    val balance = if (balResp.optBoolean("ok", false)) balResp.optDouble("balance_eaz", 0.0) else 0.0
-                    confirmCost = 0.5
-                    confirmBalance = balance
-                    showConfirmDialog = true
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !generating && (selectedTop != null || selectedAddition != null)
-        ) {
-            if (generating) {
-                CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
-                Spacer(Modifier.size(8.dp))
-            }
-            Text(if (generating) "Generating..." else "Generate Hero Image")
-        }
-
-        if (showConfirmDialog) {
-            AlertDialog(
-                onDismissRequest = { showConfirmDialog = false },
-                title = { Text("Generate Hero Image?") },
-                text = {
-                    Column {
-                        Text("Cost: $confirmCost EAZ")
-                        Text("Your balance: $confirmBalance EAZ")
-                        Text("Duration: ~30-45 sec")
-                    }
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        showConfirmDialog = false
-                        doGenerate()
-                    }) { Text("Generate") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showConfirmDialog = false }) { Text("Cancel") }
-                }
+            placeholder = { Text(t("creator.marketing.additional_info", "Add any additional information for your hero image...")) },
+            minLines = 3,
+            maxLines = 5,
+            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = Color.White.copy(alpha = 0.18f),
+                unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                cursorColor = EazColors.Orange,
+                focusedPlaceholderColor = Color.White.copy(alpha = 0.42f),
+                unfocusedPlaceholderColor = Color.White.copy(alpha = 0.42f),
+                focusedContainerColor = Color(0x99312937),
+                unfocusedContainerColor = Color(0x99312937)
             )
-        }
+        )
+        Spacer(Modifier.height(12.dp))
 
         if (showProductPicker) {
             HeroProductPickerModal(
@@ -392,10 +418,14 @@ fun AccountHeroImagesTab(
                 category = pickerCategory,
                 currentRegion = selectedRegion,
                 lockedRegion = lockedRegion,
+                usageFilter = usageFilter,
+                searchQuery = modalSearchQuery,
                 loading = loading,
+                onUsageFilterChange = { usageFilter = it },
+                onSearchQueryChange = { modalSearchQuery = it },
                 onRegionChange = { nextRegion ->
                     if (lockedRegion != null && lockedRegion != nextRegion) {
-                        regionLockMessage = "Nur eine Region pro Hero-Entwurf erlaubt."
+                        regionLockMessage = t("creator.marketing.region_lock", "Only one region per hero draft is allowed.")
                     } else {
                         regionLockMessage = null
                         selectedRegion = nextRegion
@@ -411,7 +441,8 @@ fun AccountHeroImagesTab(
                     regionLockMessage = null
                     showProductPicker = false
                 },
-                onDismiss = { showProductPicker = false }
+                onDismiss = { showProductPicker = false },
+                t = ::t
             )
         }
     }
@@ -422,18 +453,46 @@ private fun HeroProductCard(
     label: String,
     product: HeroProduct?,
     onClick: () -> Unit,
+    onClear: (() -> Unit)? = null,
+    showSoon: Boolean = false,
+    disabled: Boolean = false,
     modifier: Modifier = Modifier,
-    textPrimary: Color = EazColors.TextPrimary,
-    textSecondary: Color = EazColors.TextSecondary
 ) {
     Box(
         modifier = modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, EazColors.Orange.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-            .background(EazColors.OrangeBg.copy(alpha = 0.2f))
-            .clickable(onClick = onClick)
+            .border(
+                2.dp,
+                when {
+                    disabled -> Color.White.copy(alpha = 0.06f)
+                    product != null -> EazColors.Orange.copy(alpha = 0.8f)
+                    else -> Color.White.copy(alpha = 0.12f)
+                },
+                RoundedCornerShape(12.dp)
+            )
+            .background(
+                when {
+                    disabled -> Color(0x99111827)
+                    product != null -> EazColors.Orange.copy(alpha = 0.12f)
+                    else -> Color(0xCC111827)
+                }
+            )
+            .clickable(enabled = !disabled, onClick = onClick)
     ) {
+        if (showSoon) {
+            Text(
+                text = "COMING SOON",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF1F2937),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(EazColors.Orange.copy(alpha = 0.9f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            )
+        }
         if (product != null) {
             if (!product.image.isNullOrBlank()) {
                 AsyncImage(
@@ -443,14 +502,30 @@ private fun HeroProductCard(
                     contentScale = ContentScale.Crop
                 )
             }
+            onClear?.let { clear ->
+                IconButton(
+                    onClick = clear,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(28.dp)
+                        .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                ) {
+                    Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .background(EazColors.Orange.copy(alpha = 0.8f))
-                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                Text(product.title, style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
+                Text(
+                    text = product.title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    maxLines = 1
+                )
             }
         } else {
             Column(
@@ -458,9 +533,14 @@ private fun HeroProductCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.Add, null, tint = EazColors.Orange, modifier = Modifier.size(32.dp))
-                Spacer(Modifier.height(4.dp))
-                Text(label, style = MaterialTheme.typography.labelMedium, color = EazColors.Orange)
+                Icon(
+                    if (disabled) Icons.Default.Lock else Icons.Default.Add,
+                    null,
+                    tint = Color.White.copy(alpha = if (disabled) 0.55f else 0.8f),
+                    modifier = Modifier.size(30.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(label, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.88f))
             }
         }
     }
@@ -469,19 +549,19 @@ private fun HeroProductCard(
 @Composable
 private fun HeroUploadCard(
     label: String,
+    iconEmoji: String,
     imageUri: Uri?,
     onPick: () -> Unit,
     onClear: () -> Unit,
+    helperText: String,
     modifier: Modifier = Modifier,
-    textPrimary: Color = EazColors.TextPrimary,
-    textSecondary: Color = EazColors.TextSecondary
 ) {
     Box(
         modifier = modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, EazColors.Orange.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-            .background(EazColors.OrangeBg.copy(alpha = 0.15f))
+            .border(2.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+            .background(Color(0x99111827))
             .clickable(onClick = onPick)
     ) {
         if (imageUri != null) {
@@ -496,8 +576,9 @@ private fun HeroUploadCard(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .size(28.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
             ) {
-                Icon(Icons.Default.Close, null, tint = textPrimary, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(14.dp))
             }
         } else {
             Column(
@@ -505,115 +586,311 @@ private fun HeroUploadCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.Image, null, tint = EazColors.Orange.copy(alpha = 0.7f), modifier = Modifier.size(32.dp))
+                Text(
+                    text = iconEmoji,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Color.White.copy(alpha = 0.82f)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(label, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.9f))
                 Spacer(Modifier.height(4.dp))
-                Text(label, style = MaterialTheme.typography.labelMedium, color = textSecondary)
+                Text(
+                    text = helperText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.62f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HeroProductPickerModal(
     products: List<HeroProduct>,
     category: String,
     currentRegion: String,
     lockedRegion: String?,
+    usageFilter: String,
+    searchQuery: String,
     loading: Boolean,
+    onUsageFilterChange: (String) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
     onRegionChange: (String) -> Unit,
     onSelect: (HeroProduct) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    t: (String, String) -> String
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val topKeywords = listOf("t-shirt", "hoodie", "sweatshirt", "shirt", "top", "tee", "polo", "jacket", "sweater", "pullover", "jacke", "oberteil")
     fun isTopProduct(p: HeroProduct): Boolean {
         val t = (p.title + " " + (p.productType ?: "")).lowercase()
         return topKeywords.any { t.contains(it) }
     }
-    val filtered = when (category) {
+    val filteredByCategory = when (category) {
         "top" -> products.filter { isTopProduct(it) }
         "addition" -> products.filter { !isTopProduct(it) }
         else -> products
     }
+    val filteredByUsage = when (usageFilter) {
+        "used" -> filteredByCategory.filter { it.used }
+        else -> filteredByCategory.filter { !it.used }
+    }
+    val filtered = filteredByUsage.filter {
+        searchQuery.isBlank() ||
+            it.title.contains(searchQuery.trim(), ignoreCase = true) ||
+            (it.productType ?: "").contains(searchQuery.trim(), ignoreCase = true)
+    }
+    var selectedProductId by remember { mutableStateOf<String?>(null) }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF1F2937),
+        dragHandle = null
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Color.White, RoundedCornerShape(16.dp))
-                .padding(16.dp)
+                .height(680.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Select $category", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, null, tint = EazColors.TextPrimary)
-                }
-            }
-            Spacer(Modifier.height(10.dp))
+            // Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF111827))
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                HERO_REGION_TABS_ANDROID.forEach { (code, label) ->
-                    val lockedOut = lockedRegion != null && lockedRegion != code
-                    val active = currentRegion == code
-                    Text(
-                        text = label,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .border(
-                                1.dp,
-                                if (active) EazColors.Orange else EazColors.Orange.copy(alpha = 0.4f),
-                                RoundedCornerShape(999.dp)
-                            )
-                            .background(if (active) EazColors.Orange.copy(alpha = 0.25f) else EazColors.OrangeBg.copy(alpha = 0.12f))
-                            .clickable(enabled = !lockedOut) { onRegionChange(code) }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        color = if (lockedOut) EazColors.TextSecondary.copy(alpha = 0.6f) else EazColors.TextPrimary,
-                        style = MaterialTheme.typography.labelSmall
-                    )
+                Text(
+                    text = t(
+                        "creator.marketing.select_product_for",
+                        "Produkt auswählen - ${if (category == "top") "Top" else "Additional"}"
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color(0xFFE5E7EB)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, null, tint = Color(0xFF9CA3AF))
                 }
             }
-            Spacer(Modifier.height(16.dp))
-            if (loading) {
-                Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = EazColors.Orange)
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier.height(400.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+
+            // Subheader
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1F2937))
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(filtered) { product ->
-                        Box(
+                    HERO_REGION_TABS_ANDROID.forEach { (code, label) ->
+                        val lockedOut = lockedRegion != null && lockedRegion != code
+                        val active = currentRegion == code
+                        Text(
+                            text = label,
                             modifier = Modifier
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, EazColors.Orange.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                .clickable { onSelect(product) }
-                        ) {
-                            if (!product.image.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = product.image,
-                                    contentDescription = product.title,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                                .clip(RoundedCornerShape(999.dp))
+                                .border(
+                                    1.dp,
+                                    when {
+                                        lockedOut -> Color(0xFF64748B).copy(alpha = 0.5f)
+                                        active -> EazColors.Orange
+                                        else -> EazColors.Orange.copy(alpha = 0.4f)
+                                    },
+                                    RoundedCornerShape(999.dp)
                                 )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .fillMaxWidth()
-                                    .background(EazColors.Orange.copy(alpha = 0.8f))
-                                    .padding(4.dp)
-                            ) {
-                                Text(product.title, style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
+                                .background(
+                                    if (active) EazColors.Orange.copy(alpha = 0.25f)
+                                    else EazColors.OrangeBg.copy(alpha = 0.12f)
+                                )
+                                .clickable(enabled = !lockedOut) { onRegionChange(code) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            color = if (lockedOut) Color.White.copy(alpha = 0.4f) else Color.White,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        placeholder = { Text(t("creator.common.search", "Produkte durchsuchen...")) },
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color(0xFFE5E7EB),
+                            unfocusedTextColor = Color(0xFFE5E7EB),
+                            focusedBorderColor = Color(0xFF3B82F6),
+                            unfocusedBorderColor = Color(0xFF374151),
+                            focusedContainerColor = Color(0xFF111827),
+                            unfocusedContainerColor = Color(0xFF111827),
+                            focusedPlaceholderColor = Color(0xFF9CA3AF),
+                            unfocusedPlaceholderColor = Color(0xFF9CA3AF)
+                        )
+                    )
+                    Row(
+                        modifier = Modifier
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF111827))
+                            .border(1.dp, Color(0xFF374151), RoundedCornerShape(8.dp))
+                            .padding(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilterTabPill(
+                            active = usageFilter == "unused",
+                            label = t("creator.marketing.unused", "Unused"),
+                            onClick = { onUsageFilterChange("unused") }
+                        )
+                        FilterTabPill(
+                            active = usageFilter == "used",
+                            label = t("creator.marketing.used", "Used"),
+                            onClick = { onUsageFilterChange("used") }
+                        )
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                if (loading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = EazColors.Orange)
+                    }
+                } else {
+                    if (filtered.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = t("creator.common.no_products_found", "Keine Produkte gefunden."),
+                                color = Color(0xFF9CA3AF)
+                            )
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(filtered) { product ->
+                                val isSelected = selectedProductId == product.id
+                                Box(
+                                    modifier = Modifier
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .border(
+                                            2.dp,
+                                            if (isSelected) Color(0xFF3B82F6) else Color(0xFF374151),
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .background(if (isSelected) Color(0xFF1E3A8A) else Color(0xFF111827))
+                                        .clickable { selectedProductId = product.id }
+                                ) {
+                                    if (!product.image.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = product.image,
+                                            contentDescription = product.title,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(8.dp)
+                                                .size(24.dp)
+                                                .clip(RoundedCornerShape(999.dp))
+                                                .background(Color(0xFF3B82F6)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("✓", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+
+            // Footer
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1F2937))
+                    .border(1.dp, Color(0xFF374151))
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color(0xFF374151), RoundedCornerShape(6.dp))
+                ) { Text(t("creator.common.cancel", "Cancel"), color = Color(0xFFD1D5DB)) }
+                Button(
+                    onClick = {
+                        filtered.firstOrNull { it.id == selectedProductId }?.let(onSelect)
+                    },
+                    enabled = selectedProductId != null,
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF3B82F6),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text(t("creator.common.confirm", "Confirm"))
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun FilterTabPill(
+    active: Boolean,
+    label: String,
+    onClick: () -> Unit
+) {
+    Text(
+        text = label,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .border(
+                1.dp,
+                if (active) Color(0xFF3B82F6) else Color(0xFF374151),
+                RoundedCornerShape(6.dp)
+            )
+            .background(
+                if (active) Color(0xFF3B82F6) else Color(0xFF111827),
+                RoundedCornerShape(6.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        color = if (active) Color.White else Color(0xFF9CA3AF),
+        style = MaterialTheme.typography.labelSmall
+    )
 }

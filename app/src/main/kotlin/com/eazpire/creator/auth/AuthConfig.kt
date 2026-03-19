@@ -12,6 +12,8 @@ package com.eazpire.creator.auth
  */
 object AuthConfig {
     const val SHOP_DOMAIN = "allyoucanpink.myshopify.com"
+    /** Shop für get-product-image (Storefront API) – Produkte sind auf www.eazpire.com */
+    const val STOREFRONT_SHOP = "eazpire.myshopify.com"
     const val REDIRECT_URI = "shop.73952035098.eazpire://callback"
     const val SCOPE = "openid email customer-account-api:full"
 
