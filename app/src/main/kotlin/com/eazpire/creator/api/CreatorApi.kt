@@ -694,7 +694,7 @@ class CreatorApi(
             JSONObject(response.body?.string() ?: "{}")
         }
 
-    /** POST ?op=hero-generate – Body: owner_id, product_ids, prompt, product_image_urls?, model_image_url?, background_image_url? */
+    /** POST ?op=hero-generate – Body: owner_id, product_ids, prompt, product_image_urls?, model_image_url?, background_image_url?, api_version */
     suspend fun heroGenerate(
         ownerId: String,
         productIds: List<String>,
@@ -702,7 +702,8 @@ class CreatorApi(
         productImageUrls: List<String>? = null,
         modelImageUrl: String? = null,
         backgroundImageUrl: String? = null,
-        region: String? = null
+        region: String? = null,
+        apiVersion: String = "gpt-image-1.5"
     ): JSONObject = postJson(
         "hero-generate",
         mapOf(
@@ -712,7 +713,8 @@ class CreatorApi(
             "product_image_urls" to (productImageUrls?.let { org.json.JSONArray(it) } ?: org.json.JSONArray()),
             "model_image_url" to modelImageUrl,
             "background_image_url" to backgroundImageUrl,
-            "region" to region
+            "region" to region,
+            "api_version" to apiVersion
         )
     )
 

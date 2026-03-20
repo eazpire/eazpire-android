@@ -38,6 +38,37 @@ class EazyChatStore(private val context: Context) {
     private val _limitReached = MutableStateFlow(false)
     val limitReached: StateFlow<Boolean> = _limitReached.asStateFlow()
 
+    private val _heroJobState = MutableStateFlow<HeroJobState?>(null)
+    val heroJobState: StateFlow<HeroJobState?> = _heroJobState.asStateFlow()
+
+    fun startHeroJob(jobId: String, summary: String) {
+        _heroJobState.value = HeroJobState(jobId = jobId, summary = summary, progress = 0, message = null)
+    }
+
+    fun updateHeroJobPoll(progress: Int, message: String?) {
+        val cur = _heroJobState.value ?: return
+        if (cur.terminal) return
+        _heroJobState.value = cur.copy(progress = progress.coerceIn(0, 100), message = message)
+    }
+
+    fun completeHeroJob(imageUrl: String?) {
+        val cur = _heroJobState.value ?: return
+        _heroJobState.value = cur.copy(
+            completed = true,
+            progress = 100,
+            resultImageUrl = imageUrl
+        )
+    }
+
+    fun failHeroJob(message: String) {
+        val cur = _heroJobState.value ?: return
+        _heroJobState.value = cur.copy(failed = true, errorMessage = message)
+    }
+
+    fun clearHeroJob() {
+        _heroJobState.value = null
+    }
+
     suspend fun getUserId(customerId: String?): String {
         val realId = customerId?.takeIf { it.isNotBlank() }
         if (realId != null) {
@@ -104,3 +135,18 @@ data class RateLimitState(
     val resetAt: Long,
     val resetIn: Int
 )
+
+/** Async hero-generate job shown under Eazy chat → Active Jobs / Notifications. */
+data class HeroJobState(
+    val jobId: String,
+    val summary: String,
+    val progress: Int = 0,
+    val message: String? = null,
+    val completed: Boolean = false,
+    val failed: Boolean = false,
+    val resultImageUrl: String? = null,
+    val errorMessage: String? = null
+) {
+    val isActive: Boolean get() = !completed && !failed
+    val terminal: Boolean get() = completed || failed
+}

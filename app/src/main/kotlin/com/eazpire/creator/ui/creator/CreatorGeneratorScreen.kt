@@ -63,6 +63,7 @@ import androidx.compose.foundation.Image
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -124,7 +125,7 @@ private fun DataUrlImage(
 fun CreatorGeneratorScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
-    onOpenEazyChat: () -> Unit = {},
+    onOpenEazyChat: (EazySidebarTab?) -> Unit = {},
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {

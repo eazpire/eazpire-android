@@ -234,6 +234,70 @@ class ShopifyProductsApi(
         return variantImages
     }
 
+    /**
+     * Variant preview URLs from parsed product detail (same rules as [filterVariantImages] on REST images).
+     * Used when [parseProductFromJson] cannot build a [ProductItem] (e.g. slightly different JSON).
+     */
+    private fun shopCardUrlsFromProductImages(images: List<ProductImage>): List<String> {
+        if (images.isEmpty()) return emptyList()
+        var primaryView = ""
+        var hasPreviewDefault = false
+        for (pi in images) {
+            val alt = (pi.alt ?: "").trim().lowercase()
+            if (alt.contains("preview-default")) hasPreviewDefault = true
+            if (alt.contains("|") && primaryView.isEmpty()) {
+                val parts = (pi.alt ?: "").trim().split("|")
+                primaryView = (parts.getOrNull(1) ?: "").trim().lowercase()
+            }
+        }
+        val variantUrls = mutableListOf<String>()
+        val usedColors = mutableSetOf<String>()
+        for (pi in images) {
+            val src = pi.src.takeIf { it.isNotBlank() } ?: continue
+            val alt = (pi.alt ?: "").trim()
+            if (alt.isEmpty() || !alt.contains("|")) continue
+            val parts = alt.split("|")
+            val colorKey = (parts.getOrNull(0) ?: "").trim().lowercase()
+            val mediaView = (parts.getOrNull(1) ?: "").trim().lowercase()
+            if (colorKey.isEmpty()) continue
+            if (hasPreviewDefault && !alt.lowercase().contains("preview-default")) continue
+            if (!hasPreviewDefault && primaryView.isNotEmpty() && mediaView != primaryView) continue
+            val colorToken = "|$colorKey|"
+            if (colorToken in usedColors) continue
+            usedColors.add(colorToken)
+            variantUrls.add(src)
+        }
+        val allSrcs = images.map { it.src }.filter { it.isNotBlank() }
+        return variantUrls.ifEmpty { listOfNotNull(allSrcs.firstOrNull()) }
+    }
+
+    /**
+     * Same image URL list as shop [ProductItem.variantImages] / [CollectionScreen] cards:
+     * storefront `products/{handle}.json` via worker `product-json`, then variant filter or first image.
+     */
+    suspend fun getShopCardImageUrls(handle: String): List<String> = withContext(Dispatchers.IO) {
+        if (handle.isBlank()) return@withContext emptyList()
+        val url = "$workerUrl/apps/creator-dispatch?op=product-json&handle=${java.net.URLEncoder.encode(handle, "UTF-8")}"
+        try {
+            val request = Request.Builder().url(url).build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: "{}"
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+            if (json.has("ok") && !json.optBoolean("ok", true)) return@withContext emptyList()
+            val productObj = json.optJSONObject("product") ?: return@withContext emptyList()
+            val item = parseProductFromJson(productObj)
+            if (item != null) {
+                val v = item.variantImages
+                val imgs = item.images
+                return@withContext if (v.isNotEmpty()) v else imgs
+            }
+            val detail = parseProductDetail(productObj, handle) ?: return@withContext emptyList()
+            shopCardUrlsFromProductImages(detail.images)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     private fun parseProductFromJson(obj: JSONObject?): ProductItem? {
         if (obj == null) return null
         val id = obj.optLong("id", 0L)

@@ -354,12 +354,13 @@ fun CollectionScreen(
                 }
             }
             if (totalPages > 1 && productFilters.isEmpty()) {
-                PaginationDots(
+                ProductPaginationDots(
                     totalPages = totalPages,
                     currentPage = currentPage,
                     onPageClick = { currentPage = it },
                     onSwipePrev = { if (currentPage > 1) currentPage = currentPage - 1 },
-                    onSwipeNext = { if (currentPage < totalPages) currentPage = currentPage + 1 }
+                    onSwipeNext = { if (currentPage < totalPages) currentPage = currentPage + 1 },
+                    style = PaginationDotsStyle.Light
                 )
             }
         }
@@ -929,53 +930,6 @@ private fun FilterDrawer(
 }
 
 @Composable
-private fun PaginationDots(
-    totalPages: Int,
-    currentPage: Int,
-    onPageClick: (Int) -> Unit,
-    onSwipePrev: () -> Unit = {},
-    onSwipeNext: () -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    val density = LocalDensity.current
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color(0xFFF5F5F5))
-            .padding(vertical = 8.dp)
-            .pointerInput(currentPage, totalPages) {
-                var totalDrag = 0f
-                val thresholdPx = with(density) { 60.dp.toPx() }
-                detectHorizontalDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                    onDragEnd = {
-                        when {
-                            totalDrag > thresholdPx -> onSwipePrev()
-                            totalDrag < -thresholdPx -> onSwipeNext()
-                        }
-                    }
-                )
-            },
-        horizontalArrangement = Arrangement.Center
-    ) {
-        (1..totalPages).forEach { page ->
-            Box(
-                modifier = Modifier
-                    .padding(4.dp)
-                    .size(if (page == currentPage) 10.dp else 8.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (page == currentPage) EazColors.Orange
-                        else EazColors.TextSecondary.copy(alpha = 0.3f)
-                    )
-                    .clickable { onPageClick(page) }
-            )
-        }
-    }
-}
-
-@Composable
 private fun CollectionComingSoon(
     title: String,
     onBrowseAll: () -> Unit,
@@ -1053,7 +1007,7 @@ private fun CollectionProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val images = product.variantImages
+    val images = product.variantImages.ifEmpty { product.images }
     var currentIndex by remember(product.id) { mutableStateOf(0) }
 
     LaunchedEffect(product.id, images.size) {

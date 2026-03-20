@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +63,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
+import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -92,6 +95,8 @@ fun EazyChatModal(
     onLoginClick: () -> Unit,
     onResetMascot: () -> Unit = {},
     chatContext: EazyChatContext = EazyChatContext.Shop,
+    /** When the dialog opens or this value changes while open, switch sidebar tab (e.g. Jobs after starting hero). */
+    startTab: EazySidebarTab = EazySidebarTab.Chat,
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -108,6 +113,7 @@ fun EazyChatModal(
     val isTyping by chatStore.isTyping.collectAsState()
     val limitReached by chatStore.limitReached.collectAsState()
     val rateLimit by chatStore.rateLimit.collectAsState()
+    val heroJob by chatStore.heroJobState.collectAsState()
     val isLoggedIn = tokenStore?.isLoggedIn() == true
     val pagePath = if (chatContext == EazyChatContext.Creator) "/creator" else "/shop"
 
@@ -155,6 +161,10 @@ fun EazyChatModal(
             ) {
                 var selectedTab by remember { mutableStateOf(EazySidebarTab.Chat) }
                 var sidebarOpen by remember { mutableStateOf(true) }
+
+                LaunchedEffect(visible, startTab) {
+                    if (visible) selectedTab = startTab
+                }
 
                 Row(modifier = Modifier.fillMaxSize()) {
                     // Sidebar
@@ -451,8 +461,8 @@ fun EazyChatModal(
                 }
                 }
                     }
-                    EazySidebarTab.Notifications -> EazyPlaceholderView(t("creator.notifications.notifications_tab", "Notifications"), t("creator.notifications.empty", "No notifications"))
-                    EazySidebarTab.Jobs -> EazyPlaceholderView(t("creator.notifications.active_jobs", "Active Jobs"), t("creator.notifications.empty_jobs", "No active jobs"))
+                    EazySidebarTab.Notifications -> EazyHeroNotificationsPanel(heroJob, t)
+                    EazySidebarTab.Jobs -> EazyHeroJobsPanel(heroJob, t)
                     EazySidebarTab.Settings -> EazySettingsView(t, onDismiss, onResetMascot)
                     EazySidebarTab.Functions -> EazyPlaceholderView(t("eazy_chat.ui_functions_tab", "Functions"), t("eazy_chat.functions_hint", "Functions coming soon"))
                     EazySidebarTab.Mascot -> EazyMascotTabView(
@@ -508,6 +518,85 @@ private fun EazySettingsView(
             style = MaterialTheme.typography.bodySmall,
             color = ChatMuted
         )
+    }
+}
+
+@Composable
+private fun EazyHeroJobsPanel(hero: HeroJobState?, t: (String, String) -> String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        val active = hero?.takeIf { it.isActive }
+        if (active != null) {
+            Text(
+                text = active.summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = ChatText
+            )
+            LinearProgressIndicator(
+                progress = active.progress.coerceIn(0, 100) / 100f,
+                modifier = Modifier.fillMaxWidth(),
+                color = ChatAccent,
+                trackColor = ChatMuted.copy(alpha = 0.3f)
+            )
+            active.message?.takeIf { it.isNotBlank() }?.let { msg ->
+                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = ChatMuted)
+            }
+        } else {
+            Text(
+                text = t("creator.notifications.empty_jobs", "No active jobs"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = ChatMuted
+            )
+        }
+    }
+}
+
+@Composable
+private fun EazyHeroNotificationsPanel(hero: HeroJobState?, t: (String, String) -> String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        when {
+            hero?.completed == true && !hero.resultImageUrl.isNullOrBlank() -> {
+                Text(
+                    text = t("creator.hero_eazy.notification_ready", "Your hero image is ready."),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = ChatText
+                )
+                AsyncImage(
+                    model = hero.resultImageUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.FillWidth
+                )
+            }
+            hero?.failed == true -> {
+                Text(
+                    text = hero.errorMessage?.takeIf { it.isNotBlank() }
+                        ?: t("creator.hero_images.generation_failed_generic", "Generation failed."),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ChatAccent
+                )
+            }
+            else -> {
+                Text(
+                    text = t("creator.notifications.empty", "No notifications"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ChatMuted
+                )
+            }
+        }
     }
 }
 

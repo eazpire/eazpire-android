@@ -41,10 +41,12 @@ import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.chat.EazyChatContext
 import com.eazpire.creator.chat.EazyChatModal
 import com.eazpire.creator.chat.EazyChatStore
 import com.eazpire.creator.chat.EazyMascot
+import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.chat.EazyMascotStore
 import com.eazpire.creator.ui.account.AccountModalSheet
 import com.eazpire.creator.ui.footer.GlobalFooter
@@ -55,6 +57,10 @@ import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.ShopMenuBar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 
 /**
  * Shop-Screen: Direkt zugänglich ohne Login.
@@ -99,7 +105,49 @@ fun ShopScreen(
     var cartDrawerVisible by remember { mutableStateOf(false) }
     var favoritesModalVisible by remember { mutableStateOf(false) }
     var eazyChatVisible by remember { mutableStateOf(false) }
+    var eazyStartTab by remember { mutableStateOf(EazySidebarTab.Chat) }
     val eazyChatStore = remember { EazyChatStore(context) }
+    val creatorPollApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
+    val heroJobForPoll by eazyChatStore.heroJobState.collectAsState()
+
+    LaunchedEffect(heroJobForPoll?.jobId) {
+        val jobId = heroJobForPoll?.jobId ?: return@LaunchedEffect
+        if (heroJobForPoll?.terminal == true) return@LaunchedEffect
+        while (isActive) {
+            try {
+                val r = withContext(Dispatchers.IO) { creatorPollApi.pollJob(jobId) }
+                val done = r.optBoolean("done")
+                val notFound = r.optBoolean("not_found")
+                if (!done) {
+                    val progress = r.optInt("progress", 0)
+                    val msg = r.optString("message", "").takeIf { it.isNotBlank() }
+                    eazyChatStore.updateHeroJobPoll(progress, msg)
+                    delay(2000)
+                    continue
+                }
+                if (notFound) {
+                    eazyChatStore.failHeroJob(
+                        r.optString("message", "").takeIf { it.isNotBlank() } ?: "Job not found"
+                    )
+                } else {
+                    val img = r.optJSONObject("result")?.optString("image_url", "")?.takeIf { it.isNotBlank() }
+                    if (img != null) {
+                        eazyChatStore.completeHeroJob(img)
+                        eazyStartTab = EazySidebarTab.Notifications
+                    } else {
+                        eazyChatStore.failHeroJob(
+                            r.optString("message", "").takeIf { it.isNotBlank() }
+                                ?: "No image in result"
+                        )
+                    }
+                }
+                break
+            } catch (_: Exception) {
+                delay(3000)
+            }
+        }
+    }
+
     val eazyMascotStore = remember { EazyMascotStore(context) }
     val eazyDocked by eazyMascotStore.isDocked.collectAsState(initial = false)
     val eazyPosX by eazyMascotStore.positionX.collectAsState(initial = null)
@@ -223,7 +271,10 @@ fun ShopScreen(
                     onFavoritesModalChange = { favoritesModalVisible = it },
                     eazyDocked = eazyDocked,
                     eazySnapModeActive = eazySnapModeActive,
-                    onEazyClick = { eazyChatVisible = true },
+                    onEazyClick = {
+                        eazyStartTab = EazySidebarTab.Chat
+                        eazyChatVisible = true
+                    },
                     onEazyLongPress = { eazyMascotStore.setDockedSync(false) },
                     slotBoundsState = slotBoundsState,
                     isCreatorMode = isCreatorMode,
@@ -372,7 +423,8 @@ fun ShopScreen(
             showLoginOptions = true
         },
         onResetMascot = { eazyMascotStore.resetSync() },
-        chatContext = if (isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop
+        chatContext = if (isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop,
+        startTab = eazyStartTab
     )
 
     MenuDrawer(

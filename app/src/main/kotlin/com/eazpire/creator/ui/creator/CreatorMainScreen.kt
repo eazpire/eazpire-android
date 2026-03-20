@@ -48,6 +48,7 @@ import com.eazpire.creator.ui.creator.CreatorDrawer
 import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.header.LanguageModal
 import com.eazpire.creator.ui.header.LocaleModalItem
+import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.ui.header.LanguageChildren
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,7 +68,8 @@ fun CreatorMainScreen(
     translationStore: TranslationStore,
     onSwitchToShop: () -> Unit,
     onAccountClick: () -> Unit,
-    onEazyChatOpen: () -> Unit,
+    onEazyChatOpen: (EazySidebarTab?) -> Unit,
+    onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     eazyDocked: Boolean = false,
     eazySnapModeActive: Boolean = false,
     onEazySnapModeChange: (Boolean) -> Unit = {},
@@ -173,7 +175,7 @@ fun CreatorMainScreen(
                     tokenStore = tokenStore,
                     eazyDocked = eazyDocked,
                     eazySnapModeActive = eazySnapModeActive,
-                    onEazyClick = onEazyChatOpen,
+                    onEazyClick = { onEazyChatOpen(null) },
                     onEazyLongPress = onEazyLongPress,
                     slotBoundsState = slotBoundsState,
                     audioStore = audioStore,
@@ -263,6 +265,8 @@ fun CreatorMainScreen(
                             onHeaderTitleChange = { marketingTitleOverride = it },
                             sessionKey = marketingSessionKey,
                             maxHeight = contentMaxHeight,
+                            onEazyChatOpen = onEazyChatOpen,
+                            onHeroJobStarted = onHeroJobStarted,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

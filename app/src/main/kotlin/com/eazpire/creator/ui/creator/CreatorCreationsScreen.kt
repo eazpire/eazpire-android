@@ -13,6 +13,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,28 +57,38 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.ui.CREATIONS_PRODUCTS_PER_PAGE
+import com.eazpire.creator.ui.PaginationDotsStyle
+import com.eazpire.creator.ui.ProductPaginationDots
+import com.eazpire.creator.ui.ShopStyleProductImages
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -139,6 +150,15 @@ private fun extractShopifyHandle(product: CreationProduct): String? {
     }
 }
 
+/** Same URL list as shop cards: worker product-json → variantImages (or API fallback). */
+private fun creationProductDisplayUrls(
+    product: CreationProduct,
+    overrides: Map<String, List<String>>
+): List<String> {
+    overrides[product.id]?.takeIf { it.isNotEmpty() }?.let { return it }
+    return listOfNotNull(normalizeImageUrl(product.imageUrl)).filter { it.isNotBlank() }.distinct()
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreatorCreationsScreen(
@@ -153,6 +173,7 @@ fun CreatorCreationsScreen(
     val ownerId = remember { runCatching { tokenStore.getOwnerId() }.getOrNull() ?: "" }
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
     val shopifyApi = remember { ShopifyProductsApi() }
+    val shop = AuthConfig.SHOP_DOMAIN
 
     var currentTab by remember { mutableStateOf("designs") }
     var designs by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
@@ -171,74 +192,50 @@ fun CreatorCreationsScreen(
     var uploadInProgress by remember { mutableStateOf(false) }
     var uploadModalVisible by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var productImageOverrides by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var productFallbackHydrationLimit by remember { mutableIntStateOf(10) }
+    var productImageOverrides by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var productFallbackRequestedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val productIdsSignature = remember(products) { products.joinToString("\u0001") { it.id } }
     val designsListState = rememberLazyListState()
     val designsGridState = rememberLazyGridState()
     val productsListState = rememberLazyListState()
     val productsGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
 
-    val shop = AuthConfig.SHOP_DOMAIN
+    // When the published-products list changes, allow re-fetching shop-style URLs for the new rows.
+    LaunchedEffect(productIdsSignature) {
+        productFallbackRequestedIds = emptySet()
+    }
 
-    // Web-Parity: Nur fehlende Bilder per Handle aus Shopify-Produkt ergänzen.
-    LaunchedEffect(products, productFallbackHydrationLimit, currentTab) {
+    // Same as shop CollectionScreen: product-json → ProductItem.variantImages; parallel per handle.
+    LaunchedEffect(productIdsSignature, currentTab) {
         if (currentTab != "products") return@LaunchedEffect
-        val limit = productFallbackHydrationLimit.coerceAtLeast(10)
-        val needFetch = products.take(limit).mapNotNull { p ->
-            val existing = normalizeImageUrl(productImageOverrides[p.id]) ?: normalizeImageUrl(p.imageUrl)
-            if (existing.isNullOrBlank()) {
-                if (productFallbackRequestedIds.contains(p.id)) null
-                else extractShopifyHandle(p)?.let { handle -> p to handle }
-            } else null
+        val needFetch = products.mapNotNull { p ->
+            if (productFallbackRequestedIds.contains(p.id)) return@mapNotNull null
+            if (!productImageOverrides[p.id].isNullOrEmpty()) return@mapNotNull null
+            val handle = extractShopifyHandle(p) ?: return@mapNotNull null
+            p to handle
         }
         if (needFetch.isEmpty()) return@LaunchedEffect
         productFallbackRequestedIds = productFallbackRequestedIds + needFetch.map { it.first.id }
-        val newOverrides = mutableMapOf<String, String>()
-        for ((p, handle) in needFetch) {
-            val product = runCatching {
-                withContext(Dispatchers.IO) { shopifyApi.getProductByHandle(handle) }
-            }.getOrNull() ?: continue
-            val raw = product.images.firstOrNull()?.src?.takeIf { it.isNotBlank() } ?: continue
-            val shopifyImage = normalizeImageUrl(raw) ?: continue
-            val existing = normalizeImageUrl(productImageOverrides[p.id]) ?: normalizeImageUrl(p.imageUrl)
-            if (existing != shopifyImage) {
-                newOverrides[p.id] = shopifyImage
-            }
+        val newOverrides = coroutineScope {
+            val concurrency = Semaphore(12)
+            needFetch.map { (p, handle) ->
+                async(Dispatchers.IO) {
+                    concurrency.withPermit {
+                        val urls = runCatching { shopifyApi.getShopCardImageUrls(handle) }
+                            .getOrNull()
+                            .orEmpty()
+                            .mapNotNull { normalizeImageUrl(it) }
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                        if (urls.isNotEmpty()) p.id to urls else null
+                    }
+                }
+            }.awaitAll().filterNotNull().toMap()
         }
         if (newOverrides.isNotEmpty()) {
             productImageOverrides = productImageOverrides + newOverrides
         }
-    }
-
-    LaunchedEffect(products) {
-        productFallbackHydrationLimit = 10
-        productFallbackRequestedIds = emptySet()
-    }
-
-    LaunchedEffect(currentTab) {
-        if (currentTab != "products") return@LaunchedEffect
-        snapshotFlow { (productsListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) }
-            .collect { lastVisible ->
-                val productIndex = (lastVisible - 1).coerceAtLeast(0) // header row is first item
-                val nextLimit = (productIndex + 10).coerceAtLeast(10)
-                if (nextLimit > productFallbackHydrationLimit) {
-                    productFallbackHydrationLimit = nextLimit
-                }
-            }
-    }
-
-    LaunchedEffect(currentTab, viewMode) {
-        if (currentTab != "products" || VIEW_MODES[viewMode] == "list") return@LaunchedEffect
-        snapshotFlow { (productsGridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) }
-            .collect { lastVisible ->
-                val productIndex = (lastVisible - 1).coerceAtLeast(0) // search row is first item
-                val nextLimit = (productIndex + 10).coerceAtLeast(10)
-                if (nextLimit > productFallbackHydrationLimit) {
-                    productFallbackHydrationLimit = nextLimit
-                }
-            }
     }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -356,13 +353,19 @@ fun CreatorCreationsScreen(
                                     ?: v.optString("preview_url", "").takeIf { it.isNotBlank() })
                                 else -> null
                             }
-                            fun resolveProductImageUrl(obj: JSONObject): String? =
-                                toImageStr(obj.opt("image_url")) ?: toImageStr(obj.opt("featured_image"))
+                            fun resolveProductImageUrl(obj: JSONObject): String? {
+                                val fi = obj.opt("featured_image")
+                                val featuredStr = when (fi) {
+                                    is JSONObject -> toImageStr(fi) ?: fi.optString("src", "").takeIf { it.isNotBlank() }
+                                    else -> toImageStr(fi)
+                                }
+                                return toImageStr(obj.opt("image_url")) ?: featuredStr
                                     ?: toImageStr(obj.opt("preview_url")) ?: toImageStr(obj.opt("thumbnail_url"))
                                     ?: toImageStr(obj.opt("main_image")) ?: toImageStr(obj.opt("product_image"))
                                     ?: obj.optJSONArray("images")?.opt(0)?.let { toImageStr(it) }
                                     ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image")?.let { toImageStr(it) }
                                     ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image_url")?.let { toImageStr(it) }
+                            }
                             (0 until arr.length()).mapNotNull { i ->
                                 val obj = arr.optJSONObject(i) ?: return@mapNotNull null
                                 val productKey = obj.optString("product_key", "")
@@ -464,6 +467,23 @@ fun CreatorCreationsScreen(
         list
     }
 
+    var productsListPage by remember { mutableIntStateOf(1) }
+    val filteredProductsPageKey = remember(filteredProducts) { filteredProducts.joinToString("\u0001") { it.id } }
+    LaunchedEffect(filteredProductsPageKey, currentTab) {
+        if (currentTab == "products") productsListPage = 1
+    }
+    val productsTotalPages = remember(filteredProducts.size) {
+        maxOf(1, (filteredProducts.size + CREATIONS_PRODUCTS_PER_PAGE - 1) / CREATIONS_PRODUCTS_PER_PAGE)
+    }
+    LaunchedEffect(productsTotalPages) {
+        if (productsListPage > productsTotalPages) productsListPage = productsTotalPages
+    }
+    val pagedProducts = remember(filteredProducts, productsListPage, productsTotalPages) {
+        val idx = (productsListPage - 1).coerceIn(0, (productsTotalPages - 1).coerceAtLeast(0))
+        val start = idx * CREATIONS_PRODUCTS_PER_PAGE
+        filteredProducts.drop(start).take(CREATIONS_PRODUCTS_PER_PAGE)
+    }
+
     val gridCols = when (VIEW_MODES[viewMode]) {
         "grid2" -> 2
         "grid3" -> 3
@@ -471,6 +491,7 @@ fun CreatorCreationsScreen(
         else -> 2
     }
     val isListMode = VIEW_MODES[viewMode] == "list"
+    val productPaginationDensity = LocalDensity.current
 
     Column(
         modifier = modifier
@@ -701,141 +722,213 @@ fun CreatorCreationsScreen(
                         }
                     }
                 } else if (isListMode) {
-                    LazyColumn(
-                        state = productsListState,
+                    Column(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
-                            .heightIn(max = boundedHeight),
-                        contentPadding = PaddingValues(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .heightIn(max = boundedHeight)
                     ) {
-                        item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF262930).copy(alpha = 0.68f))
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                BasicTextField(
-                                    value = productsSearch,
-                                    onValueChange = { productsSearch = it },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.Black.copy(alpha = 0.3f))
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                        .padding(10.dp),
-                                    singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                                    decorationBox = { inner ->
-                                        if (productsSearch.text.isEmpty()) {
-                                            Text(
-                                                translationStore.t("creator.common.search", "Search…"),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color.White.copy(alpha = 0.5f)
-                                            )
+                        LazyColumn(
+                            state = productsListState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .pointerInput(productsListPage, productsTotalPages) {
+                                    var totalDrag = 0f
+                                    val thresholdPx = with(productPaginationDensity) { 80.dp.toPx() }
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { totalDrag = 0f },
+                                        onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                                        onDragEnd = {
+                                            when {
+                                                totalDrag > thresholdPx && productsListPage > 1 ->
+                                                    productsListPage = productsListPage - 1
+                                                totalDrag < -thresholdPx && productsListPage < productsTotalPages ->
+                                                    productsListPage = productsListPage + 1
+                                            }
                                         }
-                                        inner()
-                                    }
-                                )
-                                IconButton(
-                                    onClick = { filterModalVisible = true },
+                                    )
+                                },
+                            contentPadding = PaddingValues(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            item {
+                                Row(
                                     modifier = Modifier
-                                        .size(40.dp)
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF262930).copy(alpha = 0.68f))
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                                    BasicTextField(
+                                        value = productsSearch,
+                                        onValueChange = { productsSearch = it },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black.copy(alpha = 0.3f))
+                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                            .padding(10.dp),
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                                        decorationBox = { inner ->
+                                            if (productsSearch.text.isEmpty()) {
+                                                Text(
+                                                    translationStore.t("creator.common.search", "Search…"),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = Color.White.copy(alpha = 0.5f)
+                                                )
+                                            }
+                                            inner()
+                                        }
+                                    )
+                                    IconButton(
+                                        onClick = { filterModalVisible = true },
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                    ) {
+                                        Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                                    }
+                                    Text(
+                                        "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
                                 }
-                                Text(
-                                    "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.8f)
+                            }
+                            items(pagedProducts, key = { it.id }) { product ->
+                                CreationProductListItem(
+                                    product = product,
+                                    imageUrls = creationProductDisplayUrls(product, productImageOverrides),
+                                    translationStore = translationStore,
+                                    onClick = {
+                                        product.storefrontUrl?.let { url ->
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                        }
+                                    }
                                 )
                             }
                         }
-                        items(filteredProducts, key = { it.id }) { product ->
-                            CreationProductListItem(
-                                product = product,
-                                imageUrl = productImageOverrides[product.id] ?: product.imageUrl,
-                                translationStore = translationStore,
-                                onClick = {
-                                    product.storefrontUrl?.let { url ->
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                    }
-                                }
+                        if (productsTotalPages > 1) {
+                            ProductPaginationDots(
+                                totalPages = productsTotalPages,
+                                currentPage = productsListPage,
+                                onPageClick = { productsListPage = it },
+                                onSwipePrev = {
+                                    if (productsListPage > 1) productsListPage = productsListPage - 1
+                                },
+                                onSwipeNext = {
+                                    if (productsListPage < productsTotalPages) productsListPage = productsListPage + 1
+                                },
+                                style = PaginationDotsStyle.Dark
                             )
                         }
                     }
                 } else {
-                    LazyVerticalGrid(
-                        state = productsGridState,
-                        columns = GridCells.Fixed(gridCols),
+                    Column(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
-                            .heightIn(max = boundedHeight),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .heightIn(max = boundedHeight)
                     ) {
-                        item(span = { GridItemSpan(gridCols) }) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF262930).copy(alpha = 0.68f))
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                BasicTextField(
-                                    value = productsSearch,
-                                    onValueChange = { productsSearch = it },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.Black.copy(alpha = 0.3f))
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                        .padding(10.dp),
-                                    singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                                    decorationBox = { inner ->
-                                        if (productsSearch.text.isEmpty()) {
-                                            Text(
-                                                translationStore.t("creator.common.search", "Search…"),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color.White.copy(alpha = 0.5f)
-                                            )
+                        LazyVerticalGrid(
+                            state = productsGridState,
+                            columns = GridCells.Fixed(gridCols),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .pointerInput(productsListPage, productsTotalPages) {
+                                    var totalDrag = 0f
+                                    val thresholdPx = with(productPaginationDensity) { 80.dp.toPx() }
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { totalDrag = 0f },
+                                        onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                                        onDragEnd = {
+                                            when {
+                                                totalDrag > thresholdPx && productsListPage > 1 ->
+                                                    productsListPage = productsListPage - 1
+                                                totalDrag < -thresholdPx && productsListPage < productsTotalPages ->
+                                                    productsListPage = productsListPage + 1
+                                            }
                                         }
-                                        inner()
-                                    }
-                                )
-                                IconButton(
-                                    onClick = { filterModalVisible = true },
+                                    )
+                                },
+                            contentPadding = PaddingValues(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            item(span = { GridItemSpan(gridCols) }) {
+                                Row(
                                     modifier = Modifier
-                                        .size(40.dp)
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF262930).copy(alpha = 0.68f))
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                                    BasicTextField(
+                                        value = productsSearch,
+                                        onValueChange = { productsSearch = it },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black.copy(alpha = 0.3f))
+                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                            .padding(10.dp),
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                                        decorationBox = { inner ->
+                                            if (productsSearch.text.isEmpty()) {
+                                                Text(
+                                                    translationStore.t("creator.common.search", "Search…"),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = Color.White.copy(alpha = 0.5f)
+                                                )
+                                            }
+                                            inner()
+                                        }
+                                    )
+                                    IconButton(
+                                        onClick = { filterModalVisible = true },
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                    ) {
+                                        Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                                    }
+                                    Text(
+                                        "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
                                 }
-                                Text(
-                                    "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.8f)
+                            }
+                            items(pagedProducts, key = { it.id }) { product ->
+                                CreationProductCard(
+                                    product = product,
+                                    imageUrls = creationProductDisplayUrls(product, productImageOverrides),
+                                    onClick = {
+                                        product.storefrontUrl?.let { url ->
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                        }
+                                    }
                                 )
                             }
                         }
-                        items(filteredProducts, key = { it.id }) { product ->
-                            CreationProductCard(
-                                product = product,
-                                imageUrl = productImageOverrides[product.id] ?: product.imageUrl,
-                                onClick = {
-                                    product.storefrontUrl?.let { url ->
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                    }
-                                }
+                        if (productsTotalPages > 1) {
+                            ProductPaginationDots(
+                                totalPages = productsTotalPages,
+                                currentPage = productsListPage,
+                                onPageClick = { productsListPage = it },
+                                onSwipePrev = {
+                                    if (productsListPage > 1) productsListPage = productsListPage - 1
+                                },
+                                onSwipeNext = {
+                                    if (productsListPage < productsTotalPages) productsListPage = productsListPage + 1
+                                },
+                                style = PaginationDotsStyle.Dark
                             )
                         }
                     }
@@ -1004,7 +1097,7 @@ private fun CreationDesignListItem(
 @Composable
 private fun CreationProductCard(
     product: CreationProduct,
-    imageUrl: String?,
+    imageUrls: List<String>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1024,24 +1117,13 @@ private fun CreationProductCard(
                     .background(Color(0xFF353D4C)),
                 contentAlignment = Alignment.Center
             ) {
-                if (!imageUrl.isNullOrBlank()) {
-                    SubcomposeAsyncImage(
-                        model = imageUrl,
+                if (imageUrls.isNotEmpty()) {
+                    ShopStyleProductImages(
+                        imageUrls = imageUrls,
                         contentDescription = product.title,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
-                        alignment = Alignment.Center,
-                        loading = { GridImageShimmer(Modifier.fillMaxSize()) },
-                        error = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.White.copy(alpha = 0.1f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
-                            }
-                        }
+                        cornerRadius = 0.dp
                     )
                 } else {
                     Box(
@@ -1068,7 +1150,7 @@ private fun CreationProductCard(
 @Composable
 private fun CreationProductListItem(
     product: CreationProduct,
-    imageUrl: String?,
+    imageUrls: List<String>,
     translationStore: TranslationStore,
     onClick: () -> Unit
 ) {
@@ -1081,33 +1163,27 @@ private fun CreationProductListItem(
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!imageUrl.isNullOrBlank()) {
-            SubcomposeAsyncImage(
-                model = imageUrl,
-                contentDescription = product.title,
-                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop,
-                loading = { GridImageShimmer(Modifier.fillMaxSize()) },
-                error = {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.White.copy(alpha = 0.1f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
-                    }
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF353D4C))
+        ) {
+            if (imageUrls.isNotEmpty()) {
+                ShopStyleProductImages(
+                    imageUrls = imageUrls,
+                    contentDescription = product.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    cornerRadius = 8.dp
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
                 }
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
             }
         }
         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {

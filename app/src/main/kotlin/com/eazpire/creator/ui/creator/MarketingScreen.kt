@@ -44,6 +44,7 @@ import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.account.AccountHeroImagesTab
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +74,8 @@ fun MarketingScreen(
     onHeaderTitleChange: (String) -> Unit,
     sessionKey: Int = 0,
     maxHeight: Dp = Dp.Infinity,
+    onEazyChatOpen: (EazySidebarTab?) -> Unit = {},
+    onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
@@ -160,6 +163,8 @@ fun MarketingScreen(
                 },
                 tokenStore = tokenStore,
                 translationStore = translationStore,
+                onEazyChatOpen = onEazyChatOpen,
+                onHeroJobStarted = onHeroJobStarted,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -184,6 +189,8 @@ private fun MarketingContentCreationPanel(
     onSwitchToPublish: () -> Unit,
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
+    onEazyChatOpen: (EazySidebarTab?) -> Unit,
+    onHeroJobStarted: (jobId: String, summary: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -203,6 +210,8 @@ private fun MarketingContentCreationPanel(
                     translationStore = translationStore,
                     darkMode = true,
                     onGenerated = onSwitchToPublish,
+                    onHeroJobStarted = onHeroJobStarted,
+                    onOpenEazyChat = { tab -> onEazyChatOpen(tab) },
                     modifier = Modifier.padding(20.dp)
                 )
             }
