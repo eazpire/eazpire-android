@@ -138,6 +138,9 @@ fun CreatorGeneratorScreen(
     var designType by remember { mutableStateOf("classic") }
     var ratio by remember { mutableStateOf("portrait") }
     var contentType by remember { mutableStateOf("design-text") }
+    var selectedStyles by remember { mutableStateOf<List<String>>(emptyList()) }
+    var languageState by remember { mutableStateOf(GenLanguageState()) }
+    var colorState by remember { mutableStateOf(GenColorState()) }
     var prompt by remember { mutableStateOf("") }
     var selectedImages by remember { mutableStateOf<List<RefImage>>(emptyList()) }
     var suggestLoading by remember { mutableStateOf(false) }
@@ -364,10 +367,17 @@ fun CreatorGeneratorScreen(
         visible = showOptionsModal,
         ratio = ratio,
         contentType = contentType,
+        selectedStyles = selectedStyles,
+        languageState = languageState,
+        colorState = colorState,
         onDismiss = { showOptionsModal = false },
         onApply = { showOptionsModal = false },
         onRatioChange = { ratio = it },
         onContentTypeChange = { contentType = it },
+        onStylesChange = { selectedStyles = it },
+        onLanguageChange = { languageState = it },
+        onColorStateChange = { colorState = it },
+        api = api,
         translationStore = translationStore
     )
 

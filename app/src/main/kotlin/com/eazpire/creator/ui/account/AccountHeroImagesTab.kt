@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
@@ -44,9 +45,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
@@ -82,10 +86,30 @@ private fun extractNumericProductId(value: String?): String {
     return value.filter { it.isDigit() }
 }
 
+private fun normalizeShopifyImageUrl(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    return if (raw.startsWith("//")) "https:$raw" else raw
+}
+
+private fun extractShopifyHandleFromUrl(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    return try {
+        val segments = Uri.parse(url).pathSegments
+        val idx = segments.indexOf("products")
+        if (idx >= 0 && idx + 1 < segments.size) {
+            segments[idx + 1].substringBefore("?").trim().takeIf { it.isNotBlank() }
+        } else null
+    } catch (_: Exception) {
+        null
+    }
+}
+
 data class HeroProduct(
     val id: String,
     val title: String,
     val image: String?,
+    val shopifyHandle: String?,
+    val storefrontUrl: String?,
     val productType: String?,
     val productKey: String?,
     val region: String,
@@ -106,6 +130,7 @@ fun AccountHeroImagesTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
+    val shopifyApi = remember { ShopifyProductsApi() }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     val localeStore = remember { LocaleStore(context) }
     val localeRegion by localeStore.regionCode.collectAsState(initial = localeStore.getRegionCodeSync())
@@ -194,21 +219,40 @@ fun AccountHeroImagesTab(
                 fun mapShopifyArray(arr: org.json.JSONArray): List<HeroProduct> {
                     return (0 until arr.length()).mapNotNull { i ->
                         val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-                        val imageObj = obj.optJSONObject("image")
-                        val img = when {
-                            imageObj != null -> imageObj.optString("src", "").takeIf { it.isNotBlank() }
-                            else -> obj.optString("image", "").takeIf { it.isNotBlank() }
+                        fun toImageStr(v: Any?): String? = when (v) {
+                            is String -> v.takeIf { it.isNotBlank() }
+                            is org.json.JSONObject -> (
+                                v.optString("src", "").takeIf { it.isNotBlank() }
+                                    ?: v.optString("url", "").takeIf { it.isNotBlank() }
+                                    ?: v.optString("image_url", "").takeIf { it.isNotBlank() }
+                                    ?: v.optString("preview_url", "").takeIf { it.isNotBlank() }
+                            )
+                            else -> null
                         }
+                        val img = normalizeShopifyImageUrl(
+                            toImageStr(obj.opt("featured_image"))
+                                ?: toImageStr(obj.opt("image_url"))
+                                ?: toImageStr(obj.opt("image"))
+                                ?: toImageStr(obj.opt("preview_url"))
+                                ?: toImageStr(obj.optJSONArray("images")?.opt(0))
+                        )
                         val id = obj.optString("id", "")
+                            .ifBlank { obj.optString("shopify_product_id", "") }
+                            .ifBlank { obj.optString("product_id", "") }
                         if (id.isBlank()) return@mapNotNull null
                         val productKey = obj.optString("product_key", "").takeIf { it.isNotBlank() }
-                        if (allowedKeys.isNotEmpty() && (productKey == null || !allowedKeys.contains(productKey))) return@mapNotNull null
                         val numericId = extractNumericProductId(id)
                         val isUsed = usedProductIds.contains(id) || (numericId.isNotBlank() && usedProductIds.contains(numericId))
+                        val title = obj.optString("title", "")
+                            .ifBlank { obj.optString("product_name", "") }
+                            .ifBlank { productKey ?: id }
                         HeroProduct(
                             id = id,
-                            title = obj.optString("title", ""),
+                            title = title,
                             image = img,
+                            shopifyHandle = obj.optString("handle", "").takeIf { it.isNotBlank() }
+                                ?: obj.optString("shopify_handle", "").takeIf { it.isNotBlank() },
+                            storefrontUrl = obj.optString("storefront_url", "").takeIf { it.isNotBlank() },
                             productType = obj.optString("product_type", "").takeIf { it.isNotBlank() },
                             productKey = productKey,
                             region = obj.optString("region", selectedRegion).ifBlank { selectedRegion },
@@ -225,18 +269,23 @@ fun AccountHeroImagesTab(
                             .ifBlank { obj.optString("id", "") }
                         if (rawId.isBlank()) return@mapNotNull null
                         val productKey = obj.optString("product_key", "").takeIf { it.isNotBlank() }
-                        if (allowedKeys.isNotEmpty() && (productKey == null || !allowedKeys.contains(productKey))) return@mapNotNull null
+                        val storefrontUrl = obj.optString("storefront_url", "").takeIf { it.isNotBlank() }
                         val image = obj.optString("featured_image", "")
                             .ifBlank { obj.optString("image_url", "") }
                             .ifBlank { obj.optString("preview_url", "") }
                             .ifBlank { obj.optString("image", "") }
                             .takeIf { it.isNotBlank() }
+                            ?.let { normalizeShopifyImageUrl(it) }
                         val numericId = extractNumericProductId(rawId)
                         val isUsed = usedProductIds.contains(rawId) || (numericId.isNotBlank() && usedProductIds.contains(numericId))
                         HeroProduct(
                             id = rawId,
                             title = obj.optString("product_name", obj.optString("title", productKey ?: rawId)),
                             image = image,
+                            shopifyHandle = obj.optString("shopify_handle", "").takeIf { it.isNotBlank() }
+                                ?: obj.optString("handle", "").takeIf { it.isNotBlank() }
+                                ?: extractShopifyHandleFromUrl(storefrontUrl),
+                            storefrontUrl = storefrontUrl,
                             productType = obj.optString("product_type", "").takeIf { it.isNotBlank() },
                             productKey = productKey,
                             region = obj.optString("region", selectedRegion).ifBlank { selectedRegion },
@@ -252,11 +301,42 @@ fun AccountHeroImagesTab(
                     emptyList()
                 }
 
+                if (allowedKeys.isNotEmpty()) {
+                    val filteredByKeys = nextProducts.filter { p ->
+                        val key = p.productKey
+                        !key.isNullOrBlank() && allowedKeys.contains(key)
+                    }
+                    if (filteredByKeys.isNotEmpty()) {
+                        nextProducts = filteredByKeys
+                    } else {
+                        nextProducts = emptyList()
+                    }
+                }
+
                 // Web parity: fallback to published products when Shopify source is empty.
                 if (nextProducts.isEmpty()) {
                     val publishedResp = api.getPublishedProducts(ownerId, AuthConfig.SHOP_DOMAIN)
                     if (publishedResp.optBoolean("ok", false)) {
                         nextProducts = mapPublishedArray(publishedResp.optJSONArray("products") ?: org.json.JSONArray())
+                        val hydrated = mutableListOf<HeroProduct>()
+                        for (p in nextProducts) {
+                            val needsImage = p.image.isNullOrBlank()
+                            val handle = p.shopifyHandle
+                            if (!needsImage || handle.isNullOrBlank()) {
+                                hydrated.add(p)
+                                continue
+                            }
+                            val detail = runCatching { shopifyApi.getProductByHandle(handle) }.getOrNull()
+                            val fallbackImage = normalizeShopifyImageUrl(detail?.images?.firstOrNull()?.src)
+                            hydrated.add(p.copy(image = fallbackImage ?: p.image))
+                        }
+                        nextProducts = hydrated
+                        if (allowedKeys.isNotEmpty()) {
+                            nextProducts = nextProducts.filter { p ->
+                                val key = p.productKey
+                                !key.isNullOrBlank() && allowedKeys.contains(key)
+                            }
+                        }
                     }
                 }
 
@@ -442,6 +522,10 @@ fun AccountHeroImagesTab(
                     showProductPicker = false
                 },
                 onDismiss = { showProductPicker = false },
+                resolveImageByHandle = { handle ->
+                    val detail = runCatching { shopifyApi.getProductByHandle(handle) }.getOrNull()
+                    normalizeShopifyImageUrl(detail?.images?.firstOrNull()?.src)
+                },
                 t = ::t
             )
         }
@@ -623,29 +707,69 @@ private fun HeroProductPickerModal(
     onRegionChange: (String) -> Unit,
     onSelect: (HeroProduct) -> Unit,
     onDismiss: () -> Unit,
+    resolveImageByHandle: suspend (String) -> String?,
     t: (String, String) -> String
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val gridState = rememberLazyGridState()
     val topKeywords = listOf("t-shirt", "hoodie", "sweatshirt", "shirt", "top", "tee", "polo", "jacket", "sweater", "pullover", "jacke", "oberteil")
     fun isTopProduct(p: HeroProduct): Boolean {
         val t = (p.title + " " + (p.productType ?: "")).lowercase()
         return topKeywords.any { t.contains(it) }
     }
-    val filteredByCategory = when (category) {
+    val filteredByCategoryStrict = when (category) {
         "top" -> products.filter { isTopProduct(it) }
         "addition" -> products.filter { !isTopProduct(it) }
         else -> products
     }
+    val filteredByCategory = if (filteredByCategoryStrict.isNotEmpty()) filteredByCategoryStrict else products
     val filteredByUsage = when (usageFilter) {
         "used" -> filteredByCategory.filter { it.used }
         else -> filteredByCategory.filter { !it.used }
     }
-    val filtered = filteredByUsage.filter {
+    val usageBase = if (filteredByUsage.isNotEmpty()) filteredByUsage else filteredByCategory
+    val filtered = usageBase.filter {
         searchQuery.isBlank() ||
             it.title.contains(searchQuery.trim(), ignoreCase = true) ||
             (it.productType ?: "").contains(searchQuery.trim(), ignoreCase = true)
     }
     var selectedProductId by remember { mutableStateOf<String?>(null) }
+    var imageHydrationLimit by remember { mutableIntStateOf(10) }
+    var imageOverrides by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var imageRequestedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    LaunchedEffect(filtered.size, usageFilter, searchQuery, category, currentRegion) {
+        imageHydrationLimit = 10
+    }
+
+    LaunchedEffect(filtered, imageHydrationLimit) {
+        val candidates = filtered.take(imageHydrationLimit.coerceAtLeast(10)).filter { p ->
+            p.image.isNullOrBlank() && !p.shopifyHandle.isNullOrBlank() && !imageRequestedIds.contains(p.id)
+        }
+        if (candidates.isEmpty()) return@LaunchedEffect
+        imageRequestedIds = imageRequestedIds + candidates.map { it.id }
+        val newImages = mutableMapOf<String, String>()
+        for (product in candidates) {
+            val handle = product.shopifyHandle ?: continue
+            val image = runCatching { resolveImageByHandle(handle) }.getOrNull()
+            if (!image.isNullOrBlank()) {
+                newImages[product.id] = image
+            }
+        }
+        if (newImages.isNotEmpty()) {
+            imageOverrides = imageOverrides + newImages
+        }
+    }
+
+    LaunchedEffect(filtered) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .collect { lastVisible ->
+                val nextLimit = (lastVisible + 10).coerceAtLeast(10)
+                if (nextLimit > imageHydrationLimit) {
+                    imageHydrationLimit = nextLimit
+                }
+            }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -789,6 +913,7 @@ private fun HeroProductPickerModal(
                         }
                     } else {
                         LazyVerticalGrid(
+                            state = gridState,
                             columns = GridCells.Fixed(2),
                             modifier = Modifier.fillMaxSize(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -808,9 +933,10 @@ private fun HeroProductPickerModal(
                                         .background(if (isSelected) Color(0xFF1E3A8A) else Color(0xFF111827))
                                         .clickable { selectedProductId = product.id }
                                 ) {
-                                    if (!product.image.isNullOrBlank()) {
+                                    val cardImage = imageOverrides[product.id] ?: product.image
+                                    if (!cardImage.isNullOrBlank()) {
                                         AsyncImage(
-                                            model = product.image,
+                                            model = cardImage,
                                             contentDescription = product.title,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop

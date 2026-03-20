@@ -26,6 +26,7 @@ private val FooterBg = Color(0xFFF2F2F2) // light, matches shop content-footer
 private val FooterBorder = Color(0xFFE8E8E8)
 private val FooterTextSecondary = Color(0xFF6B7280) // text-secondary
 private val FooterBrand = EazColors.Orange
+private val FooterTextSize = 12.sp
 
 private const val SHOP_BASE_URL = "https://allyoucanpink.com"
 
@@ -63,7 +64,7 @@ fun GlobalFooter(
         Text(
             text = "Terms & Policies",
             color = FooterTextSecondary,
-            fontSize = 9.sp,
+            fontSize = FooterTextSize,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -80,17 +81,17 @@ fun GlobalFooter(
         Text(
             text = "  ·  ",
             color = FooterTextSecondary,
-            fontSize = 9.sp
+            fontSize = FooterTextSize
         )
         Text(
             text = "© $year ",
             color = FooterTextSecondary,
-            fontSize = 9.sp
+            fontSize = FooterTextSize
         )
         Text(
             text = "eazpire",
             color = FooterBrand,
-            fontSize = 9.sp,
+            fontSize = FooterTextSize,
             fontWeight = FontWeight.Bold
         )
     }

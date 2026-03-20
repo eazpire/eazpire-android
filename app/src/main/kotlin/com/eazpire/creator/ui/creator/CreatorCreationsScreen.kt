@@ -4,6 +4,12 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,9 +26,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -48,18 +56,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
@@ -108,6 +120,25 @@ data class CreationProduct(
 
 private val VIEW_MODES = listOf("grid2", "grid3", "grid4", "list")
 
+private fun normalizeImageUrl(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    return if (url.startsWith("//")) "https:$url" else url
+}
+
+private fun extractShopifyHandle(product: CreationProduct): String? {
+    product.shopifyHandle?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    val storefront = product.storefrontUrl?.takeIf { it.isNotBlank() } ?: return null
+    return try {
+        val segments = Uri.parse(storefront).pathSegments
+        val productIndex = segments.indexOf("products")
+        if (productIndex >= 0 && productIndex + 1 < segments.size) {
+            segments[productIndex + 1].substringBefore("?").trim().takeIf { it.isNotBlank() }
+        } else null
+    } catch (_: Exception) {
+        null
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreatorCreationsScreen(
@@ -121,6 +152,7 @@ fun CreatorCreationsScreen(
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val ownerId = remember { runCatching { tokenStore.getOwnerId() }.getOrNull() ?: "" }
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
+    val shopifyApi = remember { ShopifyProductsApi() }
 
     var currentTab by remember { mutableStateOf("designs") }
     var designs by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
@@ -140,30 +172,73 @@ fun CreatorCreationsScreen(
     var uploadModalVisible by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var productImageOverrides by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var productFallbackHydrationLimit by remember { mutableIntStateOf(10) }
+    var productFallbackRequestedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val designsListState = rememberLazyListState()
+    val designsGridState = rememberLazyGridState()
+    val productsListState = rememberLazyListState()
+    val productsGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
 
     val shop = AuthConfig.SHOP_DOMAIN
-    val storefrontShop = AuthConfig.STOREFRONT_SHOP
 
-    LaunchedEffect(products, storefrontShop) {
-        val needFetch = products.filter { p ->
-            (p.imageUrl.isNullOrBlank() || p.imageUrl.isBlank()) &&
-            !p.shopifyHandle.isNullOrBlank()
+    // Web-Parity: Nur fehlende Bilder per Handle aus Shopify-Produkt ergänzen.
+    LaunchedEffect(products, productFallbackHydrationLimit, currentTab) {
+        if (currentTab != "products") return@LaunchedEffect
+        val limit = productFallbackHydrationLimit.coerceAtLeast(10)
+        val needFetch = products.take(limit).mapNotNull { p ->
+            val existing = normalizeImageUrl(productImageOverrides[p.id]) ?: normalizeImageUrl(p.imageUrl)
+            if (existing.isNullOrBlank()) {
+                if (productFallbackRequestedIds.contains(p.id)) null
+                else extractShopifyHandle(p)?.let { handle -> p to handle }
+            } else null
         }
         if (needFetch.isEmpty()) return@LaunchedEffect
+        productFallbackRequestedIds = productFallbackRequestedIds + needFetch.map { it.first.id }
         val newOverrides = mutableMapOf<String, String>()
-        for (p in needFetch) {
-            val handle = p.shopifyHandle ?: continue
-            val resp = runCatching {
-                withContext(Dispatchers.IO) { api.getProductImage(storefrontShop, handle) }
+        for ((p, handle) in needFetch) {
+            val product = runCatching {
+                withContext(Dispatchers.IO) { shopifyApi.getProductByHandle(handle) }
             }.getOrNull() ?: continue
-            val raw = resp.optString("image_url", "").takeIf { it.isNotBlank() } ?: continue
-            val img = if (raw.startsWith("//")) "https:$raw" else raw
-            newOverrides[p.id] = img
+            val raw = product.images.firstOrNull()?.src?.takeIf { it.isNotBlank() } ?: continue
+            val shopifyImage = normalizeImageUrl(raw) ?: continue
+            val existing = normalizeImageUrl(productImageOverrides[p.id]) ?: normalizeImageUrl(p.imageUrl)
+            if (existing != shopifyImage) {
+                newOverrides[p.id] = shopifyImage
+            }
         }
         if (newOverrides.isNotEmpty()) {
             productImageOverrides = productImageOverrides + newOverrides
         }
+    }
+
+    LaunchedEffect(products) {
+        productFallbackHydrationLimit = 10
+        productFallbackRequestedIds = emptySet()
+    }
+
+    LaunchedEffect(currentTab) {
+        if (currentTab != "products") return@LaunchedEffect
+        snapshotFlow { (productsListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) }
+            .collect { lastVisible ->
+                val productIndex = (lastVisible - 1).coerceAtLeast(0) // header row is first item
+                val nextLimit = (productIndex + 10).coerceAtLeast(10)
+                if (nextLimit > productFallbackHydrationLimit) {
+                    productFallbackHydrationLimit = nextLimit
+                }
+            }
+    }
+
+    LaunchedEffect(currentTab, viewMode) {
+        if (currentTab != "products" || VIEW_MODES[viewMode] == "list") return@LaunchedEffect
+        snapshotFlow { (productsGridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) }
+            .collect { lastVisible ->
+                val productIndex = (lastVisible - 1).coerceAtLeast(0) // search row is first item
+                val nextLimit = (productIndex + 10).coerceAtLeast(10)
+                if (nextLimit > productFallbackHydrationLimit) {
+                    productFallbackHydrationLimit = nextLimit
+                }
+            }
     }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -288,20 +363,22 @@ fun CreatorCreationsScreen(
                                     ?: obj.optJSONArray("images")?.opt(0)?.let { toImageStr(it) }
                                     ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image")?.let { toImageStr(it) }
                                     ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image_url")?.let { toImageStr(it) }
-                            fun normalizeImageUrl(url: String?): String? {
-                                if (url.isNullOrBlank()) return null
-                                return if (url.startsWith("//")) "https:$url" else url
-                            }
                             (0 until arr.length()).mapNotNull { i ->
                                 val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                                val productKey = obj.optString("product_key", "")
+                                val storefront = obj.optString("storefront_url").takeIf { it.isNotBlank() }
                                 val img = normalizeImageUrl(resolveProductImageUrl(obj))
+                                val title = obj.optString("product_name", "")
+                                    .ifBlank { obj.optString("title", "") }
+                                    .ifBlank { productKey.ifBlank { "Product" } }
                                 CreationProduct(
-                                    id = obj.optString("shopify_product_id", obj.optString("product_key", "") + "-product"),
-                                    title = obj.optString("product_name", obj.optString("product_key", "Product")),
-                                    productName = obj.optString("product_name", obj.optString("product_key", "Product")),
-                                    productKey = obj.optString("product_key", ""),
+                                    id = obj.optString("shopify_product_id", "")
+                                        .ifBlank { obj.optString("product_key", "") + "-product" },
+                                    title = title,
+                                    productName = title,
+                                    productKey = productKey,
                                     imageUrl = img,
-                                    storefrontUrl = obj.optString("storefront_url").takeIf { it.isNotBlank() },
+                                    storefrontUrl = storefront,
                                     shopifyHandle = obj.optString("shopify_handle").takeIf { it.isNotBlank() },
                                     publishedAt = (obj.opt("last_published_at") as? Number)?.toLong()
                                         ?: (obj.optString("last_published_at").takeIf { it.isNotBlank() }?.let { try { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(it)?.time } catch (_: Exception) { null } }),
@@ -455,6 +532,7 @@ fun CreatorCreationsScreen(
                     }
                 } else if (isListMode) {
                     LazyColumn(
+                        state = designsListState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
@@ -529,6 +607,7 @@ fun CreatorCreationsScreen(
                     }
                 } else {
                     LazyVerticalGrid(
+                        state = designsGridState,
                         columns = GridCells.Fixed(gridCols),
                         modifier = Modifier
                             .weight(1f)
@@ -623,6 +702,7 @@ fun CreatorCreationsScreen(
                     }
                 } else if (isListMode) {
                     LazyColumn(
+                        state = productsListState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
@@ -691,6 +771,7 @@ fun CreatorCreationsScreen(
                     }
                 } else {
                     LazyVerticalGrid(
+                        state = productsGridState,
                         columns = GridCells.Fixed(gridCols),
                         modifier = Modifier
                             .weight(1f)
@@ -846,12 +927,13 @@ private fun CreationDesignCard(
                 .background(Color(0xFF353D4C)),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = design.imageUrl,
                 contentDescription = design.title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
-                alignment = Alignment.Center
+                alignment = Alignment.Center,
+                loading = { GridImageShimmer(Modifier.fillMaxSize()) }
             )
             if (design.productsCount > 0) {
                 Box(
@@ -887,11 +969,12 @@ private fun CreationDesignListItem(
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = design.imageUrl,
             contentDescription = design.title,
             modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            loading = { GridImageShimmer(Modifier.fillMaxSize()) }
         )
         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(
@@ -942,12 +1025,23 @@ private fun CreationProductCard(
                 contentAlignment = Alignment.Center
             ) {
                 if (!imageUrl.isNullOrBlank()) {
-                    AsyncImage(
+                    SubcomposeAsyncImage(
                         model = imageUrl,
                         contentDescription = product.title,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
-                        alignment = Alignment.Center
+                        alignment = Alignment.Center,
+                        loading = { GridImageShimmer(Modifier.fillMaxSize()) },
+                        error = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.White.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+                            }
+                        }
                     )
                 } else {
                     Box(
@@ -988,11 +1082,22 @@ private fun CreationProductListItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (!imageUrl.isNullOrBlank()) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = imageUrl,
                 contentDescription = product.title,
                 modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                loading = { GridImageShimmer(Modifier.fillMaxSize()) },
+                error = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.White.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+                    }
+                }
             )
         } else {
             Box(
@@ -1020,5 +1125,39 @@ private fun CreationProductListItem(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun GridImageShimmer(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "grid-shimmer")
+    val shift by transition.animateFloat(
+        initialValue = -300f,
+        targetValue = 900f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "grid-shimmer-shift"
+    )
+    Box(
+        modifier = modifier
+            .background(Color(0xFF2D3748))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.18f),
+                            Color.Transparent
+                        ),
+                        start = Offset(shift - 220f, 0f),
+                        end = Offset(shift, 320f)
+                    )
+                )
+        )
     }
 }
