@@ -79,7 +79,9 @@ fun CreatorMainScreen(
     onEazySnapModeChange: (Boolean) -> Unit = {},
     onEazyLongPress: () -> Unit = {},
     slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
-    onEazyGenerationOverlayChange: (Boolean) -> Unit = {},
+    onEazyGenerationOverlayChange: (visible: Boolean, loading: Boolean) -> Unit = { _, _ -> },
+    /** Bumped from compose overlay "Start" tap (ShopScreen); mirrors header start nonces. */
+    overlayComposeStartKey: Int = 0,
     modifier: Modifier = Modifier
 ) {
     var drawerVisible by remember { mutableStateOf(false) }
@@ -102,14 +104,41 @@ fun CreatorMainScreen(
     var generatorGenerating by remember { mutableStateOf(false) }
     var heroGenerating by remember { mutableStateOf(false) }
 
+    var prevOverlayComposeKey by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(overlayComposeStartKey) {
+        if (overlayComposeStartKey <= 0 || overlayComposeStartKey == prevOverlayComposeKey) return@LaunchedEffect
+        prevOverlayComposeKey = overlayComposeStartKey
+        when (currentScreen) {
+            1 -> genHeaderStartNonce++
+            3 -> heroHeaderStartNonce++
+            else -> Unit
+        }
+    }
+
     LaunchedEffect(currentScreen, generatorEazyReady, heroEazyReady) {
         val look =
             (currentScreen == 1 && generatorEazyReady) || (currentScreen == 3 && heroEazyReady)
         onGeneratorEazyLookLeftChange(look)
     }
 
-    LaunchedEffect(eazyDocked, generatorGenerating, heroGenerating) {
-        onEazyGenerationOverlayChange(!eazyDocked && (generatorGenerating || heroGenerating))
+    LaunchedEffect(
+        eazyDocked,
+        currentScreen,
+        generatorEazyReady,
+        heroEazyReady,
+        generatorGenerating,
+        heroGenerating
+    ) {
+        val genTab = currentScreen == 1
+        val heroTab = currentScreen == 3
+        val show =
+            !eazyDocked &&
+                ((genTab && (generatorEazyReady || generatorGenerating)) ||
+                    (heroTab && (heroEazyReady || heroGenerating)))
+        val loading =
+            (!eazyDocked && genTab && generatorGenerating) ||
+                (!eazyDocked && heroTab && heroGenerating)
+        onEazyGenerationOverlayChange(show, loading)
     }
 
     LaunchedEffect(currentScreen) {
@@ -209,9 +238,10 @@ fun CreatorMainScreen(
                     marketingTitleOverride = marketingTitleOverride,
                     eazyLookLeft = (currentScreen == 1 && generatorEazyReady) ||
                         (currentScreen == 3 && heroEazyReady),
-                    showStartGenerationBubble = ((currentScreen == 1 && generatorEazyReady) ||
-                        (currentScreen == 3 && heroEazyReady)) &&
-                        !((generatorGenerating || heroGenerating) && !eazyDocked),
+                    showStartGenerationBubble =
+                        eazyDocked &&
+                            ((currentScreen == 1 && generatorEazyReady) ||
+                                (currentScreen == 3 && heroEazyReady)),
                     startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
                         (currentScreen == 3 && heroGenerating),
                     onStartGenerationClick = {

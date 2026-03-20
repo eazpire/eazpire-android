@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -98,7 +100,12 @@ fun EazyMascot(
     contentHeightPx: Float? = null,
     contentBoundsInRoot: Rect? = null,
     /** Face left (e.g. toward generator speech bubble). */
-    lookLeft: Boolean = false
+    lookLeft: Boolean = false,
+    /**
+     * When true, horizontal facing follows mascot center vs screen half (left → look right, right → look left),
+     * matching web `eazy-mascot.js` / `creator-mobile.js` undocked behavior.
+     */
+    autoFaceFromScreenHalf: Boolean = false
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -161,8 +168,17 @@ fun EazyMascot(
 
     if (isDocked) return
 
+    var halfScreenLookLeft by remember(autoFaceFromScreenHalf) { mutableStateOf(lookLeft) }
+    val effectiveLookLeft =
+        if (autoFaceFromScreenHalf) halfScreenLookLeft else lookLeft
+
     Box(
         modifier = modifier
+            .onGloballyPositioned { coords ->
+                if (!autoFaceFromScreenHalf) return@onGloballyPositioned
+                val c = coords.boundsInRoot().center
+                halfScreenLookLeft = c.x >= screenWidthPx * 0.5f
+            }
             .offset {
                 IntOffset(displayX.roundToInt(), displayY.roundToInt())
             }
@@ -241,7 +257,7 @@ fun EazyMascot(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .scale(scaleX = if (lookLeft) -1f else 1f, scaleY = 1f)
+                .scale(scaleX = if (effectiveLookLeft) -1f else 1f, scaleY = 1f)
         ) {
             drawEazyMascot(this)
         }

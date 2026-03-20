@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
@@ -167,6 +168,8 @@ fun ShopScreen(
     var isCreatorMode by remember { mutableStateOf(false) }
     var creatorGenEazyLookLeft by remember { mutableStateOf(false) }
     var eazyGenerationOverlay by remember { mutableStateOf(false) }
+    var eazyGenerationOverlayLoading by remember { mutableStateOf(false) }
+    var overlayComposeStartKey by remember { mutableIntStateOf(0) }
     var termsModalVisible by remember { mutableStateOf(false) }
 
     // Creator: StatusBar + NavBar dunkel (#0A0514), ohne Kontrastlinie; Shop: Orange
@@ -265,7 +268,11 @@ fun ShopScreen(
             onEazySnapModeChange = { eazySnapModeActive = it },
             onEazyLongPress = { eazyMascotStore.setDockedSync(false) },
             slotBoundsState = slotBoundsState,
-            onEazyGenerationOverlayChange = { eazyGenerationOverlay = it }
+            onEazyGenerationOverlayChange = { visible, loading ->
+                eazyGenerationOverlay = visible
+                eazyGenerationOverlayLoading = loading
+            },
+            overlayComposeStartKey = overlayComposeStartKey
         )
         }
     } else {
@@ -430,7 +437,8 @@ fun ShopScreen(
                     contentWidthPx = contentW,
                     contentHeightPx = contentH,
                     contentBoundsInRoot = contentBoundsState.value,
-                    lookLeft = isCreatorMode && creatorGenEazyLookLeft
+                    lookLeft = creatorGenEazyLookLeft,
+                    autoFaceFromScreenHalf = isCreatorMode
                 )
             }
         } else {
@@ -446,14 +454,16 @@ fun ShopScreen(
                             "creator.generator_eazy.bubble_start",
                             "Start generation"
                         ),
-                        loading = true,
-                        enabled = false,
-                        onClick = { },
+                        loading = eazyGenerationOverlayLoading,
+                        enabled = !eazyGenerationOverlayLoading,
+                        onClick = {
+                            if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
+                        },
                         modifier = Modifier.padding(end = 10.dp)
                     )
                     EazyMascotIcon(
                         modifier = Modifier.size(56.dp),
-                        lookLeft = false
+                        lookLeft = true
                     )
                 }
             }
