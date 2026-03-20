@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -80,10 +80,34 @@ private fun CreatorHeaderEazyStartBubble(
     val gradient = Brush.linearGradient(
         colors = listOf(Color(0xFFFF9F40), EazColors.Orange, Color(0xFFEA580C))
     )
+    /** Tail on the left points toward Eazy (Eazy sits to the left of this row). */
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            modifier = Modifier
+                .size(width = 8.dp, height = 12.dp)
+                .drawBehind {
+                    val w = size.width
+                    val h = size.height
+                    val p = Path().apply {
+                        moveTo(w, h * 0.2f)
+                        lineTo(0f, h * 0.5f)
+                        lineTo(w, h * 0.8f)
+                        close()
+                    }
+                    drawPath(p, brush = gradient)
+                    drawPath(
+                        p,
+                        color = Color.White.copy(alpha = 0.88f),
+                        style = Stroke(
+                            width = 2f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f), 0f)
+                        )
+                    )
+                }
+        )
         Box(
             modifier = Modifier
                 .width(148.dp)
@@ -123,30 +147,6 @@ private fun CreatorHeaderEazyStartBubble(
                 )
             }
         }
-        Box(
-            modifier = Modifier
-                .size(width = 8.dp, height = 12.dp)
-                .offset(x = (-3).dp)
-                .drawBehind {
-                    val w = size.width
-                    val h = size.height
-                    val p = Path().apply {
-                        moveTo(0f, h * 0.2f)
-                        lineTo(w, h * 0.5f)
-                        lineTo(0f, h * 0.8f)
-                        close()
-                    }
-                    drawPath(p, brush = gradient)
-                    drawPath(
-                        p,
-                        color = Color.White.copy(alpha = 0.88f),
-                        style = Stroke(
-                            width = 2f,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f), 0f)
-                        )
-                    )
-                }
-        )
     }
 }
 
@@ -406,17 +406,8 @@ fun CreatorHeader(
                     Row(
                         modifier = Modifier.align(Alignment.CenterEnd),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        if (showStartGenerationBubble && startGenerationLabel.isNotBlank()) {
-                            CreatorHeaderEazyStartBubble(
-                                label = startGenerationLabel,
-                                loading = startGenerationLoading,
-                                enabled = true,
-                                onClick = onStartGenerationClick,
-                                modifier = Modifier.padding(end = 2.dp)
-                            )
-                        }
                         Box(
                             modifier = Modifier
                                 .scale(boomScale.value)
@@ -452,8 +443,23 @@ fun CreatorHeader(
                             contentAlignment = Alignment.Center
                         ) {
                             if (eazyDocked) {
-                                EazyMascotIcon(modifier = Modifier.fillMaxSize(), lookLeft = eazyLookLeft)
+                                val faceBubble =
+                                    eazyLookLeft && !showStartGenerationBubble
+                                EazyMascotIcon(
+                                    modifier = Modifier.fillMaxSize(),
+                                    lookLeft = faceBubble
+                                )
                             }
+                        }
+                        if (showStartGenerationBubble && startGenerationLabel.isNotBlank()) {
+                            Spacer(modifier = Modifier.width(10.dp))
+                            CreatorHeaderEazyStartBubble(
+                                label = startGenerationLabel,
+                                loading = startGenerationLoading,
+                                enabled = true,
+                                onClick = onStartGenerationClick,
+                                modifier = Modifier.padding(end = 2.dp)
+                            )
                         }
                     }
                 }
