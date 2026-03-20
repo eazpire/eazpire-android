@@ -74,17 +74,18 @@ internal fun CreatorHeaderEazyStartBubble(
     loading: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /**
+     * false: tail leads the pill and points left (Eazy sits to the left of the bubble in the parent Row).
+     * true: tail follows the pill and points right (Eazy sits to the right — e.g. centered overlay [bubble][eazy]).
+     */
+    tailTowardEnd: Boolean = false
 ) {
     val shape = RoundedCornerShape(14.dp)
     val gradient = Brush.linearGradient(
         colors = listOf(Color(0xFFFF9F40), EazColors.Orange, Color(0xFFEA580C))
     )
-    /** Tail on the left points toward Eazy (Eazy sits to the left of this row). */
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    val tailBox: @Composable () -> Unit = {
         Box(
             modifier = Modifier
                 .size(width = 8.dp, height = 12.dp)
@@ -92,9 +93,15 @@ internal fun CreatorHeaderEazyStartBubble(
                     val w = size.width
                     val h = size.height
                     val p = Path().apply {
-                        moveTo(w, h * 0.2f)
-                        lineTo(0f, h * 0.5f)
-                        lineTo(w, h * 0.8f)
+                        if (tailTowardEnd) {
+                            moveTo(0f, h * 0.2f)
+                            lineTo(w, h * 0.5f)
+                            lineTo(0f, h * 0.8f)
+                        } else {
+                            moveTo(w, h * 0.2f)
+                            lineTo(0f, h * 0.5f)
+                            lineTo(w, h * 0.8f)
+                        }
                         close()
                     }
                     drawPath(p, brush = gradient)
@@ -108,6 +115,8 @@ internal fun CreatorHeaderEazyStartBubble(
                     )
                 }
         )
+    }
+    val pill: @Composable () -> Unit = {
         Box(
             modifier = Modifier
                 .width(148.dp)
@@ -146,6 +155,18 @@ internal fun CreatorHeaderEazyStartBubble(
                     maxLines = 2
                 )
             }
+        }
+    }
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (tailTowardEnd) {
+            pill()
+            tailBox()
+        } else {
+            tailBox()
+            pill()
         }
     }
 }

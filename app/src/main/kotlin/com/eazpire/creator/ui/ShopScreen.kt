@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -36,6 +38,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import com.eazpire.creator.auth.SecureTokenStore
@@ -442,29 +445,53 @@ fun ShopScreen(
                 )
             }
         } else {
+            val configuration = LocalConfiguration.current
+            val density = LocalDensity.current
+            val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+            var composeOverlayLookLeft by remember { mutableStateOf(true) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(120f),
                 contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CreatorHeaderEazyStartBubble(
-                        label = translationStore.t(
-                            "creator.generator_eazy.bubble_start",
-                            "Start generation"
-                        ),
-                        loading = eazyGenerationOverlayLoading,
-                        enabled = !eazyGenerationOverlayLoading,
-                        onClick = {
-                            if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
-                        },
-                        modifier = Modifier.padding(end = 10.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        val cx = coords.boundsInRoot().center.x
+                        composeOverlayLookLeft = cx >= screenWidthPx * 0.5f
+                    }
+                ) {
+                    val bubbleLabel = translationStore.t(
+                        "creator.generator_eazy.bubble_start",
+                        "Start generation"
                     )
-                    EazyMascotIcon(
-                        modifier = Modifier.size(56.dp),
-                        lookLeft = true
-                    )
+                    val bubble: @Composable () -> Unit = {
+                        CreatorHeaderEazyStartBubble(
+                            label = bubbleLabel,
+                            loading = eazyGenerationOverlayLoading,
+                            enabled = !eazyGenerationOverlayLoading,
+                            onClick = {
+                                if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
+                            },
+                            tailTowardEnd = composeOverlayLookLeft
+                        )
+                    }
+                    val mascot: @Composable () -> Unit = {
+                        EazyMascotIcon(
+                            modifier = Modifier.size(56.dp),
+                            lookLeft = composeOverlayLookLeft
+                        )
+                    }
+                    if (composeOverlayLookLeft) {
+                        bubble()
+                        Spacer(modifier = Modifier.width(10.dp))
+                        mascot()
+                    } else {
+                        mascot()
+                        Spacer(modifier = Modifier.width(10.dp))
+                        bubble()
+                    }
                 }
             }
         }
