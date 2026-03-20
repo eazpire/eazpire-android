@@ -70,6 +70,7 @@ fun CreatorMainScreen(
     onAccountClick: () -> Unit,
     onEazyChatOpen: (EazySidebarTab?) -> Unit,
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onGeneratorJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     eazyDocked: Boolean = false,
     eazySnapModeActive: Boolean = false,
     onEazySnapModeChange: (Boolean) -> Unit = {},
@@ -250,6 +251,7 @@ fun CreatorMainScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onOpenEazyChat = onEazyChatOpen,
+                            onGeneratorJobStarted = onGeneratorJobStarted,
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )

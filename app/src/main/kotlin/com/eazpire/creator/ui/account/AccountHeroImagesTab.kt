@@ -683,9 +683,7 @@ fun AccountHeroImagesTab(
         Spacer(Modifier.height(12.dp))
 
         val canGenerate = ownerId.isNotBlank() && !generating && (selectedTop != null || selectedAddition != null)
-        val hasPromptOrUpload =
-            prompt.isNotBlank() || modelImageBytes != null || backgroundImageBytes != null
-        val showEazyBubble = canGenerate && hasPromptOrUpload
+        val showEazyBubble = canGenerate
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -714,14 +712,6 @@ fun AccountHeroImagesTab(
                             if (top == null && add == null) {
                                 generateStatus =
                                     t("creator.hero_images.select_products_first", "Select at least one product.")
-                                generateStatusError = true
-                                return@TextButton
-                            }
-                            if (!hasPromptOrUpload) {
-                                generateStatus = t(
-                                    "creator.hero_eazy.need_prompt_or_upload",
-                                    "Enter a prompt or upload a model or background image."
-                                )
                                 generateStatusError = true
                                 return@TextButton
                             }

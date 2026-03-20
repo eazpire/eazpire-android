@@ -199,6 +199,90 @@ class CreatorApi(
             JSONObject(respBody)
         }
 
+    private suspend fun postDispatchJson(
+        op: String,
+        queryParams: Map<String, String> = emptyMap(),
+        body: JSONObject
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=$op")
+            append("&_t=${System.currentTimeMillis()}")
+            queryParams.forEach { (k, v) ->
+                if (v.isNotBlank()) {
+                    append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}")
+                }
+            }
+        }
+        val request = Request.Builder()
+            .url(url)
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply {
+                jwt?.let { addHeader("Authorization", "Bearer $it") }
+            }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
+
+    /** GET ?op=get-size-recommendation&owner_id=xxx – all groups or single type with product_type */
+    suspend fun getSizeRecommendations(ownerId: String, productTypeKey: String? = null): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId)
+        if (!productTypeKey.isNullOrBlank()) params["product_type"] = productTypeKey
+        return call("get-size-recommendation", params)
+    }
+
+    /** GET ?op=list-reference-fits&owner_id=xxx */
+    suspend fun listReferenceFits(ownerId: String): JSONObject =
+        call("list-reference-fits", mapOf("owner_id" to ownerId))
+
+    /** POST ?op=save-reference-fit&owner_id=xxx */
+    suspend fun saveReferenceFit(
+        ownerId: String,
+        brandId: Long,
+        productTypeId: Long,
+        size: String,
+        fitRating: String,
+        notes: String?
+    ): JSONObject = postDispatchJson(
+        op = "save-reference-fit",
+        queryParams = mapOf("owner_id" to ownerId),
+        body = JSONObject().apply {
+            put("brand_id", brandId)
+            put("product_type_id", productTypeId)
+            put("size", size)
+            put("fit_rating", fitRating)
+            if (!notes.isNullOrBlank()) put("notes", notes)
+        }
+    )
+
+    /** POST ?op=delete-reference-fit&owner_id=xxx */
+    suspend fun deleteReferenceFit(ownerId: String, referenceFitId: Long): JSONObject =
+        postDispatchJson(
+            op = "delete-reference-fit",
+            queryParams = mapOf("owner_id" to ownerId),
+            body = JSONObject().put("reference_fit_id", referenceFitId)
+        )
+
+    /** GET ?op=list-product-types – optional category key (tops, bottoms, footwear) */
+    suspend fun listProductTypes(categoryKey: String? = null): JSONObject {
+        val params = mutableMapOf<String, String>()
+        if (!categoryKey.isNullOrBlank()) params["category"] = categoryKey
+        return call("list-product-types", params)
+    }
+
+    /** GET ?op=list-brands – optional search */
+    suspend fun listBrands(search: String? = null): JSONObject {
+        val params = mutableMapOf<String, String>()
+        if (!search.isNullOrBlank()) params["search"] = search
+        return call("list-brands", params)
+    }
+
+    /** POST ?op=add-brand – body { name } */
+    suspend fun addBrand(name: String): JSONObject =
+        postDispatchJson(op = "add-brand", body = JSONObject().put("name", name.trim()))
+
     /** GET ?op=country-product-counts – Returns { ok, counts: { "DE": 1234, ... } } */
     suspend fun getCountryProductCounts(): JSONObject = call("country-product-counts")
 
@@ -460,14 +544,14 @@ class CreatorApi(
      */
     suspend fun submitGenerateJob(
         ownerId: String,
-        payload: Map<String, Any?>
+        payload: org.json.JSONObject
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = buildString {
             append("$baseUrl/apps/creator-dispatch?op=accept")
             append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
             append("&_t=${System.currentTimeMillis()}")
         }
-        val body = org.json.JSONObject(payload.filterValues { it != null }.mapValues { it.value!! }).toString()
+        val body = payload.toString()
         val request = Request.Builder()
             .url(url)
             .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toByteArray()))

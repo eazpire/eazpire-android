@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +65,7 @@ import androidx.compose.foundation.Image
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -70,7 +73,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.graphics.BitmapFactory
 import android.util.Base64
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import java.util.Locale
 
 private val TARGET_PRODUCT_OPTIONS = listOf(
     "all" to "Anything",
@@ -89,6 +95,60 @@ data class RefImage(
     val dataUrl: String,
     val similarity: Float = 0.8f
 )
+
+private const val DESIGN_GENERATE_COST_EAZ = 0.5
+
+private fun buildDesignGeneratePayload(
+    ownerId: String,
+    prompt: String,
+    targetProduct: String,
+    designType: String,
+    ratio: String,
+    contentType: String,
+    selectedStyles: List<String>,
+    languageState: GenLanguageState,
+    colorState: GenColorState,
+    selectedImages: List<RefImage>
+): JSONObject {
+    val refs = JSONArray()
+    selectedImages.forEachIndexed { i, ref ->
+        refs.put(
+            JSONObject()
+                .put("label", ('A' + i).toString())
+                .put("url", ref.dataUrl)
+                .put("similarity", ref.similarity.toDouble())
+        )
+    }
+    val primaryUrl = selectedImages.firstOrNull()?.dataUrl
+    val bgMode = if (colorState.backgroundTransparent) "transparent" else "solid"
+    val backgroundColorsJson = JSONArray().apply {
+        if (bgMode == "solid") {
+            colorState.backgroundColors.take(5).forEach { put(it) }
+        }
+    }
+    val designColorsJson = JSONArray().apply { colorState.designColors.forEach { put(it) } }
+    val stylesJson = JSONArray().apply { selectedStyles.forEach { put(it) } }
+    val langJson = JSONObject().put("mode", languageState.mode)
+    if (languageState.langCode.isNotBlank()) langJson.put("language", languageState.langCode)
+    val bgJson = JSONObject().put("mode", bgMode)
+    return JSONObject()
+        .put("prompt", prompt.trim())
+        .put("design_type", designType)
+        .put("target_product", targetProduct.ifBlank { "all" })
+        .put("ratio", ratio)
+        .put("content_type", contentType)
+        .put("styles", stylesJson)
+        .put("design_colors", designColorsJson)
+        .put("background_colors", backgroundColorsJson)
+        .put("background", bgJson)
+        .put("language", langJson)
+        .put("reference_images", refs)
+        .put("owner_id", ownerId)
+        .apply {
+            if (primaryUrl != null) put("image_url", primaryUrl)
+            else put("image_url", JSONObject.NULL)
+        }
+}
 
 @Composable
 private fun DataUrlImage(
@@ -126,6 +186,7 @@ fun CreatorGeneratorScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onOpenEazyChat: (EazySidebarTab?) -> Unit = {},
+    onGeneratorJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {
@@ -155,6 +216,20 @@ fun CreatorGeneratorScreen(
     var showCanvasEditModal by remember { mutableStateOf(false) }
     var canvasEditIndex by remember { mutableStateOf(0) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showGenConfirmDialog by remember { mutableStateOf(false) }
+    var generatingGen by remember { mutableStateOf(false) }
+    var confirmBalanceGenEaz by remember { mutableStateOf<Double?>(null) }
+
+    LaunchedEffect(showGenConfirmDialog) {
+        if (!showGenConfirmDialog || ownerId.isBlank()) return@LaunchedEffect
+        confirmBalanceGenEaz = null
+        try {
+            val b = withContext(Dispatchers.IO) { api.getBalance(ownerId) }
+            if (b.optBoolean("ok", false) && b.has("balance_eaz")) {
+                confirmBalanceGenEaz = b.optDouble("balance_eaz", 0.0)
+            }
+        } catch (_: Exception) {}
+    }
 
     var lastCameraUri by remember { mutableStateOf<Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -391,6 +466,68 @@ fun CreatorGeneratorScreen(
         )
     }
 
+    fun runDesignGenerate() {
+        if (ownerId.isBlank() || generatingGen) return
+        val pTrim = prompt.trim()
+        if (pTrim.isEmpty() && selectedImages.isEmpty()) return
+        scope.launch {
+            generatingGen = true
+            try {
+                val body = buildDesignGeneratePayload(
+                    ownerId = ownerId,
+                    prompt = pTrim,
+                    targetProduct = targetProduct,
+                    designType = designType,
+                    ratio = ratio,
+                    contentType = contentType,
+                    selectedStyles = selectedStyles,
+                    languageState = languageState,
+                    colorState = colorState,
+                    selectedImages = selectedImages
+                )
+                val resp = withContext(Dispatchers.IO) { api.submitGenerateJob(ownerId, body) }
+                val jobId = resp.optString("jobId", "").ifBlank { resp.optString("job_id", "") }
+                if (jobId.isNotBlank()) {
+                    val summary = buildString {
+                        appendLine(translationStore.t("creator.generator_eazy.job_summary_title", "Design generation"))
+                        appendLine(
+                            "• ${TARGET_PRODUCT_OPTIONS.find { it.first == targetProduct }?.second ?: targetProduct}"
+                        )
+                        appendLine(
+                            "• ${DESIGN_TYPE_OPTIONS.find { it.first == designType }?.second ?: designType}"
+                        )
+                        if (pTrim.isNotEmpty()) {
+                            appendLine(
+                                "${translationStore.t("creator.generator_eazy.job_summary_prompt", "Prompt")}: " +
+                                    pTrim.take(120) + if (pTrim.length > 120) "…" else ""
+                            )
+                        }
+                        appendLine(
+                            "${translationStore.t("creator.generator_eazy.job_summary_refs", "Reference images")}: ${selectedImages.size}"
+                        )
+                    }.trim()
+                    onGeneratorJobStarted(jobId, summary)
+                    onOpenEazyChat(EazySidebarTab.Jobs)
+                    showGenConfirmDialog = false
+                } else {
+                    errorMessage = resp.optString("message", "")
+                        .ifBlank { resp.optString("error", "") }
+                        .ifBlank {
+                            translationStore.t(
+                                "creator.generator_eazy.submit_failed",
+                                "Generation could not be started."
+                            )
+                        }
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message?.take(200)
+                    ?: translationStore.t("creator.generator_eazy.network_error", "Network error.")
+            } finally {
+                generatingGen = false
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -490,6 +627,140 @@ fun CreatorGeneratorScreen(
                     color = Color.White.copy(alpha = 0.6f)
                 )
             }
+        }
+
+        val eazyGenReady =
+            ownerId.isNotBlank() && !generatingGen && (prompt.isNotBlank() || selectedImages.isNotEmpty())
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (generatingGen) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .size(28.dp),
+                    color = EazColors.Orange,
+                    strokeWidth = 2.dp
+                )
+            }
+            if (eazyGenReady) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF374151)),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.padding(end = 10.dp)
+                ) {
+                    TextButton(
+                        onClick = { showGenConfirmDialog = true },
+                        enabled = !generatingGen
+                    ) {
+                        Text(
+                            text = translationStore.t("creator.generator_eazy.bubble_start", "Start generation"),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+            }
+            EazyMascotIcon(
+                modifier = Modifier.size(72.dp),
+                lookLeft = eazyGenReady
+            )
+        }
+
+        if (showGenConfirmDialog) {
+            val lowBalance =
+                confirmBalanceGenEaz != null && confirmBalanceGenEaz!! + 1e-9 < DESIGN_GENERATE_COST_EAZ
+            val pTrim = prompt.trim()
+            AlertDialog(
+                onDismissRequest = { if (!generatingGen) showGenConfirmDialog = false },
+                containerColor = Color(0xFF1F2937),
+                titleContentColor = Color.White,
+                textContentColor = Color.White.copy(alpha = 0.88f),
+                title = {
+                    Text(translationStore.t("creator.generator_eazy.confirm_title", "Start design generation?"))
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "${translationStore.t("creator.hero_eazy.confirm_cost_label", "Cost")}: " +
+                                String.format(Locale.US, "%.1f", DESIGN_GENERATE_COST_EAZ) +
+                                " ${translationStore.t("creator.hero_eazy.eaz_unit", "EAZ")}"
+                        )
+                        when {
+                            confirmBalanceGenEaz == null -> Text(
+                                translationStore.t("creator.hero_eazy.balance_loading", "Loading balance…"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.55f)
+                            )
+                            else -> Text(
+                                "${translationStore.t("creator.hero_eazy.confirm_balance_label", "Your balance")}: " +
+                                    String.format(Locale.US, "%.2f", confirmBalanceGenEaz!!) +
+                                    " ${translationStore.t("creator.hero_eazy.eaz_unit", "EAZ")}"
+                            )
+                        }
+                        if (lowBalance) {
+                            Text(
+                                text = translationStore.t(
+                                    "creator.hero_eazy.insufficient_balance",
+                                    "Not enough EAZ for this generation."
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = EazColors.Orange
+                            )
+                        }
+                        Text(
+                            "${translationStore.t("creator.generator_eazy.confirm_target", "Target")}: " +
+                                (TARGET_PRODUCT_OPTIONS.find { it.first == targetProduct }?.second ?: targetProduct),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "${translationStore.t("creator.generator_eazy.confirm_design_type", "Design type")}: " +
+                                (DESIGN_TYPE_OPTIONS.find { it.first == designType }?.second ?: designType),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "${translationStore.t("creator.generator_eazy.confirm_prompt", "Prompt")}: " +
+                                if (pTrim.isEmpty()) "—" else (pTrim.take(200) + if (pTrim.length > 200) "…" else ""),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "${translationStore.t("creator.generator_eazy.confirm_refs", "Reference images")}: ${selectedImages.size}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { runDesignGenerate() },
+                        enabled = !generatingGen && (confirmBalanceGenEaz == null || !lowBalance)
+                    ) {
+                        Text(
+                            translationStore.t("creator.common.confirm", "Confirm"),
+                            color = if (!generatingGen && (confirmBalanceGenEaz == null || !lowBalance)) {
+                                EazColors.Orange
+                            } else {
+                                Color.Gray
+                            }
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showGenConfirmDialog = false },
+                        enabled = !generatingGen
+                    ) {
+                        Text(
+                            translationStore.t("creator.common.cancel", "Cancel"),
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+            )
         }
     }
 }

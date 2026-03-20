@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,6 +79,8 @@ import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
+import com.eazpire.creator.util.SizeAiProductTypeMapper
+import com.eazpire.creator.util.matchShopifySizeOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -250,6 +251,38 @@ fun ProductDetailScreen(
     val sizeOption = p.options.find { it.name.equals("Size", ignoreCase = true) || it.name.equals("Größe", ignoreCase = true) || it.name.equals("Groesse", ignoreCase = true) }
     var selectedColor by remember { mutableStateOf(colorOption?.values?.firstOrNull() ?: "") }
     var selectedSize by remember { mutableStateOf(sizeOption?.values?.firstOrNull() ?: "") }
+    var userOverrodeSize by remember(productHandle) { mutableStateOf(false) }
+    var sizeAiHint by remember(productHandle) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(productHandle) {
+        userOverrodeSize = false
+        sizeAiHint = null
+    }
+
+    LaunchedEffect(
+        p.id,
+        productHandle,
+        sizeOption?.values?.joinToString(),
+        userOverrodeSize
+    ) {
+        if (userOverrodeSize) return@LaunchedEffect
+        val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val opt = sizeOption ?: return@LaunchedEffect
+        val typeKey = SizeAiProductTypeMapper.resolve(p.productKey, p.productType) ?: return@LaunchedEffect
+        try {
+            val resp = withContext(Dispatchers.IO) {
+                creatorApi.getSizeRecommendations(ownerId, typeKey)
+            }
+            if (!resp.optBoolean("ok", false)) return@LaunchedEffect
+            val rec = resp.optJSONObject("recommendation") ?: return@LaunchedEffect
+            val sizeStr = rec.optString("size").takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+            val matched = matchShopifySizeOption(opt.values, sizeStr) ?: return@LaunchedEffect
+            selectedSize = matched
+            sizeAiHint = "Recommended by Size AI"
+        } catch (_: Exception) {
+        }
+    }
+
     // Resolve variant by selected color/size
     val selectedVariant = remember(selectedColor, selectedSize, p.variants) {
         p.variants.find { v ->
@@ -483,7 +516,7 @@ fun ProductDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState())
-                            .padding(bottom = 14.dp),
+                            .padding(bottom = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         sizeOption.values.forEach { value ->
@@ -495,8 +528,20 @@ fun ProductDetailScreen(
                                         if (isActive) EazColors.TextPrimary
                                         else Color.White
                                     )
-                                    .border(1.5.dp, if (isActive) EazColors.TextPrimary else Color(0xFFDDDDDD), RoundedCornerShape(8.dp))
-                                    .clickable { selectedSize = value }
+                                    .border(
+                                        width = if (sizeAiHint != null && isActive) 2.dp else 1.5.dp,
+                                        color = when {
+                                            sizeAiHint != null && isActive -> EazColors.Orange
+                                            isActive -> EazColors.TextPrimary
+                                            else -> Color(0xFFDDDDDD)
+                                        },
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable {
+                                        userOverrodeSize = true
+                                        sizeAiHint = null
+                                        selectedSize = value
+                                    }
                                     .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
                                 Text(
@@ -507,6 +552,14 @@ fun ProductDetailScreen(
                                 )
                             }
                         }
+                    }
+                    sizeAiHint?.let { hint ->
+                        Text(
+                            text = hint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EazColors.Orange,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
                     }
                 }
                 // Stock

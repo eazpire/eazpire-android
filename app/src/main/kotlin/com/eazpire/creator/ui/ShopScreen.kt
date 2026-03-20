@@ -240,7 +240,18 @@ fun ShopScreen(
                     showLoginOptions = true
                 }
             },
-            onEazyChatOpen = { eazyChatVisible = true },
+            onEazyChatOpen = { tab ->
+                eazyStartTab = tab ?: EazySidebarTab.Chat
+                eazyChatVisible = true
+            },
+            onHeroJobStarted = { id, summary ->
+                eazyChatStore.startHeroJob(id, summary)
+                eazyStartTab = EazySidebarTab.Jobs
+            },
+            onGeneratorJobStarted = { id, summary ->
+                eazyChatStore.startHeroJob(id, summary)
+                eazyStartTab = EazySidebarTab.Jobs
+            },
             eazyDocked = eazyDocked,
             eazySnapModeActive = eazySnapModeActive,
             onEazySnapModeChange = { eazySnapModeActive = it },
