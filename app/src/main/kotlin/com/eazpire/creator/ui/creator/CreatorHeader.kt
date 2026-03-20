@@ -14,13 +14,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,10 +37,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -59,6 +68,88 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@Composable
+private fun CreatorHeaderEazyStartBubble(
+    label: String,
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(14.dp)
+    val gradient = Brush.linearGradient(
+        colors = listOf(Color(0xFFFF9F40), EazColors.Orange, Color(0xFFEA580C))
+    )
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(148.dp)
+                .clip(shape)
+                .drawBehind {
+                    drawRoundRect(
+                        brush = gradient,
+                        cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx())
+                    )
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.88f),
+                        style = Stroke(
+                            width = 2.2f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 6f), 0f)
+                        ),
+                        cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx())
+                    )
+                }
+                .clickable(enabled = enabled && !loading) { onClick() }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text(
+                    text = label,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                    maxLines = 2
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(width = 8.dp, height = 12.dp)
+                .offset(x = (-3).dp)
+                .drawBehind {
+                    val w = size.width
+                    val h = size.height
+                    val p = Path().apply {
+                        moveTo(0f, h * 0.2f)
+                        lineTo(w, h * 0.5f)
+                        lineTo(0f, h * 0.8f)
+                        close()
+                    }
+                    drawPath(p, brush = gradient)
+                    drawPath(
+                        p,
+                        color = Color.White.copy(alpha = 0.88f),
+                        style = Stroke(
+                            width = 2f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f), 0f)
+                        )
+                    )
+                }
+        )
+    }
+}
+
 /** Header 1:1 wie Web creator-mobile.css .creator-header */
 @Composable
 fun CreatorHeader(
@@ -77,6 +168,12 @@ fun CreatorHeader(
     audioStore: com.eazpire.creator.audio.CreatorAudioStore? = null,
     onAudioModalOpen: () -> Unit = {},
     marketingTitleOverride: String? = null,
+    /** Generator / Hero: face toward header speech bubble */
+    eazyLookLeft: Boolean = false,
+    showStartGenerationBubble: Boolean = false,
+    startGenerationLoading: Boolean = false,
+    onStartGenerationClick: () -> Unit = {},
+    startGenerationLabel: String = "",
     modifier: Modifier = Modifier
 ) {
     var fiatText by remember { mutableStateOf("…") }
@@ -306,43 +403,57 @@ fun CreatorHeader(
                     color = Color.White
                 )
                 Box(modifier = Modifier.weight(1f)) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .scale(boomScale.value)
-                            .padding(horizontal = 4.dp)
-                            .size(36.dp)
-                            .onGloballyPositioned { coordinates ->
-                                slotBoundsState?.value = coordinates.boundsInRoot()
-                            }
-                            .then(
-                                if (eazySnapModeActive && !eazyDocked) Modifier
-                                    .background(EazColors.Orange.copy(alpha = 0.15f), CircleShape)
-                                    .border(2.dp, EazColors.Orange.copy(alpha = 0.5f), CircleShape)
-                                else Modifier
-                            )
-                            .then(
-                                if (eazyDocked) Modifier.pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onTap = { onEazyClick() },
-                                        onPress = {
-                                            var job: Job? = null
-                                            job = scope.launch {
-                                                delay(300)
-                                                onEazyLongPress()
-                                            }
-                                            try {
-                                                awaitRelease()
-                                            } catch (_: Exception) {}
-                                            job?.cancel()
-                                        }
-                                    )
-                                } else Modifier
-                            ),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        if (eazyDocked) {
-                            EazyMascotIcon(modifier = Modifier.fillMaxSize())
+                        if (showStartGenerationBubble && startGenerationLabel.isNotBlank()) {
+                            CreatorHeaderEazyStartBubble(
+                                label = startGenerationLabel,
+                                loading = startGenerationLoading,
+                                enabled = true,
+                                onClick = onStartGenerationClick,
+                                modifier = Modifier.padding(end = 2.dp)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .scale(boomScale.value)
+                                .padding(horizontal = 2.dp)
+                                .size(36.dp)
+                                .onGloballyPositioned { coordinates ->
+                                    slotBoundsState?.value = coordinates.boundsInRoot()
+                                }
+                                .then(
+                                    if (eazySnapModeActive && !eazyDocked) Modifier
+                                        .background(EazColors.Orange.copy(alpha = 0.15f), CircleShape)
+                                        .border(2.dp, EazColors.Orange.copy(alpha = 0.5f), CircleShape)
+                                    else Modifier
+                                )
+                                .then(
+                                    if (eazyDocked) Modifier.pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onTap = { onEazyClick() },
+                                            onPress = {
+                                                var job: Job? = null
+                                                job = scope.launch {
+                                                    delay(300)
+                                                    onEazyLongPress()
+                                                }
+                                                try {
+                                                    awaitRelease()
+                                                } catch (_: Exception) {}
+                                                job?.cancel()
+                                            }
+                                        )
+                                    } else Modifier
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (eazyDocked) {
+                                EazyMascotIcon(modifier = Modifier.fillMaxSize(), lookLeft = eazyLookLeft)
+                            }
                         }
                     }
                 }

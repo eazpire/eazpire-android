@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,7 +66,6 @@ import androidx.compose.foundation.Image
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -187,6 +187,9 @@ fun CreatorGeneratorScreen(
     translationStore: TranslationStore,
     onOpenEazyChat: (EazySidebarTab?) -> Unit = {},
     onGeneratorJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onGeneratorEazyReadyChange: (Boolean) -> Unit = {},
+    headerStartNonce: Int = 0,
+    onGeneratorGeneratingChange: (Boolean) -> Unit = {},
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {
@@ -219,6 +222,13 @@ fun CreatorGeneratorScreen(
     var showGenConfirmDialog by remember { mutableStateOf(false) }
     var generatingGen by remember { mutableStateOf(false) }
     var confirmBalanceGenEaz by remember { mutableStateOf<Double?>(null) }
+    SideEffect { onGeneratorGeneratingChange(generatingGen) }
+    LaunchedEffect(headerStartNonce) {
+        if (headerStartNonce == 0) return@LaunchedEffect
+        if (generatingGen) return@LaunchedEffect
+        if (ownerId.isBlank() || (prompt.isBlank() && selectedImages.isEmpty())) return@LaunchedEffect
+        showGenConfirmDialog = true
+    }
 
     LaunchedEffect(showGenConfirmDialog) {
         if (!showGenConfirmDialog || ownerId.isBlank()) return@LaunchedEffect
@@ -631,15 +641,16 @@ fun CreatorGeneratorScreen(
 
         val eazyGenReady =
             ownerId.isNotBlank() && !generatingGen && (prompt.isNotBlank() || selectedImages.isNotEmpty())
+        SideEffect { onGeneratorEazyReadyChange(eazyGenReady) }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (generatingGen) {
+        if (generatingGen) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 CircularProgressIndicator(
                     modifier = Modifier
                         .padding(end = 12.dp)
@@ -648,28 +659,6 @@ fun CreatorGeneratorScreen(
                     strokeWidth = 2.dp
                 )
             }
-            if (eazyGenReady) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF374151)),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.padding(end = 10.dp)
-                ) {
-                    TextButton(
-                        onClick = { showGenConfirmDialog = true },
-                        enabled = !generatingGen
-                    ) {
-                        Text(
-                            text = translationStore.t("creator.generator_eazy.bubble_start", "Start generation"),
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-                }
-            }
-            EazyMascotIcon(
-                modifier = Modifier.size(72.dp),
-                lookLeft = eazyGenReady
-            )
         }
 
         if (showGenConfirmDialog) {

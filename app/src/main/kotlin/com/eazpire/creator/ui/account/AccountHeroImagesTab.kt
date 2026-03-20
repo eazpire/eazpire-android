@@ -48,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -75,7 +76,6 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
@@ -206,6 +206,10 @@ fun AccountHeroImagesTab(
     onGenerated: (() -> Unit)? = null,
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onOpenEazyChat: (EazySidebarTab) -> Unit = {},
+    onHeroEazyReadyChange: (Boolean) -> Unit = {},
+    /** Increment from header "Start generation" bubble (Creator flow). */
+    headerStartNonce: Int = 0,
+    onHeroGeneratingChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     fun t(key: String, fallback: String): String = translationStore?.t(key, fallback) ?: fallback
@@ -231,7 +235,14 @@ fun AccountHeroImagesTab(
     var backgroundMime by remember { mutableStateOf("image/jpeg") }
     var prompt by remember { mutableStateOf("") }
     var generating by remember { mutableStateOf(false) }
+    SideEffect { onHeroGeneratingChange(generating) }
     var showHeroConfirmDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(headerStartNonce) {
+        if (headerStartNonce == 0) return@LaunchedEffect
+        if (generating) return@LaunchedEffect
+        if (ownerId.isBlank() || (selectedTop == null && selectedAddition == null)) return@LaunchedEffect
+        showHeroConfirmDialog = true
+    }
     var confirmBalanceEaz by remember { mutableStateOf<Double?>(null) }
     var generateStatus by remember { mutableStateOf<String?>(null) }
     var generateStatusError by remember { mutableStateOf(false) }
@@ -684,53 +695,22 @@ fun AccountHeroImagesTab(
 
         val canGenerate = ownerId.isNotBlank() && !generating && (selectedTop != null || selectedAddition != null)
         val showEazyBubble = canGenerate
+        SideEffect { onHeroEazyReadyChange(showEazyBubble) }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (generating) {
+        if (generating) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 CircularProgressIndicator(
                     modifier = Modifier
-                        .padding(end = 12.dp)
+                        .padding(end = 12.dp, top = 4.dp)
                         .size(28.dp),
                     color = EazColors.Orange,
                     strokeWidth = 2.dp
                 )
             }
-            if (showEazyBubble) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF374151)),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.padding(end = 10.dp)
-                ) {
-                    TextButton(
-                        onClick = {
-                            val top = selectedTop
-                            val add = selectedAddition
-                            if (top == null && add == null) {
-                                generateStatus =
-                                    t("creator.hero_images.select_products_first", "Select at least one product.")
-                                generateStatusError = true
-                                return@TextButton
-                            }
-                            showHeroConfirmDialog = true
-                        },
-                        enabled = !generating
-                    ) {
-                        Text(
-                            text = t("creator.hero_eazy.bubble_start", "Start generation"),
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-                }
-            }
-            EazyMascotIcon(
-                modifier = Modifier.size(72.dp),
-                lookLeft = showEazyBubble
-            )
         }
 
         if (showHeroConfirmDialog) {

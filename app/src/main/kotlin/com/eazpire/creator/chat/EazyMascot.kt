@@ -96,7 +96,9 @@ fun EazyMascot(
     scope: kotlinx.coroutines.CoroutineScope,
     contentWidthPx: Float? = null,
     contentHeightPx: Float? = null,
-    contentBoundsInRoot: Rect? = null
+    contentBoundsInRoot: Rect? = null,
+    /** Face left (e.g. toward generator speech bubble). */
+    lookLeft: Boolean = false
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -236,7 +238,11 @@ fun EazyMascot(
             },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .scale(scaleX = if (lookLeft) -1f else 1f, scaleY = 1f)
+        ) {
             drawEazyMascot(this)
         }
     }

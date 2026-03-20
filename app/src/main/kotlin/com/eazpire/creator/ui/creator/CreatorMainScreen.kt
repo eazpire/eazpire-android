@@ -71,6 +71,8 @@ fun CreatorMainScreen(
     onEazyChatOpen: (EazySidebarTab?) -> Unit,
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onGeneratorJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    /** True while on Generator (screen 1) and prompt/refs ready – drives floating Eazy lookLeft in ShopScreen */
+    onGeneratorEazyLookLeftChange: (Boolean) -> Unit = {},
     eazyDocked: Boolean = false,
     eazySnapModeActive: Boolean = false,
     onEazySnapModeChange: (Boolean) -> Unit = {},
@@ -91,6 +93,23 @@ fun CreatorMainScreen(
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     var currentScreen by remember { mutableIntStateOf(0) }
+    var generatorEazyReady by remember { mutableStateOf(false) }
+    var heroEazyReady by remember { mutableStateOf(false) }
+    var genHeaderStartNonce by remember { mutableIntStateOf(0) }
+    var heroHeaderStartNonce by remember { mutableIntStateOf(0) }
+    var generatorGenerating by remember { mutableStateOf(false) }
+    var heroGenerating by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentScreen, generatorEazyReady, heroEazyReady) {
+        val look =
+            (currentScreen == 1 && generatorEazyReady) || (currentScreen == 3 && heroEazyReady)
+        onGeneratorEazyLookLeftChange(look)
+    }
+
+    LaunchedEffect(currentScreen) {
+        if (currentScreen != 1) generatorGenerating = false
+        if (currentScreen != 3) heroGenerating = false
+    }
 
     DisposableEffect(lifecycleOwner, audioStore) {
         val observer = LifecycleEventObserver { _, event ->
@@ -181,7 +200,23 @@ fun CreatorMainScreen(
                     slotBoundsState = slotBoundsState,
                     audioStore = audioStore,
                     onAudioModalOpen = { audioModalVisible = true },
-                    marketingTitleOverride = marketingTitleOverride
+                    marketingTitleOverride = marketingTitleOverride,
+                    eazyLookLeft = (currentScreen == 1 && generatorEazyReady) ||
+                        (currentScreen == 3 && heroEazyReady),
+                    showStartGenerationBubble = (currentScreen == 1 && generatorEazyReady) ||
+                        (currentScreen == 3 && heroEazyReady),
+                    startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
+                        (currentScreen == 3 && heroGenerating),
+                    onStartGenerationClick = {
+                        when (currentScreen) {
+                            1 -> genHeaderStartNonce++
+                            3 -> heroHeaderStartNonce++
+                        }
+                    },
+                    startGenerationLabel = translationStore.t(
+                        "creator.generator_eazy.bubble_start",
+                        "Start generation"
+                    )
                 )
 
             LaunchedEffect(currentScreen) {
@@ -252,6 +287,9 @@ fun CreatorMainScreen(
                             translationStore = translationStore,
                             onOpenEazyChat = onEazyChatOpen,
                             onGeneratorJobStarted = onGeneratorJobStarted,
+                            onGeneratorEazyReadyChange = { generatorEazyReady = it },
+                            headerStartNonce = genHeaderStartNonce,
+                            onGeneratorGeneratingChange = { generatorGenerating = it },
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -269,6 +307,9 @@ fun CreatorMainScreen(
                             maxHeight = contentMaxHeight,
                             onEazyChatOpen = onEazyChatOpen,
                             onHeroJobStarted = onHeroJobStarted,
+                            onHeroEazyReadyChange = { heroEazyReady = it },
+                            heroHeaderStartNonce = heroHeaderStartNonce,
+                            onHeroGeneratingChange = { heroGenerating = it },
                             modifier = Modifier.fillMaxSize()
                         )
                     }

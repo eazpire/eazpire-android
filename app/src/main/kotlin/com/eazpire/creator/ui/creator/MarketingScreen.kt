@@ -76,6 +76,9 @@ fun MarketingScreen(
     maxHeight: Dp = Dp.Infinity,
     onEazyChatOpen: (EazySidebarTab?) -> Unit = {},
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onHeroEazyReadyChange: (Boolean) -> Unit = {},
+    heroHeaderStartNonce: Int = 0,
+    onHeroGeneratingChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
@@ -105,6 +108,9 @@ fun MarketingScreen(
 
     LaunchedEffect(currentSubTab, currentContentTab) {
         updateHeaderTitle()
+        val heroTabVisible =
+            currentSubTab == SUBTAB_CONTENT_CREATION && currentContentTab == CONTENT_HERO_IMAGES
+        if (!heroTabVisible) onHeroEazyReadyChange(false)
     }
 
     Column(
@@ -165,6 +171,9 @@ fun MarketingScreen(
                 translationStore = translationStore,
                 onEazyChatOpen = onEazyChatOpen,
                 onHeroJobStarted = onHeroJobStarted,
+                onHeroEazyReadyChange = onHeroEazyReadyChange,
+                heroHeaderStartNonce = heroHeaderStartNonce,
+                onHeroGeneratingChange = onHeroGeneratingChange,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -191,6 +200,9 @@ private fun MarketingContentCreationPanel(
     translationStore: TranslationStore,
     onEazyChatOpen: (EazySidebarTab?) -> Unit,
     onHeroJobStarted: (jobId: String, summary: String) -> Unit,
+    onHeroEazyReadyChange: (Boolean) -> Unit = {},
+    heroHeaderStartNonce: Int = 0,
+    onHeroGeneratingChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -212,6 +224,9 @@ private fun MarketingContentCreationPanel(
                     onGenerated = onSwitchToPublish,
                     onHeroJobStarted = onHeroJobStarted,
                     onOpenEazyChat = { tab -> onEazyChatOpen(tab) },
+                    onHeroEazyReadyChange = onHeroEazyReadyChange,
+                    headerStartNonce = heroHeaderStartNonce,
+                    onHeroGeneratingChange = onHeroGeneratingChange,
                     modifier = Modifier.padding(20.dp)
                 )
             }

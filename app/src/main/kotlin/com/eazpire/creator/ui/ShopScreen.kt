@@ -161,6 +161,7 @@ fun ShopScreen(
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     val productModalHandleState = remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
+    var creatorGenEazyLookLeft by remember { mutableStateOf(false) }
     var termsModalVisible by remember { mutableStateOf(false) }
 
     // Creator: StatusBar + NavBar dunkel (#0A0514), ohne Kontrastlinie; Shop: Orange
@@ -192,6 +193,7 @@ fun ShopScreen(
 
     LaunchedEffect(isCreatorMode) {
         if (isCreatorMode) slotBoundsState.value = null
+        if (!isCreatorMode) creatorGenEazyLookLeft = false
     }
 
     LaunchedEffect(pendingDeepLink?.value) {
@@ -252,6 +254,7 @@ fun ShopScreen(
                 eazyChatStore.startHeroJob(id, summary)
                 eazyStartTab = EazySidebarTab.Jobs
             },
+            onGeneratorEazyLookLeftChange = { creatorGenEazyLookLeft = it },
             eazyDocked = eazyDocked,
             eazySnapModeActive = eazySnapModeActive,
             onEazySnapModeChange = { eazySnapModeActive = it },
@@ -418,7 +421,8 @@ fun ShopScreen(
                 scope = scope,
                 contentWidthPx = contentW,
                 contentHeightPx = contentH,
-                contentBoundsInRoot = contentBoundsState.value
+                contentBoundsInRoot = contentBoundsState.value,
+                lookLeft = isCreatorMode && creatorGenEazyLookLeft
             )
         }
     }
