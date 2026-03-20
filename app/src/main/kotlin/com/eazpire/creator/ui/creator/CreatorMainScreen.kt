@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -78,6 +79,7 @@ fun CreatorMainScreen(
     onEazySnapModeChange: (Boolean) -> Unit = {},
     onEazyLongPress: () -> Unit = {},
     slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
+    onEazyGenerationOverlayChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var drawerVisible by remember { mutableStateOf(false) }
@@ -104,6 +106,10 @@ fun CreatorMainScreen(
         val look =
             (currentScreen == 1 && generatorEazyReady) || (currentScreen == 3 && heroEazyReady)
         onGeneratorEazyLookLeftChange(look)
+    }
+
+    LaunchedEffect(eazyDocked, generatorGenerating, heroGenerating) {
+        onEazyGenerationOverlayChange(!eazyDocked && (generatorGenerating || heroGenerating))
     }
 
     LaunchedEffect(currentScreen) {
@@ -203,8 +209,9 @@ fun CreatorMainScreen(
                     marketingTitleOverride = marketingTitleOverride,
                     eazyLookLeft = (currentScreen == 1 && generatorEazyReady) ||
                         (currentScreen == 3 && heroEazyReady),
-                    showStartGenerationBubble = (currentScreen == 1 && generatorEazyReady) ||
-                        (currentScreen == 3 && heroEazyReady),
+                    showStartGenerationBubble = ((currentScreen == 1 && generatorEazyReady) ||
+                        (currentScreen == 3 && heroEazyReady)) &&
+                        !((generatorGenerating || heroGenerating) && !eazyDocked),
                     startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
                         (currentScreen == 3 && heroGenerating),
                     onStartGenerationClick = {

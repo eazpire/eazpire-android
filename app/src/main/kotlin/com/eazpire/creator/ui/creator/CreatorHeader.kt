@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-private fun CreatorHeaderEazyStartBubble(
+internal fun CreatorHeaderEazyStartBubble(
     label: String,
     loading: Boolean,
     enabled: Boolean,

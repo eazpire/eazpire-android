@@ -10,9 +10,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -46,12 +48,14 @@ import com.eazpire.creator.chat.EazyChatContext
 import com.eazpire.creator.chat.EazyChatModal
 import com.eazpire.creator.chat.EazyChatStore
 import com.eazpire.creator.chat.EazyMascot
+import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.chat.EazyMascotStore
 import com.eazpire.creator.ui.account.AccountModalSheet
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.footer.SubFooter
 import com.eazpire.creator.ui.footer.TermsModal
+import com.eazpire.creator.ui.creator.CreatorHeaderEazyStartBubble
 import com.eazpire.creator.ui.creator.CreatorMainScreen
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.header.MainHeader
@@ -162,6 +166,7 @@ fun ShopScreen(
     val productModalHandleState = remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
     var creatorGenEazyLookLeft by remember { mutableStateOf(false) }
+    var eazyGenerationOverlay by remember { mutableStateOf(false) }
     var termsModalVisible by remember { mutableStateOf(false) }
 
     // Creator: StatusBar + NavBar dunkel (#0A0514), ohne Kontrastlinie; Shop: Orange
@@ -259,7 +264,8 @@ fun ShopScreen(
             eazySnapModeActive = eazySnapModeActive,
             onEazySnapModeChange = { eazySnapModeActive = it },
             onEazyLongPress = { eazyMascotStore.setDockedSync(false) },
-            slotBoundsState = slotBoundsState
+            slotBoundsState = slotBoundsState,
+            onEazyGenerationOverlayChange = { eazyGenerationOverlay = it }
         )
         }
     } else {
@@ -398,32 +404,59 @@ fun ShopScreen(
     }
     }
     if (!eazyDocked) {
-        val contentBoundsState = remember { mutableStateOf<Rect?>(null) }
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(100f)
-                .onGloballyPositioned { contentBoundsState.value = it.boundsInRoot() }
-        ) {
-            val density = LocalDensity.current
-            val contentW = with(density) { maxWidth.toPx() }
-            val contentH = with(density) { maxHeight.toPx() }
-            EazyMascot(
-                modifier = Modifier.align(Alignment.TopStart),
-                isDocked = false,
-                positionX = eazyPosX,
-                positionY = eazyPosY,
-                onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
-                onDockedChange = { eazyMascotStore.setDockedSync(it) },
-                onOpenChat = { eazyChatVisible = true },
-                slotBoundsInRoot = slotBoundsState.value,
-                onSnapModeChange = { eazySnapModeActive = it },
-                scope = scope,
-                contentWidthPx = contentW,
-                contentHeightPx = contentH,
-                contentBoundsInRoot = contentBoundsState.value,
-                lookLeft = isCreatorMode && creatorGenEazyLookLeft
-            )
+        val showGenOverlay = isCreatorMode && eazyGenerationOverlay
+        if (!showGenOverlay) {
+            val contentBoundsState = remember { mutableStateOf<Rect?>(null) }
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(100f)
+                    .onGloballyPositioned { contentBoundsState.value = it.boundsInRoot() }
+            ) {
+                val density = LocalDensity.current
+                val contentW = with(density) { maxWidth.toPx() }
+                val contentH = with(density) { maxHeight.toPx() }
+                EazyMascot(
+                    modifier = Modifier.align(Alignment.TopStart),
+                    isDocked = false,
+                    positionX = eazyPosX,
+                    positionY = eazyPosY,
+                    onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
+                    onDockedChange = { eazyMascotStore.setDockedSync(it) },
+                    onOpenChat = { eazyChatVisible = true },
+                    slotBoundsInRoot = slotBoundsState.value,
+                    onSnapModeChange = { eazySnapModeActive = it },
+                    scope = scope,
+                    contentWidthPx = contentW,
+                    contentHeightPx = contentH,
+                    contentBoundsInRoot = contentBoundsState.value,
+                    lookLeft = isCreatorMode && creatorGenEazyLookLeft
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(120f),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CreatorHeaderEazyStartBubble(
+                        label = translationStore.t(
+                            "creator.generator_eazy.bubble_start",
+                            "Start generation"
+                        ),
+                        loading = true,
+                        enabled = false,
+                        onClick = { },
+                        modifier = Modifier.padding(end = 10.dp)
+                    )
+                    EazyMascotIcon(
+                        modifier = Modifier.size(56.dp),
+                        lookLeft = false
+                    )
+                }
+            }
         }
     }
     }
