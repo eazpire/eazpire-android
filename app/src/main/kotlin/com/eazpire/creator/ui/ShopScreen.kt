@@ -433,6 +433,10 @@ fun ShopScreen(
     if (!eazyDocked) {
         val showGenOverlay = isCreatorMode && eazyGenerationOverlay
         val contentBoundsState = remember { mutableStateOf<Rect?>(null) }
+        var genOverlayMascotCenterX by remember { mutableStateOf<Float?>(null) }
+        LaunchedEffect(showGenOverlay) {
+            if (!showGenOverlay) genOverlayMascotCenterX = null
+        }
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -446,6 +450,9 @@ fun ShopScreen(
                 "creator.generator_eazy.bubble_start",
                 "Start generation"
             )
+            val halfPx = contentW / 2f
+            val bubbleLeftOfEazy =
+                (genOverlayMascotCenterX ?: (halfPx + 1f)) >= halfPx
             if (showGenOverlay) {
                 Row(
                     modifier = Modifier
@@ -455,34 +462,72 @@ fun ShopScreen(
                         .zIndex(120f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CreatorHeaderEazyStartBubble(
-                        label = bubbleLabel,
-                        loading = eazyGenerationOverlayLoading,
-                        enabled = !eazyGenerationOverlayLoading,
-                        onClick = {
-                            if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
-                        },
-                        tailTowardEnd = true
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    EazyMascot(
-                        modifier = Modifier,
-                        isDocked = false,
-                        positionX = eazyPosX,
-                        positionY = eazyPosY,
-                        onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
-                        onDockedChange = { eazyMascotStore.setDockedSync(it) },
-                        onOpenChat = { eazyChatVisible = true },
-                        slotBoundsInRoot = slotBoundsState.value,
-                        onSnapModeChange = { eazySnapModeActive = it },
-                        scope = scope,
-                        contentWidthPx = contentW,
-                        contentHeightPx = contentH,
-                        contentBoundsInRoot = contentBoundsState.value,
-                        lookLeft = true,
-                        autoFaceFromScreenHalf = false,
-                        pinToGenerationBottomEnd = true
-                    )
+                    val mascotModifier = Modifier.onGloballyPositioned { coords ->
+                        genOverlayMascotCenterX = coords.boundsInRoot().center.x
+                    }
+                    if (bubbleLeftOfEazy) {
+                        CreatorHeaderEazyStartBubble(
+                            label = bubbleLabel,
+                            loading = eazyGenerationOverlayLoading,
+                            enabled = !eazyGenerationOverlayLoading,
+                            onClick = {
+                                if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
+                            },
+                            tailTowardEnd = true
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Box(modifier = mascotModifier) {
+                            EazyMascot(
+                                modifier = Modifier,
+                                isDocked = false,
+                                positionX = eazyPosX,
+                                positionY = eazyPosY,
+                                onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
+                                onDockedChange = { eazyMascotStore.setDockedSync(it) },
+                                onOpenChat = { eazyChatVisible = true },
+                                slotBoundsInRoot = slotBoundsState.value,
+                                onSnapModeChange = { eazySnapModeActive = it },
+                                scope = scope,
+                                contentWidthPx = contentW,
+                                contentHeightPx = contentH,
+                                contentBoundsInRoot = contentBoundsState.value,
+                                lookLeft = true,
+                                autoFaceFromScreenHalf = false,
+                                pinToGenerationBottomEnd = true
+                            )
+                        }
+                    } else {
+                        Box(modifier = mascotModifier) {
+                            EazyMascot(
+                                modifier = Modifier,
+                                isDocked = false,
+                                positionX = eazyPosX,
+                                positionY = eazyPosY,
+                                onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
+                                onDockedChange = { eazyMascotStore.setDockedSync(it) },
+                                onOpenChat = { eazyChatVisible = true },
+                                slotBoundsInRoot = slotBoundsState.value,
+                                onSnapModeChange = { eazySnapModeActive = it },
+                                scope = scope,
+                                contentWidthPx = contentW,
+                                contentHeightPx = contentH,
+                                contentBoundsInRoot = contentBoundsState.value,
+                                lookLeft = false,
+                                autoFaceFromScreenHalf = false,
+                                pinToGenerationBottomEnd = true
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        CreatorHeaderEazyStartBubble(
+                            label = bubbleLabel,
+                            loading = eazyGenerationOverlayLoading,
+                            enabled = !eazyGenerationOverlayLoading,
+                            onClick = {
+                                if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
+                            },
+                            tailTowardEnd = false
+                        )
+                    }
                 }
             } else {
                 EazyMascot(

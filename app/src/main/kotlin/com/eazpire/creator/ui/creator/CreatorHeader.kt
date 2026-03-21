@@ -208,6 +208,8 @@ fun CreatorHeader(
     marketingTitleOverride: String? = null,
     /** Generator / Hero: face toward header speech bubble */
     eazyLookLeft: Boolean = false,
+    /** Hide header snap slot + docked mascot while bottom "Start generation" cluster is shown (single Eazy). */
+    hideEazyHeaderSlotWhenGenerationOverlay: Boolean = false,
     showStartGenerationBubble: Boolean = false,
     startGenerationLoading: Boolean = false,
     onStartGenerationClick: () -> Unit = {},
@@ -441,6 +443,7 @@ fun CreatorHeader(
                     color = Color.White
                 )
                 Box(modifier = Modifier.weight(1f)) {
+                    if (!hideEazyHeaderSlotWhenGenerationOverlay) {
                     Row(
                         modifier = Modifier.align(Alignment.CenterEnd),
                         verticalAlignment = Alignment.CenterVertically,
@@ -499,6 +502,7 @@ fun CreatorHeader(
                                 modifier = Modifier.padding(end = 2.dp)
                             )
                         }
+                    }
                     }
                 }
             }

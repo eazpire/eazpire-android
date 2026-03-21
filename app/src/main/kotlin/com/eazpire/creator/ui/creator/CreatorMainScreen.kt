@@ -185,6 +185,11 @@ fun CreatorMainScreen(
     }
     val scope = rememberCoroutineScope()
 
+    val generationOverlayVisible =
+        !eazyDocked &&
+            ((currentScreen == 1 && (generatorEazyReady || generatorGenerating)) ||
+                (currentScreen == 3 && (heroEazyReady || heroGenerating)))
+
     Box(
         modifier = modifier.fillMaxSize()
     ) {
@@ -238,6 +243,7 @@ fun CreatorMainScreen(
                     marketingTitleOverride = marketingTitleOverride,
                     eazyLookLeft = (currentScreen == 1 && generatorEazyReady) ||
                         (currentScreen == 3 && heroEazyReady),
+                    hideEazyHeaderSlotWhenGenerationOverlay = generationOverlayVisible,
                     showStartGenerationBubble = false,
                     startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
                         (currentScreen == 3 && heroGenerating),
