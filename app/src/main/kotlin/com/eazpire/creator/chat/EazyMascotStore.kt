@@ -117,8 +117,8 @@ class EazyMascotStore(private val context: Context) {
         }
         val st = prefObj.optJSONObject("eazy_mascot_creator") ?: return
         val mascot = st.optJSONObject("mascot")
-        val left = mascot?.optDouble("left", Double.NaN)?.toFloat()
-        val top = mascot?.optDouble("top", Double.NaN)?.toFloat()
+        val left = mascot?.optDouble("left", Double.NaN)?.toFloat() ?: Float.NaN
+        val top = mascot?.optDouble("top", Double.NaN)?.toFloat() ?: Float.NaN
         val docked = st.optBoolean("docked", false)
         context.eazyMascotDataStore.edit { prefs ->
             if (!left.isNaN() && !top.isNaN()) {

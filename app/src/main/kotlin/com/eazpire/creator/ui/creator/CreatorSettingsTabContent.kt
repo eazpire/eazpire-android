@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -73,7 +75,7 @@ fun CreatorSettingsTabContent(
         when (currentTab) {
             0 -> CreatorSettingsProfileContent(tokenStore, translationStore)
             1 -> CreatorSettingsCreatorCodesContent(ownerId, api, translationStore)
-            2 -> CreatorSettingsCommunityContent(tokenStore)
+            2 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
             3 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
             4 -> CreatorSettingsLevelContent(ownerId, api, translationStore)
             5 -> CreatorSettingsEazContent(translationStore)
@@ -96,7 +98,10 @@ private fun CreatorSettingsProfileContent(
             onSaveActionReady = { saveProfile = it },
             onSavingStateChange = null,
             onLogout = null,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            translationStore = translationStore,
+            useDarkPanel = true,
+            embedInParentScroll = true
         )
         saveProfile?.let { save ->
             Button(
@@ -349,8 +354,14 @@ private fun RowScope.StatCard(label: String, value: String) {
 }
 
 @Composable
-private fun CreatorSettingsCommunityContent(tokenStore: SecureTokenStore) {
-    AccountCommunityTab(tokenStore = tokenStore, modifier = Modifier.fillMaxWidth(), scrollable = false)
+private fun CreatorSettingsCommunityContent(tokenStore: SecureTokenStore, translationStore: TranslationStore) {
+    AccountCommunityTab(
+        tokenStore = tokenStore,
+        modifier = Modifier.fillMaxWidth(),
+        scrollable = false,
+        darkTheme = true,
+        translationStore = translationStore
+    )
 }
 
 @Composable
@@ -364,6 +375,7 @@ private fun CreatorSettingsNamesContent(
     var isLoading by remember { mutableStateOf(true) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var statusError by remember { mutableStateOf(false) }
+    var detailCreator by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(ownerId) {
@@ -373,12 +385,18 @@ private fun CreatorSettingsNamesContent(
         }
         isLoading = true
         try {
-            val settings = withContext(Dispatchers.IO) { api.getSettings() }
-            val arr = settings.optJSONObject("settings")?.optJSONArray("creator_names")
-                ?: settings.optJSONArray("creator_names")
-            names = (0 until (arr?.length() ?: 0)).mapNotNull { i ->
+            val settings = withContext(Dispatchers.IO) { api.getSettings(ownerId) }
+            val settingsObj = settings.optJSONObject("settings") ?: settings
+            val arr = settingsObj.optJSONArray("creator_names")
+            var raw = (0 until (arr?.length() ?: 0)).mapNotNull { i ->
                 arr?.optString(i, null)?.takeIf { it.isNotBlank() }
             }
+            val primary = settingsObj.optString("creator_name").takeIf { it.isNotBlank() }
+            if (primary != null && raw.none { it.equals(primary, ignoreCase = true) }) {
+                raw = listOf(primary) + raw
+            }
+            val seen = mutableSetOf<String>()
+            names = raw.filter { seen.add(it.lowercase()) }.take(5)
         } catch (_: Exception) {}
         isLoading = false
     }
@@ -420,14 +438,14 @@ private fun CreatorSettingsNamesContent(
                     if (resp.optBoolean("ok", false)) {
                         names = names + name
                         newName = ""
-                        statusMessage = "Added"
+                        statusMessage = translationStore.t("creator.settings_names.added_ok", "Creator name added.")
                         statusError = false
                     } else {
                         statusMessage = resp.optString("message", resp.optString("error", "Failed"))
                         statusError = true
                     }
                 } catch (_: Exception) {
-                    statusMessage = "Error"
+                    statusMessage = translationStore.t("creator.settings_names.add_error", "Could not add name.")
                     statusError = true
                 }
             }
@@ -458,14 +476,37 @@ private fun CreatorSettingsNamesContent(
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                    .clickable { detailCreator = name }
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = name, color = Color.White)
-                Icon(Icons.Default.Star, null, Modifier.size(16.dp), tint = EazColors.Orange)
+                Text(text = name, color = Color.White, modifier = Modifier.weight(1f))
+                IconButton(
+                    onClick = { detailCreator = name },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = translationStore.t(
+                            "creator.settings_names.edit_profile_aria",
+                            "Edit creator profile"
+                        ),
+                        tint = EazColors.Orange,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
+    }
+    detailCreator?.let { cn ->
+        CreatorDetailModal(
+            creatorName = cn,
+            ownerId = ownerId,
+            api = api,
+            translationStore = translationStore,
+            onDismiss = { detailCreator = null }
+        )
     }
     statusMessage?.let { msg ->
         Text(

@@ -1,6 +1,11 @@
 package com.eazpire.creator.ui.creator
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -81,6 +86,18 @@ internal fun CreatorHeaderEazyStartBubble(
      */
     tailTowardEnd: Boolean = false
 ) {
+    val shouldPulse = enabled && !loading
+    val infiniteTransition = rememberInfiniteTransition(label = "eazyStartBubblePulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+    val scale = if (shouldPulse) pulseScale else 1f
     val shape = RoundedCornerShape(14.dp)
     val gradient = Brush.linearGradient(
         colors = listOf(Color(0xFFFF9F40), EazColors.Orange, Color(0xFFEA580C))
@@ -158,7 +175,7 @@ internal fun CreatorHeaderEazyStartBubble(
         }
     }
     Row(
-        modifier = modifier,
+        modifier = modifier.scale(scale),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (tailTowardEnd) {

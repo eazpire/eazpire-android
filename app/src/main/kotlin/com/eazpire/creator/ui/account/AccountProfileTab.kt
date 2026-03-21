@@ -57,6 +57,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.account.wardrobe.WardrobeColors
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
@@ -150,9 +151,38 @@ fun AccountProfileTab(
     onSaveActionReady: ((() -> Unit) -> Unit)? = null,
     onSavingStateChange: ((Boolean) -> Unit)? = null,
     onLogout: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    translationStore: TranslationStore? = null,
+    /** Creator Settings modal dark sheet (matches web creator-settings-v2) */
+    useDarkPanel: Boolean = false,
+    /** Parent already scrolls (e.g. Creator Settings); avoids nested scroll / broken weight. */
+    embedInParentScroll: Boolean = false
 ) {
     val context = LocalContext.current
+    val dm = EazColors.CreatorModal
+    fun tr(key: String, def: String) = translationStore?.t(key, def) ?: def
+    val textPrimary = if (useDarkPanel) dm.TextPrimary else EazColors.TextPrimary
+    val textSecondary = if (useDarkPanel) dm.TextSecondary else EazColors.TextSecondary
+    val outlineFieldColors = if (useDarkPanel) {
+        OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedBorderColor = EazColors.Orange,
+            unfocusedBorderColor = dm.Border,
+            cursorColor = EazColors.Orange,
+            focusedLabelColor = EazColors.Orange,
+            unfocusedLabelColor = textSecondary,
+            focusedContainerColor = dm.Elevated,
+            unfocusedContainerColor = dm.Elevated
+        )
+    } else {
+        OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = EazColors.Orange,
+            unfocusedBorderColor = EazColors.TopbarBorder,
+            cursorColor = EazColors.Orange,
+            focusedLabelColor = EazColors.Orange
+        )
+    }
     val locale = Locale.getDefault()
     val (datePattern, _) = getDisplayDateFormat(locale)
     val jwt = remember { tokenStore.getJwt() }
@@ -210,7 +240,7 @@ fun AccountProfileTab(
             }
         } catch (e: Exception) {
             DebugLog.click("Profile load error: ${e.message}")
-            statusMessage = "Failed to load profile"
+            statusMessage = tr("creator.settings.profile_load_failed", "Profile settings could not be loaded.")
             statusError = true
         } finally {
             isLoading = false
@@ -291,16 +321,16 @@ fun AccountProfileTab(
                     )
                 )
                 if (resp.optBoolean("ok", false)) {
-                    statusMessage = "Saved"
+                    statusMessage = tr("creator.settings.profile_saved", "Profile settings saved.")
                     statusError = false
                     showSuccessOverlay = true
                 } else {
-                    statusMessage = resp.optString("message", "Save failed")
+                    statusMessage = resp.optString("message", tr("creator.settings.profile_save_failed", "Profile settings could not be saved."))
                     statusError = true
                 }
             } catch (e: Exception) {
                 DebugLog.click("Profile save error: ${e.message}")
-                statusMessage = "Save failed"
+                statusMessage = tr("creator.settings.profile_save_failed", "Profile settings could not be saved.")
                 statusError = true
             } finally {
                 isSaving = false
@@ -323,386 +353,433 @@ fun AccountProfileTab(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Sub-header: Email + Logout (docked to top, only in Profile tab)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(EazColors.TopbarBorder.copy(alpha = 0.08f))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = email.ifBlank { "—" },
-                style = MaterialTheme.typography.bodyLarge,
-                color = EazColors.TextPrimary
-            )
-            Text(
-                text = "Your account email (from Shopify)",
-                style = MaterialTheme.typography.bodySmall,
-                color = EazColors.TextSecondary
-            )
-            if (onLogout != null) {
-                OutlinedButton(
-                    onClick = onLogout,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        Icons.Default.ExitToApp,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = EazColors.TextSecondary
-                    )
+    val genderCardSurface = if (useDarkPanel) dm.Elevated else MaterialTheme.colorScheme.surface
+    val countryBorder = if (useDarkPanel) dm.Border else EazColors.TopbarBorder
+    val suggestionCardBg = if (useDarkPanel) dm.Elevated else MaterialTheme.colorScheme.surface
+    val emailHeaderBg = if (useDarkPanel) dm.Elevated else EazColors.TopbarBorder.copy(alpha = 0.08f)
+    val rootModifier = if (embedInParentScroll) modifier.fillMaxWidth() else modifier.fillMaxSize()
+
+    Box(modifier = rootModifier) {
+        Column(modifier = if (embedInParentScroll) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(emailHeaderBg, RoundedCornerShape(if (useDarkPanel) 12.dp else 0.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (embedInParentScroll) {
                     Text(
-                        text = "Log out",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = EazColors.TextSecondary,
-                        modifier = Modifier.padding(start = 8.dp)
+                        text = tr("creator.settings.profile_subtitle", "Manage your personal Creator settings"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
-            }
-        }
-
-        // Scrollable form content
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-        if (isLoading) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.padding(24.dp),
-                    color = EazColors.Orange
+                Text(
+                    text = tr("creator.settings.profile_email_label", "Email"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = textSecondary
                 )
-            }
-        } else {
-            OutlinedTextField(
-                value = firstName,
-                onValueChange = { firstName = it },
-                label = { Text("First name") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = EazColors.TopbarBorder,
-                    cursorColor = EazColors.Orange,
-                    focusedLabelColor = EazColors.Orange
+                Text(
+                    text = email.ifBlank { "—" },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = textPrimary
                 )
-            )
-            OutlinedTextField(
-                value = lastName,
-                onValueChange = { lastName = it },
-                label = { Text("Last name") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = EazColors.TopbarBorder,
-                    cursorColor = EazColors.Orange,
-                    focusedLabelColor = EazColors.Orange
+                Text(
+                    text = tr("creator.settings.profile_email_readonly", "Your account email (from Shopify)"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textSecondary
                 )
-            )
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = addressLine,
-                    onValueChange = { addressLine = it },
-                    label = { Text("Address") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EazColors.Orange,
-                        unfocusedBorderColor = EazColors.TopbarBorder,
-                        cursorColor = EazColors.Orange,
-                        focusedLabelColor = EazColors.Orange
-                    )
-                )
-                if (showAddressSuggestions && addressSuggestions.isNotEmpty()) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 52.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                if (onLogout != null) {
+                    OutlinedButton(
+                        onClick = onLogout,
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, if (useDarkPanel) dm.Border else EazColors.TopbarBorder),
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = textSecondary
+                        )
                     ) {
-                        Column(modifier = Modifier.padding(4.dp)) {
-                            addressSuggestions.take(5).forEach { s ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            addressLine = s.addressLine.ifBlank { s.display }
-                                            city = s.city
-                                            postalCode = s.postalCode
-                                            if (s.countryCode.isNotBlank()) {
-                                                val match = AVAILABLE_COUNTRIES.find { it.code.equals(s.countryCode, ignoreCase = true) }
-                                                if (match != null) country = match.code else country = s.countryCode
-                                            }
-                                            showAddressSuggestions = false
+                        Icon(
+                            Icons.Default.ExitToApp,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = textSecondary
+                        )
+                        Text(
+                            text = tr("creator.common.logout", "Log out"),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = textSecondary,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = if (embedInParentScroll) {
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 0.dp, vertical = 4.dp)
+                } else {
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 12.dp)
+                },
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (isLoading) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(24.dp),
+                            color = EazColors.Orange
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = firstName,
+                            onValueChange = { firstName = it },
+                            label = { Text(tr("creator.settings.profile_first_name_label", "First name")) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = outlineFieldColors
+                        )
+                        OutlinedTextField(
+                            value = lastName,
+                            onValueChange = { lastName = it },
+                            label = { Text(tr("creator.settings.profile_last_name_label", "Last name")) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = outlineFieldColors
+                        )
+                    }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = addressLine,
+                            onValueChange = { addressLine = it },
+                            label = { Text(tr("creator.settings.profile_address_label", "Address")) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = outlineFieldColors
+                        )
+                        if (showAddressSuggestions && addressSuggestions.isNotEmpty()) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 52.dp),
+                                colors = CardDefaults.cardColors(containerColor = suggestionCardBg),
+                                shape = RoundedCornerShape(8.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(4.dp)) {
+                                    addressSuggestions.take(5).forEach { s ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    addressLine = s.addressLine.ifBlank { s.display }
+                                                    city = s.city
+                                                    postalCode = s.postalCode
+                                                    if (s.countryCode.isNotBlank()) {
+                                                        val match = AVAILABLE_COUNTRIES.find { it.code.equals(s.countryCode, ignoreCase = true) }
+                                                        if (match != null) country = match.code else country = s.countryCode
+                                                    }
+                                                    showAddressSuggestions = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = s.display,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = textPrimary
+                                            )
                                         }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = s.display,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = EazColors.TextPrimary
-                                    )
+                                    }
                                 }
                             }
                         }
                     }
+                    Text(
+                        text = tr("creator.settings.profile_address_hint", "Start typing to get address suggestions"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = city,
+                            onValueChange = { city = it },
+                            label = { Text(tr("creator.settings.profile_city_label", "City")) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = outlineFieldColors
+                        )
+                        OutlinedTextField(
+                            value = postalCode,
+                            onValueChange = { postalCode = it },
+                            label = { Text(tr("creator.settings.profile_postal_code_label", "Postal code")) },
+                            modifier = Modifier.weight(0.65f),
+                            singleLine = true,
+                            colors = outlineFieldColors
+                        )
+                    }
+                    Card(
+                        onClick = { showCountryModal = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(1.dp, countryBorder),
+                        colors = CardDefaults.cardColors(containerColor = genderCardSurface)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 56.dp)
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = tr("creator.settings.profile_country_label", "Country"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = textSecondary
+                                )
+                                Text(
+                                    text = country.let { cc ->
+                                        AVAILABLE_COUNTRIES.find { it.code.equals(cc, ignoreCase = true) }?.label
+                                            ?: cc.ifBlank { tr("creator.settings.profile_country_select", "Select country") }
+                                    },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = if (country.isBlank()) textSecondary else textPrimary
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Outlined.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = textSecondary
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = birthDateValue,
+                            onValueChange = { new ->
+                                val digits = new.text.filter { it.isDigit() }.take(8)
+                                val formatted = formatDateInput(digits, locale)
+                                birthDateValue = TextFieldValue(formatted, TextRange(formatted.length))
+                                if (formatted.length >= 10) {
+                                    birthDateApi = displayDateToApi(formatted, locale)
+                                }
+                            },
+                            label = {
+                                Text(
+                                    "${tr("creator.settings.profile_birth_date_label", "Birth date")} ($datePattern)"
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = outlineFieldColors
+                        )
+                        IconButton(
+                            onClick = {
+                                val cal = Calendar.getInstance()
+                                if (birthDateApi.isNotBlank()) {
+                                    try {
+                                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                                        sdf.parse(birthDateApi)?.let { cal.time = it }
+                                    } catch (_: Exception) {}
+                                }
+                                DatePickerDialog(
+                                    context,
+                                    { _, y, m, d ->
+                                        cal.set(y, m, d)
+                                        birthDateApi = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+                                        val disp = apiDateToDisplay(birthDateApi, locale)
+                                        birthDateValue = TextFieldValue(disp, TextRange(disp.length))
+                                    },
+                                    cal.get(Calendar.YEAR),
+                                    cal.get(Calendar.MONTH),
+                                    cal.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.CalendarMonth,
+                                contentDescription = tr("creator.settings.profile_birth_date_label", "Birth date"),
+                                tint = EazColors.Orange
+                            )
+                        }
+                    }
+                    Text(
+                        text = tr(
+                            "creator.settings.profile_birth_date_hint",
+                            "Share your birth date to unlock a birthday surprise."
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textSecondary
+                    )
+                    Text(
+                        text = tr("creator.settings.profile_gender_label", "Gender"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = textSecondary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Card(
+                            onClick = { gender = "female" },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (gender == "female") WardrobeColors.FemalePink.copy(alpha = 0.2f)
+                                else genderCardSurface
+                            ),
+                            border = if (gender == "female") BorderStroke(2.dp, WardrobeColors.FemalePink) else null
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Female,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = WardrobeColors.FemalePink
+                                )
+                                Text(
+                                    text = tr("creator.settings.profile_gender_female", "Female"),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = textPrimary
+                                )
+                            }
+                        }
+                        Card(
+                            onClick = { gender = "male" },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (gender == "male") WardrobeColors.MaleBlue.copy(alpha = 0.2f)
+                                else genderCardSurface
+                            ),
+                            border = if (gender == "male") BorderStroke(2.dp, WardrobeColors.MaleBlue) else null
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Male,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = WardrobeColors.MaleBlue
+                                )
+                                Text(
+                                    text = tr("creator.settings.profile_gender_male", "Male"),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = textPrimary
+                                )
+                            }
+                        }
+                    }
+                    statusMessage?.let { msg ->
+                        if (!showSuccessOverlay) {
+                            Text(
+                                text = msg,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (statusError) MaterialTheme.colorScheme.error else EazColors.Orange
+                            )
+                        }
+                    }
                 }
             }
-            Text(
-                text = "Start typing to get address suggestions",
-                style = MaterialTheme.typography.bodySmall,
-                color = EazColors.TextSecondary,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedTextField(
-                    value = city,
-                    onValueChange = { city = it },
-                    label = { Text("City") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EazColors.Orange,
-                        unfocusedBorderColor = EazColors.TopbarBorder,
-                        cursorColor = EazColors.Orange,
-                        focusedLabelColor = EazColors.Orange
-                    )
-                )
-                OutlinedTextField(
-                    value = postalCode,
-                    onValueChange = { postalCode = it },
-                    label = { Text("Postal code") },
-                    modifier = Modifier.weight(0.6f),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EazColors.Orange,
-                        unfocusedBorderColor = EazColors.TopbarBorder,
-                        cursorColor = EazColors.Orange,
-                        focusedLabelColor = EazColors.Orange
-                    )
-                )
-            }
-            Card(
-                onClick = { showCountryModal = true },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, EazColors.TopbarBorder),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        }
+
+        if (embedInParentScroll) {
+            AnimatedVisibility(
+                visible = showSuccessOverlay,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .defaultMinSize(minHeight = 56.dp)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Country",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = EazColors.TextSecondary
-                        )
-                        Text(
-                            text = country.let { cc ->
-                                AVAILABLE_COUNTRIES.find { it.code.equals(cc, ignoreCase = true) }?.label ?: cc.ifBlank { "Select..." }
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (country.isBlank()) EazColors.TextSecondary else EazColors.TextPrimary
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Outlined.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = EazColors.TextSecondary
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = birthDateValue,
-                    onValueChange = { new ->
-                        val digits = new.text.filter { it.isDigit() }.take(8)
-                        val formatted = formatDateInput(digits, locale)
-                        birthDateValue = TextFieldValue(formatted, TextRange(formatted.length))
-                        if (formatted.length >= 10) {
-                            birthDateApi = displayDateToApi(formatted, locale)
-                        }
-                    },
-                    label = { Text("Birth date ($datePattern)") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EazColors.Orange,
-                        unfocusedBorderColor = EazColors.TopbarBorder,
-                        cursorColor = EazColors.Orange,
-                        focusedLabelColor = EazColors.Orange
-                    )
-                )
-                IconButton(
-                    onClick = {
-                        val cal = Calendar.getInstance()
-                        if (birthDateApi.isNotBlank()) {
-                            try {
-                                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                                sdf.parse(birthDateApi)?.let { cal.time = it }
-                            } catch (_: Exception) {}
-                        }
-                        DatePickerDialog(
-                            context,
-                            { _, y, m, d ->
-                                cal.set(y, m, d)
-                                birthDateApi = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-                                val disp = apiDateToDisplay(birthDateApi, locale)
-                                birthDateValue = TextFieldValue(disp, TextRange(disp.length))
-                            },
-                            cal.get(Calendar.YEAR),
-                            cal.get(Calendar.MONTH),
-                            cal.get(Calendar.DAY_OF_MONTH)
-                        ).show()
-                    }
-                ) {
-                    Icon(
-                        Icons.Default.CalendarMonth,
-                        contentDescription = "Pick date",
-                        tint = EazColors.Orange
-                    )
-                }
-            }
-            Text(
-                text = "Gender",
-                style = MaterialTheme.typography.labelMedium,
-                color = EazColors.TextSecondary
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Card(
-                    onClick = { gender = "female" },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (gender == "female") WardrobeColors.FemalePink.copy(alpha = 0.2f)
-                        else MaterialTheme.colorScheme.surface
-                    ),
-                    border = if (gender == "female") BorderStroke(2.dp, WardrobeColors.FemalePink) else null
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Female,
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = WardrobeColors.FemalePink
-                        )
-                        Text(
-                            text = "Female",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = EazColors.TextPrimary
-                        )
-                    }
-                }
-                Card(
-                    onClick = { gender = "male" },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (gender == "male") WardrobeColors.MaleBlue.copy(alpha = 0.2f)
-                        else MaterialTheme.colorScheme.surface
-                    ),
-                    border = if (gender == "male") BorderStroke(2.dp, WardrobeColors.MaleBlue) else null
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Male,
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = WardrobeColors.MaleBlue
-                        )
-                        Text(
-                            text = "Male",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = EazColors.TextPrimary
-                        )
-                    }
-                }
-            }
-            statusMessage?.let { msg ->
-                if (!showSuccessOverlay) {
-                    Text(
-                        text = msg,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (statusError) MaterialTheme.colorScheme.error else EazColors.Orange
-                    )
-                }
-            }
-        }
-        }
-    }
-
-        AnimatedVisibility(
-            visible = showSuccessOverlay,
-            enter = fadeIn() + scaleIn(initialScale = 0.8f),
-            exit = fadeOut() + scaleOut(targetScale = 0.8f),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.White.copy(alpha = 0.95f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .background(dm.Elevated, RoundedCornerShape(12.dp))
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         Icons.Default.CheckCircle,
                         contentDescription = null,
-                        modifier = Modifier.size(80.dp),
+                        modifier = Modifier.size(28.dp),
                         tint = EazColors.Orange
                     )
                     Text(
-                        text = "Saved successfully",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = EazColors.TextPrimary
+                        text = tr("creator.settings.profile_saved", "Profile settings saved."),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = textPrimary
                     )
+                }
+            }
+        } else {
+            AnimatedVisibility(
+                visible = showSuccessOverlay,
+                enter = fadeIn() + scaleIn(initialScale = 0.8f),
+                exit = fadeOut() + scaleOut(targetScale = 0.8f),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.White.copy(alpha = 0.95f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(80.dp),
+                            tint = EazColors.Orange
+                        )
+                        Text(
+                            text = tr("creator.settings.profile_saved", "Profile settings saved."),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = EazColors.TextPrimary
+                        )
+                    }
                 }
             }
         }
@@ -710,7 +787,7 @@ fun AccountProfileTab(
 
     if (showCountryModal) {
         LocaleModal(
-            title = "Country",
+            title = tr("creator.settings.profile_country_label", "Country"),
             items = AVAILABLE_COUNTRIES,
             selectedCode = country.ifBlank { "DE" },
             onDismiss = { showCountryModal = false },
@@ -718,7 +795,12 @@ fun AccountProfileTab(
                 country = code
                 showCountryModal = false
             },
-            searchPlaceholder = "Search country..."
+            searchPlaceholder = tr("creator.common.search", "Search") + "…",
+            sheetContainerColor = if (useDarkPanel) dm.SheetBg else Color.White,
+            contentColorPrimary = textPrimary,
+            contentColorSecondary = textSecondary,
+            fieldContainerColor = if (useDarkPanel) dm.Elevated else Color.White,
+            outlineUnfocused = if (useDarkPanel) dm.Border else EazColors.TopbarBorder
         )
     }
 }

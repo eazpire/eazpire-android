@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -45,7 +46,12 @@ fun LocaleModal(
     selectedCode: String,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
-    searchPlaceholder: String = "Search..."
+    searchPlaceholder: String = "Search...",
+    sheetContainerColor: Color = Color.White,
+    contentColorPrimary: Color = EazColors.TextPrimary,
+    contentColorSecondary: Color = EazColors.TextSecondary,
+    fieldContainerColor: Color = Color.White,
+    outlineUnfocused: Color = EazColors.TopbarBorder
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
@@ -59,7 +65,7 @@ fun LocaleModal(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = androidx.compose.ui.graphics.Color.White
+        containerColor = sheetContainerColor
     ) {
         Column(
             modifier = Modifier
@@ -74,13 +80,13 @@ fun LocaleModal(
                 Text(
                     text = title,
                     style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                    color = EazColors.TextPrimary
+                    color = contentColorPrimary
                 )
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = EazColors.TextPrimary
+                        tint = contentColorPrimary
                     )
                 }
             }
@@ -90,12 +96,12 @@ fun LocaleModal(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 12.dp, bottom = 8.dp),
-                placeholder = { Text(searchPlaceholder, color = EazColors.TextSecondary) },
+                placeholder = { Text(searchPlaceholder, color = contentColorSecondary) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Filled.Search,
                         contentDescription = null,
-                        tint = EazColors.TextSecondary,
+                        tint = contentColorSecondary,
                         modifier = Modifier.size(20.dp)
                     )
                 },
@@ -103,12 +109,12 @@ fun LocaleModal(
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = EazColors.TopbarBorder,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                    unfocusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    unfocusedBorderColor = outlineUnfocused,
+                    focusedContainerColor = fieldContainerColor,
+                    unfocusedContainerColor = fieldContainerColor,
                     cursorColor = EazColors.Orange,
-                    focusedTextColor = EazColors.TextPrimary,
-                    unfocusedTextColor = EazColors.TextPrimary
+                    focusedTextColor = contentColorPrimary,
+                    unfocusedTextColor = contentColorPrimary
                 ),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
@@ -140,7 +146,7 @@ fun LocaleModal(
                             text = item.label,
                             modifier = Modifier.padding(start = 12.dp),
                             style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                            color = EazColors.TextPrimary
+                            color = contentColorPrimary
                         )
                         if (item.code == selectedCode) {
                             Text(

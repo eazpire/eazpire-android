@@ -14,6 +14,16 @@ object EazColors {
     val TopbarBorder = Color(0x0A000000)
     val TextPrimary = Color(0xCF000000)
     val TextSecondary = Color(0x66000000)
+
+    /** Creator Settings modal / Shop dark panels (aligned with CreatorSettingsModal sheet) */
+    object CreatorModal {
+        val SheetBg = Color(0xFF070B14)
+        val ContentBg = Color(0xFF0B1220)
+        val Elevated = Color(0xFF121A2E)
+        val Border = Color.White.copy(alpha = 0.14f)
+        val TextPrimary = Color.White
+        val TextSecondary = Color.White.copy(alpha = 0.65f)
+    }
 }
 
 private val EazpireColorScheme = lightColorScheme(

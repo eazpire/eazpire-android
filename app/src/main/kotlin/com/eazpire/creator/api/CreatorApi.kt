@@ -803,6 +803,170 @@ class CreatorApi(
             JSONObject(response.body?.string() ?: "{}")
         }
 
+    // ── Per-creator profile images (Creator Detail modal, same ops as web) ──
+
+    private suspend fun postDispatchJson(
+        op: String,
+        jsonBody: JSONObject,
+        queryParams: Map<String, String> = emptyMap()
+    ): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}")
+                queryParams.forEach { (k, v) ->
+                    if (v.isNotBlank()) append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}")
+                }
+            }
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), jsonBody.toString().toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    /** GET ?op=get-creator-image */
+    suspend fun getCreatorImage(ownerId: String, creatorName: String, imageCategory: String): JSONObject =
+        call(
+            "get-creator-image",
+            mapOf(
+                "owner_id" to ownerId,
+                "creator_name" to creatorName,
+                "image_category" to imageCategory
+            )
+        )
+
+    /** POST multipart ?op=upload-creator-image */
+    suspend fun uploadCreatorImage(
+        ownerId: String,
+        creatorName: String,
+        imageCategory: String,
+        imageBytes: ByteArray,
+        contentType: String,
+        fileName: String = "upload.jpg"
+    ): JSONObject =
+        withContext(Dispatchers.IO) {
+            val ext = when {
+                contentType.contains("png") -> "png"
+                contentType.contains("webp") -> "webp"
+                else -> "jpg"
+            }
+            val mediaType = contentType.toMediaType()
+            val name = fileName.ifBlank { "upload.$ext" }
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("image", name, okhttp3.RequestBody.create(mediaType, imageBytes))
+                .build()
+            val url = "$baseUrl/apps/creator-dispatch?op=upload-creator-image&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&creator_name=${java.net.URLEncoder.encode(creatorName, "UTF-8")}&image_category=${java.net.URLEncoder.encode(imageCategory, "UTF-8")}&_t=${System.currentTimeMillis()}"
+            val request = Request.Builder()
+                .url(url)
+                .post(body)
+                .addHeader("Accept", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    /** POST ?op=save-creator-image — body matches web (upload / generated / delete pending payloads). */
+    suspend fun saveCreatorImage(
+        ownerId: String,
+        creatorName: String,
+        imageCategory: String,
+        body: JSONObject
+    ): JSONObject = postDispatchJson(
+        "save-creator-image",
+        body,
+        mapOf("owner_id" to ownerId, "creator_name" to creatorName, "image_category" to imageCategory)
+    )
+
+    /** POST ?op=generate-creator-image */
+    suspend fun generateCreatorImage(
+        ownerId: String,
+        creatorName: String,
+        imageCategory: String,
+        prompt: String,
+        referenceImageUrl: String? = null
+    ): JSONObject {
+        val body = JSONObject().put("prompt", prompt)
+        if (!referenceImageUrl.isNullOrBlank()) body.put("reference_image", referenceImageUrl)
+        return postDispatchJson(
+            "generate-creator-image",
+            body,
+            mapOf("owner_id" to ownerId, "creator_name" to creatorName, "image_category" to imageCategory)
+        )
+    }
+
+    /** Same as [generateCreatorImage] but exposes HTTP status (e.g. 402 insufficient EAZ). */
+    suspend fun generateCreatorImageWithHttpCode(
+        ownerId: String,
+        creatorName: String,
+        imageCategory: String,
+        prompt: String,
+        referenceImageUrl: String? = null
+    ): Pair<Int, JSONObject> =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().put("prompt", prompt)
+            if (!referenceImageUrl.isNullOrBlank()) body.put("reference_image", referenceImageUrl)
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=generate-creator-image&_t=${System.currentTimeMillis()}")
+                append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+                append("&creator_name=${java.net.URLEncoder.encode(creatorName, "UTF-8")}")
+                append("&image_category=${java.net.URLEncoder.encode(imageCategory, "UTF-8")}")
+            }
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            Pair(response.code, JSONObject(response.body?.string() ?: "{}"))
+        }
+
+    /** GET ?op=creator-image-status */
+    suspend fun getCreatorImageStatus(predictionId: String): JSONObject =
+        call("creator-image-status", mapOf("prediction_id" to predictionId))
+
+    /** DELETE ?op=delete-creator-image */
+    suspend fun deleteCreatorImage(ownerId: String, creatorName: String, imageCategory: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=delete-creator-image&_t=${System.currentTimeMillis()}")
+                append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+                append("&creator_name=${java.net.URLEncoder.encode(creatorName, "UTF-8")}")
+                append("&image_category=${java.net.URLEncoder.encode(imageCategory, "UTF-8")}")
+            }
+            val request = Request.Builder()
+                .url(url)
+                .delete()
+                .addHeader("Accept", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    /** POST ?op=save-cover-display-mode */
+    suspend fun saveCoverDisplayMode(ownerId: String, creatorName: String, displayMode: String): JSONObject =
+        postDispatchJson(
+            "save-cover-display-mode",
+            JSONObject().put("display_mode", displayMode),
+            mapOf("owner_id" to ownerId, "creator_name" to creatorName)
+        )
+
+    /** POST ?op=toggle-hero-creator-page */
+    suspend fun toggleHeroCreatorPage(ownerId: String, heroId: String, enabled: Boolean): JSONObject =
+        postDispatchJson(
+            "toggle-hero-creator-page",
+            JSONObject().put("hero_id", heroId).put("enabled", enabled),
+            mapOf("owner_id" to ownerId)
+        )
+
     /** POST ?op=hero-generate – Body: owner_id, product_ids, prompt, product_image_urls?, model_image_url?, background_image_url?, api_version */
     suspend fun heroGenerate(
         ownerId: String,

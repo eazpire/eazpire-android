@@ -5,6 +5,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.forEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -105,7 +106,11 @@ fun EazyMascot(
      * When true, horizontal facing follows mascot center vs screen half (left → look right, right → look left),
      * matching web `eazy-mascot.js` / `creator-mobile.js` undocked behavior.
      */
-    autoFaceFromScreenHalf: Boolean = false
+    autoFaceFromScreenHalf: Boolean = false,
+    /**
+     * Pinned bottom-end next to "Start generation" bubble — single mascot, no duplicate overlay icon.
+     */
+    pinToGenerationBottomEnd: Boolean = false
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -170,21 +175,31 @@ fun EazyMascot(
 
     var halfScreenLookLeft by remember(autoFaceFromScreenHalf) { mutableStateOf(lookLeft) }
     val effectiveLookLeft =
-        if (autoFaceFromScreenHalf) halfScreenLookLeft else lookLeft
+        when {
+            pinToGenerationBottomEnd -> lookLeft
+            autoFaceFromScreenHalf -> halfScreenLookLeft
+            else -> lookLeft
+        }
 
     Box(
         modifier = modifier
             .onGloballyPositioned { coords ->
-                if (!autoFaceFromScreenHalf) return@onGloballyPositioned
+                if (pinToGenerationBottomEnd || !autoFaceFromScreenHalf) return@onGloballyPositioned
                 val c = coords.boundsInRoot().center
                 halfScreenLookLeft = c.x >= screenWidthPx * 0.5f
             }
-            .offset {
-                IntOffset(displayX.roundToInt(), displayY.roundToInt())
-            }
+            .then(
+                if (pinToGenerationBottomEnd) Modifier else Modifier.offset {
+                    IntOffset(displayX.roundToInt(), displayY.roundToInt())
+                }
+            )
             .size(MascotSize)
-            .pointerInput(rawX, rawY, maxX, maxY) {
-                forEachGesture {
+            .pointerInput(rawX, rawY, maxX, maxY, pinToGenerationBottomEnd) {
+                if (pinToGenerationBottomEnd) {
+                    detectTapGestures(
+                        onTap = { onOpenChat() }
+                    )
+                } else forEachGesture {
                     awaitPointerEventScope {
                         while (true) {
                             val event = awaitPointerEvent()

@@ -52,13 +52,18 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.i18n.TranslationStore
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
@@ -97,6 +102,46 @@ private val RESERVED_REF_SLUGS = setOf(
     "favicon.ico", "robots.txt", "sitemap.xml"
 )
 
+private data class CommunityTabColorScheme(
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val cardSurface: Color,
+    val funnelTrack: Color,
+    val sheetContainer: Color,
+    val outlineBorder: Color,
+    val mutedBg: Color,
+    val partnerCardBg: Color
+) {
+    companion object {
+        /** Literal colors — companion init cannot rely on theme accessors in all Kotlin/Compose versions */
+        val Light = CommunityTabColorScheme(
+            textPrimary = Color(0xCF000000),
+            textSecondary = Color(0x66000000),
+            cardSurface = Color.White,
+            funnelTrack = Color(0x0A000000).copy(alpha = 0.3f),
+            sheetContainer = Color.White,
+            outlineBorder = Color(0x0A000000),
+            mutedBg = Color(0x0A000000).copy(alpha = 0.2f),
+            partnerCardBg = Color(0x0FF97316).copy(alpha = 0.3f)
+        )
+        fun creatorDark() = CommunityTabColorScheme(
+            textPrimary = Color.White,
+            textSecondary = Color.White.copy(alpha = 0.65f),
+            cardSurface = Color(0xFF121A2E),
+            funnelTrack = Color.White.copy(alpha = 0.12f),
+            sheetContainer = Color(0xFF070B14),
+            outlineBorder = Color.White.copy(alpha = 0.14f),
+            mutedBg = Color.White.copy(alpha = 0.06f),
+            partnerCardBg = Color(0x0FF97316).copy(alpha = 0.35f)
+        )
+    }
+}
+
+private val LocalCommunityColors = compositionLocalOf { CommunityTabColorScheme.Light }
+
+/** Resolves `creator.community.*` (and related) keys; default returns English fallback. */
+private val LocalCommunityTranslate = compositionLocalOf<(String, String) -> String> { { _, d -> d } }
+
 private data class RefLink(val id: String, val name: String, val slug: String, val description: String = "")
 
 private fun buildNamedRefUrl(baseUrl: String, slug: String): String {
@@ -125,12 +170,21 @@ private fun isValidRefSlug(slug: String): Boolean {
 
 private fun isReservedRefSlug(slug: String): Boolean = RESERVED_REF_SLUGS.contains(slug.lowercase())
 
-private fun normalizeStoredRefLinks(raw: String?): Pair<List<RefLink>, String> {
-    val defaultName = "Main link"
+/** Canonical English label from web/API; used for matching stored JSON, not for display. */
+private const val EN_MAIN_LINK_LABEL = "Main link"
+
+private fun displayRefLinkName(storedName: String, t: (String, String) -> String): String =
+    if (storedName.equals(EN_MAIN_LINK_LABEL, ignoreCase = true)) {
+        t("creator.community.ref_link_main_default", EN_MAIN_LINK_LABEL)
+    } else {
+        storedName
+    }
+
+private fun normalizeStoredRefLinks(raw: String?, defaultLinkDisplayName: String): Pair<List<RefLink>, String> {
     val parsed = runCatching { raw?.let { org.json.JSONObject(it) } }.getOrNull()
     val linksArr = parsed?.optJSONArray("links") ?: org.json.JSONArray()
     val activeIdRaw = parsed?.optString("activeId", "") ?: ""
-    val defaultNameLc = defaultName.lowercase()
+    val defaultNameLc = EN_MAIN_LINK_LABEL.lowercase()
     val normalized = (0 until linksArr.length()).mapNotNull { i ->
         val item = linksArr.optJSONObject(i) ?: return@mapNotNull null
         val label = item.optString("name", "").trim()
@@ -139,7 +193,7 @@ private fun normalizeStoredRefLinks(raw: String?): Pair<List<RefLink>, String> {
         val isDefault = id == "default" || label.lowercase() == defaultNameLc
         val rawSlug = item.optString("slug", "").trim()
         val slug = when {
-            isDefault && (rawSlug == "main-link" || rawSlug == slugifyLabel(defaultName)) -> ""
+            isDefault && (rawSlug == "main-link" || rawSlug == slugifyLabel(EN_MAIN_LINK_LABEL)) -> ""
             isDefault -> ""
             rawSlug.isNotBlank() -> slugifyLabel(rawSlug)
             else -> slugifyLabel(label)
@@ -147,7 +201,7 @@ private fun normalizeStoredRefLinks(raw: String?): Pair<List<RefLink>, String> {
         val description = item.optString("description", "").trim()
         RefLink(id = id, name = label, slug = slug, description = description)
     }.filter { it.name.isNotBlank() }.take(REF_LINKS_MAX)
-    val links = if (normalized.isEmpty()) listOf(RefLink("default", defaultName, "")) else normalized
+    val links = if (normalized.isEmpty()) listOf(RefLink("default", defaultLinkDisplayName, "")) else normalized
     val activeId = if (links.any { it.id == activeIdRaw }) activeIdRaw else links.first().id
     return Pair(links, activeId)
 }
@@ -176,23 +230,28 @@ private val FLAG_EMOJI = mapOf(
 
 private fun flagEmojiFor(code: String): String = FLAG_EMOJI[code.uppercase()] ?: "🏳️"
 
-private val COUNTRY_NAMES = mapOf(
-    "ALL" to "Alle",
-    "DE" to "Deutschland",
-    "AT" to "Österreich",
-    "CH" to "Schweiz",
-    "NL" to "Niederlande",
-    "SE" to "Schweden",
-    "US" to "USA",
-    "FR" to "Frankreich",
-    "ES" to "Spanien",
-    "IT" to "Italien",
-    "PL" to "Polen",
-    "GB" to "UK",
-    "TR" to "Türkei"
+/** ISO 3166-1 alpha-2 codes used in community network (English defaults match theme locale). */
+private val COUNTRY_NAME_DEFAULTS = mapOf(
+    "ALL" to "All",
+    "DE" to "Germany",
+    "AT" to "Austria",
+    "CH" to "Switzerland",
+    "NL" to "Netherlands",
+    "SE" to "Sweden",
+    "US" to "United States",
+    "FR" to "France",
+    "ES" to "Spain",
+    "IT" to "Italy",
+    "PL" to "Poland",
+    "GB" to "United Kingdom",
+    "TR" to "Turkey"
 )
 
-private fun countryNameFor(code: String): String = COUNTRY_NAMES[code.uppercase()] ?: code
+private fun countryNameFor(code: String, t: (String, String) -> String): String {
+    val c = code.uppercase()
+    val def = COUNTRY_NAME_DEFAULTS[c] ?: return c
+    return t("creator.community.country_${c.lowercase()}", def)
+}
 
 
 data class CommunityNetwork(
@@ -237,8 +296,15 @@ data class PartnerItem(
 fun AccountCommunityTab(
     tokenStore: SecureTokenStore,
     modifier: Modifier = Modifier,
-    scrollable: Boolean = true
+    scrollable: Boolean = true,
+    /** Creator Settings modal content background (dark sheet) */
+    darkTheme: Boolean = false,
+    /** When null, uses [LocalTranslationStore] (e.g. Shop account modal). */
+    translationStore: TranslationStore? = null
 ) {
+    val scheme = if (darkTheme) CommunityTabColorScheme.creatorDark() else CommunityTabColorScheme.Light
+    val ts = translationStore ?: LocalTranslationStore.current
+    val t: (String, String) -> String = { k, d -> ts?.t(k, d) ?: d }
     val context = LocalContext.current
     val jwt = remember { tokenStore.getJwt() }
     val ownerId = remember { tokenStore.getOwnerId() ?: "" }
@@ -279,43 +345,50 @@ fun AccountCommunityTab(
                 if (net.optBoolean("ok", false)) {
                     network = net.optJSONObject("network")?.let { parseNetwork(it) }
                 } else {
-                    errorMessage = net.optString("error", "Failed to load community")
+                    errorMessage = net.optString("error", t("creator.community.load_failed", "Failed to load community."))
                 }
                 val baseUrl = ref.optString("short_url", "").ifBlank { ref.optString("url", "") }
                 if (ref.optBoolean("ok", false) && baseUrl.isNotBlank()) {
                     referralBaseUrl = baseUrl
                     val settingRes = api.getCustomerSetting(ownerId, REF_LINKS_SETTING_KEY)
-                    val raw = if (settingRes.optBoolean("ok", false)) settingRes.optString("value", null) else null
-                    val (links, activeId) = normalizeStoredRefLinks(raw)
+                    val raw = if (settingRes.optBoolean("ok", false)) {
+                        settingRes.optString("value", "").takeIf { it.isNotBlank() }
+                    } else null
+                    val (links, activeId) = normalizeStoredRefLinks(
+                        raw,
+                        t("creator.community.ref_link_main_default", EN_MAIN_LINK_LABEL)
+                    )
                     refLinks = links
                     refLinksActiveId = activeId
                 }
             }
         } catch (e: Exception) {
             DebugLog.click("Community load error: ${e.message}")
-            errorMessage = "Failed to load community"
+            errorMessage = t("creator.community.load_failed", "Failed to load community.")
         } finally {
             isLoading = false
         }
     }
 
     val scrollModifier = if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(scrollModifier)
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    CompositionLocalProvider(LocalCommunityColors provides scheme) {
+    CompositionLocalProvider(LocalCommunityTranslate provides t) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .then(scrollModifier)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
         Text(
-            text = "Network",
+            text = t("creator.community.title", "Network"),
             style = MaterialTheme.typography.titleMedium,
-            color = EazColors.TextPrimary
+            color = LocalCommunityColors.current.textPrimary
         )
         Text(
-            text = "Overview of your network – compact and pressure-free.",
+            text = t("creator.community.subtitle", "Overview of your network – compact and pressure-free."),
             style = MaterialTheme.typography.bodySmall,
-            color = EazColors.TextSecondary
+            color = LocalCommunityColors.current.textSecondary
         )
 
         Row(
@@ -331,7 +404,7 @@ fun AccountCommunityTab(
                     )
                 } else androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
             ) {
-                Text("Overview", color = if (overviewSubtab) EazColors.Orange else EazColors.TextSecondary)
+                Text(t("creator.community.overview_tab", "Overview"), color = if (overviewSubtab) EazColors.Orange else LocalCommunityColors.current.textSecondary)
             }
             OutlinedButton(
                 onClick = { overviewSubtab = false },
@@ -342,7 +415,7 @@ fun AccountCommunityTab(
                     )
                 } else androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
             ) {
-                Text("Analytics", color = if (!overviewSubtab) EazColors.Orange else EazColors.TextSecondary)
+                Text(t("creator.community.analytics_tab", "Analytics"), color = if (!overviewSubtab) EazColors.Orange else LocalCommunityColors.current.textSecondary)
             }
         }
 
@@ -379,7 +452,7 @@ fun AccountCommunityTab(
                                 type = "text/plain"
                                 putExtra(Intent.EXTRA_TEXT, activeUrl)
                             }
-                            context.startActivity(Intent.createChooser(intent, "Share referral link"))
+                            context.startActivity(Intent.createChooser(intent, t("creator.community.share_chooser_title", "Share referral link")))
                         },
                         copied = copiedToast
                     )
@@ -420,9 +493,9 @@ fun AccountCommunityTab(
                         onPartnerClick = { selectedPartner = it }
                     )
                     Text(
-                        text = "Level 1–10: direct partners and their downline. Tap a partner for details.",
+                        text = t("creator.community.levels_hint", "Level 1–10: direct partners and their downline. Tap a partner for details."),
                         style = MaterialTheme.typography.labelSmall,
-                        color = EazColors.TextSecondary,
+                        color = LocalCommunityColors.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -432,17 +505,20 @@ fun AccountCommunityTab(
         }
     }
 
-    selectedPartner?.let { partner ->
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { selectedPartner = null },
-            sheetState = sheetState
-        ) {
-            PartnerDetailSheet(
-                partner = partner,
-                onDismiss = { selectedPartner = null }
-            )
+        selectedPartner?.let { partner ->
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = { selectedPartner = null },
+                sheetState = sheetState,
+                containerColor = LocalCommunityColors.current.sheetContainer
+            ) {
+                PartnerDetailSheet(
+                    partner = partner,
+                    onDismiss = { selectedPartner = null }
+                )
+            }
         }
+    }
     }
 }
 
@@ -452,11 +528,12 @@ private fun NetworkInfoSection(
     expanded: Boolean,
     onToggle: () -> Unit
 ) {
+    val t = LocalCommunityTranslate.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onToggle() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.cardSurface),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -479,14 +556,14 @@ private fun NetworkInfoSection(
                         Text("i", style = MaterialTheme.typography.labelMedium, color = EazColors.Orange, fontWeight = FontWeight.Bold)
                     }
                     Column {
-                        Text("Network Info", style = MaterialTheme.typography.titleSmall, color = EazColors.TextPrimary)
-                        Text("Users · Designs · Products · Sales · Profit", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                        Text(t("creator.community.network_info", "Network Info"), style = MaterialTheme.typography.titleSmall, color = LocalCommunityColors.current.textPrimary)
+                        Text(t("creator.community.network_info_sub", "Users · Designs · Products · Sales · Profit"), style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary)
                     }
                 }
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     contentDescription = null,
-                    tint = EazColors.TextSecondary
+                    tint = LocalCommunityColors.current.textSecondary
                 )
             }
             AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
@@ -495,11 +572,11 @@ private fun NetworkInfoSection(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        statItemWithIcon(Icons.Default.Groups, "Users", stats.partners.toString())
-                        statItemWithIcon(Icons.Default.Image, "Designs", stats.designs.toString())
-                        statItemWithIcon(Icons.Default.Inventory2, "Products", stats.products.toString())
-                        statItemWithIcon(Icons.Default.ShoppingCart, "Sales", stats.sales.toString())
-                        if (stats.profit.isNotBlank()) statItemWithIcon(Icons.Default.MonetizationOn, "Profit", stats.profit)
+                        statItemWithIcon(Icons.Default.Groups, t("creator.community.partners_1_10", "Users"), stats.partners.toString())
+                        statItemWithIcon(Icons.Default.Image, t("creator.community.designs", "Designs"), stats.designs.toString())
+                        statItemWithIcon(Icons.Default.Inventory2, t("creator.community.products", "Products"), stats.products.toString())
+                        statItemWithIcon(Icons.Default.ShoppingCart, t("creator.community.sales", "Sales"), stats.sales.toString())
+                        if (stats.profit.isNotBlank()) statItemWithIcon(Icons.Default.MonetizationOn, t("creator.community.profit", "Profit"), stats.profit)
                     }
                 }
             }
@@ -513,11 +590,12 @@ private fun YouSection(
     expanded: Boolean,
     onToggle: () -> Unit
 ) {
+    val t = LocalCommunityTranslate.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onToggle() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.cardSurface),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -539,14 +617,14 @@ private fun YouSection(
                         Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp), tint = EazColors.Orange)
                     }
                     Column {
-                        Text("You", style = MaterialTheme.typography.titleSmall, color = EazColors.TextPrimary)
-                        Text("Your own stats · Designs · Products · Sales · Profit", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                        Text(t("creator.community.you", "You"), style = MaterialTheme.typography.titleSmall, color = LocalCommunityColors.current.textPrimary)
+                        Text(t("creator.community.you_stats_hint", "Your own stats · Designs · Products · Sales · Profit"), style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary)
                     }
                 }
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     contentDescription = null,
-                    tint = EazColors.TextSecondary
+                    tint = LocalCommunityColors.current.textSecondary
                 )
             }
             AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
@@ -555,10 +633,10 @@ private fun YouSection(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        statItemWithIcon(Icons.Default.Image, "Designs", me.designs.toString())
-                        statItemWithIcon(Icons.Default.Inventory2, "Products", me.products.toString())
-                        statItemWithIcon(Icons.Default.ShoppingCart, "Sales", me.sales.toString())
-                        if (me.profit.isNotBlank()) statItemWithIcon(Icons.Default.MonetizationOn, "Profit", me.profit)
+                        statItemWithIcon(Icons.Default.Image, t("creator.community.designs", "Designs"), me.designs.toString())
+                        statItemWithIcon(Icons.Default.Inventory2, t("creator.community.products", "Products"), me.products.toString())
+                        statItemWithIcon(Icons.Default.ShoppingCart, t("creator.community.sales", "Sales"), me.sales.toString())
+                        if (me.profit.isNotBlank()) statItemWithIcon(Icons.Default.MonetizationOn, t("creator.community.profit", "Profit"), me.profit)
                     }
                 }
             }
@@ -571,7 +649,7 @@ private fun statItemWithIcon(icon: androidx.compose.ui.graphics.vector.ImageVect
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = EazColors.Orange)
         Text(value, style = MaterialTheme.typography.titleSmall, color = EazColors.Orange)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
     }
 }
 
@@ -585,6 +663,7 @@ private fun LevelCards(
     onCountrySelect: (String) -> Unit,
     onPartnerClick: (PartnerItem) -> Unit
 ) {
+    val t = LocalCommunityTranslate.current
     val countryCounts = remember(level1) {
         val map = mutableMapOf<String, Int>()
         level1.forEach { p ->
@@ -607,7 +686,7 @@ private fun LevelCards(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onLevelToggle(info.level) },
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.cardSurface),
             shape = RoundedCornerShape(12.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -616,13 +695,21 @@ private fun LevelCards(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Level ${info.level}", style = MaterialTheme.typography.titleSmall, color = EazColors.TextPrimary)
+                    Text(
+                        String.format(Locale.US, t("creator.community.level_format", "Level %d"), info.level),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = LocalCommunityColors.current.textPrimary
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("${info.total} users", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                        Text(
+                            String.format(Locale.US, t("creator.community.users_count", "%d users"), info.total),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = LocalCommunityColors.current.textSecondary
+                        )
                         Icon(
                             imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                             contentDescription = null,
-                            tint = EazColors.TextSecondary
+                            tint = LocalCommunityColors.current.textSecondary
                         )
                     }
                 }
@@ -649,7 +736,7 @@ private fun LevelCards(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     GlassCircularFlag(countryCode = code, size = 20.dp)
-                                    Text(count.toString(), color = if (selected) EazColors.Orange else EazColors.TextSecondary, style = MaterialTheme.typography.labelSmall)
+                                    Text(count.toString(), color = if (selected) EazColors.Orange else LocalCommunityColors.current.textSecondary, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -671,14 +758,14 @@ private fun LevelCards(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 16.dp)
-                            .background(EazColors.TopbarBorder.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                            .background(LocalCommunityColors.current.mutedBg, RoundedCornerShape(8.dp))
                             .padding(16.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Groups, contentDescription = null, modifier = Modifier.padding(bottom = 8.dp), tint = EazColors.TextSecondary)
-                            Text("No partners yet", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
-                            Text("Invite creators to grow your network", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                            Icon(Icons.Default.Groups, contentDescription = null, modifier = Modifier.padding(bottom = 8.dp), tint = LocalCommunityColors.current.textSecondary)
+                            Text(t("creator.community.no_partners_title", "No partners yet"), style = MaterialTheme.typography.bodyMedium, color = LocalCommunityColors.current.textSecondary)
+                            Text(t("creator.community.no_partners_subtitle", "Invite creators to grow your network"), style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary)
                         }
                     }
                 }
@@ -692,6 +779,7 @@ private fun AnalyticsTab(
     ownerId: String,
     api: com.eazpire.creator.api.CreatorApi
 ) {
+    val t = LocalCommunityTranslate.current
     var days by remember { mutableStateOf(30) }
     var compare by remember { mutableStateOf(false) }
     var linkId by remember { mutableStateOf("") }
@@ -760,8 +848,8 @@ private fun AnalyticsTab(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Network Analytics", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
-        Text("Referral traffic and conversions", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+        Text(t("creator.community.analytics_title", "Network Analytics"), style = MaterialTheme.typography.titleMedium, color = LocalCommunityColors.current.textPrimary)
+        Text(t("creator.community.analytics_subtitle", "Detailed performance of referral traffic, conversions and generated value."), style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary)
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(7, 30, 90, 365).forEach { d ->
@@ -772,7 +860,11 @@ private fun AnalyticsTab(
                         androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = EazColors.OrangeBg.copy(alpha = 0.5f))
                     } else androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
                 ) {
-                    Text(if (d == 365) "1y" else "${d}d", color = if (days == d) EazColors.Orange else EazColors.TextSecondary, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        if (d == 365) t("creator.community.analytics_period_y", "1y") else String.format(Locale.US, t("creator.community.analytics_period_days", "%dd"), d),
+                        color = if (days == d) EazColors.Orange else LocalCommunityColors.current.textSecondary,
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
             }
         }
@@ -783,14 +875,14 @@ private fun AnalyticsTab(
                 colors = if (!compare) {
                     androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = EazColors.OrangeBg.copy(alpha = 0.5f))
                 } else androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
-            ) { Text("No compare", color = if (!compare) EazColors.Orange else EazColors.TextSecondary, style = MaterialTheme.typography.labelSmall) }
+            ) { Text(t("creator.community.analytics_compare_none", "No compare"), color = if (!compare) EazColors.Orange else LocalCommunityColors.current.textSecondary, style = MaterialTheme.typography.labelSmall) }
             OutlinedButton(
                 onClick = { compare = true },
                 modifier = Modifier.weight(1f),
                 colors = if (compare) {
                     androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = EazColors.OrangeBg.copy(alpha = 0.5f))
                 } else androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
-            ) { Text("Compare", color = if (compare) EazColors.Orange else EazColors.TextSecondary, style = MaterialTheme.typography.labelSmall) }
+            ) { Text(t("creator.community.analytics_compare", "Compare"), color = if (compare) EazColors.Orange else LocalCommunityColors.current.textSecondary, style = MaterialTheme.typography.labelSmall) }
         }
 
         if (isLoading && overview == null) {
@@ -804,14 +896,14 @@ private fun AnalyticsTab(
                 AnalyticsKpis(kpis = kpis)
                 AnalyticsFunnel(funnel = funnel)
             }
-            AnalyticsBars(title = "Top Links", rows = linksRows, labelKey = "link_label", valueKey = "clicks")
-            AnalyticsBars(title = "Top Sources", rows = sourcesRows, labelKey = "source", valueKey = "clicks")
+            AnalyticsBars(title = t("creator.community.analytics_top_links", "Top links"), rows = linksRows, labelKey = "link_label", valueKey = "clicks")
+            AnalyticsBars(title = t("creator.community.analytics_top_sources", "Top sources"), rows = sourcesRows, labelKey = "source", valueKey = "clicks")
             AnalyticsEventFeed(events = eventsRows)
             if (hasMoreEvents) {
                 OutlinedButton(
                     onClick = { eventsLoadTrigger++ },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Load more") }
+                ) { Text(t("creator.community.analytics_load_more", "Load more")) }
             }
         }
     }
@@ -819,14 +911,15 @@ private fun AnalyticsTab(
 
 @Composable
 private fun AnalyticsKpis(kpis: JSONObject) {
+    val t = LocalCommunityTranslate.current
     val keys = listOf("clicks", "unique_clicks", "new_users", "sales", "revenue", "new_creators")
     val labels = mapOf(
-        "clicks" to "Clicks",
-        "unique_clicks" to "Unique",
-        "new_users" to "Users",
-        "sales" to "Sales",
-        "revenue" to "Revenue",
-        "new_creators" to "Creators"
+        "clicks" to t("creator.community.kpi_clicks_short", "Clicks"),
+        "unique_clicks" to t("creator.community.kpi_unique_short", "Unique"),
+        "new_users" to t("creator.community.kpi_users_short", "Users"),
+        "sales" to t("creator.community.kpi_sales_short", "Sales"),
+        "revenue" to t("creator.community.kpi_revenue_short", "Revenue"),
+        "new_creators" to t("creator.community.kpi_creators_short", "Creators")
     )
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -840,17 +933,17 @@ private fun AnalyticsKpis(kpis: JSONObject) {
                     val delta = k?.optDouble("delta", Double.NaN)
                     val deltaVal = if (delta != null && !delta.isNaN()) delta else null
                     val fmtValue = if (key == "revenue") fmtMoney(value) else fmtNumber(value)
-                    val fmtDelta = if (deltaVal == null) "–" else "${if (deltaVal > 0) "+" else ""}${(deltaVal * 100).toInt()}%"
+                    val fmtDelta = if (deltaVal == null) t("creator.community.em_dash", "–") else "${if (deltaVal > 0) "+" else ""}${(deltaVal * 100).toInt()}%"
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.cardSurface),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text(labels[key] ?: key, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+                            Text(labels[key] ?: key, style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
                             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                                 Text(fmtValue, style = MaterialTheme.typography.titleSmall, color = EazColors.Orange)
-                                Text(fmtDelta, style = MaterialTheme.typography.labelSmall, color = if (deltaVal != null && deltaVal > 0) EazColors.Orange else EazColors.TextSecondary)
+                                Text(fmtDelta, style = MaterialTheme.typography.labelSmall, color = if (deltaVal != null && deltaVal > 0) EazColors.Orange else LocalCommunityColors.current.textSecondary)
                             }
                         }
                     }
@@ -862,23 +955,24 @@ private fun AnalyticsKpis(kpis: JSONObject) {
 
 @Composable
 private fun AnalyticsFunnel(funnel: JSONObject) {
+    val t = LocalCommunityTranslate.current
     val clicks = funnel.optInt("clicks", funnel.optInt("unique_clicks", 0))
     val users = funnel.optInt("users", 0)
     val buyers = funnel.optInt("buyers", 0)
     val creators = funnel.optInt("creators", 0)
     val steps = listOf(
-        "Clicks" to clicks,
-        "Users" to users,
-        "Buyers" to buyers,
-        "Creators" to creators
+        t("creator.community.funnel_step_clicks", "Clicks") to clicks,
+        t("creator.community.funnel_step_users", "Users") to users,
+        t("creator.community.funnel_step_buyers", "Buyers") to buyers,
+        t("creator.community.funnel_step_creators", "Creators") to creators
     )
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.cardSurface),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Funnel", style = MaterialTheme.typography.titleSmall, color = EazColors.TextPrimary)
+            Text(t("creator.community.funnel_title", "Funnel"), style = MaterialTheme.typography.titleSmall, color = LocalCommunityColors.current.textPrimary)
             steps.forEach { (label, value) ->
                 val pct = if (clicks > 0) (value.toDouble() / clicks * 100).toInt() else 0
                 Row(
@@ -887,14 +981,14 @@ private fun AnalyticsFunnel(funnel: JSONObject) {
                         .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("$label ($value)", style = MaterialTheme.typography.bodySmall, color = EazColors.TextPrimary)
-                    Text("$pct%", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+                    Text("$label ($value)", style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textPrimary)
+                    Text("$pct%", style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
                 }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp)
-                        .background(EazColors.TopbarBorder.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
+                        .background(LocalCommunityColors.current.funnelTrack, RoundedCornerShape(3.dp))
                 ) {
                     Box(
                         modifier = Modifier
@@ -915,16 +1009,17 @@ private fun AnalyticsBars(
     labelKey: String,
     valueKey: String
 ) {
+    val t = LocalCommunityTranslate.current
     val max = rows.maxOfOrNull { (it[valueKey] as? Number)?.toDouble() ?: 0.0 } ?: 1.0
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.cardSurface),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = EazColors.TextPrimary)
+            Text(title, style = MaterialTheme.typography.titleSmall, color = LocalCommunityColors.current.textPrimary)
             rows.take(8).forEach { row ->
-                val label = row[labelKey]?.toString() ?: "–"
+                val label = row[labelKey]?.toString() ?: t("creator.community.em_dash", "–")
                 val value = (row[valueKey] as? Number)?.toInt() ?: 0
                 val pct = if (max > 0) (value / max * 100).toInt().coerceAtLeast(1) else 0
                 Row(
@@ -934,14 +1029,14 @@ private fun AnalyticsBars(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(label, style = MaterialTheme.typography.bodySmall, color = EazColors.TextPrimary, modifier = Modifier.weight(1f))
+                    Text(label, style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textPrimary, modifier = Modifier.weight(1f))
                     Text(fmtNumber(value), style = MaterialTheme.typography.labelMedium, color = EazColors.Orange)
                 }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp)
-                        .background(EazColors.TopbarBorder.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
+                        .background(LocalCommunityColors.current.funnelTrack, RoundedCornerShape(3.dp))
                 ) {
                     Box(
                         modifier = Modifier
@@ -952,7 +1047,7 @@ private fun AnalyticsBars(
                 }
             }
             if (rows.isEmpty()) {
-                Text("No data", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                Text(t("creator.community.no_data", "No data"), style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary)
             }
         }
     }
@@ -960,13 +1055,14 @@ private fun AnalyticsBars(
 
 @Composable
 private fun AnalyticsEventFeed(events: List<Map<String, Any>>) {
+    val t = LocalCommunityTranslate.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.cardSurface),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Event Feed", style = MaterialTheme.typography.titleSmall, color = EazColors.TextPrimary)
+            Text(t("creator.community.analytics_event_feed", "Event feed"), style = MaterialTheme.typography.titleSmall, color = LocalCommunityColors.current.textPrimary)
             events.take(20).forEach { ev ->
                 Row(
                     modifier = Modifier
@@ -974,16 +1070,17 @@ private fun AnalyticsEventFeed(events: List<Map<String, Any>>) {
                         .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(ev["time_label"]?.toString() ?: "–", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, modifier = Modifier.width(80.dp))
-                    Text(ev["link_label"]?.toString() ?: "–", style = MaterialTheme.typography.labelSmall, color = EazColors.TextPrimary, modifier = Modifier.weight(1f))
-                    Text(ev["source"]?.toString() ?: "direct", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
-                    Text(ev["outcome"]?.toString() ?: "click", style = MaterialTheme.typography.labelSmall, color = EazColors.Orange)
+                    val dash = t("creator.community.em_dash", "–")
+                    Text(ev["time_label"]?.toString() ?: dash, style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary, modifier = Modifier.width(80.dp))
+                    Text(ev["link_label"]?.toString() ?: dash, style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textPrimary, modifier = Modifier.weight(1f))
+                    Text(ev["source"]?.toString() ?: t("creator.community.analytics_source_direct", "direct"), style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
+                    Text(ev["outcome"]?.toString() ?: t("creator.community.analytics_outcome_click", "click"), style = MaterialTheme.typography.labelSmall, color = EazColors.Orange)
                     val rev = ev["revenue"]
-                    Text(if (rev != null) fmtMoney(rev) else "–", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+                    Text(if (rev != null) fmtMoney(rev) else dash, style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
                 }
             }
             if (events.isEmpty()) {
-                Text("No events", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                Text(t("creator.community.no_events", "No events"), style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary)
             }
         }
     }
@@ -1029,14 +1126,15 @@ private fun ReferralSection(
     onShare: () -> Unit,
     copied: Boolean
 ) {
+    val t = LocalCommunityTranslate.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.cardSurface),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Your Referral Link", style = MaterialTheme.typography.titleSmall, color = EazColors.TextPrimary)
-            Text("Share this link – when others register and buy, you earn. Tap link to manage.", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 4.dp))
+            Text(t("creator.community.referral_link_title", "Your Referral Link"), style = MaterialTheme.typography.titleSmall, color = LocalCommunityColors.current.textPrimary)
+            Text(t("creator.community.referral_hint_full", "Share this link – when others register and buy, you earn. Tap link to manage."), style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary, modifier = Modifier.padding(top = 4.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1045,16 +1143,16 @@ private fun ReferralSection(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(url, style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary, modifier = Modifier.weight(1f))
+                Text(url, style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary, modifier = Modifier.weight(1f))
                 IconButton(onClick = onCopy) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = EazColors.Orange)
+                    Icon(Icons.Default.ContentCopy, contentDescription = t("creator.common.copy", "Copy"), tint = EazColors.Orange)
                 }
                 IconButton(onClick = onShare) {
-                    Icon(Icons.Default.Share, contentDescription = "Share", tint = EazColors.Orange)
+                    Icon(Icons.Default.Share, contentDescription = t("creator.common.share", "Share"), tint = EazColors.Orange)
                 }
             }
             if (copied) {
-                Text("Copied!", style = MaterialTheme.typography.labelSmall, color = EazColors.Orange, modifier = Modifier.padding(top = 4.dp))
+                Text(t("creator.community.copied", "Copied!"), style = MaterialTheme.typography.labelSmall, color = EazColors.Orange, modifier = Modifier.padding(top = 4.dp))
             }
         }
     }
@@ -1078,6 +1176,7 @@ private fun ManageRefLinksModal(
     var newDescription by remember { mutableStateOf("") }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     val scope = remember { CoroutineScope(Dispatchers.Main) }
+    val t = LocalCommunityTranslate.current
 
     LaunchedEffect(links, activeId) {
         localLinks = links
@@ -1086,7 +1185,7 @@ private fun ManageRefLinksModal(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = androidx.compose.ui.graphics.Color.White
+        containerColor = LocalCommunityColors.current.sheetContainer
     ) {
         Column(
             modifier = Modifier
@@ -1099,11 +1198,11 @@ private fun ManageRefLinksModal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Manage referral links", style = MaterialTheme.typography.titleLarge, color = EazColors.TextPrimary)
-                    Text("Create up to 5 named links.", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                    Text(t("creator.community.ref_links_manage_title", "Manage referral links"), style = MaterialTheme.typography.titleLarge, color = LocalCommunityColors.current.textPrimary)
+                    Text(t("creator.community.ref_links_manage_subtitle", "Create up to 5 named links."), style = MaterialTheme.typography.bodySmall, color = LocalCommunityColors.current.textSecondary)
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                    Icon(Icons.Default.Close, contentDescription = t("creator.common.close", "Close"), tint = LocalCommunityColors.current.textPrimary)
                 }
             }
 
@@ -1120,10 +1219,10 @@ private fun ManageRefLinksModal(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(link.name, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary)
-                        Text(buildNamedRefUrl(baseUrl, link.slug), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+                        Text(displayRefLinkName(link.name, t), style = MaterialTheme.typography.bodyMedium, color = LocalCommunityColors.current.textPrimary)
+                        Text(buildNamedRefUrl(baseUrl, link.slug), style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
                         if (link.description.isNotBlank()) {
-                            Text(link.description, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(link.description, style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1136,7 +1235,7 @@ private fun ManageRefLinksModal(
                             },
                             modifier = Modifier.padding(0.dp)
                         ) {
-                            Text("Use", style = MaterialTheme.typography.labelSmall)
+                            Text(t("creator.community.ref_button_use", "Use"), style = MaterialTheme.typography.labelSmall)
                         }
                         if (!isMain) {
                             OutlinedButton(
@@ -1152,61 +1251,61 @@ private fun ManageRefLinksModal(
                                 modifier = Modifier.padding(0.dp),
                                 colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                             ) {
-                                Text("Remove", style = MaterialTheme.typography.labelSmall)
+                                Text(t("creator.community.ref_button_remove", "Remove"), style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
                 }
             }
 
-            Text("Ref link", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 16.dp))
+            Text(t("creator.community.ref_links_slug_label", "Ref link"), style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary, modifier = Modifier.padding(top = 16.dp))
             OutlinedTextField(
                 value = newSlug,
                 onValueChange = { newSlug = it; errorMsg = null },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("e.g. instagram-campaign", color = EazColors.TextSecondary) },
+                placeholder = { Text(t("creator.community.ref_links_slug_placeholder", "e.g. instagram-campaign"), color = LocalCommunityColors.current.textSecondary) },
                 singleLine = true,
                 shape = RoundedCornerShape(8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = EazColors.TopbarBorder,
-                    focusedTextColor = EazColors.TextPrimary,
-                    unfocusedTextColor = EazColors.TextPrimary
+                    unfocusedBorderColor = LocalCommunityColors.current.outlineBorder,
+                    focusedTextColor = LocalCommunityColors.current.textPrimary,
+                    unfocusedTextColor = LocalCommunityColors.current.textPrimary
                 )
             )
-            Text("${baseUrl.trimEnd('/')}/${newSlug.ifBlank { "your-link" }.lowercase()}", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
-            Text("Allowed: a-z, 0-9, -, length 4-24.", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+            Text("${baseUrl.trimEnd('/')}/${newSlug.ifBlank { t("creator.community.ref_preview_placeholder", "your-link") }.lowercase()}", style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
+            Text(t("creator.community.ref_links_slug_hint", "Allowed: a-z, 0-9, -, length 4-24."), style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
 
-            Text("Label", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 8.dp))
+            Text(t("creator.community.ref_links_name_label", "Label"), style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary, modifier = Modifier.padding(top = 8.dp))
             OutlinedTextField(
                 value = newName,
                 onValueChange = { newName = it; errorMsg = null },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("e.g. Instagram Bio", color = EazColors.TextSecondary) },
+                placeholder = { Text(t("creator.community.ref_links_name_placeholder", "e.g. Instagram Bio"), color = LocalCommunityColors.current.textSecondary) },
                 singleLine = true,
                 shape = RoundedCornerShape(8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = EazColors.TopbarBorder,
-                    focusedTextColor = EazColors.TextPrimary,
-                    unfocusedTextColor = EazColors.TextPrimary
+                    unfocusedBorderColor = LocalCommunityColors.current.outlineBorder,
+                    focusedTextColor = LocalCommunityColors.current.textPrimary,
+                    unfocusedTextColor = LocalCommunityColors.current.textPrimary
                 )
             )
 
-            Text("Description", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 8.dp))
+            Text(t("creator.community.ref_links_description_label", "Description"), style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary, modifier = Modifier.padding(top = 8.dp))
             OutlinedTextField(
                 value = newDescription,
                 onValueChange = { newDescription = it; errorMsg = null },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Optional info for this link", color = EazColors.TextSecondary) },
+                placeholder = { Text(t("creator.community.ref_links_description_placeholder", "Optional info for this link"), color = LocalCommunityColors.current.textSecondary) },
                 minLines = 3,
                 maxLines = 4,
                 shape = RoundedCornerShape(8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = EazColors.TopbarBorder,
-                    focusedTextColor = EazColors.TextPrimary,
-                    unfocusedTextColor = EazColors.TextPrimary
+                    unfocusedBorderColor = LocalCommunityColors.current.outlineBorder,
+                    focusedTextColor = LocalCommunityColors.current.textPrimary,
+                    unfocusedTextColor = LocalCommunityColors.current.textPrimary
                 )
             )
 
@@ -1215,13 +1314,13 @@ private fun ManageRefLinksModal(
                     val slugNorm = slugifyLabel(newSlug.trim())
                     val label = newName.trim()
                     when {
-                        slugNorm.isBlank() -> errorMsg = "Please enter the ref link."
-                        label.isBlank() -> errorMsg = "Please enter a label."
-                        localLinks.any { it.name.equals(label, ignoreCase = true) } -> errorMsg = "This label already exists."
-                        localLinks.size >= REF_LINKS_MAX -> errorMsg = "Maximum 5 links reached."
-                        !isValidRefSlug(slugNorm) -> errorMsg = "Link path must be 4-24 chars, a-z, 0-9, -."
-                        isReservedRefSlug(slugNorm) -> errorMsg = "This link path is reserved."
-                        localLinks.any { it.slug.equals(slugNorm, ignoreCase = true) } -> errorMsg = "This link path is already in use."
+                        slugNorm.isBlank() -> errorMsg = t("creator.community.ref_err_slug_required", "Please enter the ref link.")
+                        label.isBlank() -> errorMsg = t("creator.community.ref_err_label_required", "Please enter a label.")
+                        localLinks.any { it.name.equals(label, ignoreCase = true) } -> errorMsg = t("creator.community.ref_err_label_duplicate", "This label already exists.")
+                        localLinks.size >= REF_LINKS_MAX -> errorMsg = t("creator.community.ref_err_max_links", "Maximum 5 links reached.")
+                        !isValidRefSlug(slugNorm) -> errorMsg = t("creator.community.ref_err_slug_invalid", "Link path must be 4-24 chars, a-z, 0-9, -.")
+                        isReservedRefSlug(slugNorm) -> errorMsg = t("creator.community.ref_err_slug_reserved", "This link path is reserved.")
+                        localLinks.any { it.slug.equals(slugNorm, ignoreCase = true) } -> errorMsg = t("creator.community.ref_err_slug_in_use", "This link path is already in use.")
                         else -> {
                             val newLink = RefLink("id-${System.currentTimeMillis()}-${(0..5).map { ('a'..'z').random() }.joinToString("")}", label, slugNorm, newDescription.trim())
                             localLinks = localLinks + newLink
@@ -1238,7 +1337,7 @@ private fun ManageRefLinksModal(
                 },
                 modifier = Modifier.padding(top = 12.dp)
             ) {
-                Text("Add link")
+                Text(t("creator.community.ref_links_add_button", "Add link"))
             }
             errorMsg?.let { msg ->
                 Text(msg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
@@ -1270,14 +1369,15 @@ private fun persistRefLinks(
 
 @Composable
 private fun PartnerCard(partner: PartnerItem, onClick: () -> Unit) {
+    val t = LocalCommunityTranslate.current
     val countryCode = partner.country.ifBlank { "DE" }.uppercase().take(2)
-    val countryLabel = countryNameFor(countryCode)
+    val countryLabel = countryNameFor(countryCode, t)
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = EazColors.OrangeBg.copy(alpha = 0.3f)),
+        colors = CardDefaults.cardColors(containerColor = LocalCommunityColors.current.partnerCardBg),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -1294,8 +1394,8 @@ private fun PartnerCard(partner: PartnerItem, onClick: () -> Unit) {
             ) {
                 GlassCircularFlag(countryCode = countryCode, size = 44.dp)
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(countryLabel, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
-                    Text(partner.name, style = MaterialTheme.typography.bodyMedium, color = EazColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(countryLabel, style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
+                    Text(partner.name, style = MaterialTheme.typography.bodyMedium, color = LocalCommunityColors.current.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Row(
@@ -1316,31 +1416,44 @@ private fun partnerStatIcon(icon: androidx.compose.ui.graphics.vector.ImageVecto
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = EazColors.TextSecondary)
-        Text(value.toString(), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = LocalCommunityColors.current.textSecondary)
+        Text(value.toString(), style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
     }
 }
 
 @Composable
 private fun PartnerDetailSheet(partner: PartnerItem, onDismiss: () -> Unit) {
+    val t = LocalCommunityTranslate.current
+    val rawCountry = partner.country.trim()
+    val countryDisplay =
+        if (rawCountry.length == 2) countryNameFor(rawCountry.uppercase(), t) else rawCountry
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(24.dp)
     ) {
-        Text("User Information", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
+        Text(t("creator.community.partner_info", "Partner Information"), style = MaterialTheme.typography.titleMedium, color = LocalCommunityColors.current.textPrimary)
         Text(partner.name, style = MaterialTheme.typography.titleSmall, color = EazColors.Orange, modifier = Modifier.padding(top = 8.dp))
-        Text("${flagEmojiFor(partner.country.ifBlank { "DE" }.uppercase().take(2))} ${partner.country} · since ${partner.since}", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+        Text(
+            "${flagEmojiFor(partner.country.ifBlank { "DE" }.uppercase().take(2))} $countryDisplay · ${t("creator.community.since_word", "since")} ${partner.since}",
+            style = MaterialTheme.typography.bodySmall,
+            color = LocalCommunityColors.current.textSecondary
+        )
         Row(modifier = Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            statItem("Designs", partner.designs.toString())
-            statItem("Products", partner.products.toString())
-            statItem("Sales", partner.sales.toString())
+            statItem(t("creator.community.designs", "Designs"), partner.designs.toString())
+            statItem(t("creator.community.products", "Products"), partner.products.toString())
+            statItem(t("creator.community.sales", "Sales"), partner.sales.toString())
         }
         if (partner.profitForMe.isNotBlank()) {
-            Text("Profit for you: ${partner.profitForMe}", style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary, modifier = Modifier.padding(top = 12.dp))
+            Text(
+                String.format(Locale.US, t("creator.community.partner_detail_profit", "Profit for you: %s"), partner.profitForMe),
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalCommunityColors.current.textSecondary,
+                modifier = Modifier.padding(top = 12.dp)
+            )
         }
         OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
-            Text("Close")
+            Text(t("creator.common.close", "Close"))
         }
     }
 }
@@ -1349,7 +1462,7 @@ private fun PartnerDetailSheet(partner: PartnerItem, onDismiss: () -> Unit) {
 private fun statItem(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = MaterialTheme.typography.titleSmall, color = EazColors.Orange)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = LocalCommunityColors.current.textSecondary)
     }
 }
 

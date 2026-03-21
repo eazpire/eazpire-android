@@ -1098,14 +1098,12 @@ private fun HeroProductPickerModal(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Color(0xFF1F2937),
-        dragHandle = null
+        containerColor = Color(0xFF1F2937)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(680.dp)
+                .fillMaxHeight()
         ) {
             // Header
             Row(
