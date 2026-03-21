@@ -93,6 +93,31 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=eazy-memory&user_id=xxx – user memory / preferences (EAZY_DB) */
+    suspend fun getEazyMemory(userId: String): JSONObject = call(
+        "eazy-memory",
+        mapOf("user_id" to userId)
+    )
+
+    /** POST ?op=eazy-memory Body: { user_id, preferences } – merge preferences */
+    suspend fun postEazyMemory(userId: String, preferences: org.json.JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = "$baseUrl/apps/creator-dispatch?op=eazy-memory&_t=${System.currentTimeMillis()}"
+            val body = org.json.JSONObject()
+                .put("user_id", userId)
+                .put("preferences", preferences)
+                .toString()
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
     /**
      * GET ?op=get-customer-account-profile&owner_id=xxx
      */

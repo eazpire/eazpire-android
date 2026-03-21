@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,7 +46,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -1054,7 +1054,6 @@ private fun HeroProductPickerModal(
     onDismiss: () -> Unit,
     t: (String, String) -> String
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val gridState = rememberLazyGridState()
     val topKeywords = listOf("t-shirt", "hoodie", "sweatshirt", "shirt", "top", "tee", "polo", "jacket", "sweater", "pullover", "jacke", "oberteil")
     fun isTopProduct(p: HeroProduct): Boolean {
@@ -1195,27 +1194,18 @@ private fun HeroProductPickerModal(
                             unfocusedPlaceholderColor = Color(0xFF9CA3AF)
                         )
                     )
-                    Row(
-                        modifier = Modifier
-                            .height(56.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF111827))
-                            .border(1.dp, Color(0xFF374151), RoundedCornerShape(8.dp))
-                            .padding(2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterTabPill(
-                            active = usageFilter == "unused",
-                            label = t("creator.marketing.unused", "Unused"),
-                            onClick = { onUsageFilterChange("unused") }
-                        )
-                        FilterTabPill(
-                            active = usageFilter == "used",
-                            label = t("creator.marketing.used", "Used"),
-                            onClick = { onUsageFilterChange("used") }
-                        )
-                    }
+                    FilterTabPill(
+                        active = usageFilter == "unused",
+                        label = t("creator.marketing.unused", "Unused"),
+                        onClick = { onUsageFilterChange("unused") },
+                        modifier = Modifier.height(56.dp)
+                    )
+                    FilterTabPill(
+                        active = usageFilter == "used",
+                        label = t("creator.marketing.used", "Used"),
+                        onClick = { onUsageFilterChange("used") },
+                        modifier = Modifier.height(56.dp)
+                    )
                 }
             }
 
@@ -1364,11 +1354,11 @@ private fun HeroProductPickerModal(
 private fun FilterTabPill(
     active: Boolean,
     label: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Text(
-        text = label,
-        modifier = Modifier
+    Box(
+        modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .border(
                 1.dp,
@@ -1379,9 +1369,13 @@ private fun FilterTabPill(
                 if (active) Color(0xFF3B82F6) else Color(0xFF111827),
                 RoundedCornerShape(6.dp)
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        color = if (active) Color.White else Color(0xFF9CA3AF),
-        style = MaterialTheme.typography.labelSmall
-    )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (active) Color.White else Color(0xFF9CA3AF),
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
 }

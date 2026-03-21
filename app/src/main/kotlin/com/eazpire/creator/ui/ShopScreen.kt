@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -174,6 +175,24 @@ fun ShopScreen(
     var eazyGenerationOverlayLoading by remember { mutableStateOf(false) }
     var overlayComposeStartKey by remember { mutableIntStateOf(0) }
     var termsModalVisible by remember { mutableStateOf(false) }
+
+    val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
+    val eazySyncApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
+
+    LaunchedEffect(ownerId) {
+        if (ownerId.isBlank()) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            eazyMascotStore.mergeFromRemoteIfEmpty(eazySyncApi, ownerId)
+        }
+    }
+
+    LaunchedEffect(ownerId, eazyDocked, eazyPosX, eazyPosY) {
+        if (ownerId.isBlank()) return@LaunchedEffect
+        delay(2500)
+        withContext(Dispatchers.IO) {
+            eazyMascotStore.pushToRemote(eazySyncApi, ownerId)
+        }
+    }
 
     // Creator: StatusBar + NavBar dunkel (#0A0514), ohne Kontrastlinie; Shop: Orange
     LaunchedEffect(isCreatorMode) {
@@ -452,8 +471,10 @@ fun ShopScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(bottom = 8.dp)
                     .zIndex(120f),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.BottomCenter
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
