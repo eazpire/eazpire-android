@@ -191,6 +191,8 @@ fun CreatorGeneratorScreen(
     headerStartNonce: Int = 0,
     onGeneratorGeneratingChange: (Boolean) -> Unit = {},
     eazyDocked: Boolean = false,
+    /** ShopScreen shows the generation bubble; hide duplicate bottom bar. */
+    suppressDockedComposeBar: Boolean = false,
     onFloatingComposeStart: () -> Unit = {},
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
@@ -754,7 +756,8 @@ fun CreatorGeneratorScreen(
             )
         }
 
-        val showDockedComposeBar = eazyDocked && (eazyGenReady || generatingGen)
+        val showDockedComposeBar =
+            eazyDocked && (eazyGenReady || generatingGen) && !suppressDockedComposeBar
         if (showDockedComposeBar) {
             CreatorDockedComposeFloatingBar(
                 visible = true,

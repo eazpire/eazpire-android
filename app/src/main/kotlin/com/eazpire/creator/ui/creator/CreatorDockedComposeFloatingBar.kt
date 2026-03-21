@@ -3,12 +3,9 @@ package com.eazpire.creator.ui.creator
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,13 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.i18n.TranslationStore
 import kotlin.math.roundToInt
 
 /**
- * Docked Eazy stays in header; this row is the bottom “Generate” strip (Eazy left, bubble right, tail toward Eazy).
- * Draggable; offset resets after generation ends (loading true → false).
+ * Docked Eazy stays in header only — bottom strip is **bubble only** (no second mascot).
+ * Tail points left toward the header mascot. Draggable; offset resets after generation ends.
  */
 @Composable
 fun CreatorDockedComposeFloatingBar(
@@ -69,17 +65,12 @@ fun CreatorDockedComposeFloatingBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.End
     ) {
-        EazyMascotIcon(
-            modifier = Modifier.size(48.dp),
-            lookLeft = false
-        )
-        Spacer(modifier = Modifier.width(10.dp))
         CreatorHeaderEazyStartBubble(
             label = translationStore.t("creator.generator_eazy.bubble_start", "Start generation"),
             loading = loading,
             enabled = !loading,
             onClick = onStart,
-            tailTowardEnd = true
+            tailTowardEnd = false
         )
     }
 }

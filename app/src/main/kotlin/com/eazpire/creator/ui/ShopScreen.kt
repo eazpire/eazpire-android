@@ -10,18 +10,16 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -37,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
@@ -68,6 +67,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /**
  * Shop-Screen: Direkt zugänglich ohne Login.
@@ -171,6 +171,13 @@ fun ShopScreen(
     var creatorGenEazyLookLeft by remember { mutableStateOf(false) }
     var eazyGenerationOverlay by remember { mutableStateOf(false) }
     var eazyGenerationOverlayLoading by remember { mutableStateOf(false) }
+    /** When set, header docked Eazy faces toward ShopScreen generation bubble (snapped + input). */
+    var generationBubbleFaceLeft by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(isCreatorMode, eazyGenerationOverlay) {
+        if (!isCreatorMode || !eazyGenerationOverlay) {
+            generationBubbleFaceLeft = null
+        }
+    }
     var overlayComposeStartKey by remember { mutableIntStateOf(0) }
     var termsModalVisible by remember { mutableStateOf(false) }
 
@@ -292,7 +299,8 @@ fun ShopScreen(
                 eazyGenerationOverlay = visible
                 eazyGenerationOverlayLoading = loading
             },
-            overlayComposeStartKey = overlayComposeStartKey
+            overlayComposeStartKey = overlayComposeStartKey,
+            generationBubbleFaceLeft = generationBubbleFaceLeft
         )
         }
     } else {
@@ -430,13 +438,18 @@ fun ShopScreen(
         }
     }
     }
-    if (!eazyDocked) {
-        val showGenOverlay = isCreatorMode && eazyGenerationOverlay
-        val contentBoundsState = remember { mutableStateOf<Rect?>(null) }
-        var genOverlayMascotCenterX by remember { mutableStateOf<Float?>(null) }
-        LaunchedEffect(showGenOverlay) {
-            if (!showGenOverlay) genOverlayMascotCenterX = null
+    val showGenOverlay = isCreatorMode && eazyGenerationOverlay
+    val showEazyFloatingLayer = !eazyDocked || showGenOverlay
+    if (showEazyFloatingLayer) {
+        var liveMascotX by remember { mutableStateOf<Float?>(null) }
+        var liveMascotY by remember { mutableStateOf<Float?>(null) }
+        LaunchedEffect(eazyDocked, showGenOverlay) {
+            if (eazyDocked && !showGenOverlay) {
+                liveMascotX = null
+                liveMascotY = null
+            }
         }
+        val contentBoundsState = remember { mutableStateOf<Rect?>(null) }
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -450,104 +463,123 @@ fun ShopScreen(
                 "creator.generator_eazy.bubble_start",
                 "Start generation"
             )
-            val halfPx = contentW / 2f
-            val bubbleLeftOfEazy =
-                (genOverlayMascotCenterX ?: (halfPx + 1f)) >= halfPx
-            if (showGenOverlay) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .navigationBarsPadding()
-                        .padding(bottom = 8.dp, end = 8.dp)
-                        .zIndex(120f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val mascotModifier = Modifier.onGloballyPositioned { coords ->
-                        genOverlayMascotCenterX = coords.boundsInRoot().center.x
-                    }
-                    if (bubbleLeftOfEazy) {
-                        CreatorHeaderEazyStartBubble(
-                            label = bubbleLabel,
-                            loading = eazyGenerationOverlayLoading,
-                            enabled = !eazyGenerationOverlayLoading,
-                            onClick = {
-                                if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
-                            },
-                            tailTowardEnd = true
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Box(modifier = mascotModifier) {
-                            EazyMascot(
-                                modifier = Modifier,
-                                isDocked = false,
-                                positionX = eazyPosX,
-                                positionY = eazyPosY,
-                                onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
-                                onDockedChange = { eazyMascotStore.setDockedSync(it) },
-                                onOpenChat = { eazyChatVisible = true },
-                                slotBoundsInRoot = slotBoundsState.value,
-                                onSnapModeChange = { eazySnapModeActive = it },
-                                scope = scope,
-                                contentWidthPx = contentW,
-                                contentHeightPx = contentH,
-                                contentBoundsInRoot = contentBoundsState.value,
-                                lookLeft = true,
-                                autoFaceFromScreenHalf = false,
-                                pinToGenerationBottomEnd = true
-                            )
-                        }
-                    } else {
-                        Box(modifier = mascotModifier) {
-                            EazyMascot(
-                                modifier = Modifier,
-                                isDocked = false,
-                                positionX = eazyPosX,
-                                positionY = eazyPosY,
-                                onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
-                                onDockedChange = { eazyMascotStore.setDockedSync(it) },
-                                onOpenChat = { eazyChatVisible = true },
-                                slotBoundsInRoot = slotBoundsState.value,
-                                onSnapModeChange = { eazySnapModeActive = it },
-                                scope = scope,
-                                contentWidthPx = contentW,
-                                contentHeightPx = contentH,
-                                contentBoundsInRoot = contentBoundsState.value,
-                                lookLeft = false,
-                                autoFaceFromScreenHalf = false,
-                                pinToGenerationBottomEnd = true
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        CreatorHeaderEazyStartBubble(
-                            label = bubbleLabel,
-                            loading = eazyGenerationOverlayLoading,
-                            enabled = !eazyGenerationOverlayLoading,
-                            onClick = {
-                                if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
-                            },
-                            tailTowardEnd = false
-                        )
-                    }
+            val mascotSizePx = with(density) { 48.dp.toPx() }
+            val maxXMascot = (contentW - mascotSizePx).coerceAtLeast(0f)
+            val maxYMascot = (contentH - mascotSizePx).coerceAtLeast(0f)
+            val defaultXMascot = contentW - mascotSizePx - 32f
+            val defaultYMascot = contentH - mascotSizePx - 100f
+            val slot = slotBoundsState.value
+            val contentB = contentBoundsState.value
+            val rawXMascot = when {
+                eazyDocked && slot != null && contentB != null -> {
+                    val cx = slot.left - contentB.left + slot.width / 2f
+                    (cx - mascotSizePx / 2f).coerceIn(0f, maxXMascot)
                 }
+                !eazyDocked && liveMascotX != null -> liveMascotX!!
+                else -> when {
+                    eazyPosX == null || eazyPosX!!.isNaN() ->
+                        defaultXMascot.coerceAtLeast(0f)
+                    else -> eazyPosX!!.coerceIn(0f, maxXMascot)
+                }
+            }
+            val rawYMascot = when {
+                eazyDocked && slot != null && contentB != null -> {
+                    val cy = slot.top - contentB.top + slot.height / 2f
+                    (cy - mascotSizePx / 2f).coerceIn(0f, maxYMascot)
+                }
+                !eazyDocked && liveMascotY != null -> liveMascotY!!
+                else -> when {
+                    eazyPosY == null || eazyPosY!!.isNaN() ->
+                        defaultYMascot.coerceAtLeast(0f)
+                    else -> eazyPosY!!.coerceIn(0f, maxYMascot)
+                }
+            }
+            val halfPx = contentW / 2f
+            val bubbleLeftOfEazy = rawXMascot + mascotSizePx / 2f >= halfPx
+            val spacerPx = with(density) { 6.dp.toPx() }
+            val bubbleRowWidthPx = with(density) { 160.dp.toPx() }
+            val bubbleHeightPx = with(density) { 40.dp.toPx() }
+            val bubbleLeftPx = if (bubbleLeftOfEazy) {
+                rawXMascot - spacerPx - bubbleRowWidthPx
             } else {
-                EazyMascot(
-                    modifier = Modifier.align(Alignment.TopStart),
-                    isDocked = false,
-                    positionX = eazyPosX,
-                    positionY = eazyPosY,
-                    onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
-                    onDockedChange = { eazyMascotStore.setDockedSync(it) },
-                    onOpenChat = { eazyChatVisible = true },
-                    slotBoundsInRoot = slotBoundsState.value,
-                    onSnapModeChange = { eazySnapModeActive = it },
-                    scope = scope,
-                    contentWidthPx = contentW,
-                    contentHeightPx = contentH,
-                    contentBoundsInRoot = contentBoundsState.value,
-                    lookLeft = creatorGenEazyLookLeft,
-                    autoFaceFromScreenHalf = isCreatorMode,
-                    pinToGenerationBottomEnd = false
-                )
+                rawXMascot + mascotSizePx + spacerPx
+            }
+            val bubbleTopPx = rawYMascot + (mascotSizePx - bubbleHeightPx) / 2f
+            val bubbleLeftClamped = bubbleLeftPx.coerceIn(
+                0f,
+                (contentW - bubbleRowWidthPx).coerceAtLeast(0f)
+            )
+            val bubbleCenterX = bubbleLeftClamped + bubbleRowWidthPx / 2f
+            val mascotCenterX = rawXMascot + mascotSizePx / 2f
+            val faceTowardBubbleLeft = bubbleCenterX < mascotCenterX
+            SideEffect {
+                if (showGenOverlay) {
+                    generationBubbleFaceLeft = faceTowardBubbleLeft
+                } else {
+                    generationBubbleFaceLeft = null
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+            ) {
+                if (!eazyDocked || showGenOverlay) {
+                    val overlayDockedMascot = eazyDocked && showGenOverlay
+                    val mascotPosX = when {
+                        overlayDockedMascot && liveMascotX != null -> liveMascotX
+                        overlayDockedMascot -> rawXMascot
+                        else -> eazyPosX
+                    }
+                    val mascotPosY = when {
+                        overlayDockedMascot && liveMascotY != null -> liveMascotY
+                        overlayDockedMascot -> rawYMascot
+                        else -> eazyPosY
+                    }
+                    EazyMascot(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .zIndex(100f),
+                        isDocked = eazyDocked && !showGenOverlay,
+                        positionX = mascotPosX,
+                        positionY = mascotPosY,
+                        onPositionChange = { x, y -> eazyMascotStore.setPositionSync(x, y) },
+                        onDockedChange = { eazyMascotStore.setDockedSync(it) },
+                        onOpenChat = { eazyChatVisible = true },
+                        slotBoundsInRoot = slotBoundsState.value,
+                        onSnapModeChange = { eazySnapModeActive = it },
+                        scope = scope,
+                        contentWidthPx = contentW,
+                        contentHeightPx = contentH,
+                        contentBoundsInRoot = contentBoundsState.value,
+                        lookLeft = if (showGenOverlay) faceTowardBubbleLeft else creatorGenEazyLookLeft,
+                        autoFaceFromScreenHalf = isCreatorMode && !showGenOverlay,
+                        onVisualPositionChange = { x, y ->
+                            liveMascotX = x
+                            liveMascotY = y
+                        }
+                    )
+                }
+                if (showGenOverlay) {
+                    CreatorHeaderEazyStartBubble(
+                        label = bubbleLabel,
+                        loading = eazyGenerationOverlayLoading,
+                        enabled = !eazyGenerationOverlayLoading,
+                        onClick = {
+                            if (!eazyGenerationOverlayLoading) overlayComposeStartKey++
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset {
+                                IntOffset(
+                                    bubbleLeftClamped.roundToInt(),
+                                    bubbleTopPx.roundToInt().coerceAtLeast(0)
+                                )
+                            }
+                            .zIndex(101f),
+                        tailTowardEnd = bubbleLeftOfEazy
+                    )
+                }
             }
         }
     }

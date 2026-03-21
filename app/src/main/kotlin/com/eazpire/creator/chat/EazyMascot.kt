@@ -5,13 +5,13 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.forEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -107,10 +107,8 @@ fun EazyMascot(
      * matching web `eazy-mascot.js` / `creator-mobile.js` undocked behavior.
      */
     autoFaceFromScreenHalf: Boolean = false,
-    /**
-     * Pinned bottom-end next to "Start generation" bubble — single mascot, no duplicate overlay icon.
-     */
-    pinToGenerationBottomEnd: Boolean = false
+    /** Fires on every frame with current visual position (incl. drag) so overlays can follow the mascot. */
+    onVisualPositionChange: (Float, Float) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -149,6 +147,10 @@ fun EazyMascot(
     val displayX = if (isDragging) dragBaseX + offsetX else currentX + offsetX
     val displayY = if (isDragging) dragBaseY + offsetY else currentY + offsetY
 
+    SideEffect {
+        onVisualPositionChange(displayX, displayY)
+    }
+
     val snapDistancePx = with(density) { SNAP_DISTANCE_DP.dp.toPx() }
 
     fun trySnapToSlot(mascotX: Float, mascotY: Float) {
@@ -173,33 +175,23 @@ fun EazyMascot(
 
     if (isDocked) return
 
-    var halfScreenLookLeft by remember(autoFaceFromScreenHalf) { mutableStateOf(lookLeft) }
+    var halfScreenLookLeft by remember { mutableStateOf(lookLeft) }
     val effectiveLookLeft =
-        when {
-            pinToGenerationBottomEnd -> lookLeft
-            autoFaceFromScreenHalf -> halfScreenLookLeft
-            else -> lookLeft
-        }
+        if (autoFaceFromScreenHalf) halfScreenLookLeft else lookLeft
 
     Box(
         modifier = modifier
             .onGloballyPositioned { coords ->
-                if (pinToGenerationBottomEnd || !autoFaceFromScreenHalf) return@onGloballyPositioned
+                if (!autoFaceFromScreenHalf) return@onGloballyPositioned
                 val c = coords.boundsInRoot().center
                 halfScreenLookLeft = c.x >= screenWidthPx * 0.5f
             }
-            .then(
-                if (pinToGenerationBottomEnd) Modifier else Modifier.offset {
-                    IntOffset(displayX.roundToInt(), displayY.roundToInt())
-                }
-            )
+            .offset {
+                IntOffset(displayX.roundToInt(), displayY.roundToInt())
+            }
             .size(MascotSize)
-            .pointerInput(rawX, rawY, maxX, maxY, pinToGenerationBottomEnd) {
-                if (pinToGenerationBottomEnd) {
-                    detectTapGestures(
-                        onTap = { onOpenChat() }
-                    )
-                } else forEachGesture {
+            .pointerInput(rawX, rawY, maxX, maxY) {
+                forEachGesture {
                     awaitPointerEventScope {
                         while (true) {
                             val event = awaitPointerEvent()

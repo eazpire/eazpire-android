@@ -42,6 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
@@ -443,7 +444,7 @@ fun CreatorHeader(
                     color = Color.White
                 )
                 Box(modifier = Modifier.weight(1f)) {
-                    if (!hideEazyHeaderSlotWhenGenerationOverlay) {
+                    val hideSlotForOverlay = hideEazyHeaderSlotWhenGenerationOverlay
                     Row(
                         modifier = Modifier.align(Alignment.CenterEnd),
                         verticalAlignment = Alignment.CenterVertically,
@@ -454,6 +455,7 @@ fun CreatorHeader(
                                 .scale(boomScale.value)
                                 .padding(horizontal = 2.dp)
                                 .size(36.dp)
+                                .alpha(if (hideSlotForOverlay) 0f else 1f)
                                 .onGloballyPositioned { coordinates ->
                                     slotBoundsState?.value = coordinates.boundsInRoot()
                                 }
@@ -464,7 +466,7 @@ fun CreatorHeader(
                                     else Modifier
                                 )
                                 .then(
-                                    if (eazyDocked) Modifier.pointerInput(Unit) {
+                                    if (eazyDocked && !hideSlotForOverlay) Modifier.pointerInput(Unit) {
                                         detectTapGestures(
                                             onTap = { onEazyClick() },
                                             onPress = {
@@ -483,7 +485,7 @@ fun CreatorHeader(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (eazyDocked) {
+                            if (eazyDocked && !hideSlotForOverlay) {
                                 val faceBubble =
                                     eazyLookLeft && !showStartGenerationBubble
                                 EazyMascotIcon(
@@ -492,7 +494,7 @@ fun CreatorHeader(
                                 )
                             }
                         }
-                        if (showStartGenerationBubble && startGenerationLabel.isNotBlank()) {
+                        if (showStartGenerationBubble && startGenerationLabel.isNotBlank() && !hideSlotForOverlay) {
                             Spacer(modifier = Modifier.width(10.dp))
                             CreatorHeaderEazyStartBubble(
                                 label = startGenerationLabel,
@@ -502,7 +504,6 @@ fun CreatorHeader(
                                 modifier = Modifier.padding(end = 2.dp)
                             )
                         }
-                    }
                     }
                 }
             }

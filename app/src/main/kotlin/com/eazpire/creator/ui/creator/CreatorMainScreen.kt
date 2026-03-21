@@ -80,6 +80,8 @@ fun CreatorMainScreen(
     onEazyLongPress: () -> Unit = {},
     slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
     onEazyGenerationOverlayChange: (visible: Boolean, loading: Boolean) -> Unit = { _, _ -> },
+    /** ShopScreen: docked mascot should face toward the generation bubble when overlay is on. */
+    generationBubbleFaceLeft: Boolean? = null,
     /** Bumped from compose overlay "Start" tap (ShopScreen); mirrors header start nonces. */
     overlayComposeStartKey: Int = 0,
     modifier: Modifier = Modifier
@@ -132,12 +134,11 @@ fun CreatorMainScreen(
         val genTab = currentScreen == 1
         val heroTab = currentScreen == 3
         val show =
-            !eazyDocked &&
-                ((genTab && (generatorEazyReady || generatorGenerating)) ||
-                    (heroTab && (heroEazyReady || heroGenerating)))
+            (genTab && (generatorEazyReady || generatorGenerating)) ||
+                (heroTab && (heroEazyReady || heroGenerating))
         val loading =
-            (!eazyDocked && genTab && generatorGenerating) ||
-                (!eazyDocked && heroTab && heroGenerating)
+            (genTab && generatorGenerating) ||
+                (heroTab && heroGenerating)
         onEazyGenerationOverlayChange(show, loading)
     }
 
@@ -186,9 +187,8 @@ fun CreatorMainScreen(
     val scope = rememberCoroutineScope()
 
     val generationOverlayVisible =
-        !eazyDocked &&
-            ((currentScreen == 1 && (generatorEazyReady || generatorGenerating)) ||
-                (currentScreen == 3 && (heroEazyReady || heroGenerating)))
+        (currentScreen == 1 && (generatorEazyReady || generatorGenerating)) ||
+            (currentScreen == 3 && (heroEazyReady || heroGenerating))
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -241,8 +241,9 @@ fun CreatorMainScreen(
                     audioStore = audioStore,
                     onAudioModalOpen = { audioModalVisible = true },
                     marketingTitleOverride = marketingTitleOverride,
-                    eazyLookLeft = (currentScreen == 1 && generatorEazyReady) ||
-                        (currentScreen == 3 && heroEazyReady),
+                    eazyLookLeft = generationBubbleFaceLeft
+                        ?: ((currentScreen == 1 && generatorEazyReady) ||
+                            (currentScreen == 3 && heroEazyReady)),
                     hideEazyHeaderSlotWhenGenerationOverlay = generationOverlayVisible,
                     showStartGenerationBubble = false,
                     startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
@@ -331,6 +332,7 @@ fun CreatorMainScreen(
                             headerStartNonce = genHeaderStartNonce,
                             onGeneratorGeneratingChange = { generatorGenerating = it },
                             eazyDocked = eazyDocked,
+                            suppressDockedComposeBar = generationOverlayVisible,
                             onFloatingComposeStart = { genHeaderStartNonce++ },
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
@@ -353,7 +355,8 @@ fun CreatorMainScreen(
                             heroHeaderStartNonce = heroHeaderStartNonce,
                             onHeroGeneratingChange = { heroGenerating = it },
                             showHeroDockedComposeBar = eazyDocked &&
-                                (heroEazyReady || heroGenerating),
+                                (heroEazyReady || heroGenerating) &&
+                                !generationOverlayVisible,
                             heroDockedComposeLoading = heroGenerating,
                             onHeroDockedComposeStart = { heroHeaderStartNonce++ },
                             modifier = Modifier.fillMaxSize()
