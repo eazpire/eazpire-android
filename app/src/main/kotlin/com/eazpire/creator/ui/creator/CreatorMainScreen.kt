@@ -238,10 +238,7 @@ fun CreatorMainScreen(
                     marketingTitleOverride = marketingTitleOverride,
                     eazyLookLeft = (currentScreen == 1 && generatorEazyReady) ||
                         (currentScreen == 3 && heroEazyReady),
-                    showStartGenerationBubble =
-                        eazyDocked &&
-                            ((currentScreen == 1 && generatorEazyReady) ||
-                                (currentScreen == 3 && heroEazyReady)),
+                    showStartGenerationBubble = false,
                     startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
                         (currentScreen == 3 && heroGenerating),
                     onStartGenerationClick = {
@@ -327,6 +324,8 @@ fun CreatorMainScreen(
                             onGeneratorEazyReadyChange = { generatorEazyReady = it },
                             headerStartNonce = genHeaderStartNonce,
                             onGeneratorGeneratingChange = { generatorGenerating = it },
+                            eazyDocked = eazyDocked,
+                            onFloatingComposeStart = { genHeaderStartNonce++ },
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -347,6 +346,10 @@ fun CreatorMainScreen(
                             onHeroEazyReadyChange = { heroEazyReady = it },
                             heroHeaderStartNonce = heroHeaderStartNonce,
                             onHeroGeneratingChange = { heroGenerating = it },
+                            showHeroDockedComposeBar = eazyDocked &&
+                                (heroEazyReady || heroGenerating),
+                            heroDockedComposeLoading = heroGenerating,
+                            onHeroDockedComposeStart = { heroHeaderStartNonce++ },
                             modifier = Modifier.fillMaxSize()
                         )
                     }

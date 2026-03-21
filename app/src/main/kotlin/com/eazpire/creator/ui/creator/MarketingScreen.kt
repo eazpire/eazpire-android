@@ -79,6 +79,9 @@ fun MarketingScreen(
     onHeroEazyReadyChange: (Boolean) -> Unit = {},
     heroHeaderStartNonce: Int = 0,
     onHeroGeneratingChange: (Boolean) -> Unit = {},
+    showHeroDockedComposeBar: Boolean = false,
+    heroDockedComposeLoading: Boolean = false,
+    onHeroDockedComposeStart: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
@@ -174,6 +177,9 @@ fun MarketingScreen(
                 onHeroEazyReadyChange = onHeroEazyReadyChange,
                 heroHeaderStartNonce = heroHeaderStartNonce,
                 onHeroGeneratingChange = onHeroGeneratingChange,
+                showHeroDockedComposeBar = showHeroDockedComposeBar,
+                heroDockedComposeLoading = heroDockedComposeLoading,
+                onHeroDockedComposeStart = onHeroDockedComposeStart,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -203,6 +209,9 @@ private fun MarketingContentCreationPanel(
     onHeroEazyReadyChange: (Boolean) -> Unit = {},
     heroHeaderStartNonce: Int = 0,
     onHeroGeneratingChange: (Boolean) -> Unit = {},
+    showHeroDockedComposeBar: Boolean = false,
+    heroDockedComposeLoading: Boolean = false,
+    onHeroDockedComposeStart: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -227,8 +236,19 @@ private fun MarketingContentCreationPanel(
                     onHeroEazyReadyChange = onHeroEazyReadyChange,
                     headerStartNonce = heroHeaderStartNonce,
                     onHeroGeneratingChange = onHeroGeneratingChange,
-                    modifier = Modifier.padding(20.dp)
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .padding(bottom = if (showHeroDockedComposeBar) 88.dp else 20.dp)
                 )
+                if (showHeroDockedComposeBar) {
+                    CreatorDockedComposeFloatingBar(
+                        visible = true,
+                        loading = heroDockedComposeLoading,
+                        onStart = onHeroDockedComposeStart,
+                        translationStore = translationStore,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    )
+                }
             }
             CONTENT_VIDEOS, CONTENT_IMAGES -> Box(
                 modifier = Modifier

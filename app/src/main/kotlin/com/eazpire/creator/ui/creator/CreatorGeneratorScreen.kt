@@ -190,6 +190,8 @@ fun CreatorGeneratorScreen(
     onGeneratorEazyReadyChange: (Boolean) -> Unit = {},
     headerStartNonce: Int = 0,
     onGeneratorGeneratingChange: (Boolean) -> Unit = {},
+    eazyDocked: Boolean = false,
+    onFloatingComposeStart: () -> Unit = {},
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {
@@ -749,6 +751,17 @@ fun CreatorGeneratorScreen(
                         )
                     }
                 }
+            )
+        }
+
+        val showDockedComposeBar = eazyDocked && (eazyGenReady || generatingGen)
+        if (showDockedComposeBar) {
+            CreatorDockedComposeFloatingBar(
+                visible = true,
+                loading = generatingGen,
+                onStart = onFloatingComposeStart,
+                translationStore = translationStore,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
