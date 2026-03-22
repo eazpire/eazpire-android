@@ -25,10 +25,12 @@ class ShopifyStorefrontCartApi(
         val id: String,
         val quantity: Int,
         val variantId: String,
+        val productHandle: String,
         val title: String,
         val productTitle: String,
         val imageUrl: String?,
         val priceAmount: String,
+        val compareAtAmount: String?,
         val currencyCode: String
     )
 
@@ -52,14 +54,17 @@ class ShopifyStorefrontCartApi(
             val merch = node.optJSONObject("merchandise") ?: return@mapNotNull null
             val product = merch.optJSONObject("product") ?: JSONObject()
             val price = merch.optJSONObject("price") ?: JSONObject()
+            val cmp = merch.optJSONObject("compareAtPrice")
             CartLine(
                 id = node.optString("id"),
                 quantity = node.optInt("quantity", 1),
                 variantId = merch.optString("id").substringAfterLast("/"),
+                productHandle = product.optString("handle", ""),
                 title = merch.optString("title"),
                 productTitle = product.optString("title"),
                 imageUrl = merch.optJSONObject("image")?.optString("url")?.takeIf { it.isNotBlank() },
                 priceAmount = price.optString("amount", "0"),
+                compareAtAmount = cmp?.optString("amount")?.takeIf { it.isNotBlank() },
                 currencyCode = price.optString("currencyCode", "CHF")
             )
         }

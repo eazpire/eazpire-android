@@ -66,6 +66,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import androidx.compose.ui.text.font.FontWeight
@@ -240,6 +241,7 @@ fun CollectionScreen(
     var productFilters by remember { mutableStateOf(ProductFilters()) }
     var filterCountProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     val context = LocalContext.current
+    val localeStore = remember { LocaleStore(context) }
     val density = LocalDensity.current
 
     val products = productsByPage[currentPage] ?: emptyList()
@@ -267,7 +269,7 @@ fun CollectionScreen(
         if (collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE) {
             val list = withContext(Dispatchers.IO) {
                 try {
-                    val j = creatorApi.listActiveShopPromotionProducts()
+                    val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
                     ShopifyProductsApi.parseActivePromotionProductsResponse(j)
                 } catch (_: Exception) {
                     emptyList()
@@ -1149,7 +1151,7 @@ private fun CollectionProductCard(
                 text = designTitle,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             if (productTypeTitle.isNotBlank()) {

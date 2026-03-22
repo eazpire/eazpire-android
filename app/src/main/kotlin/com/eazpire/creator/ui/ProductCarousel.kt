@@ -362,7 +362,8 @@ private fun ProductCard(
                 text = designTitle,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurface
             )
             if (productTypeTitle.isNotBlank()) {

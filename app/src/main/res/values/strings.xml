@@ -7,6 +7,10 @@
     <string name="notification_channel_cart_desc">Reminders when items are left in your cart</string>
     <string name="notification_cart_title">Your cart is waiting</string>
     <string name="notification_cart_body">You still have items in your cart. Tap to continue checkout.</string>
+    <string name="notif_cart_promo_60_title">Promotion ending soon</string>
+    <string name="notif_cart_promo_60_body">Your cart promo price expires in about one hour. Checkout to keep the deal.</string>
+    <string name="notif_cart_promo_10_title">Last minutes for your promo price</string>
+    <string name="notif_cart_promo_10_body">Your promotional price expires in about 10 minutes.</string>
     <string name="notif_prefs_login_required">Sign in to manage notification settings.</string>
     <string name="notif_shop_master">Shop notifications</string>
     <string name="notif_shop_cart">Cart reminders</string>

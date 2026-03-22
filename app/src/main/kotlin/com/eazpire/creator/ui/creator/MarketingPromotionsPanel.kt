@@ -874,6 +874,15 @@ fun MarketingPromotionsPanel(
                             color = Color.White.copy(alpha = 0.45f),
                             modifier = Modifier.padding(top = 6.dp)
                         )
+                        Text(
+                            text = translationStore.t(
+                                "creator.promotions.shop_slot_hint",
+                                "In the shop, promotional prices apply only during short daily windows for each country (automatic). Outside those windows, customers see regular prices."
+                            ),
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.45f),
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
 
                         Divider(
                             modifier = Modifier.padding(vertical = 16.dp),

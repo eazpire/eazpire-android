@@ -433,7 +433,7 @@ fun ProductDetailScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                             color = EazColors.TextPrimary,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         if (productTypeTitle.isNotBlank()) {
@@ -1153,7 +1153,7 @@ private fun PdpProductCarouselRow(
                     Text(
                         dt,
                         style = MaterialTheme.typography.labelSmall,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = EazColors.TextPrimary
                     )

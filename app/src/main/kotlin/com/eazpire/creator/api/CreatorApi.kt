@@ -6,6 +6,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -765,9 +766,19 @@ class CreatorApi(
     suspend fun listPromotions(ownerId: String): JSONObject =
         call("list-promotions", mapOf("owner_id" to ownerId))
 
-    /** GET ?op=list-active-shop-promotion-products — storefront (no JWT); active creator bundle promos */
-    suspend fun listActiveShopPromotionProducts(): JSONObject =
-        call("list-active-shop-promotion-products", emptyMap())
+    /** GET ?op=list-active-shop-promotion-products — storefront (no JWT); active creator bundle promos; optional country for 4h slot display */
+    suspend fun listActiveShopPromotionProducts(countryCode: String? = null): JSONObject {
+        val params = mutableMapOf<String, String>()
+        countryCode?.takeIf { it.isNotBlank() }?.let { params["country"] = it }
+        return call("list-active-shop-promotion-products", params)
+    }
+
+    /** POST ?op=resolve-promo-cart — cart line promo prices for country + slot */
+    suspend fun resolvePromoCart(countryCode: String, lines: JSONArray): JSONObject =
+        postJsonBodyOp(
+            "resolve-promo-cart",
+            JSONObject().put("country", countryCode).put("lines", lines)
+        )
 
     /** POST ?op=save-promotion – Body JSON (owner_id, name, discount_type, duration_days, product_ids, …) */
     suspend fun savePromotion(body: JSONObject): JSONObject =

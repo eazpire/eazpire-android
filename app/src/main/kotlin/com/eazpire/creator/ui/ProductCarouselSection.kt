@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -61,10 +62,12 @@ fun ProductCarouselSection(
     scrollToTopTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val store = LocalTranslationStore.current
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val api = remember { ShopifyProductsApi() }
     val creatorApi = remember { CreatorApi() }
+    val localeStore = remember { LocaleStore(context) }
     var productsByHomeSection by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
     var productsByCategory by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
     var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
@@ -74,7 +77,7 @@ fun ProductCarouselSection(
             coroutineScope {
                 val promoDeferred = async {
                     try {
-                        val j = creatorApi.listActiveShopPromotionProducts()
+                        val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
                         ShopifyProductsApi.parseActivePromotionProductsResponse(j)
                     } catch (_: Exception) {
                         emptyList()
