@@ -62,6 +62,7 @@ import com.eazpire.creator.ui.creator.CreatorMainScreen
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
+import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
 import com.eazpire.creator.ui.header.ShopMenuBar
 import com.eazpire.creator.ui.vouchers.VoucherModal
 import kotlinx.coroutines.Dispatchers
@@ -470,8 +471,7 @@ fun ShopScreen(
                             productModalHandleState.value = null
                             shopSearchQuery = t
                         }
-                    },
-                    onCreateProductClick = { shopCreateProductVisible = true }
+                    }
                 )
                 ShopMenuBar(
                     onAllClick = {
@@ -483,9 +483,13 @@ fun ShopScreen(
                         }
                     },
                     onCategoryClick = { title, handle ->
-                        shopSearchQuery = null
-                        selectedProductHandle = null
-                        selectedCollection = Triple(title, handle, null)
+                        if (handle == SHOP_MENU_CREATE_HANDLE) {
+                            shopCreateProductVisible = true
+                        } else {
+                            shopSearchQuery = null
+                            selectedProductHandle = null
+                            selectedCollection = Triple(title, handle, null)
+                        }
                     },
                     selectedHandle = selectedCollection?.second
                 )
@@ -760,8 +764,12 @@ fun ShopScreen(
         onDismiss = { menuDrawerVisible = false },
         onCategoryClick = { title, handle, productType ->
             menuDrawerVisible = false
-            selectedProductHandle = null
-            selectedCollection = Triple(title, handle, productType)
+            if (handle == SHOP_MENU_CREATE_HANDLE) {
+                shopCreateProductVisible = true
+            } else {
+                selectedProductHandle = null
+                selectedCollection = Triple(title, handle, productType)
+            }
         },
         onExternalUrl = { url ->
             menuDrawerVisible = false

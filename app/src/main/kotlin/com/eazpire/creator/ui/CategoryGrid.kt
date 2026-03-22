@@ -70,8 +70,8 @@ private val CATEGORIES = listOf(
         url = "https://www.eazpire.com/collections/home-living"
     ),
     CategoryItem(
-        id = "personalize",
-        name = "Personalize",
+        id = "create",
+        name = "Create",
         emoji = "✨",
         gradientColors = listOf(Color(0xFFF9A03F), Color(0xFFEA580C)),
         url = "https://www.eazpire.com/pages/design-generator"

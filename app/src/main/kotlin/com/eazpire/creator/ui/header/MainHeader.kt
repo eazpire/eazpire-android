@@ -10,8 +10,6 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -84,10 +82,8 @@ fun MainHeader(
     onCreatorModeChange: (Boolean) -> Unit = {},
     onSearchNavigate: (String) -> Unit = {},
     onSearchQuerySubmit: (String) -> Unit = {},
-    onCreateProductClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val trStore = LocalTranslationStore.current
     var searchQuery by remember { mutableStateOf("") }
     var internalCartDrawerVisible by remember { mutableStateOf(false) }
     val cartDrawerVisible = cartDrawerVisibleControl ?: internalCartDrawerVisible
@@ -243,17 +239,6 @@ fun MainHeader(
                 },
                 modifier = Modifier.weight(1f)
             )
-            TextButton(
-                onClick = onCreateProductClick,
-                modifier = Modifier.padding(end = 2.dp)
-            ) {
-                Text(
-                    text = trStore?.t("creator.shop_create_product.entry", "Create product")
-                        ?: "Create product",
-                    fontSize = 11.sp,
-                    maxLines = 1
-                )
-            }
             HeaderActions(
                 cartCount = AppCartStore.itemCount,
                 favoritesCount = favoritesCount,

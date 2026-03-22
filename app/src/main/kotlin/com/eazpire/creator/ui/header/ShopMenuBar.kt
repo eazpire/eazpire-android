@@ -29,6 +29,9 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.LocalTranslationStore
 
+/** Synthetic handle: opens shop “Create product” flow (not a Shopify collection). */
+const val SHOP_MENU_CREATE_HANDLE = "eaz_shop_create"
+
 private data class MenuItem(
     val label: String,
     val collectionHandle: String?,
@@ -36,21 +39,20 @@ private data class MenuItem(
 )
 
 private val MENU_ITEMS = listOf(
+    MenuItem("Create", SHOP_MENU_CREATE_HANDLE, ""),
     MenuItem("Promotions", "eaz-promotions", "https://www.eazpire.com/pages/promotions"),
     MenuItem("Women", "women", "https://www.eazpire.com/collections/women"),
     MenuItem("Men", "men", "https://www.eazpire.com/collections/men"),
     MenuItem("Kids", "kids", "https://www.eazpire.com/collections/kids"),
     MenuItem("Toddler", "toddler", "https://www.eazpire.com/collections/toddler"),
     MenuItem("Home & Living", "home-living", "https://www.eazpire.com/collections/home-living"),
-    MenuItem("Personalize", null, "https://www.eazpire.com/pages/design-generator"),
-    MenuItem("Generate", null, "https://www.eazpire.com/pages/design-generator"),
 )
 
 private val MENU_ITEM_KEYS = mapOf(
+    "Create" to "creator.shop_create_product.entry",
     "Promotions" to "eaz.shop.promotions_title",
     "Women" to "sidebar.women", "Men" to "sidebar.men", "Kids" to "sidebar.kids",
     "Toddler" to "eaz.header.toddler", "Home & Living" to "menu.home-living",
-    "Personalize" to "header.personalize", "Generate" to "header.generate"
 )
 
 @Composable
@@ -123,7 +125,7 @@ fun ShopMenuBar(
                                 val handle = item.collectionHandle
                                 if (handle != null && onCategoryClick != null) {
                                     onCategoryClick(item.label, handle)
-                                } else {
+                                } else if (item.url.isNotBlank()) {
                                     try {
                                         context.startActivity(
                                             Intent(Intent.ACTION_VIEW, Uri.parse(item.url))

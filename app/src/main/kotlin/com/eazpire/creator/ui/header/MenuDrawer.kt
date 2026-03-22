@@ -89,24 +89,22 @@ private val ACCESSORIES_SUBMENU = listOf(
 )
 
 private val DRAWER_ITEMS = listOf(
+    DrawerItem("Create", SHOP_MENU_CREATE_HANDLE, ""),
     DrawerItem("Women", "women", "https://www.eazpire.com/collections/women"),
     DrawerItem("Men", "men", "https://www.eazpire.com/collections/men"),
     DrawerItem("Kids", "kids", "https://www.eazpire.com/collections/kids"),
     DrawerItem("Toddler", "toddler", "https://www.eazpire.com/collections/toddler"),
     DrawerItem("Home & Living", "home-living", "https://www.eazpire.com/collections/home-living"),
-    DrawerItem("Personalize", null, "https://www.eazpire.com/pages/design-generator"),
-    DrawerItem("Generate", null, "https://www.eazpire.com/pages/design-generator"),
 )
 
 /** Maps drawer label to DB translation key (ui:key format used by API) */
 private val DRAWER_ITEM_KEYS = mapOf(
+    "Create" to "creator.shop_create_product.entry",
     "Women" to "sidebar.women",
     "Men" to "sidebar.men",
     "Kids" to "sidebar.kids",
     "Toddler" to "eaz.header.toddler",
     "Home & Living" to "menu.home-living",
-    "Personalize" to "header.personalize",
-    "Generate" to "header.generate",
 )
 
 private val LIST_VIEW_ITEMS = listOf(
