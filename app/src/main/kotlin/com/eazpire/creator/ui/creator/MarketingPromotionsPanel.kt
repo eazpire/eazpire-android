@@ -6,17 +6,18 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
@@ -40,6 +41,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -108,6 +110,35 @@ private enum class PromoSheetPage { Form, Picker }
 
 /** Matches web eaz-creator-promotions picker tabs. */
 private enum class PromoPickerTab { Available, Picked }
+
+/** Sub-tabs under Marketing → Promotions (same as web). */
+private enum class PromotionFilterTab { Active, Upcoming, Ended, All }
+
+private enum class PromoLifecycle { Active, Upcoming, Ended, Unknown }
+
+private fun promotionLifecycle(startsAt: Long?, endsAt: Long?): PromoLifecycle {
+    val now = System.currentTimeMillis()
+    val s = startsAt ?: return PromoLifecycle.Unknown
+    val e = endsAt ?: return PromoLifecycle.Unknown
+    if (s > e) return PromoLifecycle.Unknown
+    return when {
+        now < s -> PromoLifecycle.Upcoming
+        now > e -> PromoLifecycle.Ended
+        else -> PromoLifecycle.Active
+    }
+}
+
+private fun filterPromotions(items: List<PromotionRow>, tab: PromotionFilterTab): List<PromotionRow> {
+    if (tab == PromotionFilterTab.All) return items
+    return items.filter { p ->
+        when (promotionLifecycle(p.startsAt, p.endsAt)) {
+            PromoLifecycle.Active -> tab == PromotionFilterTab.Active
+            PromoLifecycle.Upcoming -> tab == PromotionFilterTab.Upcoming
+            PromoLifecycle.Ended -> tab == PromotionFilterTab.Ended
+            PromoLifecycle.Unknown -> false
+        }
+    }
+}
 
 private data class ShopCollection(val handle: String, val title: String)
 
@@ -219,6 +250,9 @@ fun MarketingPromotionsPanel(
     var items by remember { mutableStateOf<List<PromotionRow>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var refresh by remember { mutableIntStateOf(0) }
+    var filterTab by remember { mutableStateOf(PromotionFilterTab.Active) }
+
+    val filteredItems = remember(items, filterTab) { filterPromotions(items, filterTab) }
 
     var showSheet by remember { mutableStateOf(false) }
     var sheetPage by remember { mutableStateOf(PromoSheetPage.Form) }
@@ -283,6 +317,40 @@ fun MarketingPromotionsPanel(
 
     val dateFmt = remember {
         SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+    }
+
+    fun tabLabel(tab: PromotionFilterTab): String = when (tab) {
+        PromotionFilterTab.Active -> translationStore.t("creator.promotions.subtab_active", "Active")
+        PromotionFilterTab.Upcoming -> translationStore.t("creator.promotions.subtab_upcoming", "Upcoming")
+        PromotionFilterTab.Ended -> translationStore.t("creator.promotions.subtab_ended", "Ended")
+        PromotionFilterTab.All -> translationStore.t("creator.promotions.subtab_all", "All")
+    }
+
+    fun lifecycleStatusLabel(lc: PromoLifecycle): String = when (lc) {
+        PromoLifecycle.Active -> translationStore.t("creator.promotions.status_active", "Active")
+        PromoLifecycle.Upcoming -> translationStore.t("creator.promotions.status_upcoming", "Upcoming")
+        PromoLifecycle.Ended -> translationStore.t("creator.promotions.status_ended", "Ended")
+        PromoLifecycle.Unknown -> translationStore.t("creator.promotions.status_unknown", "Unknown dates")
+    }
+
+    fun promoStatusColor(lc: PromoLifecycle): Color = when (lc) {
+        PromoLifecycle.Active -> Color(0xFF86EFAC)
+        PromoLifecycle.Upcoming -> Color(0xFF93C5FD)
+        PromoLifecycle.Ended -> Color(0xFFE2E8F0).copy(alpha = 0.75f)
+        PromoLifecycle.Unknown -> Color(0xFFFCD34D)
+    }
+
+    fun formatPeriodRange(start: Long, end: Long): String {
+        val tpl = translationStore.t("creator.promotions.period_range", "{{ start }} – {{ end }}")
+        return tpl
+            .replace("{{ start }}", dateFmt.format(Date(start)))
+            .replace("{{ end }}", dateFmt.format(Date(end)))
+    }
+
+    fun formatPeriodDays(start: Long, end: Long): String {
+        val days = maxOf(1, kotlin.math.ceil((end - start) / 86400000.0).toInt())
+        val tpl = translationStore.t("creator.promotions.period_days", "{{ count }} days")
+        return tpl.replace("{{ count }}", days.toString())
     }
 
     fun parsePromotionList(resp: JSONObject): List<PromotionRow> {
@@ -494,6 +562,47 @@ fun MarketingPromotionsPanel(
                 color = Color.White.copy(alpha = 0.6f)
             )
         }
+        if (!loading && ownerId.isNotBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                PromotionFilterTab.values().forEach { tab ->
+                    val selected = filterTab == tab
+                    OutlinedButton(
+                        onClick = { filterTab = tab },
+                        modifier = Modifier.height(36.dp),
+                        shape = RoundedCornerShape(999.dp),
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) EazColors.Orange.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.14f)
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (selected) EazColors.Orange.copy(alpha = 0.12f) else Color.Transparent,
+                            contentColor = if (selected) Color(0xFFFBBF24) else Color.White.copy(alpha = 0.75f)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = tabLabel(tab),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            if (items.isNotEmpty() && filteredItems.isEmpty()) {
+                Text(
+                    text = translationStore.t("creator.promotions.tab_empty_filtered", "No promotions in this filter."),
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+        }
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier
@@ -505,7 +614,8 @@ fun MarketingPromotionsPanel(
             item {
                 Box(
                     modifier = Modifier
-                        .aspectRatio(1f)
+                        .fillMaxWidth()
+                        .height(180.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .border(1.dp, EazColors.Orange.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
                         .background(EazColors.Orange.copy(alpha = 0.08f))
@@ -531,24 +641,35 @@ fun MarketingPromotionsPanel(
                     }
                 }
             }
-            lazyGridItems(items, key = { it.id }) { p ->
+            lazyGridItems(filteredItems, key = { it.id }) { p ->
+                val lc = promotionLifecycle(p.startsAt, p.endsAt)
                 Box(
                     modifier = Modifier
-                        .aspectRatio(1f)
+                        .fillMaxWidth()
+                        .height(180.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
                         .background(Color(0x991C1F2B))
                         .clickable { openEdit(p) }
-                        .padding(12.dp),
+                        .padding(10.dp),
                     contentAlignment = Alignment.TopStart
                 ) {
-                    Column {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Text(
+                            text = lifecycleStatusLabel(lc).uppercase(Locale.getDefault()),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = promoStatusColor(lc),
+                            letterSpacing = 0.4.sp,
+                            maxLines = 1
+                        )
                         Text(
                             text = p.name,
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
-                            maxLines = 2
+                            maxLines = 2,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                         val label = if (p.discountType == "fixed_usd" || p.discountType == "fixed") {
                             "-$" + p.discountValue
@@ -557,11 +678,27 @@ fun MarketingPromotionsPanel(
                         }
                         Text(
                             text = label,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             color = EazColors.Orange,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(top = 6.dp)
+                            modifier = Modifier.padding(top = 4.dp)
                         )
+                        val s = p.startsAt
+                        val e = p.endsAt
+                        if (s != null && e != null) {
+                            Text(
+                                text = formatPeriodRange(s, e),
+                                fontSize = 10.sp,
+                                lineHeight = 12.sp,
+                                color = Color.White.copy(alpha = 0.55f),
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                            Text(
+                                text = formatPeriodDays(s, e),
+                                fontSize = 9.sp,
+                                color = Color.White.copy(alpha = 0.4f)
+                            )
+                        }
                     }
                 }
             }
