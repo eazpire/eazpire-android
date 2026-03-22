@@ -422,6 +422,19 @@ fun ShopScreen(
                         } else {
                             showLoginOptions = true
                         }
+                    },
+                    onSearchNavigate = { url ->
+                        val uri = Uri.parse(url)
+                        val path = uri.path ?: ""
+                        when {
+                            path.startsWith("/products/") -> {
+                                val handle = path.removePrefix("/products/").trimEnd('/').substringBefore("?")
+                                if (handle.isNotBlank()) selectedProductHandle = handle
+                            }
+                            else -> {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            }
+                        }
                     }
                 )
                 ShopMenuBar(

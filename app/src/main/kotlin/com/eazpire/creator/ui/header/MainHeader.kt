@@ -79,6 +79,7 @@ fun MainHeader(
     slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
     isCreatorMode: Boolean = false,
     onCreatorModeChange: (Boolean) -> Unit = {},
+    onSearchNavigate: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -224,6 +225,7 @@ fun MainHeader(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it },
                 onSearch = { },
+                onNavigateToUrl = onSearchNavigate,
                 placeholder = run {
                     val store = LocalTranslationStore.current
                     val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
