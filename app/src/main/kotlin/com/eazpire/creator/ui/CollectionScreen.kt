@@ -63,6 +63,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -70,6 +71,9 @@ import kotlinx.coroutines.withContext
 
 private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
 private const val PRODUCTS_PER_PAGE = 24
+
+/** Special [collectionHandle] — load products from worker `list-active-shop-promotion-products`, not a Shopify collection. */
+const val EAZ_PROMOTIONS_COLLECTION_HANDLE = "eaz-promotions"
 
 private data class SortOption(val value: String, val label: String)
 
@@ -217,6 +221,7 @@ fun CollectionScreen(
     val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val api = remember { ShopifyProductsApi() }
+    val creatorApi = remember { CreatorApi() }
     var productsByPage by remember { mutableStateOf<Map<Int, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
     var pageCursors by remember { mutableStateOf(listOf<String?>(null)) }
     var hasNextPage by remember { mutableStateOf(false) }
@@ -252,6 +257,22 @@ fun CollectionScreen(
             return@LaunchedEffect
         }
         isLoading = true
+        if (collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE) {
+            val list = withContext(Dispatchers.IO) {
+                try {
+                    val j = creatorApi.listActiveShopPromotionProducts()
+                    ShopifyProductsApi.parseActivePromotionProductsResponse(j)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+            productsByPage = mapOf(1 to list)
+            pageCursors = listOf(null)
+            hasNextPage = false
+            filterCountProducts = list
+            isLoading = false
+            return@LaunchedEffect
+        }
         val cursor = pageCursors.getOrNull(currentPage - 1)
         val result = withContext(Dispatchers.IO) {
             var r = api.getProducts(
@@ -274,6 +295,12 @@ fun CollectionScreen(
 
     // Load 250 products for filtering/counts: when drawer opens, filters applied, or collection has products (for total display).
     LaunchedEffect(collectionHandle, filterDrawerVisible, productFilters.isEmpty(), productsByPage.isEmpty()) {
+        if (collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE) {
+            if (filterCountProducts.isEmpty() && productsByPage.values.flatten().isNotEmpty()) {
+                filterCountProducts = productsByPage.values.flatten()
+            }
+            return@LaunchedEffect
+        }
         val needFilterProducts = filterDrawerVisible || !productFilters.isEmpty() || productsByPage.isNotEmpty()
         if (needFilterProducts && filterCountProducts.isEmpty()) {
             filterCountProducts = withContext(Dispatchers.IO) {

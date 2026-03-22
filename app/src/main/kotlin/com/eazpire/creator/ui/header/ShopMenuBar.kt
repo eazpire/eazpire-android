@@ -36,6 +36,7 @@ private data class MenuItem(
 )
 
 private val MENU_ITEMS = listOf(
+    MenuItem("Promotions", "eaz-promotions", "https://www.eazpire.com/pages/promotions"),
     MenuItem("Women", "women", "https://www.eazpire.com/collections/women"),
     MenuItem("Men", "men", "https://www.eazpire.com/collections/men"),
     MenuItem("Kids", "kids", "https://www.eazpire.com/collections/kids"),
@@ -46,6 +47,7 @@ private val MENU_ITEMS = listOf(
 )
 
 private val MENU_ITEM_KEYS = mapOf(
+    "Promotions" to "eaz.shop.promotions_title",
     "Women" to "sidebar.women", "Men" to "sidebar.men", "Kids" to "sidebar.kids",
     "Toddler" to "eaz.header.toddler", "Home & Living" to "menu.home-living",
     "Personalize" to "header.personalize", "Generate" to "header.generate"

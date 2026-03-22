@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.i18n.LocalTranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -63,12 +64,22 @@ fun ProductCarouselSection(
     val store = LocalTranslationStore.current
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val api = remember { ShopifyProductsApi() }
+    val creatorApi = remember { CreatorApi() }
     var productsByHomeSection by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
     var productsByCategory by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
+    var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             coroutineScope {
+                val promoDeferred = async {
+                    try {
+                        val j = creatorApi.listActiveShopPromotionProducts()
+                        ShopifyProductsApi.parseActivePromotionProductsResponse(j)
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
                 val homeDeferred = async {
                     HOME_SECTIONS.associate { section ->
                         val result = api.getProducts(
@@ -115,6 +126,19 @@ fun ProductCarouselSection(
             fallbackProductHandle = productsByHomeSection["newcomer"]?.firstOrNull()?.handle
                 ?: productsByCategory["women"]?.firstOrNull()?.handle
         )
+        if (promoProducts.isNotEmpty()) {
+            val promoTitle = t("eaz.shop.promotions_title", "Promotions")
+            ProductCarousel(
+                title = promoTitle,
+                products = promoProducts.take(12),
+                collectionHandle = EAZ_PROMOTIONS_COLLECTION_HANDLE,
+                onTitleClick = onCategoryClick?.let { cb ->
+                    { cb(promoTitle, EAZ_PROMOTIONS_COLLECTION_HANDLE) }
+                },
+                onProductClick = onProductClick,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+        }
         HOME_SECTIONS.forEach { section ->
             val products = productsByHomeSection[section.id].orEmpty()
             val displayTitle = t(section.titleKey, HOME_SECTION_DEFAULTS[section.id] ?: section.id)

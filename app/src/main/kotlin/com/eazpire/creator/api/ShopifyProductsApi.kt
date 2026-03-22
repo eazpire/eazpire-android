@@ -602,4 +602,58 @@ class ShopifyProductsApi(
             designLanguage = obj.optString("designLanguage", "").ifBlank { obj.optString("design_language", "") }
         )
     }
+
+    companion object {
+        /**
+         * Public worker op `list-active-shop-promotion-products` — maps to [ProductItem] for shop grid/carousel.
+         */
+        fun parseActivePromotionProductsResponse(json: JSONObject, storeBase: String = "https://www.eazpire.com"): List<ProductItem> {
+            if (!json.optBoolean("ok", false)) return emptyList()
+            val arr = json.optJSONArray("products") ?: return emptyList()
+            val out = ArrayList<ProductItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val handle = o.optString("handle", "").trim()
+                if (handle.isBlank()) continue
+                val imgs = mutableListOf<String>()
+                val imgArr = o.optJSONArray("images")
+                if (imgArr != null) {
+                    for (j in 0 until imgArr.length()) {
+                        imgArr.optString(j, "").takeIf { it.isNotBlank() }?.let { imgs.add(it) }
+                    }
+                }
+                val featured = o.optString("featured_image", "").ifBlank { null }
+                if (imgs.isEmpty() && featured != null) imgs.add(featured)
+                if (imgs.isEmpty()) continue
+                val price = o.optDouble("price", 0.0)
+                val compare = if (o.has("compare_at_price") && !o.isNull("compare_at_price")) {
+                    o.optDouble("compare_at_price").takeIf { !it.isNaN() }
+                } else {
+                    null
+                }
+                out.add(
+                    ProductItem(
+                        id = o.optLong("id", 0L),
+                        title = o.optString("title", handle),
+                        handle = handle,
+                        images = imgs,
+                        variantImages = imgs.take(1),
+                        url = "$storeBase/products/$handle",
+                        price = price,
+                        compareAtPrice = compare,
+                        createdAt = "",
+                        productType = "",
+                        tags = emptyList(),
+                        vendor = o.optString("vendor", ""),
+                        contentType = "",
+                        designType = "",
+                        designStyle = emptyList(),
+                        ratio = "",
+                        designLanguage = ""
+                    )
+                )
+            }
+            return out
+        }
+    }
 }

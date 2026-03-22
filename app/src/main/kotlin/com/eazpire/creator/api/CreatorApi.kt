@@ -759,6 +759,10 @@ class CreatorApi(
     suspend fun listPromotions(ownerId: String): JSONObject =
         call("list-promotions", mapOf("owner_id" to ownerId))
 
+    /** GET ?op=list-active-shop-promotion-products — storefront (no JWT); active creator bundle promos */
+    suspend fun listActiveShopPromotionProducts(): JSONObject =
+        call("list-active-shop-promotion-products", emptyMap())
+
     /** POST ?op=save-promotion – Body JSON (owner_id, name, discount_type, duration_days, product_ids, …) */
     suspend fun savePromotion(body: JSONObject): JSONObject =
         postJsonBodyOp("save-promotion", body)
