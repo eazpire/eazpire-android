@@ -210,6 +210,7 @@ fun ShopScreen(
     var currentPagePath by remember { mutableStateOf("/") }
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
+    var shopSearchQuery by remember { mutableStateOf<String?>(null) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     val productModalHandleState = remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
@@ -326,6 +327,14 @@ fun ShopScreen(
             }
             path.startsWith("/pages/creator-dashboard") || path == "/pages/creator" -> isCreatorMode = true
             path.startsWith("/pages/design-generator") -> isCreatorMode = true
+            path.startsWith("/search") -> {
+                val q = uri.getQueryParameter("q")?.trim().orEmpty()
+                if (q.isNotEmpty()) {
+                    selectedCollection = null
+                    selectedProductHandle = null
+                    shopSearchQuery = q
+                }
+            }
         }
     }
 
@@ -412,6 +421,7 @@ fun ShopScreen(
                         menuDrawerVisible = false
                         showAuthScreen = false
                         selectedCollection = null
+                        shopSearchQuery = null
                         selectedProductHandle = null
                         productModalHandleState.value = null
                         scrollToTopTrigger++
@@ -429,11 +439,34 @@ fun ShopScreen(
                         when {
                             path.startsWith("/products/") -> {
                                 val handle = path.removePrefix("/products/").trimEnd('/').substringBefore("?")
-                                if (handle.isNotBlank()) selectedProductHandle = handle
+                                if (handle.isNotBlank()) {
+                                    shopSearchQuery = null
+                                    selectedProductHandle = handle
+                                }
+                            }
+                            path.startsWith("/search") -> {
+                                val q = uri.getQueryParameter("q")?.trim().orEmpty()
+                                if (q.isNotEmpty()) {
+                                    selectedCollection = null
+                                    selectedProductHandle = null
+                                    productModalHandleState.value = null
+                                    shopSearchQuery = q
+                                } else {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                }
                             }
                             else -> {
                                 context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                             }
+                        }
+                    },
+                    onSearchQuerySubmit = { q ->
+                        val t = q.trim()
+                        if (t.isNotEmpty()) {
+                            selectedCollection = null
+                            selectedProductHandle = null
+                            productModalHandleState.value = null
+                            shopSearchQuery = t
                         }
                     }
                 )
@@ -441,11 +474,13 @@ fun ShopScreen(
                     onAllClick = {
                         when {
                             selectedProductHandle != null -> menuDrawerVisible = true
+                            shopSearchQuery != null -> shopSearchQuery = null
                             selectedCollection != null -> selectedCollection = null
                             else -> menuDrawerVisible = true
                         }
                     },
                     onCategoryClick = { title, handle ->
+                        shopSearchQuery = null
                         selectedProductHandle = null
                         selectedCollection = Triple(title, handle, null)
                     },
@@ -496,6 +531,13 @@ fun ShopScreen(
                     tokenStore = tokenStore,
                     onTermsClick = { termsModalVisible = true }
                 )
+                shopSearchQuery != null -> ShopSearchScreen(
+                    searchQuery = shopSearchQuery!!,
+                    onBack = { shopSearchQuery = null },
+                    onProductClick = { p ->
+                        selectedProductHandle = p.handle
+                    }
+                )
                 selectedCollection != null -> {
                     val (title, handle, productType) = selectedCollection!!
                     CollectionScreen(
@@ -511,6 +553,7 @@ fun ShopScreen(
                     onCurrentPageChange = { currentPagePath = it },
                     onCategoryClick = { title, h -> selectedCollection = Triple(title, h, null) },
                     onProductClick = { params ->
+                        shopSearchQuery = null
                         selectedProductHandle = params.handle
                         if (params.collectionTitle != null && params.collectionHandle != null) {
                             selectedCollection = Triple(params.collectionTitle, params.collectionHandle, null)

@@ -80,6 +80,7 @@ fun MainHeader(
     isCreatorMode: Boolean = false,
     onCreatorModeChange: (Boolean) -> Unit = {},
     onSearchNavigate: (String) -> Unit = {},
+    onSearchQuerySubmit: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -225,6 +226,10 @@ fun MainHeader(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it },
                 onSearch = { },
+                onSubmitSearchQuery = { q ->
+                    searchQuery = ""
+                    onSearchQuerySubmit(q)
+                },
                 onNavigateToUrl = onSearchNavigate,
                 placeholder = run {
                     val store = LocalTranslationStore.current

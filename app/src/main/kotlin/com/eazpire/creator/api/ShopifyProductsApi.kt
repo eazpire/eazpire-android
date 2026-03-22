@@ -53,14 +53,15 @@ class ShopifyProductsApi(
      */
     suspend fun getProducts(
         collectionHandle: String? = null,
+        searchQuery: String? = null,
         limit: Int = 24,
         cursor: String? = null
     ): ProductsResult = withContext(Dispatchers.IO) {
-        var result = fetchFromStorefrontApi(collectionHandle, limit, cursor)
-        if (result.products.isEmpty() && collectionHandle != null) {
-            result = fetchFromStorefrontApi(null, limit, cursor)
+        var result = fetchFromStorefrontApi(collectionHandle, searchQuery, limit, cursor)
+        if (result.products.isEmpty() && collectionHandle != null && searchQuery.isNullOrBlank()) {
+            result = fetchFromStorefrontApi(null, null, limit, cursor)
         }
-        if (result.products.isEmpty()) {
+        if (result.products.isEmpty() && searchQuery.isNullOrBlank()) {
             result = fetchFromProductsJson(collectionHandle, limit, cursor)
         }
         if (result.products.isEmpty()) return@withContext result
@@ -127,13 +128,17 @@ class ShopifyProductsApi(
 
     private fun fetchFromStorefrontApi(
         collectionHandle: String?,
+        searchQuery: String?,
         limit: Int,
         cursor: String?
     ): ProductsResult {
         val url = buildString {
             append("$workerUrl/apps/creator-dispatch?op=get-storefront-products")
             append("&limit=$limit")
-            if (!collectionHandle.isNullOrBlank()) {
+            val sq = searchQuery?.trim().orEmpty()
+            if (sq.isNotEmpty()) {
+                append("&search_query=${java.net.URLEncoder.encode(sq, "UTF-8")}")
+            } else if (!collectionHandle.isNullOrBlank()) {
                 append("&collection_handle=${java.net.URLEncoder.encode(collectionHandle, "UTF-8")}")
             }
             cursor?.takeIf { it.isNotBlank() }?.let {

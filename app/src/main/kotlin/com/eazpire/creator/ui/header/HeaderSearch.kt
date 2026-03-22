@@ -32,38 +32,40 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.text.HtmlCompat
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ShopifyPredictiveSearchApi
 import com.eazpire.creator.i18n.LocalTranslationStore
 import kotlinx.coroutines.delay
-import java.net.URLEncoder
 
 @Composable
 fun HeaderSearch(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    /** Native shop search results for query text (suggestions + search submit) */
+    onSubmitSearchQuery: (String) -> Unit,
+    /** Product URLs from predictive list — open native PDP */
     onNavigateToUrl: (String) -> Unit,
     placeholder: String = "Search...",
     modifier: Modifier = Modifier
@@ -73,9 +75,11 @@ fun HeaderSearch(
     val api = remember { ShopifyPredictiveSearchApi() }
     val store = LocalTranslationStore.current
     val noResultsText = store?.t("eaz.search.no_results", "No results") ?: "No results"
+    val suggestionsLabel = store?.t("eaz.search.section_suggestions", "Suggestions") ?: "Suggestions"
+    val productsLabel = store?.t("eaz.search.section_products", "Products") ?: "Products"
 
     var focused by remember { mutableStateOf(false) }
-    var fieldBoundsWindow by remember { mutableStateOf<Rect?>(null) }
+    var fieldHeightPx by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ShopifyPredictiveSearchApi.Result?>(null) }
 
@@ -99,32 +103,83 @@ fun HeaderSearch(
         query.trim().length >= 2 &&
         (loading || result != null)
 
-    if (showPanel && fieldBoundsWindow != null) {
-        val topPad = with(density) { fieldBoundsWindow!!.bottom.toDp() } + 4.dp
-        Dialog(
-            onDismissRequest = {
-                focusManager.clearFocus()
-            },
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
+    Box(modifier = modifier.fillMaxWidth()) {
+        Column {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .onGloballyPositioned { coords ->
+                        fieldHeightPx = coords.size.height
+                    }
+                    .onFocusChanged { focused = it.isFocused },
+                textStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
+                placeholder = {
+                    Text(
+                        text = placeholder,
+                        color = EazColors.TextSecondary,
+                        fontSize = 14.sp
+                    )
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = EazColors.Orange,
+                    unfocusedBorderColor = EazColors.TopbarBorder,
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    cursorColor = EazColors.Orange,
+                    focusedTextColor = EazColors.TextPrimary,
+                    unfocusedTextColor = EazColors.TextPrimary
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    val q = query.trim()
+                    if (q.isNotBlank()) {
+                        onSubmitSearchQuery(q)
+                    } else {
+                        onSearch()
+                    }
+                }),
+                trailingIcon = {
+                    IconButton(onClick = {
+                        val q = query.trim()
+                        if (q.isNotBlank()) {
+                            onSubmitSearchQuery(q)
+                        } else {
+                            onSearch()
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = EazColors.Orange
+                        )
+                    }
+                }
             )
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.22f))
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) { focusManager.clearFocus() }
+        }
+
+        if (showPanel && fieldHeightPx > 0) {
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(0, fieldHeightPx),
+                onDismissRequest = { },
+                properties = PopupProperties(
+                    focusable = false,
+                    dismissOnBackPress = true,
+                    dismissOnClickOutside = true,
+                    clippingEnabled = false
                 )
+            ) {
+                val maxH = with(density) { 420.dp }
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = topPad)
-                        .heightIn(max = 420.dp),
+                        .heightIn(max = maxH),
                     shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp),
                     shadowElevation = 10.dp,
                     color = Color.White
@@ -159,7 +214,7 @@ fun HeaderSearch(
                                 if (result!!.queries.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = "Suggestions",
+                                            text = suggestionsLabel,
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                                             style = TextStyle(
                                                 fontSize = 11.sp,
@@ -174,15 +229,7 @@ fun HeaderSearch(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable {
-                                                    val url =
-                                                        "https://www.eazpire.com/search?q=${
-                                                            URLEncoder.encode(
-                                                                q.text,
-                                                                "UTF-8"
-                                                            )
-                                                        }&type=product"
-                                                    focusManager.clearFocus()
-                                                    onNavigateToUrl(url)
+                                                    onSubmitSearchQuery(q.text.trim())
                                                 }
                                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                                             verticalAlignment = Alignment.CenterVertically
@@ -211,7 +258,7 @@ fun HeaderSearch(
                                 if (result!!.products.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = "Products",
+                                            text = productsLabel,
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                                             style = TextStyle(
                                                 fontSize = 11.sp,
@@ -226,7 +273,6 @@ fun HeaderSearch(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable {
-                                                    focusManager.clearFocus()
                                                     onNavigateToUrl(p.url)
                                                 }
                                                 .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -295,67 +341,4 @@ fun HeaderSearch(
             }
         }
     }
-
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .onGloballyPositioned { coords ->
-                fieldBoundsWindow = coords.boundsInWindow()
-            }
-            .onFocusChanged { focused = it.isFocused },
-        textStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
-        placeholder = {
-            Text(
-                text = placeholder,
-                color = EazColors.TextSecondary,
-                fontSize = 14.sp
-            )
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(8.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = EazColors.Orange,
-            unfocusedBorderColor = EazColors.TopbarBorder,
-            focusedContainerColor = Color.White,
-            unfocusedContainerColor = Color.White,
-            cursorColor = EazColors.Orange,
-            focusedTextColor = EazColors.TextPrimary,
-            unfocusedTextColor = EazColors.TextPrimary
-        ),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = {
-            focusManager.clearFocus()
-            val q = query.trim()
-            if (q.isNotBlank()) {
-                onNavigateToUrl(
-                    "https://www.eazpire.com/search?q=${URLEncoder.encode(q, "UTF-8")}&type=product"
-                )
-            } else {
-                onSearch()
-            }
-        }),
-        trailingIcon = {
-            IconButton(onClick = {
-                focusManager.clearFocus()
-                val q = query.trim()
-                if (q.isNotBlank()) {
-                    onNavigateToUrl(
-                        "https://www.eazpire.com/search?q=${URLEncoder.encode(q, "UTF-8")}&type=product"
-                    )
-                } else {
-                    onSearch()
-                }
-            }) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search",
-                    tint = EazColors.Orange
-                )
-            }
-        }
-    )
 }
