@@ -2,13 +2,16 @@ package com.eazpire.creator.ui.vouchers
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
@@ -22,15 +25,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,7 +55,14 @@ import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
 
-private enum class MainTab { STORE_CREDIT, GIFT_CARDS, PROMO_CODES }
+/** Matches web modal: Store Credit + four subtabs (own/sent gift cards, created/redeemed promos). */
+private enum class VoucherSection {
+    STORE_CREDIT,
+    GC_OWN,
+    GC_SENT,
+    PROMO_CREATED,
+    PROMO_REDEEMED
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,9 +77,7 @@ fun VoucherModal(
     val api = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
     val t = remember(translationStore) { { k: String, d: String -> translationStore.t(k, d) } }
 
-    var mainTab by remember { mutableIntStateOf(0) }
-    var giftSub by remember { mutableIntStateOf(0) }
-    var promoSub by remember { mutableIntStateOf(0) }
+    var section by remember { mutableStateOf(VoucherSection.STORE_CREDIT) }
 
     var loading by remember { mutableStateOf(true) }
     var payoutJson by remember { mutableStateOf<JSONObject?>(null) }
@@ -114,6 +119,16 @@ fun VoucherModal(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
+    val drawerItems = remember(t) {
+        listOf(
+            VoucherSection.STORE_CREDIT to t("creator.voucher_page.subtab_store_credit", "Store Credit"),
+            VoucherSection.GC_OWN to t("creator.voucher_page.subtab_own_gift_cards", "My gift cards"),
+            VoucherSection.GC_SENT to t("creator.voucher_page.subtab_sent_gift_cards", "Sent gift cards"),
+            VoucherSection.PROMO_CREATED to t("creator.voucher_page.subtab_created_promos", "Created promos"),
+            VoucherSection.PROMO_REDEEMED to t("creator.voucher_page.subtab_redeemed_promos", "Redeemed promos")
+        )
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -122,39 +137,21 @@ fun VoucherModal(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet {
-                    Text(
-                        t("creator.voucher_page.subtab_store_credit", "Store Credit"),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                mainTab = MainTab.STORE_CREDIT.ordinal
-                                scope.launch { drawerState.close() }
-                            }
-                            .padding(16.dp),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        t("creator.voucher_page.tab_gift_cards", "Gift cards"),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                mainTab = MainTab.GIFT_CARDS.ordinal
-                                scope.launch { drawerState.close() }
-                            }
-                            .padding(16.dp),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        t("creator.voucher_page.tab_promo_codes", "Promo codes"),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                mainTab = MainTab.PROMO_CODES.ordinal
-                                scope.launch { drawerState.close() }
-                            }
-                            .padding(16.dp),
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    drawerItems.forEach { (dest, label) ->
+                        val selected = section == dest
+                        Text(
+                            label,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    section = dest
+                                    scope.launch { drawerState.close() }
+                                }
+                                .padding(16.dp),
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             },
             content = {
@@ -182,69 +179,48 @@ fun VoucherModal(
                             .fillMaxSize()
                             .padding(padding)
                     ) {
-                        TabRow(selectedTabIndex = mainTab) {
-                            Tab(
-                                selected = mainTab == 0,
-                                onClick = { mainTab = 0 },
-                                text = { Text(t("creator.voucher_page.subtab_store_credit", "Store Credit")) }
-                            )
-                            Tab(
-                                selected = mainTab == 1,
-                                onClick = { mainTab = 1 },
-                                text = { Text(t("creator.voucher_page.tab_gift_cards", "Gift cards")) }
-                            )
-                            Tab(
-                                selected = mainTab == 2,
-                                onClick = { mainTab = 2 },
-                                text = { Text(t("creator.voucher_page.tab_promo_codes", "Promo codes")) }
-                            )
-                        }
-                        when (mainTab) {
-                            MainTab.STORE_CREDIT.ordinal -> {
-                                StoreCreditPanel(payoutJson, currencyCode, loading, errorText, t)
-                            }
-                            MainTab.GIFT_CARDS.ordinal -> {
-                                TabRow(selectedTabIndex = giftSub) {
-                                    Tab(
-                                        selected = giftSub == 0,
-                                        onClick = { giftSub = 0 },
-                                        text = { Text(t("creator.voucher_page.subtab_own_gift_cards", "My gift cards")) }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        ) {
+                            when (section) {
+                                VoucherSection.STORE_CREDIT ->
+                                    StoreCreditPanel(payoutJson, currencyCode, loading, errorText, t)
+                                VoucherSection.GC_OWN ->
+                                    GiftCardsPanel(
+                                        giftCards = giftCards,
+                                        own = true,
+                                        loading = loading,
+                                        errorText = errorText,
+                                        currencyFallback = currencyCode,
+                                        t = t
                                     )
-                                    Tab(
-                                        selected = giftSub == 1,
-                                        onClick = { giftSub = 1 },
-                                        text = { Text(t("creator.voucher_page.subtab_sent_gift_cards", "Sent")) }
+                                VoucherSection.GC_SENT ->
+                                    GiftCardsPanel(
+                                        giftCards = giftCards,
+                                        own = false,
+                                        loading = loading,
+                                        errorText = errorText,
+                                        currencyFallback = currencyCode,
+                                        t = t
                                     )
-                                }
-                                GiftCardsPanel(
-                                    giftCards = giftCards,
-                                    own = giftSub == 0,
-                                    loading = loading,
-                                    errorText = errorText,
-                                    currencyFallback = currencyCode,
-                                    t = t
-                                )
-                            }
-                            MainTab.PROMO_CODES.ordinal -> {
-                                TabRow(selectedTabIndex = promoSub) {
-                                    Tab(
-                                        selected = promoSub == 0,
-                                        onClick = { promoSub = 0 },
-                                        text = { Text(t("creator.voucher_page.subtab_created_promos", "Created")) }
+                                VoucherSection.PROMO_CREATED ->
+                                    PromoPanel(
+                                        promoJson = promoJson,
+                                        created = true,
+                                        loading = loading,
+                                        errorText = errorText,
+                                        t = t
                                     )
-                                    Tab(
-                                        selected = promoSub == 1,
-                                        onClick = { promoSub = 1 },
-                                        text = { Text(t("creator.voucher_page.subtab_redeemed_promos", "Redeemed")) }
+                                VoucherSection.PROMO_REDEEMED ->
+                                    PromoPanel(
+                                        promoJson = promoJson,
+                                        created = false,
+                                        loading = loading,
+                                        errorText = errorText,
+                                        t = t
                                     )
-                                }
-                                PromoPanel(
-                                    promoJson = promoJson,
-                                    created = promoSub == 0,
-                                    loading = loading,
-                                    errorText = errorText,
-                                    t = t
-                                )
                             }
                         }
                     }
@@ -263,7 +239,7 @@ private fun StoreCreditPanel(
     t: (String, String) -> String
 ) {
     if (loading) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
@@ -284,12 +260,18 @@ private fun StoreCreditPanel(
         )
         return
     }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(220.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         items(rows) { row ->
             val amount = row.optDouble("amount", 0.0)
             val cur = row.optString("payoutCurrency", currencyFallback)
             val label = formatMoney(amount, cur)
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
                     Text(label, fontWeight = FontWeight.Bold)
                     Text(t("creator.voucher_page.subtab_store_credit", "Store Credit"), style = MaterialTheme.typography.bodySmall)
@@ -314,7 +296,7 @@ private fun GiftCardsPanel(
     t: (String, String) -> String
 ) {
     if (loading) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
@@ -334,13 +316,19 @@ private fun GiftCardsPanel(
         )
         return
     }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(220.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         items(list) { gc ->
             val bal = gc.optDouble("balance", 0.0)
             val cur = gc.optString("currency", currencyFallback)
             val masked = gc.optString("masked_code", gc.optString("last_characters", "••••"))
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
                     Text(masked, fontWeight = FontWeight.Medium)
                     Text(formatMoney(bal, cur), fontWeight = FontWeight.Bold)
                 }
@@ -358,7 +346,7 @@ private fun PromoPanel(
     t: (String, String) -> String
 ) {
     if (loading) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
@@ -376,21 +364,32 @@ private fun PromoPanel(
         val slotsTotal = promoJson.optInt("slots_total", 5)
         val count = (0 until active.length()).count()
         val available = (slotsTotal - count).coerceAtLeast(0)
-        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
-            item {
-                Text(
-                    "$available / $slotsTotal ${t("creator.voucher_page.loading_promos", "slots")}",
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-            items((0 until active.length()).map { active.getJSONObject(it) }) { p ->
-                val code = p.optString("discount_code", "")
-                val amt = p.optDouble("value_amount", 0.0)
-                val cur = p.optString("value_currency", "EUR")
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(code, fontWeight = FontWeight.Bold)
-                        Text(formatMoney(amt, cur))
+        val slotItems = remember(active) {
+            (0 until active.length()).map { active.getJSONObject(it) }
+        }
+        Column(Modifier.fillMaxSize()) {
+            Text(
+                "$available / $slotsTotal ${t("creator.voucher_page.loading_promos", "slots")}",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(220.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(slotItems) { p ->
+                    val code = p.optString("discount_code", "")
+                    val amt = p.optDouble("value_amount", 0.0)
+                    val cur = p.optString("value_currency", "EUR")
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(code, fontWeight = FontWeight.Bold)
+                            Text(formatMoney(amt, cur))
+                        }
                     }
                 }
             }
@@ -411,12 +410,18 @@ private fun PromoPanel(
             )
             return
         }
-        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(220.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             items(all) { p ->
                 val code = p.optString("discount_code", "")
                 val amt = p.optDouble("value_amount", 0.0)
                 val cur = p.optString("value_currency", "EUR")
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,

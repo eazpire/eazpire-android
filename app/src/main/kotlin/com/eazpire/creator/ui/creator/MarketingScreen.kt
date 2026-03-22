@@ -81,11 +81,18 @@ fun MarketingScreen(
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onVideoJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onHeroEazyReadyChange: (Boolean) -> Unit = {},
+    onVideoEazyReadyChange: (Boolean) -> Unit = {},
+    onVideoGeneratingChange: (Boolean) -> Unit = {},
     heroHeaderStartNonce: Int = 0,
+    videoHeaderStartNonce: Int = 0,
     onHeroGeneratingChange: (Boolean) -> Unit = {},
     showHeroDockedComposeBar: Boolean = false,
     heroDockedComposeLoading: Boolean = false,
     onHeroDockedComposeStart: () -> Unit = {},
+    showVideoDockedComposeBar: Boolean = false,
+    videoDockedComposeLoading: Boolean = false,
+    onVideoDockedComposeStart: () -> Unit = {},
+    onMarketingTabVisibility: (heroContentTabVisible: Boolean, videoContentTabVisible: Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
@@ -117,7 +124,11 @@ fun MarketingScreen(
         updateHeaderTitle()
         val heroTabVisible =
             currentSubTab == SUBTAB_CONTENT_CREATION && currentContentTab == CONTENT_HERO_IMAGES
+        val videoTabVisible =
+            currentSubTab == SUBTAB_CONTENT_CREATION && currentContentTab == CONTENT_VIDEOS
         if (!heroTabVisible) onHeroEazyReadyChange(false)
+        if (!videoTabVisible) onVideoEazyReadyChange(false)
+        onMarketingTabVisibility(heroTabVisible, videoTabVisible)
     }
 
     Column(
@@ -180,11 +191,17 @@ fun MarketingScreen(
                 onHeroJobStarted = onHeroJobStarted,
                 onVideoJobStarted = onVideoJobStarted,
                 onHeroEazyReadyChange = onHeroEazyReadyChange,
+                onVideoEazyReadyChange = onVideoEazyReadyChange,
+                onVideoGeneratingChange = onVideoGeneratingChange,
                 heroHeaderStartNonce = heroHeaderStartNonce,
+                videoHeaderStartNonce = videoHeaderStartNonce,
                 onHeroGeneratingChange = onHeroGeneratingChange,
                 showHeroDockedComposeBar = showHeroDockedComposeBar,
                 heroDockedComposeLoading = heroDockedComposeLoading,
                 onHeroDockedComposeStart = onHeroDockedComposeStart,
+                showVideoDockedComposeBar = showVideoDockedComposeBar,
+                videoDockedComposeLoading = videoDockedComposeLoading,
+                onVideoDockedComposeStart = onVideoDockedComposeStart,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -213,11 +230,17 @@ private fun MarketingContentCreationPanel(
     onHeroJobStarted: (jobId: String, summary: String) -> Unit,
     onVideoJobStarted: (jobId: String, summary: String) -> Unit,
     onHeroEazyReadyChange: (Boolean) -> Unit = {},
+    onVideoEazyReadyChange: (Boolean) -> Unit = {},
+    onVideoGeneratingChange: (Boolean) -> Unit = {},
     heroHeaderStartNonce: Int = 0,
+    videoHeaderStartNonce: Int = 0,
     onHeroGeneratingChange: (Boolean) -> Unit = {},
     showHeroDockedComposeBar: Boolean = false,
     heroDockedComposeLoading: Boolean = false,
     onHeroDockedComposeStart: () -> Unit = {},
+    showVideoDockedComposeBar: Boolean = false,
+    videoDockedComposeLoading: Boolean = false,
+    onVideoDockedComposeStart: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -268,9 +291,22 @@ private fun MarketingContentCreationPanel(
                     onGenerated = onSwitchToPublish,
                     onVideoJobStarted = onVideoJobStarted,
                     onOpenEazyChat = { tab -> onEazyChatOpen(tab) },
+                    onVideoEazyReadyChange = onVideoEazyReadyChange,
+                    onVideoGeneratingChange = onVideoGeneratingChange,
+                    headerStartNonce = videoHeaderStartNonce,
                     modifier = Modifier
                         .padding(20.dp)
+                        .padding(bottom = if (showVideoDockedComposeBar) 88.dp else 20.dp)
                 )
+                if (showVideoDockedComposeBar) {
+                    CreatorDockedComposeFloatingBar(
+                        visible = true,
+                        loading = videoDockedComposeLoading,
+                        onStart = onVideoDockedComposeStart,
+                        translationStore = translationStore,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    )
+                }
             }
             CONTENT_IMAGES -> Box(
                 modifier = Modifier

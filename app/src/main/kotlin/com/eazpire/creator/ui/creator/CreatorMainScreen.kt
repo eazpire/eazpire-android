@@ -107,10 +107,15 @@ fun CreatorMainScreen(
     var currentScreen by remember { mutableIntStateOf(0) }
     var generatorEazyReady by remember { mutableStateOf(false) }
     var heroEazyReady by remember { mutableStateOf(false) }
+    var videoEazyReady by remember { mutableStateOf(false) }
     var genHeaderStartNonce by remember { mutableIntStateOf(0) }
     var heroHeaderStartNonce by remember { mutableIntStateOf(0) }
+    var videoHeaderStartNonce by remember { mutableIntStateOf(0) }
     var generatorGenerating by remember { mutableStateOf(false) }
     var heroGenerating by remember { mutableStateOf(false) }
+    var videoGenerating by remember { mutableStateOf(false) }
+    var marketingHeroTabVisible by remember { mutableStateOf(false) }
+    var marketingVideoTabVisible by remember { mutableStateOf(false) }
 
     var prevOverlayComposeKey by remember { mutableIntStateOf(-1) }
     LaunchedEffect(overlayComposeStartKey) {
@@ -118,24 +123,49 @@ fun CreatorMainScreen(
         prevOverlayComposeKey = overlayComposeStartKey
         when (currentScreen) {
             1 -> genHeaderStartNonce++
-            3 -> heroHeaderStartNonce++
+            3 -> {
+                if (marketingVideoTabVisible) videoHeaderStartNonce++
+                else heroHeaderStartNonce++
+            }
             else -> Unit
         }
     }
 
-    LaunchedEffect(currentScreen, generatorEazyReady, heroEazyReady) {
-        val look =
-            (currentScreen == 1 && generatorEazyReady) || (currentScreen == 3 && heroEazyReady)
+    LaunchedEffect(
+        currentScreen,
+        generatorEazyReady,
+        heroEazyReady,
+        videoEazyReady,
+        marketingHeroTabVisible,
+        marketingVideoTabVisible
+    ) {
+        val marketingLook =
+            (currentScreen == 3 && marketingHeroTabVisible && heroEazyReady) ||
+                (currentScreen == 3 && marketingVideoTabVisible && videoEazyReady)
+        val look = (currentScreen == 1 && generatorEazyReady) || marketingLook
         onGeneratorEazyLookLeftChange(look)
     }
 
-    /** Generator tab: overlay synced from [CreatorGeneratorScreen] SideEffect (same frame as eazy ready). */
-    LaunchedEffect(currentScreen, heroEazyReady, heroGenerating) {
+    /** Marketing (hero + video tabs): overlay for docked compose bubble + header slot hide. */
+    LaunchedEffect(
+        currentScreen,
+        marketingHeroTabVisible,
+        marketingVideoTabVisible,
+        heroEazyReady,
+        heroGenerating,
+        videoEazyReady,
+        videoGenerating
+    ) {
         when (currentScreen) {
-            3 -> onEazyGenerationOverlayChange(
-                heroEazyReady || heroGenerating,
-                heroGenerating
-            )
+            3 -> {
+                val visible =
+                    (marketingHeroTabVisible && (heroEazyReady || heroGenerating)) ||
+                        (marketingVideoTabVisible && (videoEazyReady || videoGenerating))
+                val loading =
+                    (marketingHeroTabVisible && heroGenerating) ||
+                        (marketingVideoTabVisible && videoGenerating)
+                onEazyGenerationOverlayChange(visible, loading)
+            }
             1 -> Unit
             else -> onEazyGenerationOverlayChange(false, false)
         }
@@ -143,7 +173,10 @@ fun CreatorMainScreen(
 
     LaunchedEffect(currentScreen) {
         if (currentScreen != 1) generatorGenerating = false
-        if (currentScreen != 3) heroGenerating = false
+        if (currentScreen != 3) {
+            heroGenerating = false
+            videoGenerating = false
+        }
     }
 
     DisposableEffect(lifecycleOwner, audioStore) {
@@ -237,16 +270,26 @@ fun CreatorMainScreen(
                     onAudioModalOpen = { audioModalVisible = true },
                     marketingTitleOverride = marketingTitleOverride,
                     eazyLookLeft = generationBubbleFaceLeft
-                        ?: ((currentScreen == 1 && generatorEazyReady) ||
-                            (currentScreen == 3 && heroEazyReady)),
+                        ?: run {
+                            val marketingLook =
+                                (currentScreen == 3 && marketingHeroTabVisible && heroEazyReady) ||
+                                    (currentScreen == 3 && marketingVideoTabVisible && videoEazyReady)
+                            (currentScreen == 1 && generatorEazyReady) || marketingLook
+                        },
                     hideEazyHeaderSlotWhenGenerationOverlay = shopGenerationOverlayActive,
                     showStartGenerationBubble = false,
                     startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
-                        (currentScreen == 3 && heroGenerating),
+                        (currentScreen == 3 && (
+                            (marketingHeroTabVisible && heroGenerating) ||
+                                (marketingVideoTabVisible && videoGenerating)
+                            )),
                     onStartGenerationClick = {
                         when (currentScreen) {
                             1 -> genHeaderStartNonce++
-                            3 -> heroHeaderStartNonce++
+                            3 -> {
+                                if (marketingVideoTabVisible) videoHeaderStartNonce++
+                                else heroHeaderStartNonce++
+                            }
                         }
                     },
                     startGenerationLabel = translationStore.t(
@@ -351,13 +394,25 @@ fun CreatorMainScreen(
                             onHeroJobStarted = onHeroJobStarted,
                             onVideoJobStarted = onVideoJobStarted,
                             onHeroEazyReadyChange = { heroEazyReady = it },
+                            onVideoEazyReadyChange = { videoEazyReady = it },
+                            onVideoGeneratingChange = { videoGenerating = it },
                             heroHeaderStartNonce = heroHeaderStartNonce,
+                            videoHeaderStartNonce = videoHeaderStartNonce,
                             onHeroGeneratingChange = { heroGenerating = it },
                             showHeroDockedComposeBar = eazyDocked &&
                                 (heroEazyReady || heroGenerating) &&
                                 !shopGenerationOverlayActive,
                             heroDockedComposeLoading = heroGenerating,
                             onHeroDockedComposeStart = { heroHeaderStartNonce++ },
+                            showVideoDockedComposeBar = eazyDocked &&
+                                (videoEazyReady || videoGenerating) &&
+                                !shopGenerationOverlayActive,
+                            videoDockedComposeLoading = videoGenerating,
+                            onVideoDockedComposeStart = { videoHeaderStartNonce++ },
+                            onMarketingTabVisibility = { heroVis, videoVis ->
+                                marketingHeroTabVisible = heroVis
+                                marketingVideoTabVisible = videoVis
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }

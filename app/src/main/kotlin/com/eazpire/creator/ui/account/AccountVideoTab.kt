@@ -39,9 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
@@ -70,6 +68,9 @@ fun AccountVideoTab(
     onVideoJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onOpenEazyChat: (EazySidebarTab) -> Unit = {},
     onVideoEazyReadyChange: (Boolean) -> Unit = {},
+    onVideoGeneratingChange: (Boolean) -> Unit = {},
+    /** Increment from docked/header „Start generation“ (same as hero tab). */
+    headerStartNonce: Int = 0,
     modifier: Modifier = Modifier
 ) {
     fun t(key: String, fallback: String): String = translationStore?.t(key, fallback) ?: fallback
@@ -92,7 +93,18 @@ fun AccountVideoTab(
     var referenceMime by remember { mutableStateOf("image/jpeg") }
     var prompt by remember { mutableStateOf("") }
     var generating by remember { mutableStateOf(false) }
+    SideEffect { onVideoGeneratingChange(generating) }
     var showConfirmDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(headerStartNonce) {
+        if (headerStartNonce == 0) return@LaunchedEffect
+        if (generating) return@LaunchedEffect
+        if (ownerId.isBlank() || (selectedTop == null && selectedAddition == null) ||
+            referenceImageBytes == null || referenceImageBytes?.isEmpty() == true
+        ) {
+            return@LaunchedEffect
+        }
+        showConfirmDialog = true
+    }
     var confirmBalanceEaz by remember { mutableStateOf<Double?>(null) }
     var generateStatus by remember { mutableStateOf<String?>(null) }
     var generateStatusError by remember { mutableStateOf(false) }
@@ -535,27 +547,6 @@ fun AccountVideoTab(
                         .size(28.dp),
                     color = EazColors.Orange,
                     strokeWidth = 2.dp
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(
-                onClick = {
-                    if (canGenerate) showConfirmDialog = true
-                },
-                enabled = canGenerate
-            ) {
-                Text(
-                    t("creator.content_creation.videos.generate", "Generate video"),
-                    color = if (canGenerate) EazColors.Orange else Color.Gray,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
                 )
             }
         }

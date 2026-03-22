@@ -65,7 +65,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -794,17 +793,21 @@ fun CreatorCreationsScreen(
                             }
                         }
                         if (productsTotalPages > 1) {
-                            CreationsProductsPaginationFooter(
-                                translationStore = translationStore,
-                                productsTotalPages = productsTotalPages,
-                                productsListPage = productsListPage,
-                                onPageChange = { productsListPage = it },
+                            ProductPaginationDots(
+                                totalPages = productsTotalPages,
+                                currentPage = productsListPage,
+                                onPageClick = { productsListPage = it },
                                 onSwipePrev = {
                                     if (productsListPage > 1) productsListPage = productsListPage - 1
                                 },
                                 onSwipeNext = {
                                     if (productsListPage < productsTotalPages) productsListPage = productsListPage + 1
-                                }
+                                },
+                                style = PaginationDotsStyle.Dark,
+                                swipeHint = translationStore.t(
+                                    "creator.mobile.products_pagination_swipe_hint",
+                                    "Swipe left / right on the dots"
+                                )
                             )
                         }
                     }
@@ -884,17 +887,21 @@ fun CreatorCreationsScreen(
                             }
                         }
                         if (productsTotalPages > 1) {
-                            CreationsProductsPaginationFooter(
-                                translationStore = translationStore,
-                                productsTotalPages = productsTotalPages,
-                                productsListPage = productsListPage,
-                                onPageChange = { productsListPage = it },
+                            ProductPaginationDots(
+                                totalPages = productsTotalPages,
+                                currentPage = productsListPage,
+                                onPageClick = { productsListPage = it },
                                 onSwipePrev = {
                                     if (productsListPage > 1) productsListPage = productsListPage - 1
                                 },
                                 onSwipeNext = {
                                     if (productsListPage < productsTotalPages) productsListPage = productsListPage + 1
-                                }
+                                },
+                                style = PaginationDotsStyle.Dark,
+                                swipeHint = translationStore.t(
+                                    "creator.mobile.products_pagination_swipe_hint",
+                                    "Swipe left / right on the dots"
+                                )
                             )
                         }
                     }
@@ -1010,40 +1017,6 @@ private fun CreationDesignCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CreationsProductsPaginationFooter(
-    translationStore: TranslationStore,
-    productsTotalPages: Int,
-    productsListPage: Int,
-    onPageChange: (Int) -> Unit,
-    onSwipePrev: () -> Unit,
-    onSwipeNext: () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = translationStore.t(
-                "creator.mobile.products_pagination_swipe_hint",
-                "Swipe left / right on the dots"
-            ),
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-            fontWeight = FontWeight.Medium,
-            color = Color.White.copy(alpha = 0.6f),
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-        ProductPaginationDots(
-            totalPages = productsTotalPages,
-            currentPage = productsListPage,
-            onPageClick = onPageChange,
-            onSwipePrev = onSwipePrev,
-            onSwipeNext = onSwipeNext,
-            style = PaginationDotsStyle.Dark
-        )
     }
 }
 
