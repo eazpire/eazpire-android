@@ -36,6 +36,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -71,6 +73,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -96,10 +99,16 @@ private data class PromotionRow(
 private data class PromoProductDraft(
     val id: String,
     val title: String,
-    val imageUrl: String?
+    val imageUrl: String?,
+    val handle: String = ""
 )
 
 private enum class PromoSheetPage { Form, Picker }
+
+/** Matches web eaz-creator-promotions picker tabs. */
+private enum class PromoPickerTab { Available, Picked }
+
+private data class ShopCollection(val handle: String, val title: String)
 
 private fun startOfDay(millis: Long): Long =
     Calendar.getInstance().apply {
@@ -119,8 +128,7 @@ private fun endOfDay(millis: Long): Long =
         set(Calendar.MILLISECOND, 999)
     }.timeInMillis
 
-private const val STOREFRONT_PRODUCTS_JSON =
-    "https://www.eazpire.com/collections/all/products.json?limit=250"
+private const val STOREFRONT_BASE = "https://www.eazpire.com"
 
 private fun productIdString(p: JSONObject): String {
     if (!p.has("id")) return ""
@@ -147,18 +155,49 @@ private fun parsePromotionProductsFromJson(resp: JSONObject): List<PromoProductD
         val id = productIdString(p)
         if (id.isBlank()) continue
         val title = p.optString("title", id)
-        out.add(PromoProductDraft(id, title, promoImageUrl(p)))
+        val handle = p.optString("handle", "")
+        out.add(PromoProductDraft(id, title, promoImageUrl(p), handle))
     }
     return out
 }
 
-private suspend fun fetchShopifyProductsFallback(): List<PromoProductDraft> = withContext(Dispatchers.IO) {
+/** Same as web: `/collections/{handle}/products.json` with handle `all` or chosen collection. */
+private suspend fun fetchShopifyProductsFallback(collectionHandle: String?): List<PromoProductDraft> =
+    withContext(Dispatchers.IO) {
+        val h = collectionHandle?.takeIf { it.isNotBlank() } ?: "all"
+        try {
+            val client = OkHttpClient()
+            val url = "$STOREFRONT_BASE/collections/$h/products.json?limit=250"
+            val req = Request.Builder().url(url).header("Accept", "application/json").build()
+            val http = client.newCall(req).execute()
+            if (!http.isSuccessful) return@withContext emptyList()
+            parsePromotionProductsFromJson(JSONObject(http.body?.string() ?: "{}"))
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+/** Same as web `fetch('/collections.json?limit=250')`. */
+private suspend fun fetchShopifyCollections(): List<ShopCollection> = withContext(Dispatchers.IO) {
     try {
         val client = OkHttpClient()
-        val req = Request.Builder().url(STOREFRONT_PRODUCTS_JSON).header("Accept", "application/json").build()
+        val req = Request.Builder()
+            .url("$STOREFRONT_BASE/collections.json?limit=250")
+            .header("Accept", "application/json")
+            .build()
         val http = client.newCall(req).execute()
         if (!http.isSuccessful) return@withContext emptyList()
-        parsePromotionProductsFromJson(JSONObject(http.body?.string() ?: "{}"))
+        val root = JSONObject(http.body?.string() ?: "{}")
+        val arr = root.optJSONArray("collections") ?: return@withContext emptyList()
+        val out = mutableListOf<ShopCollection>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val handle = o.optString("handle", "").trim()
+            if (handle.isBlank()) continue
+            val title = o.optString("title", handle)
+            out.add(ShopCollection(handle, title))
+        }
+        out
     } catch (_: Exception) {
         emptyList()
     }
@@ -196,23 +235,49 @@ fun MarketingPromotionsPanel(
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
 
-    var pickerSearch by remember { mutableStateOf("") }
-    /** Full list from API or Shopify fallback (loaded once per picker open). */
+    /** Search field (debounced for API + filter, same as web). */
+    var pickerSearchQuery by remember { mutableStateOf("") }
+    var pickerSearchDebounced by remember { mutableStateOf("") }
+    LaunchedEffect(pickerSearchQuery) {
+        delay(300)
+        pickerSearchDebounced = pickerSearchQuery
+    }
+
+    /** null = All (no collection_handle); "all" = storefront /collections/all; else collection handle. */
+    var pickerCollectionHandle by remember { mutableStateOf<String?>(null) }
+    var shopCollections by remember { mutableStateOf<List<ShopCollection>>(emptyList()) }
+    var pickerTab by remember { mutableStateOf(PromoPickerTab.Available) }
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
+
+    /** Full list from API or Shopify fallback (reload on category/search like web). */
     var pickerCatalog by remember { mutableStateOf<List<PromoProductDraft>>(emptyList()) }
     var pickerLoading by remember { mutableStateOf(false) }
     var pickerChecked by remember { mutableStateOf(setOf<String>()) }
 
-    val pickerProducts = remember(pickerCatalog, pickerSearch, selectedProducts) {
+    val pickerProducts = remember(pickerCatalog, pickerSearchDebounced, selectedProducts) {
         var list = pickerCatalog.filter { pr -> selectedProducts.none { it.id == pr.id } }
-        val q = pickerSearch.trim().lowercase()
+        val q = pickerSearchDebounced.trim().lowercase()
         if (q.isNotBlank()) {
             list = list.filter { pr ->
                 pr.title.lowercase().contains(q) ||
                     pr.id.contains(q) ||
-                    (q.length >= 3 && pr.id.lowercase().contains(q))
+                    pr.handle.lowercase().contains(q)
             }
         }
         list
+    }
+
+    val pickedListRows = remember(selectedProducts, pickerChecked, pickerCatalog) {
+        val ids = LinkedHashSet<String>()
+        selectedProducts.forEach { ids.add(it.id) }
+        pickerChecked.forEach { id ->
+            if (selectedProducts.none { it.id == id }) ids.add(id)
+        }
+        ids.map { id ->
+            selectedProducts.find { it.id == id }
+                ?: pickerCatalog.find { it.id == id }
+                ?: PromoProductDraft(id, id, null)
+        }
     }
 
     val dateFmt = remember {
@@ -262,21 +327,29 @@ fun MarketingPromotionsPanel(
         loading = false
     }
 
-    LaunchedEffect(ownerId, sheetPage, showSheet, editId) {
+    LaunchedEffect(showSheet, sheetPage) {
+        if (showSheet && sheetPage == PromoSheetPage.Picker) {
+            shopCollections = fetchShopifyCollections()
+        }
+    }
+
+    LaunchedEffect(ownerId, sheetPage, showSheet, editId, pickerCollectionHandle, pickerSearchDebounced) {
         if (!showSheet || sheetPage != PromoSheetPage.Picker || ownerId.isBlank()) return@LaunchedEffect
         pickerLoading = true
         try {
+            val qParam = pickerSearchDebounced.trim().takeIf { it.isNotEmpty() }
+            val collParam = pickerCollectionHandle?.trim()?.takeIf { it.isNotEmpty() }
             val resp = withContext(Dispatchers.IO) {
                 api.listProductsForPromotion(
                     ownerId,
                     promotionId = editId,
-                    q = null,
-                    collectionHandle = null
+                    q = qParam,
+                    collectionHandle = collParam
                 )
             }
             var list = parsePromotionProductsFromJson(resp)
             if (list.isEmpty()) {
-                list = fetchShopifyProductsFallback()
+                list = fetchShopifyProductsFallback(pickerCollectionHandle)
             }
             pickerCatalog = list
         } catch (_: Exception) {
@@ -335,7 +408,8 @@ fun MarketingPromotionsPanel(
                         map[id] = PromoProductDraft(
                             id = id,
                             title = o.optString("title", id),
-                            imageUrl = o.optString("image", "").takeIf { it.isNotBlank() }
+                            imageUrl = o.optString("image", "").takeIf { it.isNotBlank() },
+                            handle = o.optString("handle", "")
                         )
                     }
                     selectedProducts = p.productIds.map { id ->
