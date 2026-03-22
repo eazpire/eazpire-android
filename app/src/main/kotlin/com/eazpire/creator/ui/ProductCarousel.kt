@@ -215,7 +215,8 @@ private fun ProductCard(
         isTransitioning = true
     }
 
-    val nextIndex = (displayIndex + 1) % images.size
+    val nextIndex =
+        if (images.isEmpty()) 0 else (displayIndex + 1) % images.size
     // Web: new slide fades IN (0->1) over 1.2s, old stays visible until cleanup
     val incomingAlpha by animateFloatAsState(
         targetValue = if (isTransitioning) 1f else 0f,
@@ -240,6 +241,10 @@ private fun ProductCard(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
+                .then(
+                    if (images.isEmpty()) Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+                    else Modifier
+                )
         ) {
             if (images.isNotEmpty()) {
                 // Untere Ebene: aktuelles Bild (bleibt sichtbar während Transition, Web: old stays)
