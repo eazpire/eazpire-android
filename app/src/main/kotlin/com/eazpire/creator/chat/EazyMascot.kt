@@ -75,7 +75,8 @@ private fun vibrateSnap(context: android.content.Context) {
     }
 }
 private val EazyOrangeLight = Color(0xFFFF9A2A)
-private val SNAP_DISTANCE_DP = 80f
+/** Must cover finger imprecision + coordinate rounding; header slot is small */
+private val SNAP_DISTANCE_DP = 112f
 private val LONG_PRESS_MS = 300L
 private val DRAG_SLOP_PX = 18f
 

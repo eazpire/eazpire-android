@@ -451,6 +451,8 @@ fun ShopScreen(
             }
         }
         val contentBoundsState = remember { mutableStateOf<Rect?>(null) }
+        /** Same coordinate space as EazyMascot offset (inside navigationBarsPadding); required for snap distance vs header slot */
+        val mascotLayerBoundsState = remember { mutableStateOf<Rect?>(null) }
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -471,9 +473,12 @@ fun ShopScreen(
             val defaultYMascot = contentH - mascotSizePx - 100f
             val slot = slotBoundsState.value
             val contentB = contentBoundsState.value
+            val mascotLayerB = mascotLayerBoundsState.value
+            /** Prefer layer that matches EazyMascot parent; avoids wrong snap math when padding shifts origin */
+            val relB = mascotLayerB ?: contentB
             val rawXMascot = when {
-                eazyDocked && slot != null && contentB != null -> {
-                    val cx = slot.left - contentB.left + slot.width / 2f
+                eazyDocked && slot != null && relB != null -> {
+                    val cx = slot.left - relB.left + slot.width / 2f
                     (cx - mascotSizePx / 2f).coerceIn(0f, maxXMascot)
                 }
                 !eazyDocked && liveMascotX != null -> liveMascotX!!
@@ -524,6 +529,7 @@ fun ShopScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .navigationBarsPadding()
+                    .onGloballyPositioned { mascotLayerBoundsState.value = it.boundsInRoot() }
             ) {
                 if (!eazyDocked || showGenOverlay) {
                     val overlayDockedMascot = eazyDocked && showGenOverlay
@@ -552,7 +558,7 @@ fun ShopScreen(
                         scope = scope,
                         contentWidthPx = contentW,
                         contentHeightPx = contentH,
-                        contentBoundsInRoot = contentBoundsState.value,
+                        contentBoundsInRoot = mascotLayerBoundsState.value ?: contentBoundsState.value,
                         lookLeft = if (showGenOverlay) faceTowardBubbleLeft else creatorGenEazyLookLeft,
                         autoFaceFromScreenHalf = isCreatorMode && !showGenOverlay,
                         onVisualPositionChange = { x, y ->
