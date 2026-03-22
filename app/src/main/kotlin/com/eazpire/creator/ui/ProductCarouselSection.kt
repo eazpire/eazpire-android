@@ -101,6 +101,7 @@ fun ProductCarouselSection(
                         products.shuffled(Random.Default)
                     }
                 }
+                promoProducts = promoDeferred.await()
                 productsByHomeSection = homeDeferred.await()
                 productsByCategory = catDeferred.await()
             }
