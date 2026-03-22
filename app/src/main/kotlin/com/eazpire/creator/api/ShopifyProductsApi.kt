@@ -44,7 +44,11 @@ class ShopifyProductsApi(
         /** custom.product_key */
         val metaProductKey: String = "",
         /** custom.design_id */
-        val designId: String = ""
+        val designId: String = "",
+        /** Worker `list-active-shop-promotion-products`: promotion end (ms) for countdown. */
+        val promotionEndsAtMs: Long? = null,
+        /** Reference “before” price (compare or derived from creator discount). */
+        val promoBeforePrice: Double? = null
     )
 
     data class ProductsResult(
@@ -663,6 +667,20 @@ class ShopifyProductsApi(
     }
 
     companion object {
+        /** Worker JSON may use Long ms; avoid [JSONObject.optDouble] precision loss on large timestamps. */
+        private fun parsePromotionEndsAtMs(o: JSONObject): Long? {
+            if (!o.has("promotion_ends_at") || o.isNull("promotion_ends_at")) return null
+            return try {
+                when (val v = o.get("promotion_ends_at")) {
+                    is Number -> v.toLong().takeIf { it > 0L }
+                    is String -> v.trim().toLongOrNull()?.takeIf { it > 0L }
+                    else -> null
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
         /**
          * Public worker op `list-active-shop-promotion-products` — maps to [ProductItem] for shop grid/carousel.
          */
@@ -691,6 +709,14 @@ class ShopifyProductsApi(
                 } else {
                     null
                 }
+                val beforeRaw = if (o.has("before_price") && !o.isNull("before_price")) {
+                    o.optDouble("before_price")
+                } else {
+                    Double.NaN
+                }
+                val promoBefore = if (!beforeRaw.isNaN() && beforeRaw > price + 1e-6) beforeRaw else null
+                val compareForDisplay = promoBefore ?: compare
+                val promoEndsMs = parsePromotionEndsAtMs(o)
                 out.add(
                     ProductItem(
                         id = o.optLong("id", 0L),
@@ -700,7 +726,7 @@ class ShopifyProductsApi(
                         variantImages = imgs.take(1),
                         url = "$storeBase/products/$handle",
                         price = price,
-                        compareAtPrice = compare,
+                        compareAtPrice = compareForDisplay,
                         createdAt = "",
                         productType = "",
                         tags = emptyList(),
@@ -712,7 +738,9 @@ class ShopifyProductsApi(
                         designLanguage = "",
                         creator = "",
                         metaProductKey = "",
-                        designId = ""
+                        designId = "",
+                        promotionEndsAtMs = promoEndsMs,
+                        promoBeforePrice = promoBefore
                     )
                 )
             }

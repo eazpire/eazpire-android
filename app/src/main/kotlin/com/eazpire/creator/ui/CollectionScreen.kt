@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -42,6 +44,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
@@ -65,6 +68,10 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import java.text.NumberFormat
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -376,6 +383,9 @@ fun CollectionScreen(
                 items(filteredProducts) { product ->
                     CollectionProductCard(
                         product = product,
+                        isPromoCollection = collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE,
+                        promoEndsPrefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
+                        promoEndedLabel = t("eaz.shop.promo_countdown_ended", "Ended"),
                         onClick = { onProductClick(product) }
                     )
                 }
@@ -1013,6 +1023,49 @@ private fun CollectionComingSoon(
 }
 
 /** Split product title into design title + product type (like web eaz-product-card-redesign.liquid). */
+private fun formatShopMoneyCard(value: Double): String =
+    try {
+        NumberFormat.getCurrencyInstance(Locale.GERMANY).format(value)
+    } catch (_: Exception) {
+        "%.2f €".format(value)
+    }
+
+private fun formatPromoDurationMs(ms: Long): String {
+    if (ms <= 0L) return ""
+    var s = ms / 1000L
+    val d = s / 86400L
+    s %= 86400L
+    val h = s / 3600L
+    s %= 3600L
+    val m = s / 60L
+    val sec = s % 60L
+    return when {
+        d > 0L -> "${d}d ${h}h"
+        h > 0L -> "${h}h ${m}m ${sec}s"
+        else -> "${m}m ${sec}s"
+    }
+}
+
+@Composable
+private fun CollectionPromoCountdownChip(endsAtMs: Long, endsPrefix: String, endedLabel: String) {
+    var now by remember(endsAtMs) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(endsAtMs) {
+        while (now < endsAtMs) {
+            delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val left = endsAtMs - now
+    val label = if (left <= 0L) endedLabel else "$endsPrefix ${formatPromoDurationMs(left)}"
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = EazColors.Orange,
+        modifier = Modifier.padding(top = 4.dp)
+    )
+}
+
 private fun splitProductTitleForCard(title: String, productType: String): Pair<String, String> {
     val normalized = title
         .replace(" — ", " | ")
@@ -1031,6 +1084,9 @@ private fun splitProductTitleForCard(title: String, productType: String): Pair<S
 @Composable
 private fun CollectionProductCard(
     product: ShopifyProductsApi.ProductItem,
+    isPromoCollection: Boolean = false,
+    promoEndsPrefix: String = "",
+    promoEndedLabel: String = "",
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1108,12 +1164,46 @@ private fun CollectionProductCard(
             }
         }
         if (product.price > 0) {
-            Text(
-                text = "CHF %.2f".format(product.price),
-                style = MaterialTheme.typography.labelSmall,
-                color = EazColors.TextSecondary,
-                modifier = Modifier.padding(top = 2.dp)
-            )
+            if (isPromoCollection) {
+                val before = product.promoBeforePrice
+                    ?: product.compareAtPrice?.takeIf { it > product.price + 1e-6 }
+                val strikePrice = before?.takeIf { it > product.price + 1e-6 }
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Text(
+                        text = formatShopMoneyCard(product.price),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = EazColors.Orange
+                    )
+                    if (strikePrice != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = formatShopMoneyCard(strikePrice),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                            textDecoration = TextDecoration.LineThrough
+                        )
+                    }
+                }
+                val ends = product.promotionEndsAtMs
+                if (ends != null && ends > 0L) {
+                    CollectionPromoCountdownChip(
+                        endsAtMs = ends,
+                        endsPrefix = promoEndsPrefix.ifBlank { "Ends in" },
+                        endedLabel = promoEndedLabel.ifBlank { "Ended" }
+                    )
+                }
+            } else {
+                Text(
+                    text = formatShopMoneyCard(product.price),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = EazColors.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
         }
     }
 }

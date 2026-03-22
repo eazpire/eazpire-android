@@ -10,16 +10,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,6 +49,8 @@ import coil.imageLoader
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ShopifyProductsApi
 import kotlinx.coroutines.delay
+import java.text.NumberFormat
+import java.util.Locale
 
 // Web-Parameter aus eaz-home-sections.liquid
 private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
@@ -68,7 +76,11 @@ fun ProductCarousel(
     onProductClick: ((ProductClickWithCollection) -> Unit)? = null,
     modifier: Modifier = Modifier,
     /** If set, show title row + this message when [products] is empty (e.g. Promotions). */
-    emptyStateMessage: String? = null
+    emptyStateMessage: String? = null,
+    /** Promotions carousel: before/after price + countdown. */
+    promoProductLayout: Boolean = false,
+    promoEndsPrefix: String = "",
+    promoEndedLabel: String = ""
 ) {
     if (products.isEmpty()) {
         if (emptyStateMessage == null) return
@@ -133,6 +145,9 @@ fun ProductCarousel(
                 itemsIndexed(infiniteProducts, key = { index, p -> "${p.id}-$index" }) { index, product ->
                     ProductCard(
                         product = product,
+                        promoStyle = promoProductLayout,
+                        promoEndsPrefix = promoEndsPrefix,
+                        promoEndedLabel = promoEndedLabel,
                         onClick = {
                             if (onProductClick != null) {
                                 onProductClick(
@@ -190,9 +205,71 @@ fun ProductCarousel(
     }
 }
 
+private fun formatShopMoney(value: Double): String =
+    try {
+        NumberFormat.getCurrencyInstance(Locale.GERMANY).format(value)
+    } catch (_: Exception) {
+        "%.2f €".format(value)
+    }
+
+private fun formatPromoDuration(ms: Long): String {
+    if (ms <= 0L) return ""
+    var s = ms / 1000L
+    val d = s / 86400L
+    s %= 86400L
+    val h = s / 3600L
+    s %= 3600L
+    val m = s / 60L
+    val sec = s % 60L
+    return when {
+        d > 0L -> "${d}d ${h}h"
+        h > 0L -> "${h}h ${m}m ${sec}s"
+        else -> "${m}m ${sec}s"
+    }
+}
+
+/** Same split as CollectionScreen / web eaz-product-card-redesign (design line + product type line). */
+private fun splitProductTitleForCard(title: String, productType: String): Pair<String, String> {
+    val normalized = title
+        .replace(" — ", " | ")
+        .replace(" – ", " | ")
+        .replace(" - ", " | ")
+    val parts = normalized.split(" | ")
+    val designTitle = parts.firstOrNull()?.trim()?.ifBlank { title } ?: title
+    val productTypeTitle = when {
+        parts.size > 1 -> parts.drop(1).joinToString(" - ").trim()
+        productType.isNotBlank() -> productType
+        else -> ""
+    }
+    return designTitle to productTypeTitle
+}
+
+@Composable
+private fun PromoCountdownChip(endsAtMs: Long, endsPrefix: String, endedLabel: String) {
+    var now by remember(endsAtMs) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(endsAtMs) {
+        while (now < endsAtMs) {
+            delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val left = endsAtMs - now
+    val label = if (left <= 0L) endedLabel else "$endsPrefix ${formatPromoDuration(left)}"
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = EazColors.Orange,
+        modifier = Modifier.padding(top = 4.dp)
+    )
+}
+
 @Composable
 private fun ProductCard(
     product: ShopifyProductsApi.ProductItem,
+    promoStyle: Boolean = false,
+    promoEndsPrefix: String = "",
+    promoEndedLabel: String = "",
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -233,7 +310,8 @@ private fun ProductCard(
 
     Column(
         modifier = modifier
-            .size(width = 140.dp, height = 200.dp)
+            .width(140.dp)
+            .heightIn(min = 220.dp)
             .clickable(onClick = onClick)
     ) {
         Box(
@@ -276,11 +354,66 @@ private fun ProductCard(
                 }
             }
         }
-        Text(
-            text = product.title,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            modifier = Modifier.padding(top = 6.dp)
-        )
+        val (designTitle, productTypeTitle) = remember(product.title, product.productType) {
+            splitProductTitleForCard(product.title, product.productType)
+        }
+        Column(modifier = Modifier.padding(top = 6.dp)) {
+            Text(
+                text = designTitle,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (productTypeTitle.isNotBlank()) {
+                Text(
+                    text = productTypeTitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = EazColors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+        if (promoStyle && product.price > 0) {
+            val before = product.promoBeforePrice
+                ?: product.compareAtPrice?.takeIf { it > product.price + 1e-6 }
+            val strikePrice = before?.takeIf { it > product.price + 1e-6 }
+            Column(modifier = Modifier.padding(top = 4.dp)) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = formatShopMoney(product.price),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = EazColors.Orange
+                    )
+                    if (strikePrice != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = formatShopMoney(strikePrice),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                            textDecoration = TextDecoration.LineThrough
+                        )
+                    }
+                }
+                val ends = product.promotionEndsAtMs
+                if (ends != null && ends > 0L) {
+                    PromoCountdownChip(
+                        endsAtMs = ends,
+                        endsPrefix = promoEndsPrefix.ifBlank { "Ends in" },
+                        endedLabel = promoEndedLabel.ifBlank { "Ended" }
+                    )
+                }
+            }
+        } else if (!promoStyle && product.price > 0) {
+            Text(
+                text = formatShopMoney(product.price),
+                style = MaterialTheme.typography.labelSmall,
+                color = EazColors.TextSecondary,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
     }
 }
