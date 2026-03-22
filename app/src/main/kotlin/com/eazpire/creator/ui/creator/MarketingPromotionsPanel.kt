@@ -83,6 +83,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.LinkedHashSet
 import java.util.Locale
 
 private data class PromotionRow(
@@ -268,16 +269,16 @@ fun MarketingPromotionsPanel(
     }
 
     val pickedListRows = remember(selectedProducts, pickerChecked, pickerCatalog) {
-        val ids = LinkedHashSet<String>()
-        selectedProducts.forEach { ids.add(it.id) }
+        val out = mutableListOf<PromoProductDraft>()
+        val seen = LinkedHashSet<String>()
+        selectedProducts.forEach { pr ->
+            if (seen.add(pr.id)) out.add(pr)
+        }
         pickerChecked.forEach { id ->
-            if (selectedProducts.none { it.id == id }) ids.add(id)
+            if (!seen.add(id)) return@forEach
+            out.add(pickerCatalog.find { it.id == id } ?: PromoProductDraft(id, id, null))
         }
-        ids.map { id ->
-            selectedProducts.find { it.id == id }
-                ?: pickerCatalog.find { it.id == id }
-                ?: PromoProductDraft(id, id, null)
-        }
+        out
     }
 
     val dateFmt = remember {
@@ -755,7 +756,10 @@ fun MarketingPromotionsPanel(
                             TextButton(
                                 onClick = {
                                     pickerChecked = emptySet()
-                                    pickerSearch = ""
+                                    pickerSearchQuery = ""
+                                    pickerSearchDebounced = ""
+                                    pickerCollectionHandle = null
+                                    pickerTab = PromoPickerTab.Available
                                     sheetPage = PromoSheetPage.Picker
                                 }
                             ) {
@@ -944,11 +948,17 @@ fun MarketingPromotionsPanel(
                     }
                 }
                 PromoSheetPage.Picker -> {
+                    val categoryLabel = when (pickerCollectionHandle) {
+                        null -> translationStore.t("creator.promotions.category_all", "All")
+                        "all" -> "all"
+                        else -> shopCollections.find { it.handle == pickerCollectionHandle }?.title
+                            ?: pickerCollectionHandle ?: ""
+                    }
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
-                            .heightIn(max = 520.dp)
+                            .heightIn(max = 560.dp)
                     ) {
                         item {
                             Row(
@@ -979,15 +989,146 @@ fun MarketingPromotionsPanel(
                             }
                         }
                         item {
-                            OutlinedTextField(
-                                value = pickerSearch,
-                                onValueChange = { pickerSearch = it },
-                                label = { Text(translationStore.t("creator.promotions.search_products", "Search")) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = fieldColors
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TextButton(
+                                    onClick = { pickerTab = PromoPickerTab.Available },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        translationStore.t("creator.promotions.tab_available", "Available"),
+                                        fontWeight = if (pickerTab == PromoPickerTab.Available) {
+                                            FontWeight.Bold
+                                        } else {
+                                            FontWeight.Normal
+                                        },
+                                        color = if (pickerTab == PromoPickerTab.Available) {
+                                            EazColors.Orange
+                                        } else {
+                                            Color.White.copy(alpha = 0.65f)
+                                        }
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { pickerTab = PromoPickerTab.Picked },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        translationStore.t("creator.promotions.tab_picked", "Selected"),
+                                        fontWeight = if (pickerTab == PromoPickerTab.Picked) {
+                                            FontWeight.Bold
+                                        } else {
+                                            FontWeight.Normal
+                                        },
+                                        color = if (pickerTab == PromoPickerTab.Picked) {
+                                            EazColors.Orange
+                                        } else {
+                                            Color.White.copy(alpha = 0.65f)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { categoryMenuExpanded = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                                ) {
+                                    Text(
+                                        text = "${translationStore.t("creator.promotions.category_filter", "Category")}: $categoryLabel",
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = categoryMenuExpanded,
+                                    onDismissRequest = { categoryMenuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(translationStore.t("creator.promotions.category_all", "All"))
+                                        },
+                                        onClick = {
+                                            pickerCollectionHandle = null
+                                            categoryMenuExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("all") },
+                                        onClick = {
+                                            pickerCollectionHandle = "all"
+                                            categoryMenuExpanded = false
+                                        }
+                                    )
+                                    shopCollections.forEach { c ->
+                                        DropdownMenuItem(
+                                            text = { Text(c.title) },
+                                            onClick = {
+                                                pickerCollectionHandle = c.handle
+                                                categoryMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                        if (pickerTab == PromoPickerTab.Available) {
+                            item {
+                                OutlinedTextField(
+                                    value = pickerSearchQuery,
+                                    onValueChange = { pickerSearchQuery = it },
+                                    label = {
+                                        Text(
+                                            translationStore.t("creator.promotions.search_products", "Search")
+                                        )
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = fieldColors
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            pickerChecked = pickerChecked + pickerProducts.map { it.id }.toSet()
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                                        enabled = pickerProducts.isNotEmpty() && !pickerLoading
+                                    ) {
+                                        Text(
+                                            translationStore.t("creator.promotions.select_all_list", "Select all"),
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = { pickerChecked = emptySet() },
+                                        modifier = Modifier.weight(1f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                                    ) {
+                                        Text(
+                                            translationStore.t("creator.promotions.clear_selection", "Clear"),
+                                            color = Color.White.copy(alpha = 0.85f),
+                                            fontSize = 13.sp,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                         }
                         if (pickerLoading) {
                             item {
@@ -997,52 +1138,102 @@ fun MarketingPromotionsPanel(
                                 )
                             }
                         } else {
-                            items(pickerProducts, key = { it.id }) { pr ->
-                                val checked = pr.id in pickerChecked
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            pickerChecked = if (checked) {
-                                                pickerChecked - pr.id
+                            when (pickerTab) {
+                                PromoPickerTab.Available -> {
+                                    items(pickerProducts, key = { it.id }) { pr ->
+                                        val checked = pr.id in pickerChecked
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    pickerChecked = if (checked) {
+                                                        pickerChecked - pr.id
+                                                    } else {
+                                                        pickerChecked + pr.id
+                                                    }
+                                                }
+                                                .padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Checkbox(
+                                                checked = checked,
+                                                onCheckedChange = { on ->
+                                                    pickerChecked = if (on) {
+                                                        pickerChecked + pr.id
+                                                    } else {
+                                                        pickerChecked - pr.id
+                                                    }
+                                                }
+                                            )
+                                            if (!pr.imageUrl.isNullOrBlank()) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(context).data(pr.imageUrl).build(),
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(8.dp)),
+                                                    contentScale = ContentScale.Crop
+                                                )
                                             } else {
-                                                pickerChecked + pr.id
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(Color.White.copy(alpha = 0.08f))
+                                                )
                                             }
+                                            Text(
+                                                text = pr.title,
+                                                modifier = Modifier.weight(1f),
+                                                fontSize = 14.sp,
+                                                color = Color.White,
+                                                maxLines = 2
+                                            )
                                         }
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Checkbox(
-                                        checked = checked,
-                                        onCheckedChange = { on ->
-                                            pickerChecked = if (on) pickerChecked + pr.id else pickerChecked - pr.id
-                                        }
-                                    )
-                                    if (!pr.imageUrl.isNullOrBlank()) {
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(context).data(pr.imageUrl).build(),
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(8.dp)),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color.White.copy(alpha = 0.08f))
-                                        )
                                     }
-                                    Text(
-                                        text = pr.title,
-                                        modifier = Modifier.weight(1f),
-                                        fontSize = 14.sp,
-                                        color = Color.White,
-                                        maxLines = 2
-                                    )
+                                }
+                                PromoPickerTab.Picked -> {
+                                    items(pickedListRows, key = { it.id }) { pr ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Text(
+                                                text = "✓",
+                                                color = EazColors.Orange,
+                                                fontSize = 14.sp,
+                                                modifier = Modifier.width(24.dp)
+                                            )
+                                            if (!pr.imageUrl.isNullOrBlank()) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(context).data(pr.imageUrl).build(),
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(8.dp)),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(Color.White.copy(alpha = 0.08f))
+                                                )
+                                            }
+                                            Text(
+                                                text = pr.title,
+                                                modifier = Modifier.weight(1f),
+                                                fontSize = 14.sp,
+                                                color = Color.White,
+                                                maxLines = 2
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1058,7 +1249,10 @@ fun MarketingPromotionsPanel(
                                 }
                                 TextButton(
                                     onClick = {
-                                        val add = pickerCatalog.filter { it.id in pickerChecked }
+                                        val add = pickerChecked.map { id ->
+                                            pickerCatalog.find { it.id == id }
+                                                ?: PromoProductDraft(id, id, null)
+                                        }
                                         selectedProducts = selectedProducts + add.filter { np ->
                                             selectedProducts.none { it.id == np.id }
                                         }
