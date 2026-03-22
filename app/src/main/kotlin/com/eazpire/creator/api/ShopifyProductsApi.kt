@@ -667,7 +667,8 @@ class ShopifyProductsApi(
          * Public worker op `list-active-shop-promotion-products` — maps to [ProductItem] for shop grid/carousel.
          */
         fun parseActivePromotionProductsResponse(json: JSONObject, storeBase: String = "https://www.eazpire.com"): List<ProductItem> {
-            if (!json.optBoolean("ok", false)) return emptyList()
+            // Missing "ok" must not fail: optBoolean("ok", false) returns false when key absent → was wrongly treated as error.
+            if (!json.optBoolean("ok", true)) return emptyList()
             val arr = json.optJSONArray("products") ?: return emptyList()
             val out = ArrayList<ProductItem>()
             for (i in 0 until arr.length()) {
