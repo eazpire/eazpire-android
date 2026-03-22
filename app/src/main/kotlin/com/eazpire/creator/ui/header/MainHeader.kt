@@ -50,6 +50,7 @@ import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
+import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.ui.header.HeaderActions
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
@@ -117,6 +118,7 @@ fun MainHeader(
     var favoritesCount by remember { mutableStateOf(0) }
     val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
     val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
+    val favoritesRefreshTick = FavoritesRefreshTrigger.value
     var shareUrl by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val boomScale = remember { Animatable(1f) }
@@ -136,6 +138,21 @@ fun MainHeader(
         } else {
             shareUrl = null
         }
+    }
+
+    LaunchedEffect(ownerId, favoritesRefreshTick) {
+        if (ownerId.isBlank()) {
+            favoritesCount = 0
+            return@LaunchedEffect
+        }
+        try {
+            val resp = withContext(Dispatchers.IO) { api.getFavorites(ownerId) }
+            if (resp.optBoolean("ok", false)) {
+                val arr = resp.optJSONArray("items")
+                val n = resp.optInt("count", arr?.length() ?: 0)
+                favoritesCount = if (n >= 0) n else (arr?.length() ?: 0)
+            }
+        } catch (_: Exception) {}
     }
 
     Box {
@@ -275,8 +292,8 @@ fun MainHeader(
             customerId = ownerId.ifBlank { null },
             api = api,
             onDismiss = { onFavoritesModalChangeActual(false) },
-            onCountChange = {
-                com.eazpire.creator.favorites.FavoritesRefreshTrigger.trigger()
+            onCountChange = { count ->
+                favoritesCount = count
             }
         )
     }

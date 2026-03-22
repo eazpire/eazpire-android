@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
@@ -26,14 +27,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -55,6 +62,10 @@ import androidx.compose.foundation.border
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.annotation.SuppressLint
+import android.widget.Toast
 import android.text.Html
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -78,6 +90,7 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
+import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
@@ -275,6 +288,8 @@ fun ProductDetailScreen(
     var quantity by remember { mutableIntStateOf(1) }
     var showCartToast by remember { mutableStateOf(false) }
     var showFavoriteToast by remember { mutableStateOf(false) }
+    var showCartPlusOne by remember { mutableStateOf(false) }
+    var showFavoritePlusOne by remember { mutableStateOf(false) }
     var checkoutUrl by remember { mutableStateOf<String?>(null) }
     val storefrontCartStore = remember { StorefrontCartStore(context) }
     val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
@@ -361,6 +376,8 @@ fun ProductDetailScreen(
     val price = selectedVariant?.price ?: 0.0
     val comparePrice = selectedVariant?.compareAtPrice
     val available = selectedVariant?.available ?: true
+    /** Storefront cart needs a real Shopify variant id (>0). */
+    val variantIdForCart = (selectedVariant?.id ?: 0L).takeIf { it > 0L }
     // Images for selected variant only – same logic as web getMediaForColor (eaz-redesign-pdp.js)
     val images = remember(selectedColor, selectedVariant, p.images, p.variants) {
         getMediaForColor(selectedColor, selectedVariant, p.images, p.variants)
@@ -368,6 +385,18 @@ fun ProductDetailScreen(
     LaunchedEffect(selectedVariant?.id) { selectedImageIndex = 0 }
     LaunchedEffect(showCartToast) { if (showCartToast) { kotlinx.coroutines.delay(1500); showCartToast = false } }
     LaunchedEffect(showFavoriteToast) { if (showFavoriteToast) { kotlinx.coroutines.delay(1500); showFavoriteToast = false } }
+    LaunchedEffect(showCartPlusOne) {
+        if (showCartPlusOne) {
+            kotlinx.coroutines.delay(900)
+            showCartPlusOne = false
+        }
+    }
+    LaunchedEffect(showFavoritePlusOne) {
+        if (showFavoritePlusOne) {
+            kotlinx.coroutines.delay(900)
+            showFavoritePlusOne = false
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         if (showCloseButton) {
@@ -711,6 +740,7 @@ fun ProductDetailScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color.White)
+                .navigationBarsPadding()
                 .padding(horizontal = 12.dp)
         ) {
         // Row 1: Qty, Favorite, Share, Delivery, Total
@@ -737,29 +767,41 @@ fun ProductDetailScreen(
                 }
             }
             Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color(0xFFE8E8E8)))
-            IconButton(onClick = {
-                val ownerId = tokenStore.getOwnerId()
-                if (!ownerId.isNullOrBlank()) {
-                    scope.launch {
-                        try {
-                            val resp = creatorApi.addFavorite(
-                                customerId = ownerId!!,
-                                productId = p.id.toString(),
-                                variantId = selectedVariant?.id?.toString(),
-                                productTitle = p.title,
-                                productImage = images.firstOrNull()
-                            )
-                            if (resp.optBoolean("ok", false)) {
-                                com.eazpire.creator.favorites.FavoritesRefreshTrigger.trigger()
-                            }
-                            showFavoriteToast = true
-                        } catch (_: Exception) { showFavoriteToast = true }
+            Box(
+                modifier = Modifier.size(48.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                PdpPlusOneLabel(
+                    visible = showFavoritePlusOne,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-20).dp)
+                )
+                IconButton(onClick = {
+                    val ownerId = tokenStore.getOwnerId()
+                    if (!ownerId.isNullOrBlank()) {
+                        scope.launch {
+                            try {
+                                val resp = creatorApi.addFavorite(
+                                    customerId = ownerId!!,
+                                    productId = p.id.toString(),
+                                    variantId = selectedVariant?.id?.toString(),
+                                    productTitle = p.title,
+                                    productImage = images.firstOrNull()
+                                )
+                                if (resp.optBoolean("ok", false)) {
+                                    FavoritesRefreshTrigger.trigger()
+                                    showFavoritePlusOne = true
+                                }
+                                showFavoriteToast = true
+                            } catch (_: Exception) { showFavoriteToast = true }
+                        }
+                    } else {
+                        showFavoriteToast = true
                     }
-                } else {
-                    showFavoriteToast = true
+                }) {
+                    Icon(Icons.Default.Favorite, contentDescription = "Favorite", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
                 }
-            }) {
-                Icon(Icons.Default.Favorite, contentDescription = "Favorite", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = {
                 scope.launch {
@@ -792,7 +834,7 @@ fun ProductDetailScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
+                .heightIn(min = 48.dp)
                 .padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -805,11 +847,20 @@ fun ProductDetailScreen(
             }
             Spacer(modifier = Modifier.weight(1f))
             Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFFE5E7EB))
-                    .clickable(enabled = available) {
-                        val vid = selectedVariant?.id ?: return@clickable
+                contentAlignment = Alignment.Center
+            ) {
+                PdpPlusOneLabel(
+                    visible = showCartPlusOne,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-22).dp)
+                )
+                Button(
+                    onClick = {
+                        val vid = variantIdForCart ?: run {
+                            Toast.makeText(context, "Pick a product option", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
                         scope.launch {
                             val cartId = storefrontCartStore.cartId
                             if (cartId != null) {
@@ -820,6 +871,13 @@ fun ProductDetailScreen(
                                     storefrontCartStore.cartId = result.cart.cartId
                                     AppCartStore.setCount(result.cart.itemCount)
                                     showCartToast = true
+                                    showCartPlusOne = true
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        result.message ?: "Could not add to cart",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             } else {
                                 val result = withContext(Dispatchers.IO) {
@@ -829,47 +887,93 @@ fun ProductDetailScreen(
                                     storefrontCartStore.cartId = result.cartId
                                     AppCartStore.setCount(quantity)
                                     showCartToast = true
+                                    showCartPlusOne = true
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        result.message ?: "Could not create cart",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             }
                         }
-                    }
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            ) {
-                Icon(Icons.Default.ShoppingCart, contentDescription = "Add to cart", tint = EazColors.TextPrimary, modifier = Modifier.size(20.dp))
+                    },
+                    enabled = available,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE5E7EB),
+                        contentColor = EazColors.TextPrimary,
+                        disabledContainerColor = Color(0xFFE5E7EB).copy(alpha = 0.45f),
+                        disabledContentColor = EazColors.TextSecondary.copy(alpha = 0.6f)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                ) {
+                    Icon(Icons.Default.ShoppingCart, contentDescription = "Add to cart", modifier = Modifier.size(20.dp))
+                }
             }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(EazColors.Orange)
-                    .clickable(enabled = available) {
-                        val vid = selectedVariant?.id ?: return@clickable
-                        scope.launch {
-                            val cartId = storefrontCartStore.cartId
-                            val url = if (cartId != null) {
-                                val result = withContext(Dispatchers.IO) {
-                                    storefrontCartApi.addLine(cartId, vid, quantity, accessToken)
-                                }
-                                if (result.ok && result.cart != null) {
-                                    storefrontCartStore.cartId = result.cart.cartId
-                                    AppCartStore.setCount(result.cart.itemCount)
-                                    result.cart.checkoutUrl
-                                } else null
-                            } else {
-                                val result = withContext(Dispatchers.IO) {
-                                    storefrontCartApi.createCart(listOf(vid to quantity), accessToken, countryCode)
-                                }
-                                if (result.ok && result.cartId != null && result.checkoutUrl != null) {
-                                    storefrontCartStore.cartId = result.cartId
-                                    AppCartStore.setCount(quantity)
-                                    result.checkoutUrl
-                                } else null
-                            }
-                            url?.let { checkoutUrl = it }
-                        }
+            Button(
+                onClick = {
+                    val vid = variantIdForCart ?: run {
+                        Toast.makeText(context, "Pick a product option", Toast.LENGTH_SHORT).show()
+                        return@Button
                     }
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    scope.launch {
+                        val cartId = storefrontCartStore.cartId
+                        val url = if (cartId != null) {
+                            val result = withContext(Dispatchers.IO) {
+                                storefrontCartApi.addLine(cartId, vid, quantity, accessToken)
+                            }
+                            if (result.ok && result.cart != null) {
+                                storefrontCartStore.cartId = result.cart.cartId
+                                AppCartStore.setCount(result.cart.itemCount)
+                                showCartPlusOne = true
+                                result.cart.checkoutUrl
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    result.message ?: "Could not update cart",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                null
+                            }
+                        } else {
+                            val result = withContext(Dispatchers.IO) {
+                                storefrontCartApi.createCart(listOf(vid to quantity), accessToken, countryCode)
+                            }
+                            if (result.ok && result.cartId != null && result.checkoutUrl != null) {
+                                storefrontCartStore.cartId = result.cartId
+                                AppCartStore.setCount(quantity)
+                                showCartPlusOne = true
+                                result.checkoutUrl
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    result.message ?: "Could not start checkout",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                null
+                            }
+                        }
+                        url?.let { checkoutUrl = it }
+                    }
+                },
+                enabled = available,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EazColors.Orange,
+                    contentColor = Color.White,
+                    disabledContainerColor = EazColors.Orange.copy(alpha = 0.45f),
+                    disabledContentColor = Color.White.copy(alpha = 0.7f)
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                modifier = Modifier.defaultMinSize(minHeight = 48.dp)
             ) {
-                Text(t("product.buy_now", "Buy now"), style = MaterialTheme.typography.labelMedium, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text(
+                    t("product.buy_now", "Buy now"),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
             }
         }
         }
@@ -1160,6 +1264,33 @@ private fun PdpProductCarouselRow(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PdpPlusOneLabel(
+    visible: Boolean,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(200)) + slideInVertically(
+            initialOffsetY = { it / 2 },
+            animationSpec = tween(350, easing = FastOutSlowInEasing)
+        ),
+        exit = fadeOut(animationSpec = tween(300)) + slideOutVertically(
+            targetOffsetY = { -it / 3 },
+            animationSpec = tween(300)
+        ),
+        modifier = modifier
+    ) {
+        Text(
+            "+1",
+            color = EazColors.Orange,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp
+        )
     }
 }
 

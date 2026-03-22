@@ -585,7 +585,9 @@ fun ShopScreen(
         )
     }
     val showGenOverlay = isCreatorMode && eazyGenerationOverlay
-    val showEazyFloatingLayer = !eazyDocked || showGenOverlay
+    // Full-screen zIndex layer must not cover product detail or product modal — it would steal touches (cart / buy now).
+    val showEazyFloatingLayer =
+        (!eazyDocked || showGenOverlay) && selectedProductHandle == null && productModalHandleState.value == null
     if (showEazyFloatingLayer) {
         var liveMascotX by remember { mutableStateOf<Float?>(null) }
         var liveMascotY by remember { mutableStateOf<Float?>(null) }

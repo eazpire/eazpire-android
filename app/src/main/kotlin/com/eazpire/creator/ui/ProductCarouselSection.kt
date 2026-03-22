@@ -144,7 +144,9 @@ fun ProductCarouselSection(
             emptyStateMessage = promoEmpty,
             promoProductLayout = true,
             promoEndsPrefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
-            promoEndedLabel = t("eaz.shop.promo_countdown_ended", "Ended")
+            promoEndedLabel = t("eaz.shop.promo_countdown_ended", "Ended"),
+            promoNextDiscountPrefix = t("eaz.shop.promo_next_discount_prefix", "Discount in"),
+            promoNextPriceHintPrefix = t("eaz.shop.promo_next_price_hint_prefix", "Promo from")
         )
         HOME_SECTIONS.forEach { section ->
             val products = productsByHomeSection[section.id].orEmpty()

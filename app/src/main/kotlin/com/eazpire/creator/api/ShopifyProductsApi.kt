@@ -47,8 +47,14 @@ class ShopifyProductsApi(
         val designId: String = "",
         /** Worker `list-active-shop-promotion-products`: promotion end (ms) for countdown. */
         val promotionEndsAtMs: Long? = null,
-        /** Reference “before” price (compare or derived from creator discount). */
-        val promoBeforePrice: Double? = null
+        /** In-slot: higher price for strike-through. */
+        val promoBeforePrice: Double? = null,
+        /** Outside slot: next daily window start (ms). */
+        val promoNextWindowStartsAtMs: Long? = null,
+        /** True when promo campaign active but outside the 4h window (worker). */
+        val promoOutsideSlot: Boolean = false,
+        /** Outside slot: lower promo price when the window opens (optional). */
+        val promoPreviewPrice: Double? = null
     )
 
     data class ProductsResult(
@@ -681,6 +687,19 @@ class ShopifyProductsApi(
             }
         }
 
+        private fun parsePromoNextWindowStartsAtMs(o: JSONObject): Long? {
+            if (!o.has("promo_next_window_starts_at") || o.isNull("promo_next_window_starts_at")) return null
+            return try {
+                when (val v = o.get("promo_next_window_starts_at")) {
+                    is Number -> v.toLong().takeIf { it > 0L }
+                    is String -> v.trim().toLongOrNull()?.takeIf { it > 0L }
+                    else -> null
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
         /**
          * Public worker op `list-active-shop-promotion-products` — maps to [ProductItem] for shop grid/carousel.
          */
@@ -714,9 +733,16 @@ class ShopifyProductsApi(
                 } else {
                     Double.NaN
                 }
-                val promoBefore = if (!beforeRaw.isNaN() && beforeRaw > price + 1e-6) beforeRaw else null
-                val compareForDisplay = promoBefore ?: compare
+                val outside = o.optBoolean("promo_outside_slot", false)
+                val promoStrike = if (!outside && !beforeRaw.isNaN() && beforeRaw > price + 1e-6) beforeRaw else null
+                val promoPreview =
+                    if (outside && !beforeRaw.isNaN() && beforeRaw < price - 1e-6) beforeRaw else null
+                val compareForDisplay = when {
+                    outside -> null
+                    else -> promoStrike ?: compare
+                }
                 val promoEndsMs = parsePromotionEndsAtMs(o)
+                val promoNextMs = parsePromoNextWindowStartsAtMs(o)
                 out.add(
                     ProductItem(
                         id = o.optLong("id", 0L),
@@ -740,7 +766,10 @@ class ShopifyProductsApi(
                         metaProductKey = "",
                         designId = "",
                         promotionEndsAtMs = promoEndsMs,
-                        promoBeforePrice = promoBefore
+                        promoBeforePrice = promoStrike,
+                        promoNextWindowStartsAtMs = promoNextMs,
+                        promoOutsideSlot = outside,
+                        promoPreviewPrice = promoPreview
                     )
                 )
             }

@@ -80,7 +80,9 @@ fun ProductCarousel(
     /** Promotions carousel: before/after price + countdown. */
     promoProductLayout: Boolean = false,
     promoEndsPrefix: String = "",
-    promoEndedLabel: String = ""
+    promoEndedLabel: String = "",
+    promoNextDiscountPrefix: String = "",
+    promoNextPriceHintPrefix: String = ""
 ) {
     if (products.isEmpty()) {
         if (emptyStateMessage == null) return
@@ -148,6 +150,8 @@ fun ProductCarousel(
                         promoStyle = promoProductLayout,
                         promoEndsPrefix = promoEndsPrefix,
                         promoEndedLabel = promoEndedLabel,
+                        promoNextDiscountPrefix = promoNextDiscountPrefix,
+                        promoNextPriceHintPrefix = promoNextPriceHintPrefix,
                         onClick = {
                             if (onProductClick != null) {
                                 onProductClick(
@@ -270,6 +274,8 @@ private fun ProductCard(
     promoStyle: Boolean = false,
     promoEndsPrefix: String = "",
     promoEndedLabel: String = "",
+    promoNextDiscountPrefix: String = "",
+    promoNextPriceHintPrefix: String = "",
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -378,34 +384,66 @@ private fun ProductCard(
             }
         }
         if (promoStyle && product.price > 0) {
-            val before = product.promoBeforePrice
-                ?: product.compareAtPrice?.takeIf { it > product.price + 1e-6 }
-            val strikePrice = before?.takeIf { it > product.price + 1e-6 }
-            Column(modifier = Modifier.padding(top = 4.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
+            val waiting = product.promoOutsideSlot
+            val nextHint = promoNextPriceHintPrefix.ifBlank { "Promo from" }
+            val nextDisc = promoNextDiscountPrefix.ifBlank { "Discount in" }
+            if (waiting) {
+                Column(modifier = Modifier.padding(top = 4.dp)) {
                     Text(
                         text = formatShopMoney(product.price),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = EazColors.Orange
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (strikePrice != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
+                    val preview = product.promoPreviewPrice
+                    if (preview != null && preview < product.price - 1e-6) {
                         Text(
-                            text = formatShopMoney(strikePrice),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                            textDecoration = TextDecoration.LineThrough
+                            text = "$nextHint ${formatShopMoney(preview)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = EazColors.Orange,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    val nextAt = product.promoNextWindowStartsAtMs
+                    if (nextAt != null && nextAt > 0L) {
+                        PromoCountdownChip(
+                            endsAtMs = nextAt,
+                            endsPrefix = nextDisc,
+                            endedLabel = promoEndedLabel.ifBlank { "Ended" }
                         )
                     }
                 }
-                val ends = product.promotionEndsAtMs
-                if (ends != null && ends > 0L) {
-                    PromoCountdownChip(
-                        endsAtMs = ends,
-                        endsPrefix = promoEndsPrefix.ifBlank { "Ends in" },
-                        endedLabel = promoEndedLabel.ifBlank { "Ended" }
-                    )
+            } else {
+                val before = product.promoBeforePrice
+                    ?: product.compareAtPrice?.takeIf { it > product.price + 1e-6 }
+                val strikePrice = before?.takeIf { it > product.price + 1e-6 }
+                Column(modifier = Modifier.padding(top = 4.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = formatShopMoney(product.price),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = EazColors.Orange
+                        )
+                        if (strikePrice != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = formatShopMoney(strikePrice),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                                textDecoration = TextDecoration.LineThrough
+                            )
+                        }
+                    }
+                    val ends = product.promotionEndsAtMs
+                    if (ends != null && ends > 0L) {
+                        PromoCountdownChip(
+                            endsAtMs = ends,
+                            endsPrefix = promoEndsPrefix.ifBlank { "Ends in" },
+                            endedLabel = promoEndedLabel.ifBlank { "Ended" }
+                        )
+                    }
                 }
             }
         } else if (!promoStyle && product.price > 0) {
