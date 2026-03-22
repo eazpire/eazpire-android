@@ -193,6 +193,11 @@ fun CreatorGeneratorScreen(
     eazyDocked: Boolean = false,
     /** ShopScreen shows the generation bubble; hide duplicate bottom bar. */
     suppressDockedComposeBar: Boolean = false,
+    /**
+     * Same timing as [onGeneratorEazyReadyChange] — keeps ShopScreen overlay in sync with
+     * [generatorEazyReady] in the parent (LaunchedEffect was one frame late → dock bar without floating Eazy).
+     */
+    onGenerationOverlaySyncToShop: (visible: Boolean, loading: Boolean) -> Unit = { _, _ -> },
     onFloatingComposeStart: () -> Unit = {},
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
@@ -645,7 +650,10 @@ fun CreatorGeneratorScreen(
 
         val eazyGenReady =
             ownerId.isNotBlank() && !generatingGen && (prompt.isNotBlank() || selectedImages.isNotEmpty())
-        SideEffect { onGeneratorEazyReadyChange(eazyGenReady) }
+        SideEffect {
+            onGeneratorEazyReadyChange(eazyGenReady)
+            onGenerationOverlaySyncToShop(eazyGenReady || generatingGen, generatingGen)
+        }
 
         if (generatingGen) {
             Row(

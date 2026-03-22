@@ -80,6 +80,11 @@ fun CreatorMainScreen(
     onEazyLongPress: () -> Unit = {},
     slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
     onEazyGenerationOverlayChange: (visible: Boolean, loading: Boolean) -> Unit = { _, _ -> },
+    /**
+     * ShopScreen `eazyGenerationOverlay` — single source for header slot hide + dock bar suppress
+     * (must match overlay timing from generator direct sync).
+     */
+    shopGenerationOverlayActive: Boolean = false,
     /** ShopScreen: docked mascot should face toward the generation bubble when overlay is on. */
     generationBubbleFaceLeft: Boolean? = null,
     /** Bumped from compose overlay "Start" tap (ShopScreen); mirrors header start nonces. */
@@ -123,23 +128,16 @@ fun CreatorMainScreen(
         onGeneratorEazyLookLeftChange(look)
     }
 
-    LaunchedEffect(
-        eazyDocked,
-        currentScreen,
-        generatorEazyReady,
-        heroEazyReady,
-        generatorGenerating,
-        heroGenerating
-    ) {
-        val genTab = currentScreen == 1
-        val heroTab = currentScreen == 3
-        val show =
-            (genTab && (generatorEazyReady || generatorGenerating)) ||
-                (heroTab && (heroEazyReady || heroGenerating))
-        val loading =
-            (genTab && generatorGenerating) ||
-                (heroTab && heroGenerating)
-        onEazyGenerationOverlayChange(show, loading)
+    /** Generator tab: overlay synced from [CreatorGeneratorScreen] SideEffect (same frame as eazy ready). */
+    LaunchedEffect(currentScreen, heroEazyReady, heroGenerating) {
+        when (currentScreen) {
+            3 -> onEazyGenerationOverlayChange(
+                heroEazyReady || heroGenerating,
+                heroGenerating
+            )
+            1 -> Unit
+            else -> onEazyGenerationOverlayChange(false, false)
+        }
     }
 
     LaunchedEffect(currentScreen) {
@@ -185,10 +183,6 @@ fun CreatorMainScreen(
         } catch (_: Exception) {}
     }
     val scope = rememberCoroutineScope()
-
-    val generationOverlayVisible =
-        (currentScreen == 1 && (generatorEazyReady || generatorGenerating)) ||
-            (currentScreen == 3 && (heroEazyReady || heroGenerating))
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -244,7 +238,7 @@ fun CreatorMainScreen(
                     eazyLookLeft = generationBubbleFaceLeft
                         ?: ((currentScreen == 1 && generatorEazyReady) ||
                             (currentScreen == 3 && heroEazyReady)),
-                    hideEazyHeaderSlotWhenGenerationOverlay = generationOverlayVisible,
+                    hideEazyHeaderSlotWhenGenerationOverlay = shopGenerationOverlayActive,
                     showStartGenerationBubble = false,
                     startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
                         (currentScreen == 3 && heroGenerating),
@@ -332,7 +326,10 @@ fun CreatorMainScreen(
                             headerStartNonce = genHeaderStartNonce,
                             onGeneratorGeneratingChange = { generatorGenerating = it },
                             eazyDocked = eazyDocked,
-                            suppressDockedComposeBar = generationOverlayVisible,
+                            suppressDockedComposeBar = shopGenerationOverlayActive,
+                            onGenerationOverlaySyncToShop = { visible, loading ->
+                                onEazyGenerationOverlayChange(visible, loading)
+                            },
                             onFloatingComposeStart = { genHeaderStartNonce++ },
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
@@ -356,7 +353,7 @@ fun CreatorMainScreen(
                             onHeroGeneratingChange = { heroGenerating = it },
                             showHeroDockedComposeBar = eazyDocked &&
                                 (heroEazyReady || heroGenerating) &&
-                                !generationOverlayVisible,
+                                !shopGenerationOverlayActive,
                             heroDockedComposeLoading = heroGenerating,
                             onHeroDockedComposeStart = { heroHeaderStartNonce++ },
                             modifier = Modifier.fillMaxSize()

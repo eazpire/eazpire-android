@@ -299,6 +299,7 @@ fun ShopScreen(
                 eazyGenerationOverlay = visible
                 eazyGenerationOverlayLoading = loading
             },
+            shopGenerationOverlayActive = eazyGenerationOverlay,
             overlayComposeStartKey = overlayComposeStartKey,
             generationBubbleFaceLeft = generationBubbleFaceLeft
         )
