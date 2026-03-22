@@ -77,10 +77,23 @@ fun VoucherModal(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore
 ) {
-    if (!visible) return
+    val t = remember(translationStore) { { k: String, d: String -> translationStore.t(k, d) } }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     val api = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
-    val t = remember(translationStore) { { k: String, d: String -> translationStore.t(k, d) } }
+    var giftCardDetailId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(visible) {
+        if (!visible) giftCardDetailId = null
+    }
+    GiftCardDetailNativeModal(
+        giftCardId = giftCardDetailId,
+        title = t("creator.gift_cards.gift_card_details", "Gift Card Details"),
+        onDismiss = { giftCardDetailId = null },
+        customerId = ownerId,
+        shop = AuthConfig.SHOP_DOMAIN,
+        api = api,
+        t = t
+    )
+    if (!visible) return
 
     var mainTab by remember { mutableStateOf(MainTab.STORE_CREDIT) }
     var giftSubOwn by remember { mutableStateOf(true) }
@@ -172,9 +185,7 @@ fun VoucherModal(
                                 .fillMaxWidth()
                                 .clickable {
                                     mainTab = dest
-                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                                        drawerState.close()
-                                    }
+                                    scope.launch { drawerState.close() }
                                 }
                                 .padding(16.dp),
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
@@ -243,7 +254,8 @@ fun VoucherModal(
                                         own = giftSubOwn,
                                         loading = loading,
                                         errorText = errorText,
-                                        t = t
+                                        t = t,
+                                        onGiftCardOpen = { giftCardDetailId = it }
                                     )
                                 MainTab.PROMO_CODES ->
                                     PromoPanel(
@@ -343,11 +355,11 @@ private fun StoreCreditPanel(
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(220.dp),
+        columns = GridCells.Fixed(2),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(rows) { row ->
             WebStyleStoreCreditCard(row, currencyFallback, t)
@@ -366,7 +378,8 @@ private fun GiftCardsPanel(
     own: Boolean,
     loading: Boolean,
     errorText: String?,
-    t: (String, String) -> String
+    t: (String, String) -> String,
+    onGiftCardOpen: (String) -> Unit
 ) {
     if (loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -390,14 +403,14 @@ private fun GiftCardsPanel(
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(220.dp),
+        columns = GridCells.Fixed(2),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(list) { gc ->
-            WebStyleGiftCard(gc, t)
+            WebStyleGiftCard(gc, t, onOpenDetail = onGiftCardOpen)
         }
     }
 }

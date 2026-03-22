@@ -755,6 +755,35 @@ class CreatorApi(
         mapOf("owner_id" to ownerId, "product_keys" to productKeys)
     )
 
+    /** GET ?op=list-promotions&owner_id=xxx */
+    suspend fun listPromotions(ownerId: String): JSONObject =
+        call("list-promotions", mapOf("owner_id" to ownerId))
+
+    /** POST ?op=save-promotion – Body JSON (owner_id, name, discount_type, duration_days, product_ids, …) */
+    suspend fun savePromotion(body: JSONObject): JSONObject =
+        postJsonBodyOp("save-promotion", body)
+
+    /** POST ?op=delete-promotion – Body { owner_id, promotion_id } */
+    suspend fun deletePromotion(ownerId: String, promotionId: String): JSONObject =
+        postJsonBodyOp(
+            "delete-promotion",
+            JSONObject().put("owner_id", ownerId).put("promotion_id", promotionId)
+        )
+
+    /** GET ?op=list-products-for-promotion */
+    suspend fun listProductsForPromotion(
+        ownerId: String,
+        promotionId: String? = null,
+        q: String? = null,
+        collectionHandle: String? = null
+    ): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId)
+        promotionId?.takeIf { it.isNotBlank() }?.let { params["promotion_id"] = it }
+        q?.takeIf { it.isNotBlank() }?.let { params["q"] = it }
+        collectionHandle?.takeIf { it.isNotBlank() }?.let { params["collection_handle"] = it }
+        return call("list-products-for-promotion", params)
+    }
+
     private suspend fun postJsonBodyOp(op: String, body: JSONObject): JSONObject =
         withContext(Dispatchers.IO) {
             val url = "$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}"
@@ -1530,6 +1559,126 @@ class CreatorApi(
             }
         }
         return map
+    }
+
+    // --- Gift card detail (same ops as theme/assets/gift-card-detail.js) ---
+
+    private fun normalizeShopDomain(shop: String): String =
+        if (shop.contains('.')) shop else "$shop.myshopify.com"
+
+    /** POST with raw JSON body (nested objects). Same as private [postJsonBodyOp]. */
+    suspend fun postDispatchJson(op: String, body: JSONObject): JSONObject = postJsonBodyOp(op, body)
+
+    suspend fun getGiftCard(giftCardId: String, shop: String): JSONObject =
+        call("get-gift-card", mapOf("gift_card_id" to giftCardId, "shop" to normalizeShopDomain(shop)))
+
+    suspend fun checkGiftCardBuyer(giftCardId: String, customerId: String, shop: String): JSONObject =
+        call(
+            "check-gift-card-buyer",
+            mapOf(
+                "gift_card_id" to giftCardId,
+                "customer_id" to customerId,
+                "shop" to normalizeShopDomain(shop)
+            )
+        )
+
+    suspend fun getGiftCardEmailTemplate(giftCardId: String): JSONObject =
+        call("get-gift-card-email-template", mapOf("gift_card_id" to giftCardId))
+
+    suspend fun getGiftCardSelection(giftCardId: String, customerId: String?): JSONObject {
+        val params = mutableMapOf("gift_card_id" to giftCardId)
+        if (!customerId.isNullOrBlank()) params["customer_id"] = customerId
+        return call("get-gift-card-selection", params)
+    }
+
+    suspend fun getGiftCardGenerationCount(giftCardId: String, shop: String, type: String): JSONObject =
+        call(
+            "get-gift-card-generation-count",
+            mapOf(
+                "gift_card_id" to giftCardId,
+                "shop" to normalizeShopDomain(shop),
+                "type" to type
+            )
+        )
+
+    suspend fun getShopifyProducts(shop: String): JSONObject =
+        call("get-shopify-products", mapOf("shop" to normalizeShopDomain(shop)))
+
+    suspend fun saveGiftCardSelection(giftCardId: String, productIds: List<String>): JSONObject {
+        val arr = org.json.JSONArray()
+        productIds.forEach { arr.put(it) }
+        val body = JSONObject().put("gift_card_id", giftCardId).put("product_ids", arr)
+        return postJsonBodyOp("save-gift-card-selection", body)
+    }
+
+    suspend fun saveGiftCardEmailTemplate(body: JSONObject): JSONObject =
+        postJsonBodyOp("save-gift-card-email-template", body)
+
+    suspend fun sendGiftCardEmail(giftCardId: String, shop: String): JSONObject {
+        val body = JSONObject()
+            .put("gift_card_id", giftCardId)
+            .put("shop", normalizeShopDomain(shop))
+        return postJsonBodyOp("send-gift-card-email", body)
+    }
+
+    suspend fun sendGiftCardPostcard(giftCardId: String, shop: String): JSONObject {
+        val body = JSONObject()
+            .put("gift_card_id", giftCardId)
+            .put("shop", normalizeShopDomain(shop))
+        return postJsonBodyOp("send-gift-card-postcard", body)
+    }
+
+    suspend fun generateGiftCardText(
+        prompt: String,
+        giftCardId: String,
+        senderName: String,
+        recipientName: String
+    ): JSONObject {
+        val body = JSONObject()
+            .put("prompt", prompt)
+            .put("gift_card_id", giftCardId)
+            .put("sender_name", senderName)
+            .put("recipient_name", recipientName)
+        return postJsonBodyOp("generate-gift-card-text", body)
+    }
+
+    suspend fun generateGiftCardImageJson(
+        prompt: String,
+        giftCardId: String?,
+        customerId: String?,
+        imageUrl: String? = null
+    ): JSONObject {
+        val body = JSONObject().put("prompt", prompt)
+        giftCardId?.let { body.put("gift_card_id", it) }
+        customerId?.let { body.put("customer_id", it) }
+        imageUrl?.let { body.put("image_url", it) }
+        return postJsonBodyOp("generate-gift-card-image", body)
+    }
+
+    suspend fun generateGiftCardImageMultipart(
+        prompt: String,
+        giftCardId: String,
+        customerId: String,
+        imageBytes: ByteArray,
+        fileName: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/apps/creator-dispatch?op=generate-gift-card-image&_t=${System.currentTimeMillis()}"
+        val mediaType = "image/*".toMediaType()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("prompt", prompt)
+            .addFormDataPart("gift_card_id", giftCardId)
+            .addFormDataPart("customer_id", customerId)
+            .addFormDataPart("image", fileName, okhttp3.RequestBody.create(mediaType, imageBytes))
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
     }
 }
 

@@ -3,17 +3,105 @@ package com.eazpire.creator.notifications
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
+import androidx.core.graphics.drawable.IconCompat
 import com.eazpire.creator.MainActivity
 import com.eazpire.creator.R
 import com.eazpire.creator.chat.EazySidebarTab
+import kotlin.math.min
 
 object EazNotificationDisplay {
     private const val REQ_PUSH = 1001
     private const val REQ_CART = 1002
 
-    private fun smallIcon(): Int = R.drawable.ic_launcher_foreground
+    /** Same visual weight as ~24dp slot; bitmap resolution scales with density. */
+    private const val SMALL_ICON_DP = 24f
+
+    /**
+     * Slight inset so the circular large-icon mask matches how the launcher icon reads (no edge clip).
+     * 1f = full bounds (identical raster to drawing the adaptive icon at that pixel size).
+     */
+    private const val LARGE_ICON_INSET_SCALE = 0.94f
+
+    @Volatile
+    private var cachedSmallIcon: Bitmap? = null
+
+    @Volatile
+    private var cachedLargeIcon: Bitmap? = null
+
+    /**
+     * Status bar / collapsed row: white silhouette of [R.drawable.eazpire_logo] (real mark).
+     * Android does not allow full-color glyphs here; shape matches the brand PNG.
+     */
+    private fun smallIconCompat(context: Context): IconCompat {
+        return try {
+            val bmp = cachedSmallIcon
+                ?: buildSmallIconBitmap(context.applicationContext).also { cachedSmallIcon = it }
+            IconCompat.createWithBitmap(bmp)
+        } catch (_: Exception) {
+            IconCompat.createWithResource(context, R.drawable.ic_stat_eazpire)
+        }
+    }
+
+    private fun buildSmallIconBitmap(context: Context): Bitmap {
+        val d = ContextCompat.getDrawable(context, R.drawable.eazpire_logo)
+            ?: return buildFallbackSmallIconBitmap(context)
+        DrawableCompat.setTint(d, Color.WHITE)
+        val sizePx = (SMALL_ICON_DP * context.resources.displayMetrics.density).toInt().coerceAtLeast(48)
+        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(Color.TRANSPARENT)
+        val canvas = Canvas(bmp)
+        val iw = d.intrinsicWidth.coerceAtLeast(1)
+        val ih = d.intrinsicHeight.coerceAtLeast(1)
+        val scale = min(sizePx.toFloat() / iw, sizePx.toFloat() / ih) * 1f
+        val w = (iw * scale).toInt()
+        val h = (ih * scale).toInt()
+        val left = (sizePx - w) / 2
+        val top = (sizePx - h) / 2
+        d.setBounds(left, top, left + w, top + h)
+        d.draw(canvas)
+        return bmp
+    }
+
+    private fun buildFallbackSmallIconBitmap(context: Context): Bitmap {
+        val d = ContextCompat.getDrawable(context, R.drawable.ic_stat_eazpire)
+            ?: throw IllegalStateException("ic_stat_eazpire missing")
+        val sizePx = (SMALL_ICON_DP * context.resources.displayMetrics.density).toInt().coerceAtLeast(48)
+        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(Color.TRANSPARENT)
+        val canvas = Canvas(bmp)
+        d.setBounds(0, 0, sizePx, sizePx)
+        d.draw(canvas)
+        return bmp
+    }
+
+    /**
+     * Expanded notification: same [R.mipmap.ic_launcher] composition as the app icon, centered in a square,
+     * scaled slightly so the system circular crop matches the launcher mask.
+     */
+    private fun largeIconBitmap(context: Context): Bitmap? {
+        cachedLargeIcon?.let { return it }
+        val app = context.applicationContext
+        val d = ContextCompat.getDrawable(app, R.mipmap.ic_launcher) ?: return null
+        val dm = app.resources.displayMetrics
+        val sizePx = (64 * dm.density).toInt().coerceIn(160, 320)
+        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(Color.TRANSPARENT)
+        val canvas = Canvas(bmp)
+        canvas.save()
+        canvas.scale(LARGE_ICON_INSET_SCALE, LARGE_ICON_INSET_SCALE, sizePx / 2f, sizePx / 2f)
+        d.setBounds(0, 0, sizePx, sizePx)
+        d.draw(canvas)
+        canvas.restore()
+        cachedLargeIcon = bmp
+        return bmp
+    }
 
     /**
      * Maps FCM `data` (e.g. [open_target]) to MainActivity extras.
@@ -65,7 +153,8 @@ object EazNotificationDisplay {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val n = NotificationCompat.Builder(context, EazNotificationChannels.PUSH_IN_APP)
-            .setSmallIcon(smallIcon())
+            .setSmallIcon(smallIconCompat(context))
+            .setLargeIcon(largeIconBitmap(context))
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -107,7 +196,8 @@ object EazNotificationDisplay {
         val title = context.getString(R.string.notification_cart_title)
         val body = context.getString(R.string.notification_cart_body)
         val n = NotificationCompat.Builder(context, EazNotificationChannels.CART_REMINDER)
-            .setSmallIcon(smallIcon())
+            .setSmallIcon(smallIconCompat(context))
+            .setLargeIcon(largeIconBitmap(context))
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

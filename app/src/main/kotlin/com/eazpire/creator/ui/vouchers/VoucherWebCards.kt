@@ -198,7 +198,8 @@ private fun ValueRow(label: String, value: String, mono: Boolean = false) {
 @Composable
 fun WebStyleGiftCard(
     gc: JSONObject,
-    t: (String, String) -> String
+    t: (String, String) -> String,
+    onOpenDetail: ((String) -> Unit)? = null
 ) {
     val uriHandler = LocalUriHandler.current
     val balance = gc.optDouble("balance", 0.0)
@@ -253,7 +254,10 @@ fun WebStyleGiftCard(
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, GiftCardBorder, RoundedCornerShape(12.dp))
             .background(Color.White)
-            .clickable { runCatching { uriHandler.openUri(url) } }
+            .clickable {
+                if (onOpenDetail != null && id.isNotBlank()) onOpenDetail(id)
+                else runCatching { uriHandler.openUri(url) }
+            }
     ) {
         Box(
             modifier = Modifier

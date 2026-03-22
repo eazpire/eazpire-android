@@ -63,6 +63,15 @@ class TranslationStore(
             map[k]?.let { return it }
             enMap[k]?.let { return it }
         }
+        val logical =
+            when {
+                key.startsWith("ui:creator.gift_cards.") -> key.removePrefix("ui:")
+                key.startsWith("creator.gift_cards.") -> key
+                else -> null
+            }
+        if (logical != null) {
+            GiftCardUiFallback.en[logical]?.let { return it }
+        }
         return default ?: key
     }
 

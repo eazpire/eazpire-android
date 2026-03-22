@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Logo auf weißem Hintergrund (bereits in ic_launcher enthalten) -->
-<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@drawable/ic_launcher"
-    android:gravity="center" />
+<!--
+  Adaptive-icon foreground: ~18dp inset keeps artwork inside the 66dp safe circle
+  (108dp canvas) so round/squircle masks clip less than a full-bleed bitmap.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_launcher_bitmap"
+    android:insetLeft="18dp"
+    android:insetTop="18dp"
+    android:insetRight="18dp"
+    android:insetBottom="18dp" />
