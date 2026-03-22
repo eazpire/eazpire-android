@@ -127,19 +127,19 @@ fun ProductCarouselSection(
             fallbackProductHandle = productsByHomeSection["newcomer"]?.firstOrNull()?.handle
                 ?: productsByCategory["women"]?.firstOrNull()?.handle
         )
-        if (promoProducts.isNotEmpty()) {
-            val promoTitle = t("eaz.shop.promotions_title", "Promotions")
-            ProductCarousel(
-                title = promoTitle,
-                products = promoProducts.take(12),
-                collectionHandle = EAZ_PROMOTIONS_COLLECTION_HANDLE,
-                onTitleClick = onCategoryClick?.let { cb ->
-                    { cb(promoTitle, EAZ_PROMOTIONS_COLLECTION_HANDLE) }
-                },
-                onProductClick = onProductClick,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
-        }
+        val promoTitle = t("eaz.shop.promotions_title", "Promotions")
+        val promoEmpty = t("eaz.shop.promotions_empty", "No promotional products at the moment.")
+        ProductCarousel(
+            title = promoTitle,
+            products = promoProducts.take(12),
+            collectionHandle = EAZ_PROMOTIONS_COLLECTION_HANDLE,
+            onTitleClick = onCategoryClick?.let { cb ->
+                { cb(promoTitle, EAZ_PROMOTIONS_COLLECTION_HANDLE) }
+            },
+            onProductClick = onProductClick,
+            modifier = Modifier.padding(bottom = 6.dp),
+            emptyStateMessage = promoEmpty
+        )
         HOME_SECTIONS.forEach { section ->
             val products = productsByHomeSection[section.id].orEmpty()
             val displayTitle = t(section.titleKey, HOME_SECTION_DEFAULTS[section.id] ?: section.id)

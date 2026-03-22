@@ -66,9 +66,39 @@ fun ProductCarousel(
     collectionHandle: String? = null,
     onTitleClick: (() -> Unit)? = null,
     onProductClick: ((ProductClickWithCollection) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** If set, show title row + this message when [products] is empty (e.g. Promotions). */
+    emptyStateMessage: String? = null
 ) {
-    if (products.isEmpty()) return
+    if (products.isEmpty()) {
+        if (emptyStateMessage == null) return
+        Column(modifier = modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(EazColors.Orange.copy(alpha = 0.35f))
+                    .padding(vertical = 6.dp)
+                    .then(
+                        if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick)
+                        else Modifier
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text(
+                text = emptyStateMessage,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+            )
+        }
+        return
+    }
     val context = LocalContext.current
     val density = LocalDensity.current
     val listState = rememberLazyListState()
