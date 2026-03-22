@@ -57,6 +57,12 @@ class CreatorApi(
         return call("get-balance", params)
     }
 
+    /** GET ?op=get-shop-create-product-catalog&region=EU — online catalog + mock_urls for Shop Create Product */
+    suspend fun getShopCreateProductCatalog(region: String): JSONObject = call(
+        "get-shop-create-product-catalog",
+        mapOf("region" to region)
+    )
+
     /** GET ?op=get-level&owner_id=xxx – Level/XP for Creator dashboard */
     suspend fun getLevel(ownerId: String): JSONObject = call(
         "get-level",

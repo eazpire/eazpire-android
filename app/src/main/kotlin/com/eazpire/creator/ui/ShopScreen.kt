@@ -93,6 +93,7 @@ fun ShopScreen(
     val localeStore = remember { LocaleStore(context) }
     val translationStore = remember { TranslationStore(context) }
     val languageCode by localeStore.languageCode.collectAsState(initial = java.util.Locale.getDefault().language.lowercase())
+    val catalogRegion by localeStore.regionCode.collectAsState(initial = "EU")
 
     LaunchedEffect(languageCode) {
         // #region agent log
@@ -211,6 +212,7 @@ fun ShopScreen(
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
     var shopSearchQuery by remember { mutableStateOf<String?>(null) }
+    var shopCreateProductVisible by remember { mutableStateOf(false) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     val productModalHandleState = remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
@@ -468,7 +470,8 @@ fun ShopScreen(
                             productModalHandleState.value = null
                             shopSearchQuery = t
                         }
-                    }
+                    },
+                    onCreateProductClick = { shopCreateProductVisible = true }
                 )
                 ShopMenuBar(
                     onAllClick = {
@@ -529,7 +532,8 @@ fun ShopScreen(
                     productHandle = selectedProductHandle!!,
                     onBack = { selectedProductHandle = null },
                     tokenStore = tokenStore,
-                    onTermsClick = { termsModalVisible = true }
+                    onTermsClick = { termsModalVisible = true },
+                    onNavigateToProduct = { selectedProductHandle = it }
                 )
                 shopSearchQuery != null -> ShopSearchScreen(
                     searchQuery = shopSearchQuery!!,
@@ -566,6 +570,15 @@ fun ShopScreen(
         }
         }
     }
+    }
+    if (!isCreatorMode) {
+        ShopCreateProductFlow(
+            visible = shopCreateProductVisible,
+            onDismiss = { shopCreateProductVisible = false },
+            api = creatorPollApi,
+            region = catalogRegion,
+            translation = { k, d -> translationStore.t(k, d) }
+        )
     }
     val showGenOverlay = isCreatorMode && eazyGenerationOverlay
     val showEazyFloatingLayer = !eazyDocked || showGenOverlay

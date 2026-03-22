@@ -8,7 +8,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class EazFirebaseMessagingService : FirebaseMessagingService() {
 
@@ -16,13 +15,15 @@ class EazFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        val category = message.data["category"]
-        if (!shouldShowPush(category)) return
-        val title = message.notification?.title
-            ?: message.data["title"]
+        // Do not filter by local DataStore here: the worker already applies
+        // get-notification-preferences before sendFcmPush. A second client-side
+        // filter caused "test works, real FCM silent" when local prefs were stale
+        // or never synced after login.
+        val title = message.data["title"]?.takeIf { it.isNotBlank() }
+            ?: message.notification?.title
             ?: return
-        val body = message.notification?.body
-            ?: message.data["body"]
+        val body = message.data["body"]?.takeIf { it.isNotBlank() }
+            ?: message.notification?.body
             ?: ""
         val nid = (message.data["notification_id"] ?: message.messageId ?: System.currentTimeMillis().toString())
             .hashCode()
@@ -34,22 +35,6 @@ class EazFirebaseMessagingService : FirebaseMessagingService() {
             nid and 0x7fff_ffff,
             extras
         )
-    }
-
-    private fun shouldShowPush(category: String?): Boolean {
-        return runBlocking {
-            val prefs = NotificationPreferencesRepository(applicationContext).readSnapshot()
-            val c = category?.lowercase() ?: ""
-            val isShop = c.startsWith("shop_") || c.contains("shop_promotion")
-            if (isShop) {
-                if (!prefs.shopMaster) return@runBlocking false
-                val key = NotificationCategoryMapping.categoryToShopKey(category)
-                return@runBlocking prefs.shop[key] != false
-            }
-            if (!prefs.creatorMaster) return@runBlocking false
-            val key = NotificationCategoryMapping.categoryToCreatorKey(category)
-            prefs.creator[key] != false
-        }
     }
 
     override fun onNewToken(token: String) {

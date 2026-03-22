@@ -38,7 +38,13 @@ class ShopifyProductsApi(
         val designType: String = "",
         val designStyle: List<String> = emptyList(),
         val ratio: String = "",
-        val designLanguage: String = ""
+        val designLanguage: String = "",
+        /** custom.creator (Storefront metafield enrich) */
+        val creator: String = "",
+        /** custom.product_key */
+        val metaProductKey: String = "",
+        /** custom.design_id */
+        val designId: String = ""
     )
 
     data class ProductsResult(
@@ -76,7 +82,10 @@ class ShopifyProductsApi(
                     designType = mf.designType,
                     designStyle = mf.designStyle,
                     ratio = mf.ratio,
-                    designLanguage = mf.designLanguage
+                    designLanguage = mf.designLanguage,
+                    creator = mf.creator.ifBlank { p.creator },
+                    metaProductKey = mf.productKey.ifBlank { p.metaProductKey },
+                    designId = mf.designId.ifBlank { p.designId }
                 ) else p
             }
             return@withContext result.copy(products = enriched)
@@ -89,7 +98,10 @@ class ShopifyProductsApi(
         val designType: String,
         val designStyle: List<String>,
         val ratio: String,
-        val designLanguage: String
+        val designLanguage: String,
+        val creator: String = "",
+        val productKey: String = "",
+        val designId: String = ""
     )
 
     private fun fetchMetafieldsFromWorker(handles: List<String>): Map<String, ProductMetafields> {
@@ -117,7 +129,10 @@ class ShopifyProductsApi(
                     designType = obj.optString("designType", ""),
                     designStyle = designStyle,
                     ratio = obj.optString("ratio", ""),
-                    designLanguage = obj.optString("designLanguage", "")
+                    designLanguage = obj.optString("designLanguage", ""),
+                    creator = obj.optString("creator", ""),
+                    productKey = obj.optString("productKey", ""),
+                    designId = obj.optString("designId", "")
                 )
             }
             result
@@ -360,7 +375,10 @@ class ShopifyProductsApi(
             designType = "",
             designStyle = emptyList(),
             ratio = "",
-            designLanguage = ""
+            designLanguage = "",
+            creator = "",
+            metaProductKey = "",
+            designId = ""
         )
     }
 
@@ -380,7 +398,10 @@ class ShopifyProductsApi(
         val productType: String,
         val url: String,
         /** Product key from metafields (e.g. unisex-softstyle-cotton-tee) for display name. */
-        val productKey: String? = null
+        val productKey: String? = null,
+        val tags: List<String> = emptyList(),
+        val creatorDisplay: String = "",
+        val designIdMeta: String? = null
     ) {
         data class ProductVariant(
             val id: Long,
@@ -408,10 +429,39 @@ class ShopifyProductsApi(
             val body = response.body?.string() ?: "{}"
             val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val productObj = json.optJSONObject("product") ?: json
-            parseProductDetail(productObj, handle)
+            val base = parseProductDetail(productObj, handle) ?: return@withContext null
+            val mf = fetchMetafieldsFromWorker(listOf(base.handle))[base.handle]
+            if (mf == null) return@withContext base
+            base.copy(
+                productKey = mf.productKey.takeIf { it.isNotBlank() } ?: base.productKey,
+                creatorDisplay = mf.creator.ifBlank { base.creatorDisplay },
+                designIdMeta = mf.designId.takeIf { it.isNotBlank() } ?: base.designIdMeta
+            )
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * Katalog für PDP-Karussells: gleiche Metafields wie Web (creator, product_key, design_id).
+     */
+    suspend fun getProductsWithFullMetafields(limit: Int = 100): ProductsResult = withContext(Dispatchers.IO) {
+        val result = getProducts(limit = limit)
+        val mf = fetchMetafieldsFromWorker(result.products.map { it.handle })
+        val merged = result.products.map { p ->
+            val m = mf[p.handle] ?: return@map p
+            p.copy(
+                contentType = m.contentType.ifBlank { p.contentType },
+                designType = m.designType.ifBlank { p.designType },
+                designStyle = if (p.designStyle.isEmpty()) m.designStyle else p.designStyle,
+                ratio = m.ratio.ifBlank { p.ratio },
+                designLanguage = m.designLanguage.ifBlank { p.designLanguage },
+                creator = m.creator.ifBlank { p.creator },
+                metaProductKey = m.productKey.ifBlank { p.metaProductKey },
+                designId = m.designId.ifBlank { p.designId }
+            )
+        }
+        result.copy(products = merged)
     }
 
     private fun parseProductDetail(obj: JSONObject?, handle: String): ProductDetail? {
@@ -514,6 +564,9 @@ class ShopifyProductsApi(
                     (arr.optJSONObject(i)?.takeIf { it.optString("namespace") == "custom" && it.optString("key") == "product_key" })
                 }.firstOrNull()?.optString("value")?.takeIf { it.isNotBlank() }
             }
+        val tagsRaw = obj.optString("tags", "").trim()
+        val tagsList = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        val vendorStr = obj.optString("vendor", "")
         return ProductDetail(
             id = obj.optLong("id", 0L),
             title = obj.optString("title", ""),
@@ -522,10 +575,13 @@ class ShopifyProductsApi(
             images = images,
             variants = variants,
             options = options,
-            vendor = obj.optString("vendor", ""),
+            vendor = vendorStr,
             productType = obj.optString("product_type", ""),
             url = "$storeUrl/products/$h",
-            productKey = productKey
+            productKey = productKey,
+            tags = tagsList,
+            creatorDisplay = vendorStr,
+            designIdMeta = null
         )
     }
 
@@ -599,7 +655,10 @@ class ShopifyProductsApi(
             designType = obj.optString("designType", "").ifBlank { obj.optString("design_type", "") },
             designStyle = designStyle,
             ratio = obj.optString("ratio", "").ifBlank { obj.optString("design_ratio", "") },
-            designLanguage = obj.optString("designLanguage", "").ifBlank { obj.optString("design_language", "") }
+            designLanguage = obj.optString("designLanguage", "").ifBlank { obj.optString("design_language", "") },
+            creator = obj.optString("creator", ""),
+            metaProductKey = obj.optString("productKey", "").ifBlank { obj.optString("metaProductKey", "") },
+            designId = obj.optString("designId", "")
         )
     }
 
@@ -649,7 +708,10 @@ class ShopifyProductsApi(
                         designType = "",
                         designStyle = emptyList(),
                         ratio = "",
-                        designLanguage = ""
+                        designLanguage = "",
+                        creator = "",
+                        metaProductKey = "",
+                        designId = ""
                     )
                 )
             }

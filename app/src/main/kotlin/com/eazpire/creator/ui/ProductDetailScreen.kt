@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
@@ -22,6 +23,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -184,6 +187,67 @@ private fun splitProductTitle(title: String, productType: String, productKey: St
     return designTitle to productTypeTitle
 }
 
+private fun normalizeDesignKey(title: String): String {
+    val t = title.replace(" — ", " | ").replace(" – ", " | ").replace(" - ", " | ")
+    return t.split(" | ").firstOrNull()?.trim()?.lowercase() ?: title.trim().lowercase()
+}
+
+private fun creatorKeyItem(it: ShopifyProductsApi.ProductItem): String =
+    it.creator.ifBlank { it.vendor }.trim().lowercase()
+
+private fun buildPdpCarouselSameType(
+    p: ShopifyProductsApi.ProductDetail,
+    catalog: List<ShopifyProductsApi.ProductItem>
+): List<ShopifyProductsApi.ProductItem> {
+    val pk = p.productKey?.takeIf { it.isNotBlank() }.orEmpty()
+    val seedDesign = normalizeDesignKey(p.title)
+    val ck = p.creatorDisplay.trim().lowercase()
+    return catalog.filter { o ->
+        if (o.id == p.id) return@filter false
+        if (creatorKeyItem(o) != ck) return@filter false
+        val typeMatch = if (pk.isNotBlank()) o.metaProductKey == pk
+        else o.productType.isNotBlank() && o.productType == p.productType
+        typeMatch && normalizeDesignKey(o.title) != seedDesign
+    }.take(12)
+}
+
+private fun buildPdpCarouselSameDesign(
+    p: ShopifyProductsApi.ProductDetail,
+    catalog: List<ShopifyProductsApi.ProductItem>
+): List<ShopifyProductsApi.ProductItem> {
+    val pk = p.productKey?.takeIf { it.isNotBlank() }.orEmpty()
+    val seedDesign = normalizeDesignKey(p.title)
+    val ck = p.creatorDisplay.trim().lowercase()
+    val seedDid = p.designIdMeta?.takeIf { it.isNotBlank() }
+    return catalog.filter { o ->
+        if (o.id == p.id) return@filter false
+        if (creatorKeyItem(o) != ck) return@filter false
+        val designMatch = if (seedDid != null && o.designId.isNotBlank()) o.designId == seedDid
+        else normalizeDesignKey(o.title) == seedDesign
+        val diffType = when {
+            pk.isNotBlank() -> o.metaProductKey != pk
+            else -> o.productType.isNotBlank() && o.productType != p.productType
+        }
+        designMatch && diffType
+    }.take(12)
+}
+
+private fun buildRecommendByTags(
+    p: ShopifyProductsApi.ProductDetail,
+    catalog: List<ShopifyProductsApi.ProductItem>
+): List<ShopifyProductsApi.ProductItem> {
+    val seed = p.tags.map { it.lowercase() }.filter { it.isNotBlank() }.toSet()
+    if (seed.isEmpty()) return emptyList()
+    val ignore = setOf("new", "deal", "bestseller")
+    data class Scored(val item: ShopifyProductsApi.ProductItem, val score: Int)
+    val scored = catalog.mapNotNull { o ->
+        if (o.id == p.id) return@mapNotNull null
+        val s = o.tags.count { t -> t.lowercase().let { x -> x !in ignore && seed.contains(x) } }
+        if (s < 1) null else Scored(o, s)
+    }.sortedWith(compareByDescending<Scored> { it.score }.thenBy { it.item.handle })
+    return scored.map { it.item }.distinctBy { it.id }.take(8)
+}
+
 /**
  * Product Detail Screen – 1:1 wie Web Mobile PDP (eaz-pdp-main.liquid, eaz-redesign-pdp.css).
  * Layout: Info oben, Gallery, Mobile Options (Color/Size), Footer mit Qty + Add to Cart.
@@ -196,6 +260,7 @@ fun ProductDetailScreen(
     tokenStore: SecureTokenStore,
     showCloseButton: Boolean = false,
     onTermsClick: (() -> Unit)? = null,
+    onNavigateToProduct: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
@@ -203,6 +268,7 @@ fun ProductDetailScreen(
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var product by remember { mutableStateOf<ShopifyProductsApi.ProductDetail?>(null) }
+    var catalogProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var detailsSheetVisible by remember { mutableStateOf(false) }
     var selectedImageIndex by remember { mutableIntStateOf(0) }
@@ -219,6 +285,7 @@ fun ProductDetailScreen(
     LaunchedEffect(productHandle) {
         isLoading = true
         product = withContext(Dispatchers.IO) { api.getProductByHandle(productHandle) }
+        catalogProducts = withContext(Dispatchers.IO) { api.getProductsWithFullMetafields(100).products }
         isLoading = false
     }
 
@@ -329,6 +396,7 @@ fun ProductDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.padding(bottom = 2.dp)
                 ) {
+                    val brandLabel = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "?" }
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -337,13 +405,13 @@ fun ProductDetailScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            p.vendor.take(1).uppercase(),
+                            brandLabel.take(1).uppercase(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = EazColors.TextSecondary
                         )
                     }
                     Text(
-                        p.vendor.ifBlank { "Creator" },
+                        brandLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                         color = EazColors.TextPrimary
@@ -577,6 +645,60 @@ fun ProductDetailScreen(
                         if (available) "In Stock" else "Out of Stock",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (available) Color(0xFF16A34A) else Color(0xFFDC2626)
+                    )
+                }
+            }
+
+            val recommendList = remember(p, catalogProducts) { buildRecommendByTags(p, catalogProducts) }
+            val carSameType = remember(p, catalogProducts) { buildPdpCarouselSameType(p, catalogProducts) }
+            val carSameDesign = remember(p, catalogProducts) { buildPdpCarouselSameDesign(p, catalogProducts) }
+            val openRelated: (String) -> Unit = { h ->
+                if (onNavigateToProduct != null) onNavigateToProduct.invoke(h)
+                else try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.eazpire.com/products/$h")))
+                } catch (_: Exception) {
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 8.dp)
+            ) {
+                PdpProductCarouselRow(
+                    title = t("eaz.pdp.recommend_products_title", "Recommended products"),
+                    products = recommendList,
+                    onProductClick = openRelated
+                )
+            }
+            if (carSameType.isNotEmpty() || carSameDesign.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.White)
+                        .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(14.dp))
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "Creator" },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = EazColors.TextPrimary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    PdpProductCarouselRow(
+                        title = t("eaz.pdp.carousel_same_type_designs", "More designs on this product"),
+                        products = carSameType,
+                        onProductClick = openRelated
+                    )
+                    PdpProductCarouselRow(
+                        title = t("eaz.pdp.carousel_same_design_products", "More products with this design"),
+                        products = carSameDesign,
+                        onProductClick = openRelated
                     )
                 }
             }
@@ -983,6 +1105,62 @@ private fun HtmlWebView(content: String, modifier: Modifier = Modifier) {
         },
         modifier = modifier
     )
+}
+
+@Composable
+private fun PdpProductCarouselRow(
+    title: String,
+    products: List<ShopifyProductsApi.ProductItem>,
+    onProductClick: (String) -> Unit
+) {
+    if (products.isEmpty()) return
+    val ctx = LocalContext.current
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            color = EazColors.TextPrimary,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 4.dp)
+        ) {
+            items(products, key = { it.handle }) { item ->
+                val img = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
+                val pk = item.metaProductKey.takeIf { it.isNotBlank() }
+                val (dt, _) = splitProductTitle(item.title, item.productType, pk)
+                Column(
+                    modifier = Modifier
+                        .width(122.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF5F5F5))
+                        .clickable { onProductClick(item.handle) }
+                        .padding(6.dp)
+                ) {
+                    if (img != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(ctx).data(img).build(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(6.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    Text(
+                        dt,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = EazColors.TextPrimary
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun colorForName(name: String): Color {
