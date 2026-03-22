@@ -83,6 +83,8 @@ private val COLLECTION_HANDLE_TO_TITLE = mapOf(
 fun ShopScreen(
     tokenStore: SecureTokenStore,
     pendingDeepLink: MutableState<android.net.Uri?>? = null,
+    pendingEazyTab: MutableState<EazySidebarTab?>? = null,
+    pendingOpenCart: MutableState<Boolean>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -114,6 +116,21 @@ fun ShopScreen(
     var favoritesModalVisible by remember { mutableStateOf(false) }
     var eazyChatVisible by remember { mutableStateOf(false) }
     var eazyStartTab by remember { mutableStateOf(EazySidebarTab.Chat) }
+
+    LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value) {
+        val pt = pendingEazyTab
+        if (pt?.value != null) {
+            eazyStartTab = pt.value!!
+            eazyChatVisible = true
+            pt.value = null
+        }
+        val pc = pendingOpenCart
+        if (pc?.value == true) {
+            cartDrawerVisible = true
+            pc.value = false
+        }
+    }
+
     val eazyChatStore = remember { EazyChatStore(context) }
     val creatorPollApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
     val heroJobForPoll by eazyChatStore.heroJobState.collectAsState()

@@ -91,9 +91,15 @@ fun CartDrawer(
         val cartId = cartStore.cartId
         if (cartId != null) {
             cart = withContext(Dispatchers.IO) { api.getCart(cartId) }
-            if (cart == null) cartStore.clear()
+            if (cart == null) {
+                cartStore.clear()
+                AppCartStore.clear()
+            } else {
+                AppCartStore.setCount(cart!!.itemCount)
+            }
         } else {
             cart = null
+            AppCartStore.clear()
         }
         loading = false
     }

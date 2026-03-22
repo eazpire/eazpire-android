@@ -986,7 +986,8 @@ internal fun HeroProductCard(
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    cornerRadius = 0.dp
+                    cornerRadius = 0.dp,
+                    manualVariantNavigation = true
                 )
             }
             onClear?.let { clear ->
@@ -1339,7 +1340,8 @@ internal fun HeroProductPickerModal(
                                             contentDescription = product.title,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop,
-                                            cornerRadius = 0.dp
+                                            cornerRadius = 0.dp,
+                                            manualVariantNavigation = true
                                         )
                                     }
                                     if (isSelected) {

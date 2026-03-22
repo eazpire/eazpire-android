@@ -1096,7 +1096,8 @@ private fun CreationProductCard(
                         contentDescription = product.title,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
-                        cornerRadius = 0.dp
+                        cornerRadius = 0.dp,
+                        autoRotate = true
                     )
                 } else {
                     Box(
@@ -1148,7 +1149,8 @@ private fun CreationProductListItem(
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    cornerRadius = 8.dp
+                    cornerRadius = 8.dp,
+                    autoRotate = true
                 )
             } else {
                 Box(

@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.cart.StorefrontCartStore
@@ -35,6 +36,8 @@ import com.eazpire.creator.auth.AuthException
 import com.eazpire.creator.auth.PkceUtils
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopifyAuthService
+import com.eazpire.creator.notifications.NotificationPreferencesRepository
+import com.eazpire.creator.push.PushTokenRegistrar
 import kotlinx.coroutines.launch
 
 @Composable
@@ -97,6 +100,12 @@ fun AuthScreen(
                 val tokens = authService.exchangeCodeForTokens(code, verifier)
                 val result = authService.exchangeShopifyTokenForJwt(tokens.accessToken, tokens.idToken.ifBlank { null })
                 tokenStore.saveTokens(result.jwt, result.ownerId, tokens.accessToken.ifBlank { null })
+                withContext(Dispatchers.IO) {
+                    NotificationPreferencesRepository(context).syncFromServer(
+                        CreatorApi(jwt = tokenStore.getJwt())
+                    )
+                }
+                PushTokenRegistrar.syncIfLoggedIn(context)
                 // Link guest cart to customer for address prefill at checkout
                 val cartId = storefrontCartStore.cartId
                 if (cartId != null && tokens.accessToken.isNotBlank()) {

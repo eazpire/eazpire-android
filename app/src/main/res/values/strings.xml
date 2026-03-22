@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">eazpire</string>
+    <string name="notification_channel_push_title">Account &amp; creations</string>
+    <string name="notification_channel_push_desc">Same alerts as in-app notifications (generations, publish, etc.)</string>
+    <string name="notification_channel_cart_title">Cart reminders</string>
+    <string name="notification_channel_cart_desc">Reminders when items are left in your cart</string>
+    <string name="notification_cart_title">Your cart is waiting</string>
+    <string name="notification_cart_body">You still have items in your cart. Tap to continue checkout.</string>
+    <string name="notif_prefs_login_required">Sign in to manage notification settings.</string>
+    <string name="notif_shop_master">Shop notifications</string>
+    <string name="notif_shop_cart">Cart reminders</string>
+    <string name="notif_shop_orders">Order updates</string>
+    <string name="notif_shop_promotions">Promotions and offers</string>
+    <string name="notif_creator_master">Creator notifications</string>
+    <string name="notif_creator_generations">Generations (image &amp; video jobs)</string>
+    <string name="notif_creator_designs">Saved and uploaded designs</string>
+    <string name="notif_creator_publish">Published products</string>
+    <string name="notif_creator_community">Community and mentor</string>
+    <string name="notif_creator_other">Other creator alerts</string>
+    <string name="notif_test_push_title">Test: %1$s</string>
+    <string name="notif_test_push_body">Tap to open the screen linked to this notification type.</string>
 </resources>

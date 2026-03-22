@@ -40,12 +40,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.push.PushTokenRegistrar
 
 enum class AccountTab(val label: String) {
     Profile("Profile"),
+    Notifications("Notifications"),
     SizeAI("Size AI"),
     Wardrobe("Wardrobe"),
     Mockups("My Mockups"),
@@ -74,6 +77,7 @@ fun AccountModalSheet(
     var wardrobeSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var wardrobeCanSave by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -132,10 +136,16 @@ fun AccountModalSheet(
                                 onSaveActionReady = { footerSaveAction = it },
                                 onSavingStateChange = { footerSaveInProgress = it },
                                 onLogout = {
+                                    PushTokenRegistrar.unregisterBeforeLogout(context, tokenStore)
                                     tokenStore.clear()
                                     SecureTokenStore.clearAuthCookies()
                                     onDismiss()
                                 }
+                            )
+                            AccountTab.Notifications -> NotificationSettingsContent(
+                                scope = NotificationScope.Shop,
+                                tokenStore = tokenStore,
+                                modifier = Modifier.fillMaxWidth()
                             )
                             AccountTab.SizeAI -> AccountSizeAITab(
                                 tokenStore = tokenStore,
@@ -164,7 +174,7 @@ fun AccountModalSheet(
                         }
                     }
 
-                    val showFooter = selectedTab == 0 || (selectedTab == 1 && sizeAiMeasurementsSubTab) || selectedTab == 2
+                    val showFooter = selectedTab == 0 || (selectedTab == 2 && sizeAiMeasurementsSubTab) || selectedTab == 3
                     if (showFooter) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -187,7 +197,7 @@ fun AccountModalSheet(
                                             Text(if (footerSaveInProgress) "Saving..." else "Save")
                                         }
                                     }
-                                    1 -> {
+                                    2 -> {
                                         if (sizeAiMeasurementsSubTab) {
                                             Button(
                                                 onClick = { footerSaveAction?.invoke() },
@@ -198,7 +208,7 @@ fun AccountModalSheet(
                                             }
                                         }
                                     }
-                                    2 -> {
+                                    3 -> {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,

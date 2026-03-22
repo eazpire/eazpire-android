@@ -152,6 +152,13 @@ class CreatorApi(
         mapOf("customer_id" to customerId)
     )
 
+    /** POST ?op=revoke-promo-code Body: { customer_id, promo_id } */
+    suspend fun revokePromoCode(customerId: String, promoId: String): JSONObject =
+        postJson(
+            "revoke-promo-code",
+            mapOf("customer_id" to customerId, "promo_id" to promoId)
+        )
+
     /**
      * GET ?op=get-customer-email&customer_id=xxx&shop=xxx
      * Returns { ok: true, email: "user@example.com" } – email from Shopify account.
@@ -1262,6 +1269,44 @@ class CreatorApi(
                 "notification_id" to notificationId
             )
         )
+
+    /** POST ?op=register-fcm-token – body token, platform (auth: JWT) */
+    suspend fun registerFcmToken(token: String, platform: String = "android"): JSONObject =
+        postJson(
+            "register-fcm-token",
+            mapOf("token" to token, "platform" to platform)
+        )
+
+    /** POST ?op=unregister-fcm-token – body token (auth: JWT) */
+    suspend fun unregisterFcmToken(token: String): JSONObject =
+        postJson("unregister-fcm-token", mapOf("token" to token))
+
+    /** GET ?op=get-notification-preferences (auth: JWT) */
+    suspend fun getNotificationPreferences(): JSONObject =
+        call("get-notification-preferences", emptyMap())
+
+    /** POST ?op=save-notification-preferences – partial body (auth: JWT) */
+    suspend fun saveNotificationPreferences(
+        shopMaster: Boolean? = null,
+        creatorMaster: Boolean? = null,
+        shopPatch: Map<String, Boolean>? = null,
+        creatorPatch: Map<String, Boolean>? = null
+    ): JSONObject {
+        val body = org.json.JSONObject()
+        if (shopMaster != null) body.put("shop_master", shopMaster)
+        if (creatorMaster != null) body.put("creator_master", creatorMaster)
+        shopPatch?.let { m ->
+            val o = org.json.JSONObject()
+            m.forEach { (k, v) -> o.put(k, v) }
+            body.put("shop", o)
+        }
+        creatorPatch?.let { m ->
+            val o = org.json.JSONObject()
+            m.forEach { (k, v) -> o.put(k, v) }
+            body.put("creator", o)
+        }
+        return postJsonBodyOp("save-notification-preferences", body)
+    }
 
     /** POST ?op=eazy-conv&new=1 */
     suspend fun eazyConvNew(userId: String): JSONObject =

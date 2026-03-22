@@ -98,11 +98,7 @@ fun AccountVideoTab(
     LaunchedEffect(headerStartNonce) {
         if (headerStartNonce == 0) return@LaunchedEffect
         if (generating) return@LaunchedEffect
-        if (ownerId.isBlank() || (selectedTop == null && selectedAddition == null) ||
-            referenceImageBytes == null || referenceImageBytes?.isEmpty() == true
-        ) {
-            return@LaunchedEffect
-        }
+        if (ownerId.isBlank() || (selectedTop == null && selectedAddition == null)) return@LaunchedEffect
         showConfirmDialog = true
     }
     var confirmBalanceEaz by remember { mutableStateOf<Double?>(null) }
@@ -415,9 +411,12 @@ fun AccountVideoTab(
         if (ownerId.isNotBlank()) loadProducts()
     }
 
-    val canGenerate = ownerId.isNotBlank() && !generating &&
-        (selectedTop != null || selectedAddition != null) && referenceImageBytes != null
-    SideEffect { onVideoEazyReadyChange(canGenerate) }
+    /** Same rule as [AccountHeroImagesTab]: show docked Eazy + bubble once a product is chosen. */
+    val showEazyBubble = ownerId.isNotBlank() && !generating &&
+        (selectedTop != null || selectedAddition != null)
+    SideEffect { onVideoEazyReadyChange(showEazyBubble) }
+
+    val hasReferenceImage = referenceImageBytes?.isNotEmpty() == true
 
     Column(
         modifier = modifier
@@ -594,6 +593,16 @@ fun AccountVideoTab(
                                 color = EazColors.Orange
                             )
                         }
+                        if (!hasReferenceImage) {
+                            Text(
+                                text = t(
+                                    "creator.content_creation.videos.reference_required",
+                                    "Upload a reference image."
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = EazColors.Orange
+                            )
+                        }
                         selectedTop?.let {
                             Text(
                                 "${t("creator.hero_eazy.confirm_product_line", "Product")}: ${it.title}",
@@ -617,20 +626,18 @@ fun AccountVideoTab(
                     }
                 },
                 confirmButton = {
+                    val canConfirm =
+                        !generating && hasReferenceImage && (confirmBalanceEaz == null || !lowBalance)
                     TextButton(
                         onClick = {
                             showConfirmDialog = false
                             runVideoGenerate()
                         },
-                        enabled = !generating && (confirmBalanceEaz == null || !lowBalance)
+                        enabled = canConfirm
                     ) {
                         Text(
                             t("creator.common.confirm", "Confirm"),
-                            color = if (!generating && (confirmBalanceEaz == null || !lowBalance)) {
-                                EazColors.Orange
-                            } else {
-                                Color.Gray
-                            }
+                            color = if (canConfirm) EazColors.Orange else Color.Gray
                         )
                     }
                 },

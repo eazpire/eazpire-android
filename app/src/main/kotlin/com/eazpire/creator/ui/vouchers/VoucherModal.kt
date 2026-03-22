@@ -1,24 +1,29 @@
 package com.eazpire.creator.ui.vouchers
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,8 +42,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
@@ -51,17 +60,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
 
-/** Matches web modal: Store Credit + four subtabs (own/sent gift cards, created/redeemed promos). */
-private enum class VoucherSection {
+private enum class MainTab {
     STORE_CREDIT,
-    GC_OWN,
-    GC_SENT,
-    PROMO_CREATED,
-    PROMO_REDEEMED
+    GIFT_CARDS,
+    PROMO_CODES
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,7 +82,9 @@ fun VoucherModal(
     val api = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
     val t = remember(translationStore) { { k: String, d: String -> translationStore.t(k, d) } }
 
-    var section by remember { mutableStateOf(VoucherSection.STORE_CREDIT) }
+    var mainTab by remember { mutableStateOf(MainTab.STORE_CREDIT) }
+    var giftSubOwn by remember { mutableStateOf(true) }
+    var promoSubCreated by remember { mutableStateOf(true) }
 
     var loading by remember { mutableStateOf(true) }
     var payoutJson by remember { mutableStateOf<JSONObject?>(null) }
@@ -116,16 +123,36 @@ fun VoucherModal(
         }
     }
 
+    val screenTitle = remember(mainTab, giftSubOwn, promoSubCreated, translationStore) {
+        when (mainTab) {
+            MainTab.STORE_CREDIT -> t("creator.voucher_page.subtab_store_credit", "Store Credit")
+            MainTab.GIFT_CARDS ->
+                if (giftSubOwn) t("creator.voucher_page.subtab_own_gift_cards", "My Gift Cards")
+                else t("creator.voucher_page.subtab_sent_gift_cards", "Sent Gift Cards")
+            MainTab.PROMO_CODES ->
+                if (promoSubCreated) t("creator.voucher_page.subtab_created_promos", "Created Promos")
+                else t("creator.voucher_page.subtab_redeemed_promos", "Redeemed Promos")
+        }
+    }
+
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    val drawerItems = remember(t) {
+    fun reloadPromos() {
+        if (ownerId.isBlank()) return
+        scope.launch {
+            try {
+                val pr = withContext(Dispatchers.IO) { api.getPromoSlots(ownerId) }
+                promoJson = if (pr.optBoolean("ok", false)) pr else null
+            } catch (_: Exception) { /* ignore */ }
+        }
+    }
+
+    val mainDrawerItems = remember(t) {
         listOf(
-            VoucherSection.STORE_CREDIT to t("creator.voucher_page.subtab_store_credit", "Store Credit"),
-            VoucherSection.GC_OWN to t("creator.voucher_page.subtab_own_gift_cards", "My gift cards"),
-            VoucherSection.GC_SENT to t("creator.voucher_page.subtab_sent_gift_cards", "Sent gift cards"),
-            VoucherSection.PROMO_CREATED to t("creator.voucher_page.subtab_created_promos", "Created promos"),
-            VoucherSection.PROMO_REDEEMED to t("creator.voucher_page.subtab_redeemed_promos", "Redeemed promos")
+            MainTab.STORE_CREDIT to t("creator.voucher_page.subtab_store_credit", "Store Credit"),
+            MainTab.GIFT_CARDS to t("creator.voucher_page.tab_gift_cards", "Purchased Gift Cards"),
+            MainTab.PROMO_CODES to t("creator.voucher_page.tab_promo_codes", "Promo Codes")
         )
     }
 
@@ -137,15 +164,17 @@ fun VoucherModal(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet {
-                    drawerItems.forEach { (dest, label) ->
-                        val selected = section == dest
+                    mainDrawerItems.forEach { (dest, label) ->
+                        val selected = mainTab == dest
                         Text(
                             label,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    section = dest
-                                    scope.launch { drawerState.close() }
+                                    mainTab = dest
+                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                        drawerState.close()
+                                    }
                                 }
                                 .padding(16.dp),
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
@@ -159,7 +188,11 @@ fun VoucherModal(
                     topBar = {
                         TopAppBar(
                             title = {
-                                Text(t("eaz.sidebar.my_gift_cards", "My Gift Cards"))
+                                Text(
+                                    screenTitle,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             },
                             navigationIcon = {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
@@ -179,47 +212,49 @@ fun VoucherModal(
                             .fillMaxSize()
                             .padding(padding)
                     ) {
+                        when (mainTab) {
+                            MainTab.GIFT_CARDS -> VoucherSubTabRow(
+                                leftLabel = t("creator.voucher_page.subtab_own_gift_cards", "My Gift Cards"),
+                                rightLabel = t("creator.voucher_page.subtab_sent_gift_cards", "Sent Gift Cards"),
+                                selectedLeft = giftSubOwn,
+                                onSelectLeft = { giftSubOwn = true },
+                                onSelectRight = { giftSubOwn = false }
+                            )
+                            MainTab.PROMO_CODES -> VoucherSubTabRow(
+                                leftLabel = t("creator.voucher_page.subtab_created_promos", "Created Promos"),
+                                rightLabel = t("creator.voucher_page.subtab_redeemed_promos", "Redeemed Promos"),
+                                selectedLeft = promoSubCreated,
+                                onSelectLeft = { promoSubCreated = true },
+                                onSelectRight = { promoSubCreated = false }
+                            )
+                            else -> Spacer(Modifier.height(0.dp))
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
                         ) {
-                            when (section) {
-                                VoucherSection.STORE_CREDIT ->
+                            when (mainTab) {
+                                MainTab.STORE_CREDIT ->
                                     StoreCreditPanel(payoutJson, currencyCode, loading, errorText, t)
-                                VoucherSection.GC_OWN ->
+                                MainTab.GIFT_CARDS ->
                                     GiftCardsPanel(
                                         giftCards = giftCards,
-                                        own = true,
+                                        own = giftSubOwn,
                                         loading = loading,
                                         errorText = errorText,
-                                        currencyFallback = currencyCode,
                                         t = t
                                     )
-                                VoucherSection.GC_SENT ->
-                                    GiftCardsPanel(
-                                        giftCards = giftCards,
-                                        own = false,
-                                        loading = loading,
-                                        errorText = errorText,
-                                        currencyFallback = currencyCode,
-                                        t = t
-                                    )
-                                VoucherSection.PROMO_CREATED ->
+                                MainTab.PROMO_CODES ->
                                     PromoPanel(
                                         promoJson = promoJson,
-                                        created = true,
+                                        created = promoSubCreated,
                                         loading = loading,
                                         errorText = errorText,
-                                        t = t
-                                    )
-                                VoucherSection.PROMO_REDEEMED ->
-                                    PromoPanel(
-                                        promoJson = promoJson,
-                                        created = false,
-                                        loading = loading,
-                                        errorText = errorText,
-                                        t = t
+                                        t = t,
+                                        ownerId = ownerId,
+                                        api = api,
+                                        onReloadPromos = { reloadPromos() }
                                     )
                             }
                         }
@@ -228,6 +263,53 @@ fun VoucherModal(
             }
         )
     }
+}
+
+@Composable
+private fun VoucherSubTabRow(
+    leftLabel: String,
+    rightLabel: String,
+    selectedLeft: Boolean,
+    onSelectLeft: () -> Unit,
+    onSelectRight: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            SubTabChip(leftLabel, selectedLeft, Modifier.weight(1f), onSelectLeft)
+            SubTabChip(rightLabel, !selectedLeft, Modifier.weight(1f), onSelectRight)
+        }
+        Divider(color = Color(0xFFE5E7EB))
+    }
+}
+
+@Composable
+private fun SubTabChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Text(
+        label,
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .background(
+                if (selected) Color(0x14000000) else Color.Transparent,
+                RoundedCornerShape(8.dp)
+            )
+            .padding(vertical = 10.dp, horizontal = 8.dp),
+        fontSize = 13.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+        color = if (selected) EazColors.Orange else Color(0xFF6B7280),
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable
@@ -268,15 +350,7 @@ private fun StoreCreditPanel(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         items(rows) { row ->
-            val amount = row.optDouble("amount", 0.0)
-            val cur = row.optString("payoutCurrency", currencyFallback)
-            val label = formatMoney(amount, cur)
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(label, fontWeight = FontWeight.Bold)
-                    Text(t("creator.voucher_page.subtab_store_credit", "Store Credit"), style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            WebStyleStoreCreditCard(row, currencyFallback, t)
         }
     }
 }
@@ -292,7 +366,6 @@ private fun GiftCardsPanel(
     own: Boolean,
     loading: Boolean,
     errorText: String?,
-    currencyFallback: String,
     t: (String, String) -> String
 ) {
     if (loading) {
@@ -324,15 +397,7 @@ private fun GiftCardsPanel(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         items(list) { gc ->
-            val bal = gc.optDouble("balance", 0.0)
-            val cur = gc.optString("currency", currencyFallback)
-            val masked = gc.optString("masked_code", gc.optString("last_characters", "••••"))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(masked, fontWeight = FontWeight.Medium)
-                    Text(formatMoney(bal, cur), fontWeight = FontWeight.Bold)
-                }
-            }
+            WebStyleGiftCard(gc, t)
         }
     }
 }
@@ -343,7 +408,10 @@ private fun PromoPanel(
     created: Boolean,
     loading: Boolean,
     errorText: String?,
-    t: (String, String) -> String
+    t: (String, String) -> String,
+    ownerId: String,
+    api: CreatorApi,
+    onReloadPromos: () -> Unit
 ) {
     if (loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -362,15 +430,20 @@ private fun PromoPanel(
     if (created) {
         val active = promoJson.optJSONArray("active") ?: JSONArray()
         val slotsTotal = promoJson.optInt("slots_total", 5)
-        val count = (0 until active.length()).count()
-        val available = (slotsTotal - count).coerceAtLeast(0)
+        val activeCount = (0 until active.length()).count()
+        val emptySlots = (slotsTotal - activeCount).coerceAtLeast(0)
         val slotItems = remember(active) {
             (0 until active.length()).map { active.getJSONObject(it) }
         }
+        val counterLine = t("creator.voucher_page.promo_slots_counter", "{available} / {total} slots available")
+            .replace("{available}", emptySlots.toString())
+            .replace("{total}", slotsTotal.toString())
         Column(Modifier.fillMaxSize()) {
             Text(
-                "$available / $slotsTotal ${t("creator.voucher_page.loading_promos", "slots")}",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                counterLine,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                fontSize = 13.sp,
+                color = Color(0xFF6B7280)
             )
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(220.dp),
@@ -382,15 +455,16 @@ private fun PromoPanel(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(slotItems) { p ->
-                    val code = p.optString("discount_code", "")
-                    val amt = p.optDouble("value_amount", 0.0)
-                    val cur = p.optString("value_currency", "EUR")
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(code, fontWeight = FontWeight.Bold)
-                            Text(formatMoney(amt, cur))
-                        }
-                    }
+                    PromoSlotCardWeb(
+                        promo = p,
+                        t = t,
+                        ownerId = ownerId,
+                        api = api,
+                        onReload = onReloadPromos
+                    )
+                }
+                items(emptySlots) {
+                    PromoEmptySlotWeb(t = t)
                 }
             }
         }
@@ -411,39 +485,15 @@ private fun PromoPanel(
             return
         }
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(220.dp),
+            columns = GridCells.Adaptive(280.dp),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(all) { p ->
-                val code = p.optString("discount_code", "")
-                val amt = p.optDouble("value_amount", 0.0)
-                val cur = p.optString("value_currency", "EUR")
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(code, fontWeight = FontWeight.Medium)
-                            Text(formatMoney(amt, cur))
-                        }
-                    }
-                }
+                PromoRedeemedRowWeb(p = p, t = t)
             }
         }
-    }
-}
-
-private fun formatMoney(amount: Double, currency: String): String {
-    return try {
-        NumberFormat.getCurrencyInstance(Locale.getDefault()).apply {
-            this.currency = Currency.getInstance(currency)
-        }.format(amount)
-    } catch (_: Exception) {
-        "%.2f %s".format(amount, currency)
     }
 }

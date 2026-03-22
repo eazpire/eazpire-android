@@ -49,12 +49,14 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.account.AccountCommunityTab
 import com.eazpire.creator.ui.account.AccountProfileTab
+import com.eazpire.creator.ui.account.NotificationScope
+import com.eazpire.creator.ui.account.NotificationSettingsContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** Tab indices: 0 Profile, 1 Creator Codes, 2 Community, 3 Creator Names, 4 Level, 5 EAZ, 6 Payout, 7 Interests, 8 NFT */
+/** Tab indices: 0 Profile, 1 Notifications, 2 Creator Codes, 3 Community, 4 Creator Names, 5 Level, 6 EAZ, 7 Payout, 8 Interests, 9 NFT */
 @Composable
 fun CreatorSettingsTabContent(
     currentTab: Int,
@@ -74,14 +76,19 @@ fun CreatorSettingsTabContent(
     ) {
         when (currentTab) {
             0 -> CreatorSettingsProfileContent(tokenStore, translationStore)
-            1 -> CreatorSettingsCreatorCodesContent(ownerId, api, translationStore)
-            2 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
-            3 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
-            4 -> CreatorSettingsLevelContent(ownerId, api, translationStore)
-            5 -> CreatorSettingsEazContent(translationStore)
-            6 -> CreatorSettingsPayoutContent(ownerId, api, translationStore)
-            7 -> CreatorSettingsInterestsContent(ownerId, api, translationStore)
-            8 -> CreatorSettingsNftContent(translationStore)
+            1 -> NotificationSettingsContent(
+                scope = NotificationScope.Creator,
+                tokenStore = tokenStore,
+                modifier = Modifier.fillMaxWidth()
+            )
+            2 -> CreatorSettingsCreatorCodesContent(ownerId, api, translationStore)
+            3 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
+            4 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
+            5 -> CreatorSettingsLevelContent(ownerId, api, translationStore)
+            6 -> CreatorSettingsEazContent(translationStore)
+            7 -> CreatorSettingsPayoutContent(ownerId, api, translationStore)
+            8 -> CreatorSettingsInterestsContent(ownerId, api, translationStore)
+            9 -> CreatorSettingsNftContent(translationStore)
         }
     }
 }

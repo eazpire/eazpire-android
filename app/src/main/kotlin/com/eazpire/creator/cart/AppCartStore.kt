@@ -14,13 +14,16 @@ object AppCartStore {
 
     fun setCount(count: Int) {
         itemCount = count.coerceAtLeast(0)
+        CartReminderScheduler.onCartCountChanged()
     }
 
     fun add(quantity: Int) {
         itemCount += quantity.coerceAtLeast(0)
+        CartReminderScheduler.onCartCountChanged()
     }
 
     fun clear() {
         itemCount = 0
+        CartReminderScheduler.onCartCountChanged()
     }
 }

@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -72,4 +73,10 @@ dependencies {
 
     // Jsoup for HTML parsing (policy content extraction)
     implementation("org.jsoup:jsoup:1.17.2")
+
+    // Push & background work
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.activity:activity-ktx:1.8.2")
 }

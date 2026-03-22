@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
@@ -63,6 +64,7 @@ fun CreatorSettingsModal(
 
     val tabs = listOf(
         SettingsTabItem(translationStore.t("creator.settings.nav_profile", "Profile"), Icons.Default.Person),
+        SettingsTabItem(translationStore.t("creator.settings.nav_notifications", "Notifications"), Icons.Default.Notifications),
         SettingsTabItem(translationStore.t("creator.settings.nav_creator_codes", "Creator Codes"), Icons.Default.Lock),
         SettingsTabItem(translationStore.t("creator.settings.nav_community", "Community"), Icons.Default.Groups),
         SettingsTabItem(translationStore.t("creator.settings.nav_creator_names", "Creator Names"), Icons.Default.Star),
