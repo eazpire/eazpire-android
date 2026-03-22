@@ -126,13 +126,24 @@ fun NotificationSettingsContent(
                 )
                 notifRow(
                     context = context,
-                    label = stringResource(R.string.notif_shop_promotions),
+                    label = stringResource(R.string.notif_shop_promotions_new),
                     labelColor = labelColor,
-                    testOpenTarget = "eazy_notifications",
-                    checked = state.shop["promotions"] != false,
+                    testOpenTarget = "shop",
+                    checked = state.shop["promotions_new"] != false,
                     enabled = subEnabled,
                     onChecked = { v ->
-                        scopeIo.launch { repo.saveShopKey(api, "promotions", v) }
+                        scopeIo.launch { repo.saveShopKey(api, "promotions_new", v) }
+                    }
+                )
+                notifRow(
+                    context = context,
+                    label = stringResource(R.string.notif_shop_promotions_ending),
+                    labelColor = labelColor,
+                    testOpenTarget = "shop",
+                    checked = state.shop["promotions_ending_soon"] != false,
+                    enabled = subEnabled,
+                    onChecked = { v ->
+                        scopeIo.launch { repo.saveShopKey(api, "promotions_ending_soon", v) }
                     }
                 )
             }

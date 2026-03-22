@@ -20,43 +20,30 @@ object EazNotificationDisplay {
     private const val REQ_PUSH = 1001
     private const val REQ_CART = 1002
 
-    /** Status bar / trailing small slot (system ~24dp). */
-    private const val SMALL_ICON_DP = 24f
-
     /**
-     * Large circle on the left in the notification shade often uses [Notification.largeIcon], not the
-     * small-icon bitmap — on Pixel/Material 3 the two slots are controlled separately.
+     * Brand mark is shown only via [setLargeIcon] (left circle). [setSmallIcon] is mandatory but on
+     * Material/Pixel also fills the trailing slot — we use a 1×1 transparent bitmap so no second logo on the right.
      */
     private const val SHADE_LARGE_ICON_DP = 64f
 
-    /** Inset for the status-bar / smallIcon bitmap. */
-    private const val SMALL_ICON_INSET_SCALE = 0.88f
-
-    /** Inset for the shade left large circle (tune independently if one slot clips more than the other). */
+    /** Inset for the shade left large circle. */
     private const val SHADE_LARGE_ICON_INSET_SCALE = 0.88f
 
     /** Bump when changing icon rendering so cached bitmaps are not reused across builds. */
-    private const val ICON_RENDER_VERSION = 8
+    private const val ICON_RENDER_VERSION = 9
 
     @Volatile
-    private var cachedSmallIcon: Pair<Int, Bitmap>? = null
+    private var transparentSmallIconBitmap: Bitmap? = null
 
     @Volatile
     private var cachedShadeLargeIcon: Pair<Int, Bitmap>? = null
 
-    /**
-     * Status bar + trailing small slot: white silhouette of [R.drawable.eazpire_logo].
-     * Android expects monochrome for the status glyph; shape matches the brand PNG.
-     */
+    /** Required platform small icon: invisible in the shade so only [shadeLargeIconBitmap] shows the mark. */
     private fun smallIconCompat(context: Context): IconCompat {
         return try {
-            val app = context.applicationContext
-            val cached = cachedSmallIcon
-            val bmp = if (cached != null && cached.first == ICON_RENDER_VERSION) {
-                cached.second
-            } else {
-                buildBrandIconBitmap(app, SMALL_ICON_DP, SMALL_ICON_INSET_SCALE)
-                    .also { cachedSmallIcon = ICON_RENDER_VERSION to it }
+            val bmp = transparentSmallIconBitmap ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
+                it.eraseColor(Color.TRANSPARENT)
+                transparentSmallIconBitmap = it
             }
             IconCompat.createWithBitmap(bmp)
         } catch (_: Exception) {
@@ -125,6 +112,7 @@ object EazNotificationDisplay {
             val raw = extras["open_target"]?.lowercase() ?: extras["nav_target"]?.lowercase()
             when (raw) {
                 "cart" -> putExtra(MainActivity.EXTRA_OPEN_CART, true)
+                "shop" -> putExtra(MainActivity.EXTRA_OPEN_SHOP, true)
                 "eazy_jobs", "jobs" -> {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
                     putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Jobs.name)

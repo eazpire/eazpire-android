@@ -3,11 +3,14 @@ package com.eazpire.creator.ui.header
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -21,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -84,13 +88,30 @@ fun LanguageModal(
     val selectedBg = if (darkMode) DarkSelectedBg else EazColors.OrangeBg
     val borderColor = if (darkMode) DarkBorder else EazColors.TopbarBorder
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = containerColor
+        sheetState = sheetState,
+        containerColor = containerColor,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 10.dp)
+                    .size(width = 40.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        if (darkMode) Color.White.copy(alpha = 0.28f)
+                        else Color.Black.copy(alpha = 0.2f)
+                    )
+            )
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp)
         ) {
             Row(
@@ -246,13 +267,30 @@ private fun DialectModal(
     val textSecondaryColor = if (darkMode) DarkTextSecondary else EazColors.TextSecondary
     val selectedBg = if (darkMode) DarkSelectedBg else EazColors.OrangeBg
 
+    val dialectSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = containerColor
+        sheetState = dialectSheetState,
+        containerColor = containerColor,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 10.dp)
+                    .size(width = 40.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        if (darkMode) Color.White.copy(alpha = 0.28f)
+                        else Color.Black.copy(alpha = 0.2f)
+                    )
+            )
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {

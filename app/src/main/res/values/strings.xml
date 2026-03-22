@@ -12,6 +12,10 @@
     <string name="notif_shop_cart">Cart reminders</string>
     <string name="notif_shop_orders">Order updates</string>
     <string name="notif_shop_promotions">Promotions and offers</string>
+    <string name="notif_shop_promotions_new">New promotions (bundles)</string>
+    <string name="notif_shop_promotions_ending">Promotions ending within 24 hours</string>
+    <string name="shop_notif_new_promo_title">New promotion</string>
+    <string name="shop_notif_new_promo_body">%1$s: %2$d products at %3$s.</string>
     <string name="notif_creator_master">Creator notifications</string>
     <string name="notif_creator_generations">Generations (image &amp; video jobs)</string>
     <string name="notif_creator_designs">Saved and uploaded designs</string>

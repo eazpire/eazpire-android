@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -72,6 +73,8 @@ import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -116,6 +119,51 @@ private fun endOfDay(millis: Long): Long =
         set(Calendar.MILLISECOND, 999)
     }.timeInMillis
 
+private const val STOREFRONT_PRODUCTS_JSON =
+    "https://www.eazpire.com/collections/all/products.json?limit=250"
+
+private fun productIdString(p: JSONObject): String {
+    if (!p.has("id")) return ""
+    return when (val raw = p.get("id")) {
+        is Number -> raw.toLong().toString()
+        is String -> raw
+        else -> raw?.toString().orEmpty()
+    }
+}
+
+private fun promoImageUrl(p: JSONObject): String? {
+    p.optString("image", "").takeIf { it.isNotBlank() }?.let { return it }
+    p.optJSONObject("featured_image")?.optString("src", "")?.takeIf { it.isNotBlank() }?.let { return it }
+    p.optJSONArray("images")?.optJSONObject(0)?.optString("src", "")?.takeIf { it.isNotBlank() }?.let { return it }
+    return null
+}
+
+/** Parses `products` from creator-dispatch or Shopify products.json (same shape). */
+private fun parsePromotionProductsFromJson(resp: JSONObject): List<PromoProductDraft> {
+    val arr = resp.optJSONArray("products") ?: return emptyList()
+    val out = mutableListOf<PromoProductDraft>()
+    for (i in 0 until arr.length()) {
+        val p = arr.optJSONObject(i) ?: continue
+        val id = productIdString(p)
+        if (id.isBlank()) continue
+        val title = p.optString("title", id)
+        out.add(PromoProductDraft(id, title, promoImageUrl(p)))
+    }
+    return out
+}
+
+private suspend fun fetchShopifyProductsFallback(): List<PromoProductDraft> = withContext(Dispatchers.IO) {
+    try {
+        val client = OkHttpClient()
+        val req = Request.Builder().url(STOREFRONT_PRODUCTS_JSON).header("Accept", "application/json").build()
+        val http = client.newCall(req).execute()
+        if (!http.isSuccessful) return@withContext emptyList()
+        parsePromotionProductsFromJson(JSONObject(http.body?.string() ?: "{}"))
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
 @Composable
 fun MarketingPromotionsPanel(
     tokenStore: SecureTokenStore,
@@ -149,9 +197,23 @@ fun MarketingPromotionsPanel(
     var showEndPicker by remember { mutableStateOf(false) }
 
     var pickerSearch by remember { mutableStateOf("") }
-    var pickerProducts by remember { mutableStateOf<List<PromoProductDraft>>(emptyList()) }
+    /** Full list from API or Shopify fallback (loaded once per picker open). */
+    var pickerCatalog by remember { mutableStateOf<List<PromoProductDraft>>(emptyList()) }
     var pickerLoading by remember { mutableStateOf(false) }
     var pickerChecked by remember { mutableStateOf(setOf<String>()) }
+
+    val pickerProducts = remember(pickerCatalog, pickerSearch, selectedProducts) {
+        var list = pickerCatalog.filter { pr -> selectedProducts.none { it.id == pr.id } }
+        val q = pickerSearch.trim().lowercase()
+        if (q.isNotBlank()) {
+            list = list.filter { pr ->
+                pr.title.lowercase().contains(q) ||
+                    pr.id.contains(q) ||
+                    (q.length >= 3 && pr.id.lowercase().contains(q))
+            }
+        }
+        list
+    }
 
     val dateFmt = remember {
         SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
@@ -200,7 +262,7 @@ fun MarketingPromotionsPanel(
         loading = false
     }
 
-    LaunchedEffect(ownerId, sheetPage, pickerSearch, showSheet) {
+    LaunchedEffect(ownerId, sheetPage, showSheet, editId) {
         if (!showSheet || sheetPage != PromoSheetPage.Picker || ownerId.isBlank()) return@LaunchedEffect
         pickerLoading = true
         try {
@@ -208,31 +270,17 @@ fun MarketingPromotionsPanel(
                 api.listProductsForPromotion(
                     ownerId,
                     promotionId = editId,
-                    q = pickerSearch.takeIf { it.isNotBlank() },
+                    q = null,
                     collectionHandle = null
                 )
             }
-            if (resp.optBoolean("ok", false)) {
-                val arr = resp.optJSONArray("products") ?: org.json.JSONArray()
-                val list = mutableListOf<PromoProductDraft>()
-                for (i in 0 until arr.length()) {
-                    val p = arr.optJSONObject(i) ?: continue
-                    list.add(
-                        PromoProductDraft(
-                            id = p.optString("id", ""),
-                            title = p.optString("title", p.optString("id", "")),
-                            imageUrl = p.optString("image", "").takeIf { it.isNotBlank() }
-                        )
-                    )
-                }
-                pickerProducts = list.filter { pr ->
-                    selectedProducts.none { it.id == pr.id }
-                }
-            } else {
-                pickerProducts = emptyList()
+            var list = parsePromotionProductsFromJson(resp)
+            if (list.isEmpty()) {
+                list = fetchShopifyProductsFallback()
             }
+            pickerCatalog = list
         } catch (_: Exception) {
-            pickerProducts = emptyList()
+            pickerCatalog = emptyList()
         }
         pickerLoading = false
     }
@@ -460,17 +508,22 @@ fun MarketingPromotionsPanel(
                         .padding(top = 10.dp)
                         .size(width = 40.dp, height = 4.dp)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(Color.White.copy(alpha = 0.2f))
+                        .background(Color.White.copy(alpha = 0.35f))
                 )
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxWidth()
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
             when (sheetPage) {
                 PromoSheetPage.Form -> {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .navigationBarsPadding()
                             .padding(horizontal = 20.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
@@ -751,6 +804,7 @@ fun MarketingPromotionsPanel(
                                     if (endDateMillis <= startDateMillis) {
                                         return@TextButton
                                     }
+                                    val wasNewPromotion = editId == null
                                     val durationDays = maxOf(
                                         1,
                                         ((endDateMillis - startDateMillis) / 86400000L).toInt()
@@ -772,6 +826,31 @@ fun MarketingPromotionsPanel(
                                         try {
                                             val resp = withContext(Dispatchers.IO) { api.savePromotion(body) }
                                             if (resp.optBoolean("ok", false)) {
+                                                if (wasNewPromotion) {
+                                                    try {
+                                                        val pushBody = JSONObject()
+                                                        pushBody.put("owner_id", ownerId)
+                                                        pushBody.put("kind", "new")
+                                                        pushBody.put("promotion_name", name.trim())
+                                                        pushBody.put("discount_type", discountType)
+                                                        pushBody.put(
+                                                            "discount_value",
+                                                            discountValue.toDoubleOrNull() ?: 0.0
+                                                        )
+                                                        pushBody.put("product_count", selectedProducts.size)
+                                                        pushBody.put("product_ids", arr)
+                                                        val promoId =
+                                                            resp.optJSONObject("promotion")?.optString("id", "")
+                                                                ?.takeIf { it.isNotBlank() }
+                                                        if (promoId != null) {
+                                                            pushBody.put("promotion_id", promoId)
+                                                        }
+                                                        withContext(Dispatchers.IO) {
+                                                            api.broadcastShopPromotionPush(pushBody)
+                                                        }
+                                                    } catch (_: Exception) {
+                                                    }
+                                                }
                                                 showSheet = false
                                                 refresh += 1
                                             }
@@ -794,7 +873,6 @@ fun MarketingPromotionsPanel(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .navigationBarsPadding()
                             .padding(horizontal = 16.dp)
                             .heightIn(max = 520.dp)
                     ) {
@@ -906,7 +984,7 @@ fun MarketingPromotionsPanel(
                                 }
                                 TextButton(
                                     onClick = {
-                                        val add = pickerProducts.filter { it.id in pickerChecked }
+                                        val add = pickerCatalog.filter { it.id in pickerChecked }
                                         selectedProducts = selectedProducts + add.filter { np ->
                                             selectedProducts.none { it.id == np.id }
                                         }
@@ -923,6 +1001,7 @@ fun MarketingPromotionsPanel(
                         }
                     }
                 }
+            }
             }
         }
     }

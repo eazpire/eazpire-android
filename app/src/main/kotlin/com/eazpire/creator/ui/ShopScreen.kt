@@ -85,6 +85,7 @@ fun ShopScreen(
     pendingDeepLink: MutableState<android.net.Uri?>? = null,
     pendingEazyTab: MutableState<EazySidebarTab?>? = null,
     pendingOpenCart: MutableState<Boolean>? = null,
+    pendingOpenShop: MutableState<Boolean>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -116,20 +117,6 @@ fun ShopScreen(
     var favoritesModalVisible by remember { mutableStateOf(false) }
     var eazyChatVisible by remember { mutableStateOf(false) }
     var eazyStartTab by remember { mutableStateOf(EazySidebarTab.Chat) }
-
-    LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value) {
-        val pt = pendingEazyTab
-        if (pt?.value != null) {
-            eazyStartTab = pt.value!!
-            eazyChatVisible = true
-            pt.value = null
-        }
-        val pc = pendingOpenCart
-        if (pc?.value == true) {
-            cartDrawerVisible = true
-            pc.value = false
-        }
-    }
 
     val eazyChatStore = remember { EazyChatStore(context) }
     val creatorPollApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
@@ -226,6 +213,27 @@ fun ShopScreen(
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     val productModalHandleState = remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value) {
+        val pt = pendingEazyTab
+        if (pt?.value != null) {
+            eazyStartTab = pt.value!!
+            eazyChatVisible = true
+            pt.value = null
+        }
+        val pc = pendingOpenCart
+        if (pc?.value == true) {
+            cartDrawerVisible = true
+            pc.value = false
+        }
+        val ps = pendingOpenShop
+        if (ps?.value == true) {
+            isCreatorMode = false
+            eazyChatVisible = false
+            ps.value = false
+        }
+    }
+
     var creatorGenEazyLookLeft by remember { mutableStateOf(false) }
     var eazyGenerationOverlay by remember { mutableStateOf(false) }
     var eazyGenerationOverlayLoading by remember { mutableStateOf(false) }

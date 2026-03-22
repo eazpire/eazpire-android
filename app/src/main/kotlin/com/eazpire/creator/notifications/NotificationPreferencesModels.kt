@@ -12,7 +12,9 @@ data class NotificationPrefs(
         fun defaultShop(): Map<String, Boolean> = mapOf(
             "cart_reminder" to true,
             "orders" to true,
-            "promotions" to true
+            "promotions" to true,
+            "promotions_new" to true,
+            "promotions_ending_soon" to true
         )
 
         fun defaultCreator(): Map<String, Boolean> = mapOf(
@@ -58,6 +60,17 @@ data class NotificationPrefs(
 }
 
 object NotificationCategoryMapping {
+    /** Align with worker categoryToShopPreferenceKey. */
+    fun categoryToShopKey(category: String?): String {
+        val c = category?.lowercase() ?: return "promotions_new"
+        if (c.contains("ending") || c.contains("ends_soon") || c.contains("ending_soon")) {
+            return "promotions_ending_soon"
+        }
+        if (c.contains("cart") || c.contains("abandon")) return "cart_reminder"
+        if (c.contains("shop_order")) return "orders"
+        return "promotions_new"
+    }
+
     /** Align with worker categoryToCreatorPreferenceKey. */
     fun categoryToCreatorKey(category: String?): String {
         val c = category?.lowercase() ?: return "other"

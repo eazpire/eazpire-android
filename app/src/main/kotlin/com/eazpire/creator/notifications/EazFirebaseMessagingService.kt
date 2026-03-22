@@ -17,7 +17,7 @@ class EazFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
         val category = message.data["category"]
-        if (!shouldShowCreatorPush(category)) return
+        if (!shouldShowPush(category)) return
         val title = message.notification?.title
             ?: message.data["title"]
             ?: return
@@ -36,9 +36,16 @@ class EazFirebaseMessagingService : FirebaseMessagingService() {
         )
     }
 
-    private fun shouldShowCreatorPush(category: String?): Boolean {
+    private fun shouldShowPush(category: String?): Boolean {
         return runBlocking {
             val prefs = NotificationPreferencesRepository(applicationContext).readSnapshot()
+            val c = category?.lowercase() ?: ""
+            val isShop = c.startsWith("shop_") || c.contains("shop_promotion")
+            if (isShop) {
+                if (!prefs.shopMaster) return@runBlocking false
+                val key = NotificationCategoryMapping.categoryToShopKey(category)
+                return@runBlocking prefs.shop[key] != false
+            }
             if (!prefs.creatorMaster) return@runBlocking false
             val key = NotificationCategoryMapping.categoryToCreatorKey(category)
             prefs.creator[key] != false

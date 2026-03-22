@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_NOTIFICATIONS = "eaz_open_notifications"
         const val EXTRA_OPEN_CART = "eaz_open_cart"
+        const val EXTRA_OPEN_SHOP = "eaz_open_shop"
         const val EXTRA_OPEN_EAZY_CHAT = "eaz_open_eazy_chat"
         const val EXTRA_EAZY_TAB = "eaz_eazy_tab"
     }
@@ -36,6 +37,8 @@ class MainActivity : ComponentActivity() {
     /** When non-null, open Eazy chat with this tab (from push / local notification tap). */
     val pendingEazyTab = mutableStateOf<EazySidebarTab?>(null)
     val pendingOpenCart = mutableStateOf(false)
+    /** From FCM open_target=shop — opens main shop (no Eazy overlay). */
+    val pendingOpenShop = mutableStateOf(false)
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -61,7 +64,8 @@ class MainActivity : ComponentActivity() {
                         tokenStore = tokenStore,
                         pendingDeepLink = pendingDeepLink,
                         pendingEazyTab = pendingEazyTab,
-                        pendingOpenCart = pendingOpenCart
+                        pendingOpenCart = pendingOpenCart,
+                        pendingOpenShop = pendingOpenShop
                     )
                 }
             }
@@ -81,6 +85,9 @@ class MainActivity : ComponentActivity() {
         if (intent == null) return
         if (intent.getBooleanExtra(EXTRA_OPEN_CART, false)) {
             pendingOpenCart.value = true
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_SHOP, false)) {
+            pendingOpenShop.value = true
         }
         val tabName = intent.getStringExtra(EXTRA_EAZY_TAB)
         if (tabName != null) {

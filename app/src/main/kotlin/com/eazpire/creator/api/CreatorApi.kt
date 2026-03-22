@@ -763,6 +763,10 @@ class CreatorApi(
     suspend fun savePromotion(body: JSONObject): JSONObject =
         postJsonBodyOp("save-promotion", body)
 
+    /** POST ?op=broadcast-shop-promotion-push – fan-out FCM for new / ending_soon bundle promos (JWT, owner_id match). */
+    suspend fun broadcastShopPromotionPush(body: JSONObject): JSONObject =
+        postJsonBodyOp("broadcast-shop-promotion-push", body)
+
     /** POST ?op=delete-promotion – Body { owner_id, promotion_id } */
     suspend fun deletePromotion(ownerId: String, promotionId: String): JSONObject =
         postJsonBodyOp(
