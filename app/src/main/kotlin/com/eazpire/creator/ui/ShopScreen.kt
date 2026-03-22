@@ -117,6 +117,7 @@ fun ShopScreen(
     val eazyChatStore = remember { EazyChatStore(context) }
     val creatorPollApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
     val heroJobForPoll by eazyChatStore.heroJobState.collectAsState()
+    val videoJobForPoll by eazyChatStore.videoJobState.collectAsState()
 
     LaunchedEffect(heroJobForPoll?.jobId) {
         val jobId = heroJobForPoll?.jobId ?: return@LaunchedEffect
@@ -146,6 +147,45 @@ fun ShopScreen(
                         eazyChatStore.failHeroJob(
                             r.optString("message", "").takeIf { it.isNotBlank() }
                                 ?: "No image in result"
+                        )
+                    }
+                }
+                break
+            } catch (_: Exception) {
+                delay(3000)
+            }
+        }
+    }
+
+    LaunchedEffect(videoJobForPoll?.jobId) {
+        val jobId = videoJobForPoll?.jobId ?: return@LaunchedEffect
+        if (videoJobForPoll?.terminal == true) return@LaunchedEffect
+        while (isActive) {
+            try {
+                val r = withContext(Dispatchers.IO) { creatorPollApi.pollJob(jobId) }
+                val done = r.optBoolean("done")
+                val notFound = r.optBoolean("not_found")
+                if (!done) {
+                    val progress = r.optInt("progress", 0)
+                    val msg = r.optString("message", "").takeIf { it.isNotBlank() }
+                    eazyChatStore.updateVideoJobPoll(progress, msg)
+                    delay(2000)
+                    continue
+                }
+                if (notFound) {
+                    eazyChatStore.failVideoJob(
+                        r.optString("message", "").takeIf { it.isNotBlank() } ?: "Job not found"
+                    )
+                } else {
+                    val result = r.optJSONObject("result")
+                    val vid = result?.optString("video_url", "")?.takeIf { it.isNotBlank() }
+                    if (vid != null) {
+                        eazyChatStore.completeVideoJob(vid)
+                        eazyStartTab = EazySidebarTab.Notifications
+                    } else {
+                        eazyChatStore.failVideoJob(
+                            r.optString("message", "").takeIf { it.isNotBlank() }
+                                ?: "No video in result"
                         )
                     }
                 }
@@ -285,6 +325,10 @@ fun ShopScreen(
             },
             onHeroJobStarted = { id, summary ->
                 eazyChatStore.startHeroJob(id, summary)
+                eazyStartTab = EazySidebarTab.Jobs
+            },
+            onVideoJobStarted = { id, summary ->
+                eazyChatStore.startVideoJob(id, summary)
                 eazyStartTab = EazySidebarTab.Jobs
             },
             onGeneratorJobStarted = { id, summary ->

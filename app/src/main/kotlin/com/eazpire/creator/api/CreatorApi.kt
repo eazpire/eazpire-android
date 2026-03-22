@@ -672,6 +672,12 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=video-used-products&owner_id=xxx → { ok, used_product_ids: [...] } */
+    suspend fun getVideoUsedProducts(ownerId: String): JSONObject = call(
+        "video-used-products",
+        mapOf("owner_id" to ownerId)
+    )
+
     /** GET ?op=hero-list&owner_id=xxx&limit=100&status=active → { ok, items: [...] } */
     suspend fun heroList(ownerId: String, limit: Int = 100, status: String? = "active"): JSONObject = call(
         "hero-list",
@@ -680,6 +686,12 @@ class CreatorApi(
             put("limit", limit.toString())
             status?.takeIf { it.isNotBlank() }?.let { put("status", it) }
         }
+    )
+
+    /** GET ?op=creator-videos-list&owner_id=xxx&limit=100 → { ok, items: [...] } */
+    suspend fun creatorVideosList(ownerId: String, limit: Int = 100): JSONObject = call(
+        "creator-videos-list",
+        mapOf("owner_id" to ownerId, "limit" to limit.toString())
     )
 
     /** GET ?op=hero-published-random&limit=4 → { ok, images: [{ id, image_url, thumbnail_url, title }] } */
@@ -1033,6 +1045,25 @@ class CreatorApi(
             JSONObject().put("hero_id", heroId).put("enabled", enabled),
             mapOf("owner_id" to ownerId)
         )
+
+    /** POST ?op=video-generate – Body: owner_id, product_ids, prompt, source_image_url, product_image_urls?, region? */
+    suspend fun videoGenerate(
+        ownerId: String,
+        productIds: List<String>,
+        prompt: String,
+        sourceImageUrl: String,
+        productImageUrls: List<String>? = null,
+        region: String? = null
+    ): JSONObject {
+        val body = org.json.JSONObject()
+            .put("owner_id", ownerId)
+            .put("product_ids", org.json.JSONArray(productIds))
+            .put("prompt", prompt)
+            .put("source_image_url", sourceImageUrl)
+        if (productImageUrls != null) body.put("product_image_urls", org.json.JSONArray(productImageUrls))
+        if (region != null) body.put("region", region)
+        return postDispatchJson("video-generate", body)
+    }
 
     /** POST ?op=hero-generate – Body: owner_id, product_ids, prompt, product_image_urls?, model_image_url?, background_image_url?, api_version */
     suspend fun heroGenerate(

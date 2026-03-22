@@ -42,6 +42,9 @@ class EazyChatStore(private val context: Context) {
     private val _heroJobState = MutableStateFlow<HeroJobState?>(null)
     val heroJobState: StateFlow<HeroJobState?> = _heroJobState.asStateFlow()
 
+    private val _videoJobState = MutableStateFlow<VideoJobState?>(null)
+    val videoJobState: StateFlow<VideoJobState?> = _videoJobState.asStateFlow()
+
     /** Mirrors web localStorage eazy_fn_visibility: feature id → false = hidden in carousel. */
     private val _fnVisibility = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val fnVisibility: StateFlow<Map<String, Boolean>> = _fnVisibility.asStateFlow()
@@ -113,6 +116,30 @@ class EazyChatStore(private val context: Context) {
         _heroJobState.value = null
     }
 
+    fun startVideoJob(jobId: String, summary: String) {
+        _videoJobState.value = VideoJobState(jobId = jobId, summary = summary, progress = 0, message = null)
+    }
+
+    fun updateVideoJobPoll(progress: Int, message: String?) {
+        val cur = _videoJobState.value ?: return
+        if (cur.terminal) return
+        _videoJobState.value = cur.copy(progress = progress.coerceIn(0, 100), message = message)
+    }
+
+    fun completeVideoJob(videoUrl: String?) {
+        val cur = _videoJobState.value ?: return
+        _videoJobState.value = cur.copy(completed = true, progress = 100, resultVideoUrl = videoUrl)
+    }
+
+    fun failVideoJob(message: String) {
+        val cur = _videoJobState.value ?: return
+        _videoJobState.value = cur.copy(failed = true, errorMessage = message)
+    }
+
+    fun clearVideoJob() {
+        _videoJobState.value = null
+    }
+
     suspend fun getUserId(customerId: String?): String {
         val realId = customerId?.takeIf { it.isNotBlank() }
         if (realId != null) {
@@ -180,6 +207,21 @@ data class RateLimitState(
     val resetAt: Long,
     val resetIn: Int
 )
+
+/** Async video-generate job (marketing videos). */
+data class VideoJobState(
+    val jobId: String,
+    val summary: String,
+    val progress: Int = 0,
+    val message: String? = null,
+    val completed: Boolean = false,
+    val failed: Boolean = false,
+    val resultVideoUrl: String? = null,
+    val errorMessage: String? = null
+) {
+    val isActive: Boolean get() = !completed && !failed
+    val terminal: Boolean get() = completed || failed
+}
 
 /** Async hero-generate job shown under Eazy chat → Active Jobs / Notifications. */
 data class HeroJobState(

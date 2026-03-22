@@ -71,6 +71,7 @@ fun CreatorMainScreen(
     onAccountClick: () -> Unit,
     onEazyChatOpen: (EazySidebarTab?) -> Unit,
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onVideoJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onGeneratorJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     /** True while on Generator (screen 1) and prompt/refs ready – drives floating Eazy lookLeft in ShopScreen */
     onGeneratorEazyLookLeftChange: (Boolean) -> Unit = {},
@@ -348,6 +349,7 @@ fun CreatorMainScreen(
                             maxHeight = contentMaxHeight,
                             onEazyChatOpen = onEazyChatOpen,
                             onHeroJobStarted = onHeroJobStarted,
+                            onVideoJobStarted = onVideoJobStarted,
                             onHeroEazyReadyChange = { heroEazyReady = it },
                             heroHeaderStartNonce = heroHeaderStartNonce,
                             onHeroGeneratingChange = { heroGenerating = it },

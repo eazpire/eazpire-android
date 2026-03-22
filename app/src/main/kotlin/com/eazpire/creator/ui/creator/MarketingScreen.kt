@@ -46,7 +46,10 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.i18n.TranslationStore
+import android.content.Intent
+import android.net.Uri as AndroidUri
 import com.eazpire.creator.ui.account.AccountHeroImagesTab
+import com.eazpire.creator.ui.account.AccountVideoTab
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -76,6 +79,7 @@ fun MarketingScreen(
     maxHeight: Dp = Dp.Infinity,
     onEazyChatOpen: (EazySidebarTab?) -> Unit = {},
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onVideoJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onHeroEazyReadyChange: (Boolean) -> Unit = {},
     heroHeaderStartNonce: Int = 0,
     onHeroGeneratingChange: (Boolean) -> Unit = {},
@@ -174,6 +178,7 @@ fun MarketingScreen(
                 translationStore = translationStore,
                 onEazyChatOpen = onEazyChatOpen,
                 onHeroJobStarted = onHeroJobStarted,
+                onVideoJobStarted = onVideoJobStarted,
                 onHeroEazyReadyChange = onHeroEazyReadyChange,
                 heroHeaderStartNonce = heroHeaderStartNonce,
                 onHeroGeneratingChange = onHeroGeneratingChange,
@@ -206,6 +211,7 @@ private fun MarketingContentCreationPanel(
     translationStore: TranslationStore,
     onEazyChatOpen: (EazySidebarTab?) -> Unit,
     onHeroJobStarted: (jobId: String, summary: String) -> Unit,
+    onVideoJobStarted: (jobId: String, summary: String) -> Unit,
     onHeroEazyReadyChange: (Boolean) -> Unit = {},
     heroHeaderStartNonce: Int = 0,
     onHeroGeneratingChange: (Boolean) -> Unit = {},
@@ -250,19 +256,29 @@ private fun MarketingContentCreationPanel(
                     )
                 }
             }
-            CONTENT_VIDEOS, CONTENT_IMAGES -> Box(
+            CONTENT_VIDEOS -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                AccountVideoTab(
+                    tokenStore = tokenStore,
+                    translationStore = translationStore,
+                    darkMode = true,
+                    onGenerated = onSwitchToPublish,
+                    onVideoJobStarted = onVideoJobStarted,
+                    onOpenEazyChat = { tab -> onEazyChatOpen(tab) },
+                    modifier = Modifier
+                        .padding(20.dp)
+                )
+            }
+            CONTENT_IMAGES -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             ) {
                 MarketingComingSoonBlock(
-                    label = translationStore.t(
-                        when (currentContentTab) {
-                            CONTENT_VIDEOS -> "creator.marketing.videos"
-                            else -> "creator.marketing.images"
-                        },
-                        currentContentTab.replaceFirstChar { it.uppercase() }
-                    ),
+                    label = translationStore.t("creator.marketing.images", "Images"),
                     translationStore = translationStore
                 )
             }
@@ -292,19 +308,20 @@ private fun MarketingContentPublishPanel(
                     .fillMaxWidth()
                     .weight(1f)
             )
-            CONTENT_VIDEOS, CONTENT_IMAGES -> Box(
+            CONTENT_VIDEOS -> MarketingVideosGrid(
+                tokenStore = tokenStore,
+                translationStore = translationStore,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+            CONTENT_IMAGES -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             ) {
                 MarketingComingSoonBlock(
-                    label = translationStore.t(
-                        when (currentContentTab) {
-                            CONTENT_VIDEOS -> "creator.marketing.videos"
-                            else -> "creator.marketing.images"
-                        },
-                        currentContentTab.replaceFirstChar { it.uppercase() }
-                    ),
+                    label = translationStore.t("creator.marketing.images", "Images"),
                     translationStore = translationStore
                 )
             }
@@ -391,6 +408,241 @@ private fun MarketingComingSoonBlock(
     }
 }
 
+private data class VideoGridItem(
+    val id: String,
+    val videoUrl: String?,
+    val thumbnailUrl: String?,
+    val title: String,
+    val region: String
+)
+
+@Composable
+private fun MarketingVideosGrid(
+    tokenStore: SecureTokenStore,
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier
+) {
+    data class RegionTab(val code: String, val label: String)
+
+    val regionTabs = listOf(
+        RegionTab("ALL", "Alle"),
+        RegionTab("EU", "Europa"),
+        RegionTab("US", "USA"),
+        RegionTab("GB", "UK"),
+        RegionTab("CA", "Kanada"),
+        RegionTab("AU", "Australien"),
+        RegionTab("CN", "China"),
+        RegionTab("OTHER", "Sonstige")
+    )
+
+    val context = LocalContext.current
+    val jwt = remember(tokenStore) { tokenStore.getJwt().orEmpty() }
+    val api = remember(jwt) { CreatorApi(jwt = jwt) }
+    val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
+    var items by remember { mutableStateOf<List<VideoGridItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var currentRegionFilter by remember { mutableStateOf("ALL") }
+
+    LaunchedEffect(ownerId) {
+        if (ownerId.isBlank()) {
+            loading = false
+            return@LaunchedEffect
+        }
+        loading = true
+        try {
+            val resp = withContext(Dispatchers.IO) { api.creatorVideosList(ownerId, limit = 100) }
+            if (resp.optBoolean("ok", false)) {
+                val arr = resp.optJSONArray("items") ?: org.json.JSONArray()
+                items = (0 until arr.length()).mapNotNull { i ->
+                    val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                    val vUrl = normalizeHeroImageUrl(
+                        firstNonBlank(
+                            obj.optString("video_url", ""),
+                            obj.optString("thumbnail_url", "")
+                        )
+                    )
+                    val thumb = normalizeHeroImageUrl(
+                        firstNonBlank(
+                            obj.optString("thumbnail_url", ""),
+                            obj.optString("video_url", "")
+                        )
+                    )
+                    VideoGridItem(
+                        id = obj.optString("id", ""),
+                        videoUrl = vUrl,
+                        thumbnailUrl = thumb,
+                        title = obj.optString("user_prompt", "").ifBlank { "Video #${obj.optString("id", "")}" },
+                        region = obj.optString("region", "OTHER").uppercase()
+                    )
+                }
+            }
+        } catch (_: Exception) {}
+        loading = false
+    }
+
+    val regionCounts = remember(items) {
+        val counts = mutableMapOf<String, Int>()
+        counts["ALL"] = items.size
+        regionTabs.forEach { tab ->
+            if (tab.code != "ALL") counts[tab.code] = 0
+        }
+        items.forEach { item ->
+            val code = item.region.uppercase()
+            counts[code] = (counts[code] ?: 0) + 1
+        }
+        counts
+    }
+
+    val filteredItems = remember(items, currentRegionFilter) {
+        if (currentRegionFilter == "ALL") items
+        else items.filter { it.region.uppercase() == currentRegionFilter }
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            regionTabs.forEach { tab ->
+                val active = currentRegionFilter == tab.code
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .border(
+                            1.dp,
+                            if (active) EazColors.Orange else EazColors.Orange.copy(alpha = 0.4f),
+                            RoundedCornerShape(999.dp)
+                        )
+                        .background(
+                            if (active) EazColors.Orange.copy(alpha = 0.25f)
+                            else EazColors.Orange.copy(alpha = 0.08f),
+                            RoundedCornerShape(999.dp)
+                        )
+                        .clickable { currentRegionFilter = tab.code }
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = tab.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (active) Color.White else Color.White.copy(alpha = 0.9f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0x52020617))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = (regionCounts[tab.code] ?: 0).toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.95f)
+                        )
+                    }
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+        ) {
+            when {
+                loading -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = translationStore.t("creator.mobile.loading", "Loading…"),
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                }
+                filteredItems.isEmpty() -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val emptyText = when {
+                        items.isEmpty() -> translationStore.t("creator.marketing.no_videos_yet", "No videos yet.")
+                        currentRegionFilter != "ALL" -> translationStore.t(
+                            "creator.marketing.no_videos_region",
+                            "No videos in this region."
+                        )
+                        else -> translationStore.t("creator.marketing.no_videos_yet", "No videos yet.")
+                    }
+                    Text(text = emptyText, color = Color.White.copy(alpha = 0.6f))
+                }
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(filteredItems) { item ->
+                        val thumb = item.thumbnailUrl ?: item.videoUrl
+                        Box(
+                            modifier = Modifier
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
+                                .clickable {
+                                    val url = item.videoUrl ?: return@clickable
+                                    try {
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW, AndroidUri.parse(url))
+                                        )
+                                    } catch (_: Exception) {}
+                                }
+                        ) {
+                            if (!thumb.isNullOrBlank()) {
+                                val model = ImageRequest.Builder(context)
+                                    .data(thumb)
+                                    .apply {
+                                        if (jwt.isNotBlank()) {
+                                            addHeader("Authorization", "Bearer $jwt")
+                                        }
+                                    }
+                                    .build()
+                                AsyncImage(
+                                    model = model,
+                                    contentDescription = item.title,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Text(
+                                    text = "▶",
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(alpha = 0.55f))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = item.title,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 data class HeroImageItem(
     val id: String,
     val r2Key: String?,
@@ -447,7 +699,7 @@ private fun MarketingHeroImagesGrid(
 
     val context = LocalContext.current
     val jwt = remember(tokenStore) { tokenStore.getJwt().orEmpty() }
-    val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
+    val api = remember(jwt) { CreatorApi(jwt = jwt) }
     val publicBaseUrl = remember(api) {
         try {
             val field = CreatorApi::class.java.getDeclaredField("baseUrl")
@@ -461,8 +713,10 @@ private fun MarketingHeroImagesGrid(
     var items by remember { mutableStateOf<List<HeroImageItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var currentRegionFilter by remember { mutableStateOf("ALL") }
+    var gridRefresh by remember { mutableIntStateOf(0) }
+    var previewHeroId by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(ownerId) {
+    LaunchedEffect(ownerId, gridRefresh) {
         if (ownerId.isBlank()) {
             loading = false
             return@LaunchedEffect
@@ -528,6 +782,16 @@ private fun MarketingHeroImagesGrid(
         modifier = modifier
             .fillMaxSize()
     ) {
+        HeroImagePreviewModal(
+            visible = previewHeroId != null,
+            heroId = previewHeroId,
+            ownerId = ownerId,
+            jwt = jwt,
+            translationStore = translationStore,
+            api = api,
+            onDismiss = { previewHeroId = null },
+            onSaved = { gridRefresh++ }
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -632,6 +896,7 @@ private fun MarketingHeroImagesGrid(
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(Color.White.copy(alpha = 0.08f))
                                         .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
+                                        .clickable { previewHeroId = item.id }
                                 ) {
                                     if (urlCandidates.isNotEmpty()) {
                                         var urlIndex by remember(item.id) { mutableIntStateOf(0) }

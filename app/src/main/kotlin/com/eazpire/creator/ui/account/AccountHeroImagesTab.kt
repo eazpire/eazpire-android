@@ -102,7 +102,7 @@ private val HERO_REGION_TABS_ANDROID = listOf(
     "OTHER" to "Sonstige"
 )
 
-private fun extractNumericProductId(value: String?): String {
+internal fun extractNumericProductId(value: String?): String {
     if (value.isNullOrBlank()) return ""
     val gidMatch = Regex("gid://shopify/Product/(\\d+)", RegexOption.IGNORE_CASE).find(value)
     if (gidMatch != null) return gidMatch.groupValues.getOrNull(1).orEmpty()
@@ -110,7 +110,7 @@ private fun extractNumericProductId(value: String?): String {
 }
 
 /** `id` / `shopify_product_id` may be numbers in JSON — [org.json.JSONObject.optString] can miss those. */
-private fun jsonScalarString(obj: org.json.JSONObject, key: String): String {
+internal fun jsonScalarString(obj: org.json.JSONObject, key: String): String {
     if (!obj.has(key)) return ""
     return when (val v = obj.opt(key)) {
         null -> ""
@@ -136,7 +136,7 @@ private fun idMatchesHeroUsedOne(usedProductIds: Set<String>, raw: String): Bool
 }
 
 /** Collect id, shopify_product_id, product_id (web parity with mapShopifyProducts / mapPublishedProducts). */
-private fun collectHeroMatchCandidates(
+internal fun collectHeroMatchCandidates(
     obj: org.json.JSONObject,
     primaryId: String,
     productKey: String?
@@ -155,7 +155,7 @@ private fun collectHeroMatchCandidates(
 }
 
 /** True if any candidate matches hero-used IDs (web parity). */
-private fun productMatchesHeroUsedSet(
+internal fun productMatchesHeroUsedSet(
     usedProductIds: Set<String>,
     candidates: List<String>
 ): Boolean {
@@ -167,17 +167,17 @@ private fun productMatchesHeroUsedSet(
     return false
 }
 
-private fun normalizeShopifyImageUrl(raw: String?): String? {
+internal fun normalizeShopifyImageUrl(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
     return if (raw.startsWith("//")) "https:$raw" else raw
 }
 
-private fun heroProductMainImageUrl(p: HeroProduct): String? {
+internal fun heroProductMainImageUrl(p: HeroProduct): String? {
     val raw = p.shopImageUrls.firstOrNull { !it.isNullOrBlank() } ?: p.image
     return normalizeShopifyImageUrl(raw)
 }
 
-private fun extractShopifyHandleFromUrl(url: String?): String? {
+internal fun extractShopifyHandleFromUrl(url: String?): String? {
     if (url.isNullOrBlank()) return null
     return try {
         val segments = Uri.parse(url).pathSegments
@@ -191,7 +191,7 @@ private fun extractShopifyHandleFromUrl(url: String?): String? {
 }
 
 /** Same URLs as shop [CollectionScreen] (product-json → variantImages). */
-private suspend fun enrichHeroProductsWithShopImages(
+internal suspend fun enrichHeroProductsWithShopImages(
     list: List<HeroProduct>,
     shopifyApi: ShopifyProductsApi
 ): List<HeroProduct> = coroutineScope {
@@ -930,7 +930,7 @@ fun AccountHeroImagesTab(
 }
 
 @Composable
-private fun HeroProductCard(
+internal fun HeroProductCard(
     label: String,
     product: HeroProduct?,
     onClick: () -> Unit,
@@ -1034,7 +1034,7 @@ private fun HeroProductCard(
 }
 
 @Composable
-private fun HeroUploadCard(
+internal fun HeroUploadCard(
     label: String,
     iconEmoji: String,
     imageUri: Uri?,
@@ -1097,7 +1097,7 @@ private fun HeroUploadCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HeroProductPickerModal(
+internal fun HeroProductPickerModal(
     products: List<HeroProduct>,
     category: String,
     currentRegion: String,
