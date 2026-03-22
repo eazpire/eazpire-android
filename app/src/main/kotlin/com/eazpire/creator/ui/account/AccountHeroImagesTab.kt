@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -108,16 +109,61 @@ private fun extractNumericProductId(value: String?): String {
     return value.filter { it.isDigit() }
 }
 
-/** Match hero-used IDs (GIDs or numeric) against product list ids / keys. */
+/** `id` / `shopify_product_id` may be numbers in JSON — [org.json.JSONObject.optString] can miss those. */
+private fun jsonScalarString(obj: org.json.JSONObject, key: String): String {
+    if (!obj.has(key)) return ""
+    return when (val v = obj.opt(key)) {
+        null -> ""
+        org.json.JSONObject.NULL -> ""
+        is String -> v.trim()
+        is Number -> v.toString().trim()
+        else -> v.toString().trim()
+    }
+}
+
+/**
+ * One candidate vs used set (same as web [isHeroProductUsed] inner loop in
+ * hero-product-selection-modal-functions.js).
+ */
+private fun idMatchesHeroUsedOne(usedProductIds: Set<String>, raw: String): Boolean {
+    if (raw.isBlank()) return false
+    if (raw in usedProductIds) return true
+    val numeric = extractNumericProductId(raw)
+    if (numeric.isBlank()) return false
+    if (numeric in usedProductIds) return true
+    if ("gid://shopify/Product/$numeric" in usedProductIds) return true
+    return false
+}
+
+/** Collect id, shopify_product_id, product_id (web parity with mapShopifyProducts / mapPublishedProducts). */
+private fun collectHeroMatchCandidates(
+    obj: org.json.JSONObject,
+    primaryId: String,
+    productKey: String?
+): List<String> {
+    val out = LinkedHashSet<String>()
+    fun add(s: String?) {
+        val t = s?.trim().orEmpty()
+        if (t.isNotEmpty()) out.add(t)
+    }
+    add(primaryId)
+    add(productKey)
+    add(jsonScalarString(obj, "id"))
+    add(jsonScalarString(obj, "shopify_product_id"))
+    add(jsonScalarString(obj, "product_id"))
+    return out.toList()
+}
+
+/** True if any candidate matches hero-used IDs (web parity). */
 private fun productMatchesHeroUsedSet(
     usedProductIds: Set<String>,
-    rawId: String,
-    productKey: String?
+    candidates: List<String>
 ): Boolean {
-    if (rawId.isNotBlank() && rawId in usedProductIds) return true
-    val num = extractNumericProductId(rawId)
-    if (num.isNotBlank() && num in usedProductIds) return true
-    if (!productKey.isNullOrBlank() && productKey in usedProductIds) return true
+    if (usedProductIds.isEmpty()) return false
+    val seen = candidates.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    for (c in seen) {
+        if (idMatchesHeroUsedOne(usedProductIds, c)) return true
+    }
     return false
 }
 
@@ -390,7 +436,13 @@ fun AccountHeroImagesTab(
                         val usedArr = usedResp.optJSONArray("used_product_ids") ?: org.json.JSONArray()
                         val usedSet = mutableSetOf<String>()
                         for (i in 0 until usedArr.length()) {
-                            val raw = usedArr.optString(i, "").trim()
+                            val raw = when (val v = usedArr.opt(i)) {
+                                null -> ""
+                                org.json.JSONObject.NULL -> ""
+                                is String -> v.trim()
+                                is Number -> v.toString().trim()
+                                else -> v.toString().trim()
+                            }
                             if (raw.isNotBlank()) {
                                 usedSet.add(raw)
                                 extractNumericProductId(raw).takeIf { it.isNotBlank() }?.let { num ->
@@ -440,12 +492,15 @@ fun AccountHeroImagesTab(
                                 ?: toImageStr(obj.opt("preview_url"))
                                 ?: toImageStr(obj.optJSONArray("images")?.opt(0))
                         )
-                        val id = obj.optString("id", "")
-                            .ifBlank { obj.optString("shopify_product_id", "") }
-                            .ifBlank { obj.optString("product_id", "") }
+                        val id = jsonScalarString(obj, "id")
+                            .ifBlank { jsonScalarString(obj, "shopify_product_id") }
+                            .ifBlank { jsonScalarString(obj, "product_id") }
                         if (id.isBlank()) return@mapNotNull null
                         val productKey = obj.optString("product_key", "").takeIf { it.isNotBlank() }
-                        val isUsed = productMatchesHeroUsedSet(usedProductIds, id, productKey)
+                        val isUsed = productMatchesHeroUsedSet(
+                            usedProductIds,
+                            collectHeroMatchCandidates(obj, id, productKey)
+                        )
                         val title = obj.optString("title", "")
                             .ifBlank { obj.optString("product_name", "") }
                             .ifBlank { productKey ?: id }
@@ -467,9 +522,9 @@ fun AccountHeroImagesTab(
                 fun mapPublishedArray(arr: org.json.JSONArray): List<HeroProduct> {
                     return (0 until arr.length()).mapNotNull { i ->
                         val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-                        val rawId = obj.optString("shopify_product_id", "")
-                            .ifBlank { obj.optString("product_key", "") }
-                            .ifBlank { obj.optString("id", "") }
+                        val rawId = jsonScalarString(obj, "shopify_product_id")
+                            .ifBlank { jsonScalarString(obj, "product_key") }
+                            .ifBlank { jsonScalarString(obj, "id") }
                         if (rawId.isBlank()) return@mapNotNull null
                         val productKey = obj.optString("product_key", "").takeIf { it.isNotBlank() }
                         val storefrontUrl = obj.optString("storefront_url", "").takeIf { it.isNotBlank() }
@@ -488,7 +543,10 @@ fun AccountHeroImagesTab(
                                     .ifBlank { obj.optString("image", "") }
                                     .takeIf { it.isNotBlank() }
                             )
-                        val isUsed = productMatchesHeroUsedSet(usedProductIds, rawId, productKey)
+                        val isUsed = productMatchesHeroUsedSet(
+                            usedProductIds,
+                            collectHeroMatchCandidates(obj, rawId, productKey)
+                        )
                         HeroProduct(
                             id = rawId,
                             title = obj.optString("product_name", obj.optString("title", productKey ?: rawId)),
@@ -1196,13 +1254,17 @@ private fun HeroProductPickerModal(
                         active = usageFilter == "unused",
                         label = t("creator.marketing.unused", "Unused"),
                         onClick = { onUsageFilterChange("unused") },
-                        modifier = Modifier.height(56.dp)
+                        modifier = Modifier
+                            .height(56.dp)
+                            .widthIn(min = 108.dp)
                     )
                     FilterTabPill(
                         active = usageFilter == "used",
                         label = t("creator.marketing.used", "Used"),
                         onClick = { onUsageFilterChange("used") },
-                        modifier = Modifier.height(56.dp)
+                        modifier = Modifier
+                            .height(56.dp)
+                            .widthIn(min = 108.dp)
                     )
                 }
             }
@@ -1372,8 +1434,11 @@ private fun FilterTabPill(
     ) {
         Text(
             text = label,
+            modifier = Modifier.padding(horizontal = 12.dp),
             color = if (active) Color.White else Color(0xFF9CA3AF),
-            style = MaterialTheme.typography.labelSmall
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            textAlign = TextAlign.Center
         )
     }
 }

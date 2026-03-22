@@ -63,6 +63,7 @@ import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.ShopMenuBar
+import com.eazpire.creator.ui.vouchers.VoucherModal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -180,6 +181,7 @@ fun ShopScreen(
     }
     var overlayComposeStartKey by remember { mutableIntStateOf(0) }
     var termsModalVisible by remember { mutableStateOf(false) }
+    var voucherModalVisible by remember { mutableStateOf(false) }
 
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     val eazySyncApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
@@ -390,7 +392,8 @@ fun ShopScreen(
                         SubFooter(
                             localeStore = localeStore,
                             translationStore = translationStore,
-                            tokenStore = tokenStore
+                            tokenStore = tokenStore,
+                            onWalletClick = { voucherModalVisible = true }
                         )
                         GlobalFooter(onTermsClick = { termsModalVisible = true })
                     }
@@ -644,7 +647,15 @@ fun ShopScreen(
         onAccountClick = {
             menuDrawerVisible = false
             accountModalVisible = true
-        }
+        },
+        onVouchersClick = { voucherModalVisible = true }
+    )
+
+    VoucherModal(
+        visible = voucherModalVisible,
+        onDismiss = { voucherModalVisible = false },
+        tokenStore = tokenStore,
+        translationStore = translationStore
     )
 
     if (termsModalVisible) {

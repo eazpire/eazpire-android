@@ -136,6 +136,14 @@ class CreatorApi(
     )
 
     /**
+     * GET ?op=get-customer-wallet-total&owner_id=xxx&currency=EUR
+     */
+    suspend fun getCustomerWalletTotal(ownerId: String, currency: String): JSONObject = call(
+        "get-customer-wallet-total",
+        mapOf("owner_id" to ownerId, "currency" to currency)
+    )
+
+    /**
      * GET ?op=get-promo-slots&customer_id=xxx
      * Returns { ok: true, slots: [...] } – creator promo codes
      */
@@ -683,6 +691,65 @@ class CreatorApi(
         }
     )
 
+    /** GET ?op=hero-get&hero_id=xxx&owner_id=xxx → { ok, hero_image: {...} } */
+    suspend fun heroGet(ownerId: String, heroId: String): JSONObject = call(
+        "hero-get",
+        mapOf("owner_id" to ownerId, "hero_id" to heroId)
+    )
+
+    /** POST ?op=hero-update-hotspots – Body: { owner_id, hero_id, hotspots_json } */
+    suspend fun heroUpdateHotspots(ownerId: String, heroId: String, hotspotsJson: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = "$baseUrl/apps/creator-dispatch?op=hero-update-hotspots&_t=${System.currentTimeMillis()}"
+            val body = JSONObject()
+                .put("owner_id", ownerId)
+                .put("hero_id", heroId)
+                .put("hotspots_json", hotspotsJson)
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    /** POST ?op=hero-publish – Body: { owner_id, hero_id } */
+    suspend fun heroPublish(ownerId: String, heroId: String): JSONObject =
+        postJsonBodyOp("hero-publish", JSONObject().put("owner_id", ownerId).put("hero_id", heroId))
+
+    /** POST ?op=hero-unpublish – Body: { owner_id, hero_id } */
+    suspend fun heroUnpublish(ownerId: String, heroId: String): JSONObject =
+        postJsonBodyOp("hero-unpublish", JSONObject().put("owner_id", ownerId).put("hero_id", heroId))
+
+    /** GET ?op=get-products-by-shopify-ids&shopify_ids=...&owner_id=xxx */
+    suspend fun getProductsByShopifyIds(ownerId: String, shopifyIds: String): JSONObject = call(
+        "get-products-by-shopify-ids",
+        mapOf("owner_id" to ownerId, "shopify_ids" to shopifyIds)
+    )
+
+    /** GET ?op=get-products-by-keys&product_keys=...&owner_id=xxx */
+    suspend fun getProductsByKeys(ownerId: String, productKeys: String): JSONObject = call(
+        "get-products-by-keys",
+        mapOf("owner_id" to ownerId, "product_keys" to productKeys)
+    )
+
+    private suspend fun postJsonBodyOp(op: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = "$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}"
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
     /** POST ?path_prefix=/tools/1.0/crop-image&owner_id=xxx – multipart: image
      *  Returns cropped PNG bytes (auto-crop to visible content). */
     suspend fun cropImage(ownerId: String, imageBytes: ByteArray, fileName: String = "upload.png"): ByteArray =
@@ -1136,18 +1203,74 @@ class CreatorApi(
         postJson("ensure-favorite-list-share-token", mapOf("customer_id" to customerId, "list_id" to listId))
 
     // ── Eazy Chat ─────────────────────────────────────────
-    /** GET ?op=eazy-conv&user_id=X – Load active conversation + messages */
-    suspend fun getEazyConversation(userId: String): JSONObject = call(
-        "eazy-conv",
-        mapOf("user_id" to userId)
+    /**
+     * GET ?op=eazy-conv – [user_id] required; optional: page, auto_create, conv_id, list, status (active|closed).
+     */
+    suspend fun getEazyConversation(
+        userId: String,
+        extraParams: Map<String, String> = emptyMap()
+    ): JSONObject {
+        val params = mutableMapOf("user_id" to userId)
+        params.putAll(extraParams)
+        return call("eazy-conv", params)
+    }
+
+    /** GET ?op=get-notifications&owner_id=xxx */
+    suspend fun getNotifications(ownerId: String): JSONObject = call(
+        "get-notifications",
+        mapOf("owner_id" to ownerId)
     )
 
-    /** POST ?op=chat-completion – Send message, get AI reply. Body: messages, user_id, conversation_id?, context */
+    /** POST ?op=mark-notification-read – body owner_id, user_id, notification_id */
+    suspend fun markNotificationRead(ownerId: String, notificationId: String): JSONObject =
+        postJson(
+            "mark-notification-read",
+            mapOf(
+                "owner_id" to ownerId,
+                "user_id" to ownerId,
+                "notification_id" to notificationId
+            )
+        )
+
+    /** POST ?op=eazy-conv&new=1 */
+    suspend fun eazyConvNew(userId: String): JSONObject =
+        postJson("eazy-conv", mapOf("user_id" to userId), mapOf("new" to "1"))
+
+    /** POST ?op=eazy-conv&close=1 */
+    suspend fun eazyConvClose(userId: String, conversationId: String): JSONObject =
+        postJson(
+            "eazy-conv",
+            mapOf("user_id" to userId, "conversation_id" to conversationId),
+            mapOf("close" to "1")
+        )
+
+    /** POST ?op=eazy-conv&delete=1 */
+    suspend fun eazyConvDelete(userId: String, conversationId: String): JSONObject =
+        postJson(
+            "eazy-conv",
+            mapOf("user_id" to userId, "conversation_id" to conversationId),
+            mapOf("delete" to "1")
+        )
+
+    /** POST ?op=eazy-conv&delete_history=1 */
+    suspend fun eazyConvDeleteHistory(userId: String): JSONObject =
+        postJson("eazy-conv", mapOf("user_id" to userId), mapOf("delete_history" to "1"))
+
+    /** POST ?op=eazy-conv&reopen=1 */
+    suspend fun eazyConvReopen(userId: String, conversationId: String): JSONObject =
+        postJson(
+            "eazy-conv",
+            mapOf("user_id" to userId, "conversation_id" to conversationId),
+            mapOf("reopen" to "1")
+        )
+
+    /** POST ?op=chat-completion – optional function_trigger (Eazy carousel / web startChatFunction) */
     suspend fun chatCompletion(
         userId: String,
         messages: List<Pair<String, String>>,
         conversationId: String?,
-        context: Map<String, Any?> = emptyMap()
+        context: Map<String, Any?> = emptyMap(),
+        functionTrigger: String? = null
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = "$baseUrl/apps/creator-dispatch?op=chat-completion&_t=${System.currentTimeMillis()}"
         val msgArray = org.json.JSONArray()
@@ -1159,6 +1282,9 @@ class CreatorApi(
             .put("messages", msgArray)
             .put("conversation_id", conversationId ?: org.json.JSONObject.NULL)
             .put("context", org.json.JSONObject(context))
+        if (!functionTrigger.isNullOrBlank()) {
+            body.put("function_trigger", functionTrigger)
+        }
         val request = Request.Builder()
             .url(url)
             .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import org.json.JSONObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +41,49 @@ class EazyChatStore(private val context: Context) {
 
     private val _heroJobState = MutableStateFlow<HeroJobState?>(null)
     val heroJobState: StateFlow<HeroJobState?> = _heroJobState.asStateFlow()
+
+    /** Mirrors web localStorage eazy_fn_visibility: feature id → false = hidden in carousel. */
+    private val _fnVisibility = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val fnVisibility: StateFlow<Map<String, Boolean>> = _fnVisibility.asStateFlow()
+
+    suspend fun loadFnVisibilityFromStorage() {
+        val raw = context.eazyChatDataStore.data.map { it[FN_VISIBILITY_KEY] }.first() ?: return
+        try {
+            val o = JSONObject(raw)
+            val m = mutableMapOf<String, Boolean>()
+            val it = o.keys()
+            while (it.hasNext()) {
+                val k = it.next()
+                m[k] = o.optBoolean(k, true)
+            }
+            _fnVisibility.value = m
+        } catch (_: Exception) {}
+    }
+
+    fun isFeatureInCarousel(featureId: String): Boolean = _fnVisibility.value[featureId] != false
+
+    fun toggleFeatureCarouselVisibility(featureId: String) {
+        val cur = _fnVisibility.value.toMutableMap()
+        val visible = cur[featureId] != false
+        if (visible) cur[featureId] = false else cur.remove(featureId)
+        _fnVisibility.value = cur
+    }
+
+    fun setCategoryCarouselVisibility(featureIds: List<String>, visible: Boolean) {
+        val cur = _fnVisibility.value.toMutableMap()
+        featureIds.forEach { id ->
+            if (visible) cur.remove(id) else cur[id] = false
+        }
+        _fnVisibility.value = cur
+    }
+
+    suspend fun persistFnVisibility() {
+        val jo = JSONObject()
+        _fnVisibility.value.forEach { (k, v) ->
+            if (!v) jo.put(k, false)
+        }
+        context.eazyChatDataStore.edit { it[FN_VISIBILITY_KEY] = jo.toString() }
+    }
 
     fun startHeroJob(jobId: String, summary: String) {
         _heroJobState.value = HeroJobState(jobId = jobId, summary = summary, progress = 0, message = null)
@@ -119,6 +163,7 @@ class EazyChatStore(private val context: Context) {
 
     companion object {
         private val USER_ID_KEY = stringPreferencesKey("eazy_user_id")
+        private val FN_VISIBILITY_KEY = stringPreferencesKey("eazy_fn_visibility")
     }
 }
 

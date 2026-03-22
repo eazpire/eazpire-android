@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
@@ -58,7 +59,6 @@ import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.sidebar.SidebarViewMode
 import com.eazpire.creator.sidebar.SidebarViewStore
 import kotlinx.coroutines.Dispatchers
@@ -136,6 +136,7 @@ fun MenuDrawer(
     onFavoritesClick: () -> Unit = {},
     onAccountClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
+    onVouchersClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -246,8 +247,12 @@ fun MenuDrawer(
                         when (viewMode) {
                             SidebarViewMode.Grid -> {
                                 Column(modifier = Modifier.fillMaxWidth()) {
-                                    MenuDrawerGiftCardsSection(
-                                        tokenStore = tokenStore
+                                    MenuDrawerVouchersRow(
+                                        translationStore = translationStore,
+                                        onOpen = {
+                                            onVouchersClick()
+                                            doDismiss()
+                                        }
                                     )
                                     MenuDrawerGridView(
                                         items = DRAWER_ITEMS,
@@ -299,155 +304,30 @@ fun MenuDrawer(
 }
 
 @Composable
-private fun MenuDrawerGiftCardsSection(tokenStore: SecureTokenStore?) {
-    var expanded by remember { mutableStateOf(false) }
-    var activeTab by remember { mutableStateOf(0) } // 0 = Gift Cards, 1 = Coupons
-    var giftCards by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
-    var coupons by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
-    var loadingGiftCards by remember { mutableStateOf(false) }
-    var loadingCoupons by remember { mutableStateOf(false) }
-    val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
-    val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
-
-    LaunchedEffect(expanded, ownerId, activeTab) {
-        if (!expanded || ownerId.isBlank()) return@LaunchedEffect
-        if (activeTab == 0 && giftCards.isEmpty() && !loadingGiftCards) {
-            loadingGiftCards = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    api.getCustomerGiftCards(ownerId, AuthConfig.SHOP_DOMAIN)
-                }
-                if (resp.optBoolean("ok", false)) {
-                    val arr = resp.optJSONArray("gift_cards") ?: resp.optJSONArray("giftCards")
-                    giftCards = (0 until (arr?.length() ?: 0)).map { arr!!.getJSONObject(it) }
-                }
-            } catch (_: Exception) {}
-            loadingGiftCards = false
-        }
-        if (activeTab == 1 && coupons.isEmpty() && !loadingCoupons) {
-            loadingCoupons = true
-            try {
-                val resp = withContext(Dispatchers.IO) { api.getPromoSlots(ownerId) }
-                if (resp.optBoolean("ok", false)) {
-                    val arr = resp.optJSONArray("slots") ?: resp.optJSONArray("promos")
-                    coupons = (0 until (arr?.length() ?: 0)).map { arr!!.getJSONObject(it) }
-                }
-            } catch (_: Exception) {}
-            loadingCoupons = false
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-                Text(
-                    text = "Gift Cards & Coupons",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = EazColors.TextPrimary
-                )
-                val badgeCount = giftCards.count { it.optDouble("balance", 0.0) > 0 } +
-                    coupons.count { it.optString("status") == "active" }
-                if (badgeCount > 0) {
-                    Text(
-                        text = "$badgeCount",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .background(EazColors.Orange, androidx.compose.foundation.shape.CircleShape)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = EazColors.TextPrimary,
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .rotate(if (expanded) 180f else 0f)
-                        .size(20.dp)
-                )
-        }
-        if (expanded) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                listOf("My Gift Cards", "Coupons").forEachIndexed { i, label ->
-                    val selected = activeTab == i
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (selected) EazColors.Orange else EazColors.TextSecondary,
-                        modifier = Modifier
-                            .clickable { activeTab = i }
-                            .padding(vertical = 4.dp)
-                    )
-                }
-            }
-            when {
-                ownerId.isBlank() -> Text(
-                    text = "Sign in to see your gift cards",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazColors.TextSecondary,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
-                activeTab == 0 && loadingGiftCards -> Text(
-                    text = "Loading...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazColors.TextSecondary,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
-                activeTab == 0 && giftCards.isEmpty() -> Text(
-                    text = "No gift cards yet",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazColors.TextSecondary,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
-                activeTab == 0 -> Column {
-                    giftCards.forEach { gc ->
-                        val bal = gc.optDouble("balance", 0.0)
-                        val currency = gc.optString("currency", "EUR")
-                        val masked = gc.optString("masked_code", gc.optString("last_characters", "????"))
-                        Text(
-                            text = "%.2f %s ••••%s".format(bal, currency, masked),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EazColors.TextPrimary,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    }
-                }
-                activeTab == 1 && loadingCoupons -> Text(
-                    text = "Loading...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazColors.TextSecondary,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
-                activeTab == 1 && coupons.isEmpty() -> Text(
-                    text = "No coupons available",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazColors.TextSecondary,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
-                activeTab == 1 -> Column {
-                    coupons.forEach { s ->
-                        val code = s.optString("discount_code", "")
-                        val status = s.optString("status", "")
-                        Text(
-                            text = "$code ($status)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EazColors.TextPrimary,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    }
-                }
-            }
-        }
+private fun MenuDrawerVouchersRow(
+    translationStore: TranslationStore?,
+    onOpen: () -> Unit
+) {
+    val tStore = translationStore ?: LocalTranslationStore.current ?: return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpen() }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = tStore.t("eaz.sidebar.gift_cards_coupons", "Gift Cards & Coupons"),
+            style = MaterialTheme.typography.titleSmall,
+            color = EazColors.TextPrimary
+        )
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = tStore.t("eaz.wallet.open_vouchers", "Open gift cards"),
+            tint = EazColors.TextSecondary,
+            modifier = Modifier.size(22.dp)
+        )
     }
 }
 

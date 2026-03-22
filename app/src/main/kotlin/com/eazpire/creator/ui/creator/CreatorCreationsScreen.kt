@@ -13,7 +13,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,16 +60,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ShopifyProductsApi
@@ -491,7 +490,6 @@ fun CreatorCreationsScreen(
         else -> 2
     }
     val isListMode = VIEW_MODES[viewMode] == "list"
-    val productPaginationDensity = LocalDensity.current
 
     Column(
         modifier = modifier
@@ -732,23 +730,7 @@ fun CreatorCreationsScreen(
                             state = productsListState,
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxWidth()
-                                .pointerInput(productsListPage, productsTotalPages) {
-                                    var totalDrag = 0f
-                                    val thresholdPx = with(productPaginationDensity) { 80.dp.toPx() }
-                                    detectHorizontalDragGestures(
-                                        onDragStart = { totalDrag = 0f },
-                                        onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                                        onDragEnd = {
-                                            when {
-                                                totalDrag > thresholdPx && productsListPage > 1 ->
-                                                    productsListPage = productsListPage - 1
-                                                totalDrag < -thresholdPx && productsListPage < productsTotalPages ->
-                                                    productsListPage = productsListPage + 1
-                                            }
-                                        }
-                                    )
-                                },
+                                .fillMaxWidth(),
                             contentPadding = PaddingValues(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -812,17 +794,17 @@ fun CreatorCreationsScreen(
                             }
                         }
                         if (productsTotalPages > 1) {
-                            ProductPaginationDots(
-                                totalPages = productsTotalPages,
-                                currentPage = productsListPage,
-                                onPageClick = { productsListPage = it },
+                            CreationsProductsPaginationFooter(
+                                translationStore = translationStore,
+                                productsTotalPages = productsTotalPages,
+                                productsListPage = productsListPage,
+                                onPageChange = { productsListPage = it },
                                 onSwipePrev = {
                                     if (productsListPage > 1) productsListPage = productsListPage - 1
                                 },
                                 onSwipeNext = {
                                     if (productsListPage < productsTotalPages) productsListPage = productsListPage + 1
-                                },
-                                style = PaginationDotsStyle.Dark
+                                }
                             )
                         }
                     }
@@ -838,23 +820,7 @@ fun CreatorCreationsScreen(
                             columns = GridCells.Fixed(gridCols),
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxWidth()
-                                .pointerInput(productsListPage, productsTotalPages) {
-                                    var totalDrag = 0f
-                                    val thresholdPx = with(productPaginationDensity) { 80.dp.toPx() }
-                                    detectHorizontalDragGestures(
-                                        onDragStart = { totalDrag = 0f },
-                                        onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                                        onDragEnd = {
-                                            when {
-                                                totalDrag > thresholdPx && productsListPage > 1 ->
-                                                    productsListPage = productsListPage - 1
-                                                totalDrag < -thresholdPx && productsListPage < productsTotalPages ->
-                                                    productsListPage = productsListPage + 1
-                                            }
-                                        }
-                                    )
-                                },
+                                .fillMaxWidth(),
                             contentPadding = PaddingValues(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -918,17 +884,17 @@ fun CreatorCreationsScreen(
                             }
                         }
                         if (productsTotalPages > 1) {
-                            ProductPaginationDots(
-                                totalPages = productsTotalPages,
-                                currentPage = productsListPage,
-                                onPageClick = { productsListPage = it },
+                            CreationsProductsPaginationFooter(
+                                translationStore = translationStore,
+                                productsTotalPages = productsTotalPages,
+                                productsListPage = productsListPage,
+                                onPageChange = { productsListPage = it },
                                 onSwipePrev = {
                                     if (productsListPage > 1) productsListPage = productsListPage - 1
                                 },
                                 onSwipeNext = {
                                     if (productsListPage < productsTotalPages) productsListPage = productsListPage + 1
-                                },
-                                style = PaginationDotsStyle.Dark
+                                }
                             )
                         }
                     }
@@ -1044,6 +1010,40 @@ private fun CreationDesignCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CreationsProductsPaginationFooter(
+    translationStore: TranslationStore,
+    productsTotalPages: Int,
+    productsListPage: Int,
+    onPageChange: (Int) -> Unit,
+    onSwipePrev: () -> Unit,
+    onSwipeNext: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = translationStore.t(
+                "creator.mobile.products_pagination_swipe_hint",
+                "Swipe left / right on the dots"
+            ),
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+            fontWeight = FontWeight.Medium,
+            color = Color.White.copy(alpha = 0.6f),
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        ProductPaginationDots(
+            totalPages = productsTotalPages,
+            currentPage = productsListPage,
+            onPageClick = onPageChange,
+            onSwipePrev = onSwipePrev,
+            onSwipeNext = onSwipeNext,
+            style = PaginationDotsStyle.Dark
+        )
     }
 }
 
