@@ -476,47 +476,63 @@ fun ShopScreen(
             val mascotLayerB = mascotLayerBoundsState.value
             /** Prefer layer that matches EazyMascot parent; avoids wrong snap math when padding shifts origin */
             val relB = mascotLayerB ?: contentB
-            val rawXMascot = when {
-                eazyDocked && slot != null && relB != null -> {
-                    val cx = slot.left - relB.left + slot.width / 2f
-                    (cx - mascotSizePx / 2f).coerceIn(0f, maxXMascot)
-                }
-                !eazyDocked && liveMascotX != null -> liveMascotX!!
-                else -> when {
-                    eazyPosX == null || eazyPosX!!.isNaN() ->
-                        defaultXMascot.coerceAtLeast(0f)
-                    else -> eazyPosX!!.coerceIn(0f, maxXMascot)
-                }
+            val overlayDockedMascot = eazyDocked && showGenOverlay
+            /** Slot center in mascot layer space (same as snap / docked overlay) */
+            val slotRawX = if (eazyDocked && slot != null && relB != null) {
+                val cx = slot.left - relB.left + slot.width / 2f
+                (cx - mascotSizePx / 2f).coerceIn(0f, maxXMascot)
+            } else {
+                null
             }
-            val rawYMascot = when {
-                eazyDocked && slot != null && contentB != null -> {
-                    val cy = slot.top - contentB.top + slot.height / 2f
-                    (cy - mascotSizePx / 2f).coerceIn(0f, maxYMascot)
-                }
-                !eazyDocked && liveMascotY != null -> liveMascotY!!
-                else -> when {
-                    eazyPosY == null || eazyPosY!!.isNaN() ->
-                        defaultYMascot.coerceAtLeast(0f)
-                    else -> eazyPosY!!.coerceIn(0f, maxYMascot)
-                }
+            val slotRawY = if (eazyDocked && slot != null && relB != null) {
+                val cy = slot.top - relB.top + slot.height / 2f
+                (cy - mascotSizePx / 2f).coerceIn(0f, maxYMascot)
+            } else {
+                null
+            }
+            /**
+             * Same source as [EazyMascot] position props. Do not use [liveMascotX] here when undocked:
+             * after undock the mascot jumps to [eazyPosX]/[eazyPosY] but live* could still be the old
+             * slot position → bubble would stay in the header without the mascot.
+             */
+            val mascotPosX: Float? = when {
+                overlayDockedMascot && liveMascotX != null -> liveMascotX
+                overlayDockedMascot && slotRawX != null -> slotRawX
+                overlayDockedMascot -> defaultXMascot
+                else -> eazyPosX
+            }
+            val mascotPosY: Float? = when {
+                overlayDockedMascot && liveMascotY != null -> liveMascotY
+                overlayDockedMascot && slotRawY != null -> slotRawY
+                overlayDockedMascot -> defaultYMascot
+                else -> eazyPosY
+            }
+            /** Match EazyMascot internal rawX/rawY so the bubble tracks the visible mascot */
+            val bubbleAnchorX = when {
+                mascotPosX == null || mascotPosX.isNaN() -> defaultXMascot
+                else -> mascotPosX.coerceIn(0f, maxXMascot)
+            }
+            val bubbleAnchorY = when {
+                mascotPosY == null || mascotPosY.isNaN() -> defaultYMascot
+                else -> mascotPosY.coerceIn(0f, maxYMascot)
             }
             val halfPx = contentW / 2f
-            val bubbleLeftOfEazy = rawXMascot + mascotSizePx / 2f >= halfPx
+            val bubbleLeftOfEazy = bubbleAnchorX + mascotSizePx / 2f >= halfPx
             val spacerPx = with(density) { 6.dp.toPx() }
             val bubbleRowWidthPx = with(density) { 160.dp.toPx() }
             val bubbleHeightPx = with(density) { 40.dp.toPx() }
             val bubbleLeftPx = if (bubbleLeftOfEazy) {
-                rawXMascot - spacerPx - bubbleRowWidthPx
+                bubbleAnchorX - spacerPx - bubbleRowWidthPx
             } else {
-                rawXMascot + mascotSizePx + spacerPx
+                bubbleAnchorX + mascotSizePx + spacerPx
             }
-            val bubbleTopPx = rawYMascot + (mascotSizePx - bubbleHeightPx) / 2f
+            val bubbleTopPx = bubbleAnchorY + (mascotSizePx - bubbleHeightPx) / 2f
             val bubbleLeftClamped = bubbleLeftPx.coerceIn(
                 0f,
                 (contentW - bubbleRowWidthPx).coerceAtLeast(0f)
             )
             val bubbleCenterX = bubbleLeftClamped + bubbleRowWidthPx / 2f
-            val mascotCenterX = rawXMascot + mascotSizePx / 2f
+            val mascotCenterX = bubbleAnchorX + mascotSizePx / 2f
             val faceTowardBubbleLeft = bubbleCenterX < mascotCenterX
             SideEffect {
                 if (showGenOverlay) {
@@ -532,17 +548,6 @@ fun ShopScreen(
                     .onGloballyPositioned { mascotLayerBoundsState.value = it.boundsInRoot() }
             ) {
                 if (!eazyDocked || showGenOverlay) {
-                    val overlayDockedMascot = eazyDocked && showGenOverlay
-                    val mascotPosX = when {
-                        overlayDockedMascot && liveMascotX != null -> liveMascotX
-                        overlayDockedMascot -> rawXMascot
-                        else -> eazyPosX
-                    }
-                    val mascotPosY = when {
-                        overlayDockedMascot && liveMascotY != null -> liveMascotY
-                        overlayDockedMascot -> rawYMascot
-                        else -> eazyPosY
-                    }
                     EazyMascot(
                         modifier = Modifier
                             .align(Alignment.TopStart)
