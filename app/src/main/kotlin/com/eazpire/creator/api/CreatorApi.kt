@@ -450,7 +450,9 @@ class CreatorApi(
         productKey: String,
         imageBytes: ByteArray,
         mimeType: String,
-        fileName: String
+        fileName: String,
+        visibilityPublic: Boolean = true,
+        creatorName: String? = null
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = buildString {
             append("$baseUrl/apps/creator-dispatch?op=accept-customer-design")
@@ -458,7 +460,13 @@ class CreatorApi(
             append("&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
             append("&_t=${System.currentTimeMillis()}")
         }
-        val genJson = JSONObject().put("shop_design", true).toString()
+        val genJson = JSONObject()
+            .put("shop_design", true)
+            .put("visibility", if (visibilityPublic) "public" else "private")
+            .apply {
+                creatorName?.trim()?.takeIf { it.isNotEmpty() }?.let { put("creator_name", it) }
+            }
+            .toString()
         val media = (mimeType.ifBlank { "image/png" }).toMediaType()
         val multipart = MultipartBody.Builder()
             .setType(MultipartBody.FORM)

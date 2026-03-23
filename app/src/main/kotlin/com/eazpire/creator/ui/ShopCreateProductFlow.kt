@@ -195,6 +195,7 @@ fun ShopCreateProductFlow(
                 product = p,
                 api = api,
                 ownerId = ownerId,
+                translationStore = translationStore,
                 translation = translation,
                 onDismiss = { phase = ShopCreateProductPhase.Mode(p) },
                 onRequireLogin = onRequireLogin
