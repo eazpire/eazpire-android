@@ -6,6 +6,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -377,6 +378,86 @@ class CreatorApi(
         "poll-job",
         mapOf("job_id" to jobId)
     )
+
+    /**
+     * POST ?op=accept-customer-design — Shop "Create Product" AI generate (private shop_design job).
+     * Returns { ok: true, job_id, status } on 202 or { ok: false, error, message }.
+     */
+    suspend fun acceptShopCustomerDesignGenerate(
+        ownerId: String,
+        productKey: String,
+        prompt: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=accept-customer-design")
+            append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&_t=${System.currentTimeMillis()}")
+        }
+        val body = JSONObject().apply {
+            put("type", "generate")
+            put("product_key", productKey)
+            put("shop_design", true)
+            put("prompt", prompt.trim())
+            put("design_type", "classic")
+            put("target_product", productKey)
+            put("ratio", "portrait")
+            put("content_type", "design-text")
+            put("styles", JSONArray())
+            put("design_colors", JSONArray())
+            put("background_colors", JSONArray())
+            put("background", JSONObject().put("mode", "transparent"))
+            put("language", JSONObject().put("mode", "as-design"))
+        }
+        val request = Request.Builder()
+            .url(url)
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
+
+    /**
+     * POST ?op=accept-customer-design — multipart upload for shop_design (image + generator_json).
+     */
+    suspend fun acceptShopCustomerDesignUpload(
+        ownerId: String,
+        productKey: String,
+        imageBytes: ByteArray,
+        mimeType: String,
+        fileName: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=accept-customer-design")
+            append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&_t=${System.currentTimeMillis()}")
+        }
+        val genJson = JSONObject().put("shop_design", true).toString()
+        val media = (mimeType.ifBlank { "image/png" }).toMediaType()
+        val multipart = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("type", "upload")
+            .addFormDataPart("product_key", productKey)
+            .addFormDataPart("generator_json", genJson)
+            .addFormDataPart(
+                "image",
+                fileName.ifBlank { "upload.png" },
+                imageBytes.toRequestBody(media)
+            )
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .post(multipart)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
 
     /** POST ?op=toggle-mockup-preview&owner_id=xxx – Body: { mockup_id, enabled } */
     suspend fun toggleMockupPreview(ownerId: String, mockupId: Long, enabled: Boolean): JSONObject =

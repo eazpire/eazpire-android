@@ -580,8 +580,13 @@ fun ShopScreen(
             visible = shopCreateProductVisible,
             onDismiss = { shopCreateProductVisible = false },
             api = creatorPollApi,
+            tokenStore = tokenStore,
             region = catalogRegion,
-            translation = { k, d -> translationStore.t(k, d) }
+            translation = { k, d -> translationStore.t(k, d) },
+            onRequireLogin = {
+                shopCreateProductVisible = false
+                showLoginOptions = true
+            }
         )
     }
     val showGenOverlay = isCreatorMode && eazyGenerationOverlay

@@ -1,6 +1,6 @@
 package com.eazpire.creator.ui
 
-import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -52,26 +51,33 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.auth.SecureTokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
-private const val SHOP_WEB_BASE = "https://www.eazpire.com"
-
 /** Catalog card image rotation: matches web shop-create-product.js */
 private const val CATALOG_ROTATION_MS = 1500L
 private const val CATALOG_CROSSFADE_MS = 450
 
-private data class CatalogProduct(
+internal data class CatalogProduct(
     val productKey: String,
     val title: String,
     val mockUrls: List<String>
 )
 
+private sealed interface ShopCreateProductPhase {
+    data object Closed : ShopCreateProductPhase
+    data object Catalog : ShopCreateProductPhase
+    data class Mode(val product: CatalogProduct) : ShopCreateProductPhase
+    data class StudioGenerate(val product: CatalogProduct) : ShopCreateProductPhase
+    data class StudioUpload(val product: CatalogProduct) : ShopCreateProductPhase
+}
+
 /**
- * Shop Create Product: catalog → mode (bottom sheet) → design studio in a standalone full-screen WebView modal.
+ * Shop Create Product: catalog → mode → native generate/upload (customer-design API, no WebView).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,26 +85,23 @@ fun ShopCreateProductFlow(
     visible: Boolean,
     onDismiss: () -> Unit,
     api: CreatorApi,
+    tokenStore: SecureTokenStore,
     region: String,
-    translation: (String, String) -> String
+    translation: (String, String) -> String,
+    onRequireLogin: () -> Unit = {}
 ) {
-    var step by remember { mutableStateOf(0) }
+    var phase by remember(visible) {
+        mutableStateOf(
+            if (visible) ShopCreateProductPhase.Catalog else ShopCreateProductPhase.Closed
+        )
+    }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var products by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
-    var selected: CatalogProduct? by remember { mutableStateOf(null) }
-    var studioUrl by remember { mutableStateOf<String?>(null) }
-    var studioTitle by remember { mutableStateOf("") }
+    val ownerId = remember(tokenStore) { tokenStore.getOwnerId() }
 
-    LaunchedEffect(visible) {
-        if (!visible) {
-            step = 0
-            selected = null
-            error = null
-            studioUrl = null
-            studioTitle = ""
-            return@LaunchedEffect
-        }
+    LaunchedEffect(visible, region) {
+        if (!visible) return@LaunchedEffect
         loading = true
         error = null
         try {
@@ -144,128 +147,219 @@ fun ShopCreateProductFlow(
         }
     }
 
-    fun buildStudioUrl(productKey: String, mode: String): String =
-        Uri.parse(SHOP_WEB_BASE).buildUpon()
-            .path("/pages/design-generator")
-            .appendQueryParameter("eaz_shop_create", "1")
-            .appendQueryParameter("eaz_shop_embed", "1")
-            .appendQueryParameter("product_key", productKey)
-            .appendQueryParameter("eaz_shop_mode", mode)
-            .build()
-            .toString()
-
     if (!visible) return
 
-    studioUrl?.let { url ->
-        ShopDesignStudioDialog(
-            url = url,
-            productTitle = studioTitle,
-            translation = translation,
-            onDismiss = { studioUrl = null }
-        )
-        return
+    when (val current = phase) {
+        ShopCreateProductPhase.Closed -> {}
+        ShopCreateProductPhase.Catalog -> {
+            ShopCatalogBottomSheet(
+                loading = loading,
+                error = error,
+                products = products,
+                translation = translation,
+                onDismissRequest = onDismiss,
+                onProductClick = { p -> phase = ShopCreateProductPhase.Mode(p) }
+            )
+        }
+        is ShopCreateProductPhase.Mode -> {
+            val p = current.product
+            ShopModeBottomSheet(
+                productTitle = p.title,
+                translation = translation,
+                onDismissRequest = { phase = ShopCreateProductPhase.Catalog },
+                onGenerate = {
+                    phase = ShopCreateProductPhase.StudioGenerate(p)
+                },
+                onUpload = {
+                    phase = ShopCreateProductPhase.StudioUpload(p)
+                }
+            )
+        }
+        is ShopCreateProductPhase.StudioGenerate -> {
+            val p = current.product
+            ShopGenerateNativeSheet(
+                product = p,
+                api = api,
+                ownerId = ownerId,
+                translation = translation,
+                onDismiss = { phase = ShopCreateProductPhase.Mode(p) },
+                onRequireLogin = onRequireLogin
+            )
+        }
+        is ShopCreateProductPhase.StudioUpload -> {
+            val p = current.product
+            ShopUploadNativeSheet(
+                product = p,
+                api = api,
+                ownerId = ownerId,
+                translation = translation,
+                onDismiss = { phase = ShopCreateProductPhase.Mode(p) },
+                onRequireLogin = onRequireLogin
+            )
+        }
     }
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShopCatalogBottomSheet(
+    loading: Boolean,
+    error: String?,
+    products: List<CatalogProduct>,
+    translation: (String, String) -> String,
+    onDismissRequest: () -> Unit,
+    onProductClick: (CatalogProduct) -> Unit
+) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
+    BackHandler(onBack = onDismissRequest)
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = onDismissRequest,
         sheetState = sheetState,
         containerColor = Color.White,
         modifier = Modifier.fillMaxHeight(0.92f),
         dragHandle = {
             Box(
                 modifier = Modifier
-                    .padding(top = 10.dp)
-                    .size(width = 40.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f))
-            )
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 40.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f))
+                )
+            }
         }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 16.dp)
-        ) {
-            SheetHeader(
-                step = step,
-                translation = translation,
-                onNavigateBack = {
-                    when (step) {
-                        0 -> onDismiss()
-                        1 -> step = 0
-                        else -> onDismiss()
-                    }
-                }
-            )
-
-            when (step) {
-                0 -> CatalogStep(
+        ShopLightSheetTheme {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 16.dp)
+            ) {
+                CatalogSheetHeader(
+                    translation = translation,
+                    onClose = onDismissRequest
+                )
+                CatalogStep(
                     loading = loading,
                     error = error,
                     products = products,
                     translation = translation,
-                    onProductClick = { p ->
-                        selected = p
-                        step = 1
-                    }
+                    onProductClick = onProductClick
                 )
-                1 -> {
-                    val p = selected
-                    if (p == null) {
-                        step = 0
-                    } else {
-                        ModeStep(
-                            productTitle = p.title,
-                            translation = translation,
-                            onGenerate = {
-                                studioTitle = p.title
-                                studioUrl = buildStudioUrl(p.productKey, "generate")
-                            },
-                            onUpload = {
-                                studioTitle = p.title
-                                studioUrl = buildStudioUrl(p.productKey, "upload")
-                            }
-                        )
-                    }
-                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShopModeBottomSheet(
+    productTitle: String,
+    translation: (String, String) -> String,
+    onDismissRequest: () -> Unit,
+    onGenerate: () -> Unit,
+    onUpload: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    BackHandler(onBack = onDismissRequest)
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        modifier = Modifier.fillMaxHeight(0.92f),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 40.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f))
+                )
+            }
+        }
+    ) {
+        ShopLightSheetTheme {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 16.dp)
+            ) {
+                ModeSheetHeader(
+                    translation = translation,
+                    onBack = onDismissRequest
+                )
+                ModeStep(
+                    productTitle = productTitle,
+                    translation = translation,
+                    onGenerate = onGenerate,
+                    onUpload = onUpload
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SheetHeader(
-    step: Int,
+private fun CatalogSheetHeader(
     translation: (String, String) -> String,
-    onNavigateBack: () -> Unit
+    onClose: () -> Unit
 ) {
-    val title = when (step) {
-        0 -> translation("creator.shop_create_product.modal1_title", "Choose a catalog product")
-        1 -> translation("creator.shop_create_product.modal2_title", "How do you want to create?")
-        else -> ""
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onNavigateBack) {
+        IconButton(onClick = onClose) {
             Icon(
-                imageVector = if (step == 0) Icons.Default.Close else Icons.Default.ArrowBack,
-                contentDescription = if (step == 0) {
-                    translation("creator.common.close", "Close")
-                } else {
-                    translation("creator.common.back", "Back")
-                }
+                imageVector = Icons.Default.Close,
+                contentDescription = translation("creator.common.close", "Close")
             )
         }
         Text(
-            text = title,
+            text = translation("creator.shop_create_product.modal1_title", "Choose a catalog product"),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 4.dp),
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.width(48.dp))
+    }
+}
+
+@Composable
+private fun ModeSheetHeader(
+    translation: (String, String) -> String,
+    onBack: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = translation("creator.common.back", "Back")
+            )
+        }
+        Text(
+            text = translation("creator.shop_create_product.modal2_title", "How do you want to create?"),
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier
                 .weight(1f)
@@ -342,12 +436,15 @@ private fun ModeStep(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
+            ShopSheetPrimaryButton(
                 onClick = onGenerate,
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
             ) {
-                Text(translation("creator.shop_create_product.generate", "Generate"))
+                Text(
+                    translation("creator.shop_create_product.generate", "Generate"),
+                    style = MaterialTheme.typography.labelLarge
+                )
             }
             Text(
                 text = translation(
@@ -365,11 +462,14 @@ private fun ModeStep(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
+            ShopSheetPrimaryButton(
                 onClick = onUpload,
                 modifier = Modifier.fillMaxWidth(0.92f)
             ) {
-                Text(translation("creator.shop_create_product.upload", "Upload"))
+                Text(
+                    translation("creator.shop_create_product.upload", "Upload"),
+                    style = MaterialTheme.typography.labelLarge
+                )
             }
             Text(
                 text = translation(

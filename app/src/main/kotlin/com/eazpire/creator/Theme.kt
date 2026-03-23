@@ -40,6 +40,28 @@ private val EazpireColorScheme = lightColorScheme(
     outline = Color(0xFFE5E7EB),
 )
 
+/**
+ * Shop bottom sheets (Create product, native studio): same brand tokens as [EazpireColorScheme],
+ * with explicit containers for orange-tint surfaces and readable on-surface text.
+ */
+val EazShopSheetColorScheme = lightColorScheme(
+    primary = EazColors.Orange,
+    onPrimary = Color.White,
+    secondary = EazColors.OrangeDark,
+    onSecondary = Color.White,
+    primaryContainer = Color(0xFFFFEDD5),
+    onPrimaryContainer = EazColors.TextPrimary,
+    surface = Color.White,
+    onSurface = EazColors.TextPrimary,
+    surfaceVariant = Color(0xFFF5F5F5),
+    onSurfaceVariant = EazColors.TextSecondary,
+    background = Color(0xFFFAFAFA),
+    onBackground = EazColors.TextPrimary,
+    outline = Color(0xFFE5E7EB),
+    error = Color(0xFFB91C1C),
+    onError = Color.White
+)
+
 @Composable
 fun EazpireCreatorTheme(content: @Composable () -> Unit) {
     MaterialTheme(
