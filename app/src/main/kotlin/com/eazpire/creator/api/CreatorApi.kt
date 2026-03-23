@@ -59,7 +59,7 @@ class CreatorApi(
         return call("get-balance", params)
     }
 
-    /** GET ?op=get-shop-create-product-catalog&region=EU — online catalog + mock_urls for Shop Create Product */
+    /** GET ?op=get-shop-create-product-catalog&region=EU — online-only catalog + mock_urls for Shop Create Product */
     suspend fun getShopCreateProductCatalog(region: String): JSONObject = call(
         "get-shop-create-product-catalog",
         mapOf("region" to region)
