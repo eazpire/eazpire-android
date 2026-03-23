@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -87,6 +88,7 @@ fun ShopCreateProductFlow(
     api: CreatorApi,
     tokenStore: SecureTokenStore,
     region: String,
+    translationStore: TranslationStore,
     translation: (String, String) -> String,
     onRequireLogin: () -> Unit = {}
 ) {
@@ -177,10 +179,11 @@ fun ShopCreateProductFlow(
         }
         is ShopCreateProductPhase.StudioGenerate -> {
             val p = current.product
-            ShopGenerateNativeSheet(
+            ShopDesignStudioGenerateSheet(
                 product = p,
                 api = api,
                 ownerId = ownerId,
+                translationStore = translationStore,
                 translation = translation,
                 onDismiss = { phase = ShopCreateProductPhase.Mode(p) },
                 onRequireLogin = onRequireLogin

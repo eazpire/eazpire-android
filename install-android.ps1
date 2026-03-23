@@ -1,13 +1,22 @@
 # Install eazpire App auf verbundenes Android-Gerät
-# Voraussetzung: Pixel 7 per USB oder WLAN verbunden, Debugging aktiviert
+# Voraussetzung: USB oder WLAN-Debugging (Wireless debugging) aktiv
 #
 # WICHTIG: buildDir zeigt auf %TEMP%/eazpire-android-build/ – die APK liegt dort,
 # nicht in app/build/... (OneDrive-Vermeidung). gradlew installDebug nutzt den richtigen Pfad.
+#
+# Wireless: IP:Port aus Entwickleroptionen > Wireless debugging > „IP-Adresse & Port“.
+# Leer lassen, wenn nur USB genutzt wird.
+$WirelessAdb = "192.168.3.12:45129"
 
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 if (-not (Test-Path $adb)) {
     Write-Host "Fehler: adb nicht gefunden unter $adb" -ForegroundColor Red
     exit 1
+}
+
+if ($WirelessAdb -ne "") {
+    Write-Host "Verbinde adb (WLAN): $WirelessAdb ..." -ForegroundColor Cyan
+    & $adb connect $WirelessAdb 2>&1 | Write-Host
 }
 
 Write-Host "Pruefe verbundene Geraete..." -ForegroundColor Cyan

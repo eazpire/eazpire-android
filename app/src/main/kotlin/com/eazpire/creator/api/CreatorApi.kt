@@ -379,14 +379,23 @@ class CreatorApi(
         mapOf("job_id" to jobId)
     )
 
+    /** Reference slot for shop design generate (matches web `reference_images`). */
+    data class ShopReferenceImage(
+        val url: String,
+        val label: String,
+        val strength: Int = 80
+    )
+
     /**
      * POST ?op=accept-customer-design — Shop "Create Product" AI generate (private shop_design job).
+     * [referenceImages] optional A–E data URLs or https URLs (same as web).
      * Returns { ok: true, job_id, status } on 202 or { ok: false, error, message }.
      */
     suspend fun acceptShopCustomerDesignGenerate(
         ownerId: String,
         productKey: String,
-        prompt: String
+        prompt: String,
+        referenceImages: List<ShopReferenceImage> = emptyList()
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = buildString {
             append("$baseUrl/apps/creator-dispatch?op=accept-customer-design")
@@ -408,6 +417,19 @@ class CreatorApi(
             put("background_colors", JSONArray())
             put("background", JSONObject().put("mode", "transparent"))
             put("language", JSONObject().put("mode", "as-design"))
+            if (referenceImages.isNotEmpty()) {
+                val arr = JSONArray()
+                referenceImages.forEach { r ->
+                    arr.put(
+                        JSONObject()
+                            .put("url", r.url)
+                            .put("label", r.label)
+                            .put("strength", r.strength.coerceIn(0, 100))
+                    )
+                }
+                put("reference_images", arr)
+                put("image_url", referenceImages.first().url)
+            }
         }
         val request = Request.Builder()
             .url(url)

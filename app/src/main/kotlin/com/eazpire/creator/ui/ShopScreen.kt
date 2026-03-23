@@ -582,6 +582,7 @@ fun ShopScreen(
             api = creatorPollApi,
             tokenStore = tokenStore,
             region = catalogRegion,
+            translationStore = translationStore,
             translation = { k, d -> translationStore.t(k, d) },
             onRequireLogin = {
                 shopCreateProductVisible = false

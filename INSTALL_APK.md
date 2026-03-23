@@ -20,14 +20,14 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 $apk = "$env:TEMP\eazpire-android-build\app\outputs\apk\debug\app-debug.apk"
 
 # Verbinden (IP:Port von Wireless Debugging)
-& $adb connect 192.168.3.12:45091
+& $adb connect 192.168.3.12:45129
 
 # Optional: Alte Version entfernen
-& $adb -s 192.168.3.12:45091 uninstall com.eazpire.creator
+& $adb -s 192.168.3.12:45129 uninstall com.eazpire.creator
 
 # Zuerst bauen: .\gradlew assembleDebug
 # Dann installieren
-& $adb -s 192.168.3.12:45091 install -r $apk
+& $adb -s 192.168.3.12:45129 install -r $apk
 ```
 
 ## Hinweis
