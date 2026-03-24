@@ -133,7 +133,14 @@ private data class GenModalChrome(
     val text: Color,
     val muted: Color,
     val cardBg: Color,
-    val cardBorder: Color
+    val cardBorder: Color,
+    /** Selected option / chip background (orange tint). */
+    val selectedCardBg: Color,
+    /** Summary rows, inputs on light need a visible border. */
+    val summarySurface: Color,
+    /** Grouped sections (e.g. style categories). */
+    val sectionSurface: Color,
+    val isLight: Boolean
 )
 
 private fun genModalChrome(shopLight: Boolean): GenModalChrome {
@@ -147,7 +154,11 @@ private fun genModalChrome(shopLight: Boolean): GenModalChrome {
             text = ShopLightText,
             muted = ShopLightMuted,
             cardBg = ShopLightCardBg,
-            cardBorder = ShopLightCardBorder
+            cardBorder = ShopLightCardBorder,
+            selectedCardBg = EazColors.Orange.copy(alpha = 0.14f),
+            summarySurface = Color(0xFFFFFFFF),
+            sectionSurface = Color(0xFFF3F4F6),
+            isLight = true
         )
     } else {
         GenModalChrome(
@@ -159,7 +170,11 @@ private fun genModalChrome(shopLight: Boolean): GenModalChrome {
             text = GenText,
             muted = GenMuted,
             cardBg = GenCardBg,
-            cardBorder = GenCardBorder
+            cardBorder = GenCardBorder,
+            selectedCardBg = GenAccentSoft,
+            summarySurface = Color.Black.copy(alpha = 0.2f),
+            sectionSurface = Color.Black.copy(alpha = 0.16f),
+            isLight = false
         )
     }
 }
@@ -408,6 +423,7 @@ fun GenTargetProductModal(
     shopLightChrome: Boolean = false
 ) {
     if (!visible) return
+    val c = genModalChrome(shopLightChrome)
     val options = listOf(
         "all" to translationStore.t("creator.generator.anything", "Anything"),
         "unisex-softstyle-cotton-tee" to "Unisex Softstyle Cotton Tee"
@@ -428,6 +444,7 @@ fun GenTargetProductModal(
                     label = label,
                     selected = currentValue == value,
                     modifier = Modifier.weight(1f),
+                    chrome = c,
                     onClick = {
                         onSelect(value)
                         onDismiss()
@@ -448,6 +465,7 @@ fun GenDesignTypeModal(
     shopLightChrome: Boolean = false
 ) {
     if (!visible) return
+    val c = genModalChrome(shopLightChrome)
     val options = listOf(
         "classic" to translationStore.t("creator.design_type.classic", "Classic"),
         "pattern" to "Pattern",
@@ -477,6 +495,7 @@ fun GenDesignTypeModal(
                             label = label,
                             selected = currentValue == value,
                             modifier = Modifier.weight(1f),
+                            chrome = c,
                             onClick = {
                                 onSelect(value)
                                 onDismiss()
@@ -494,15 +513,16 @@ private fun GenSelectOptionCard(
     label: String,
     selected: Boolean,
     modifier: Modifier = Modifier,
+    chrome: GenModalChrome,
     onClick: () -> Unit
 ) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) GenAccentSoft else GenCardBg)
+            .background(if (selected) chrome.selectedCardBg else chrome.cardBg)
             .border(
                 1.dp,
-                if (selected) EazColors.Orange else GenCardBorder,
+                if (selected) EazColors.Orange else chrome.cardBorder,
                 RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -512,7 +532,7 @@ private fun GenSelectOptionCard(
             text = label,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
-            color = GenText
+            color = chrome.text
         )
     }
 }
@@ -538,6 +558,7 @@ fun GenOptionsModal(
 ) {
     val applyLabel = translationStore.t("creator.common.apply", "Apply")
     if (!visible) return
+    val c = genModalChrome(shopLightChrome)
     var showStylesModal by remember { mutableStateOf(false) }
     var showLanguageModal by remember { mutableStateOf(false) }
     var showColorsModal by remember { mutableStateOf(false) }
@@ -550,7 +571,8 @@ fun GenOptionsModal(
             onStylesChange(it)
             showStylesModal = false
         },
-        translationStore = translationStore
+        translationStore = translationStore,
+        shopLightChrome = shopLightChrome
     )
     GenLanguageModal(
         visible = showLanguageModal,
@@ -561,7 +583,8 @@ fun GenOptionsModal(
             showLanguageModal = false
         },
         api = api,
-        translationStore = translationStore
+        translationStore = translationStore,
+        shopLightChrome = shopLightChrome
     )
     GenColorsModal(
         visible = showColorsModal,
@@ -571,7 +594,8 @@ fun GenOptionsModal(
             onColorStateChange(it)
             showColorsModal = false
         },
-        translationStore = translationStore
+        translationStore = translationStore,
+        shopLightChrome = shopLightChrome
     )
 
     GenModalBase(
@@ -591,6 +615,7 @@ fun GenOptionsModal(
         ) {
             GenOptionsRow(
                 label = translationStore.t("creator.generator.ratio_title", "Design Ratio"),
+                chrome = c,
                 content = {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         listOf(
@@ -603,6 +628,7 @@ fun GenOptionsModal(
                                 ratioValue = value,
                                 label = label,
                                 selected = ratio == value,
+                                chrome = c,
                                 onClick = { onRatioChange(value) }
                             )
                         }
@@ -611,6 +637,7 @@ fun GenOptionsModal(
             )
             GenOptionsRow(
                 label = translationStore.t("creator.generator.content_type_title", "Content Type"),
+                chrome = c,
                 content = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -626,6 +653,7 @@ fun GenOptionsModal(
                                 contentTypeValue = value,
                                 label = label,
                                 selected = contentType == value,
+                                chrome = c,
                                 onClick = { onContentTypeChange(value) }
                             )
                         }
@@ -634,30 +662,36 @@ fun GenOptionsModal(
             )
             GenOptionsRow(
                 label = translationStore.t("creator.generator.style_title", "Design Style"),
+                chrome = c,
                 content = {
                     GenSummaryButton(
                         text = "${selectedStyles.size} ${translationStore.t("creator.generator.styles_selected", "styles selected")}",
+                        chrome = c,
                         onClick = { showStylesModal = true }
                     )
                 }
             )
             GenOptionsRow(
                 label = translationStore.t("creator.generator.language_title", "Language"),
+                chrome = c,
                 content = {
                     GenSummaryButton(
                         text = languageSummary(languageState, translationStore),
+                        chrome = c,
                         onClick = { showLanguageModal = true }
                     )
                 }
             )
             GenOptionsRow(
                 label = translationStore.t("creator.generator.design_colors", "Design colors"),
+                chrome = c,
                 content = {
                     GenSummaryButton(
                         text = colorSummary(colorState, translationStore),
+                        chrome = c,
                         onClick = { showColorsModal = true }
                     )
-                    GenColorPreviewRow(colorState = colorState, translationStore = translationStore)
+                    GenColorPreviewRow(colorState = colorState, translationStore = translationStore, chrome = c)
                 }
             )
         }
@@ -667,6 +701,7 @@ fun GenOptionsModal(
 @Composable
 private fun GenOptionsRow(
     label: String,
+    chrome: GenModalChrome,
     content: @Composable () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -674,7 +709,7 @@ private fun GenOptionsRow(
             text = label,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = GenMuted
+            color = chrome.muted
         )
         content()
     }
@@ -685,16 +720,17 @@ private fun GenRatioButton(
     ratioValue: String,
     label: String,
     selected: Boolean,
+    chrome: GenModalChrome,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) GenAccentSoft else Color.White.copy(alpha = 0.08f))
+            .background(if (selected) chrome.selectedCardBg else chrome.cardBg)
             .border(
                 1.dp,
-                if (selected) EazColors.Orange else GenCardBorder,
+                if (selected) EazColors.Orange else chrome.cardBorder,
                 RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -702,12 +738,12 @@ private fun GenRatioButton(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            GenRatioIcon(ratioValue = ratioValue)
+            GenRatioIcon(ratioValue = ratioValue, iconColor = chrome.text)
             Text(
                 text = label,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = GenText
+                color = chrome.text
             )
         }
     }
@@ -718,16 +754,17 @@ private fun GenContentTypeCard(
     contentTypeValue: String,
     label: String,
     selected: Boolean,
+    chrome: GenModalChrome,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) GenAccentSoft else Color.White.copy(alpha = 0.08f))
+            .background(if (selected) chrome.selectedCardBg else chrome.cardBg)
             .border(
                 1.dp,
-                if (selected) EazColors.Orange else GenCardBorder,
+                if (selected) EazColors.Orange else chrome.cardBorder,
                 RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -737,22 +774,21 @@ private fun GenContentTypeCard(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             horizontalAlignment = Alignment.Start
         ) {
-            GenContentTypeIcon(contentTypeValue = contentTypeValue)
+            GenContentTypeIcon(contentTypeValue = contentTypeValue, iconColor = chrome.text)
             Text(
                 text = label,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = GenText
+                color = chrome.text
             )
         }
     }
 }
 
 @Composable
-private fun GenRatioIcon(ratioValue: String) {
+private fun GenRatioIcon(ratioValue: String, iconColor: Color) {
     Canvas(modifier = Modifier.size(20.dp)) {
         val stroke = 1.8.dp.toPx()
-        val iconColor = GenText
         val (w, h) = when (ratioValue) {
             "square" -> Pair(size.width * 0.72f, size.height * 0.72f)
             "landscape" -> Pair(size.width * 0.86f, size.height * 0.58f)
@@ -771,10 +807,9 @@ private fun GenRatioIcon(ratioValue: String) {
 }
 
 @Composable
-private fun GenContentTypeIcon(contentTypeValue: String) {
+private fun GenContentTypeIcon(contentTypeValue: String, iconColor: Color) {
     Canvas(modifier = Modifier.size(20.dp)) {
         val stroke = 1.8.dp.toPx()
-        val iconColor = GenText
         when (contentTypeValue) {
             "design-text" -> {
                 val pad = 2.dp.toPx()
@@ -809,14 +844,15 @@ private fun GenContentTypeIcon(contentTypeValue: String) {
 @Composable
 private fun GenSummaryButton(
     text: String,
+    chrome: GenModalChrome,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(Color.Black.copy(alpha = 0.2f))
-            .border(1.dp, GenCardBorder, RoundedCornerShape(10.dp))
+            .background(chrome.summarySurface)
+            .border(1.dp, chrome.cardBorder, RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
             .padding(12.dp, 14.dp)
             .fillMaxWidth(),
@@ -827,12 +863,12 @@ private fun GenSummaryButton(
             text = text,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
-            color = GenText
+            color = chrome.text
         )
         Icon(
             Icons.Default.KeyboardArrowDown,
             contentDescription = null,
-            tint = GenMuted
+            tint = chrome.muted
         )
     }
 }
@@ -840,18 +876,19 @@ private fun GenSummaryButton(
 @Composable
 private fun GenColorPreviewRow(
     colorState: GenColorState,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    chrome: GenModalChrome
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 text = translationStore.t("creator.generator.design_label", "Design"),
                 fontSize = 11.sp,
-                color = GenMuted
+                color = chrome.muted
             )
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (colorState.designColors.isEmpty()) {
-                    Text("0", color = GenMuted, fontSize = 12.sp)
+                    Text("0", color = chrome.muted, fontSize = 12.sp)
                 } else {
                     colorState.designColors.take(5).forEach { hex ->
                         Box(
@@ -859,7 +896,7 @@ private fun GenColorPreviewRow(
                                 .size(14.dp)
                                 .clip(RoundedCornerShape(7.dp))
                                 .background(parseHexColor(hex))
-                                .border(1.dp, GenCardBorder, RoundedCornerShape(7.dp))
+                                .border(1.dp, chrome.cardBorder, RoundedCornerShape(7.dp))
                         )
                     }
                 }
@@ -869,18 +906,18 @@ private fun GenColorPreviewRow(
             Text(
                 text = translationStore.t("creator.generator.background_label", "Background"),
                 fontSize = 11.sp,
-                color = GenMuted
+                color = chrome.muted
             )
             if (colorState.backgroundTransparent) {
                 Text(
                     text = translationStore.t("creator.generator.background_transparent", "Transparent"),
-                    color = GenMuted,
+                    color = chrome.muted,
                     fontSize = 12.sp
                 )
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (colorState.backgroundColors.isEmpty()) {
-                        Text("0", color = GenMuted, fontSize = 12.sp)
+                        Text("0", color = chrome.muted, fontSize = 12.sp)
                     } else {
                         colorState.backgroundColors.take(5).forEach { hex ->
                             Box(
@@ -888,7 +925,7 @@ private fun GenColorPreviewRow(
                                     .size(14.dp)
                                     .clip(RoundedCornerShape(7.dp))
                                     .background(parseHexColor(hex))
-                                    .border(1.dp, GenCardBorder, RoundedCornerShape(7.dp))
+                                    .border(1.dp, chrome.cardBorder, RoundedCornerShape(7.dp))
                             )
                         }
                     }
@@ -904,9 +941,11 @@ private fun GenStylesModal(
     selected: List<String>,
     onDismiss: () -> Unit,
     onApply: (List<String>) -> Unit,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    shopLightChrome: Boolean = false
 ) {
     if (!visible) return
+    val c = genModalChrome(shopLightChrome)
     var searchQuery by remember { mutableStateOf("") }
     var selectedDraft by remember(visible, selected) { mutableStateOf(selected) }
     var collapsed by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -917,7 +956,8 @@ private fun GenStylesModal(
         onDismiss = onDismiss,
         showApply = true,
         applyLabel = translationStore.t("creator.common.apply", "Apply"),
-        onApply = { onApply(selectedDraft.toList()) }
+        onApply = { onApply(selectedDraft.toList()) },
+        shopLightChrome = shopLightChrome
     ) {
         Column(
             modifier = Modifier
@@ -933,17 +973,17 @@ private fun GenStylesModal(
                 placeholder = {
                     Text(
                         translationStore.t("creator.inspiration.search_placeholder", "Search..."),
-                        color = GenMuted
+                        color = c.muted
                     )
                 },
                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = GenText,
-                    unfocusedTextColor = GenText,
+                    focusedTextColor = c.text,
+                    unfocusedTextColor = c.text,
                     focusedBorderColor = EazColors.Orange.copy(alpha = 0.5f),
-                    unfocusedBorderColor = GenCardBorder,
+                    unfocusedBorderColor = c.cardBorder,
                     cursorColor = EazColors.Orange,
-                    focusedContainerColor = Color.Black.copy(alpha = 0.2f),
-                    unfocusedContainerColor = Color.Black.copy(alpha = 0.2f)
+                    focusedContainerColor = if (c.isLight) Color.White else Color.Black.copy(alpha = 0.2f),
+                    unfocusedContainerColor = if (c.isLight) Color.White else Color.Black.copy(alpha = 0.2f)
                 )
             )
             Row(
@@ -954,7 +994,7 @@ private fun GenStylesModal(
                 Text(
                     text = translationStore.t("creator.style_modal.max_selected", "Max. 5 styles selectable"),
                     fontSize = 12.sp,
-                    color = GenMuted
+                    color = c.muted
                 )
                 Text(
                     text = "${selectedDraft.size}/$maxSelected",
@@ -976,8 +1016,8 @@ private fun GenStylesModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.Black.copy(alpha = 0.16f))
-                        .border(1.dp, GenCardBorder, RoundedCornerShape(12.dp))
+                        .background(c.sectionSurface)
+                        .border(1.dp, c.cardBorder, RoundedCornerShape(12.dp))
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -994,12 +1034,12 @@ private fun GenStylesModal(
                             text = title,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = GenText
+                            color = c.text
                         )
                         Icon(
                             Icons.Default.KeyboardArrowDown,
                             contentDescription = null,
-                            tint = GenMuted
+                            tint = c.muted
                         )
                     }
                     if (!isCollapsed) {
@@ -1015,10 +1055,14 @@ private fun GenStylesModal(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(if (isSelected) GenAccentSoft else Color.White.copy(alpha = 0.07f))
+                                            .background(
+                                                if (isSelected) c.selectedCardBg
+                                                else if (c.isLight) Color.White
+                                                else Color.White.copy(alpha = 0.07f)
+                                            )
                                             .border(
                                                 1.dp,
-                                                if (isSelected) EazColors.Orange else GenCardBorder,
+                                                if (isSelected) EazColors.Orange else c.cardBorder,
                                                 RoundedCornerShape(10.dp)
                                             )
                                             .clickable {
@@ -1033,7 +1077,7 @@ private fun GenStylesModal(
                                         Text(
                                             text = label,
                                             fontSize = 12.sp,
-                                            color = GenText
+                                            color = c.text
                                         )
                                     }
                                 }
@@ -1054,9 +1098,11 @@ private fun GenLanguageModal(
     onDismiss: () -> Unit,
     onApply: (GenLanguageState) -> Unit,
     api: CreatorApi,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    shopLightChrome: Boolean = false
 ) {
     if (!visible) return
+    val c = genModalChrome(shopLightChrome)
     var draft by remember(visible, state) { mutableStateOf(state) }
     var loading by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -1099,7 +1145,8 @@ private fun GenLanguageModal(
             draft = draft.copy(dialectCode = item.code, dialectLabel = item.label)
             showDialectPicker = false
         },
-        translationStore = translationStore
+        translationStore = translationStore,
+        shopLightChrome = shopLightChrome
     )
     GenLanguageVariantModal(
         visible = showScriptPicker,
@@ -1115,7 +1162,8 @@ private fun GenLanguageModal(
             draft = draft.copy(scriptCode = item.code, scriptLabel = item.label)
             showScriptPicker = false
         },
-        translationStore = translationStore
+        translationStore = translationStore,
+        shopLightChrome = shopLightChrome
     )
 
     GenModalBase(
@@ -1123,7 +1171,8 @@ private fun GenLanguageModal(
         onDismiss = onDismiss,
         showApply = true,
         applyLabel = translationStore.t("creator.common.apply", "Apply"),
-        onApply = { onApply(draft) }
+        onApply = { onApply(draft) },
+        shopLightChrome = shopLightChrome
     ) {
         Column(
             modifier = Modifier
@@ -1143,10 +1192,14 @@ private fun GenLanguageModal(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (selected) GenAccentSoft else Color.White.copy(alpha = 0.08f))
+                            .background(
+                                if (selected) c.selectedCardBg
+                                else if (c.isLight) c.cardBg
+                                else Color.White.copy(alpha = 0.08f)
+                            )
                             .border(
                                 1.dp,
-                                if (selected) EazColors.Orange else GenCardBorder,
+                                if (selected) EazColors.Orange else c.cardBorder,
                                 RoundedCornerShape(10.dp)
                             )
                             .clickable {
@@ -1170,7 +1223,7 @@ private fun GenLanguageModal(
                         Text(
                             text = label,
                             fontSize = 12.sp,
-                            color = GenText
+                            color = c.text
                         )
                     }
                 }
@@ -1184,17 +1237,17 @@ private fun GenLanguageModal(
                     placeholder = {
                         Text(
                             translationStore.t("creator.inspiration.search_placeholder", "Search..."),
-                            color = GenMuted
+                            color = c.muted
                         )
                     },
                     colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = GenText,
-                        unfocusedTextColor = GenText,
+                        focusedTextColor = c.text,
+                        unfocusedTextColor = c.text,
                         focusedBorderColor = EazColors.Orange.copy(alpha = 0.5f),
-                        unfocusedBorderColor = GenCardBorder,
+                        unfocusedBorderColor = c.cardBorder,
                         cursorColor = EazColors.Orange,
-                        focusedContainerColor = Color.Black.copy(alpha = 0.2f),
-                        unfocusedContainerColor = Color.Black.copy(alpha = 0.2f)
+                        focusedContainerColor = if (c.isLight) Color.White else Color.Black.copy(alpha = 0.2f),
+                        unfocusedContainerColor = if (c.isLight) Color.White else Color.Black.copy(alpha = 0.2f)
                     )
                 )
                 if (loading) {
@@ -1213,7 +1266,7 @@ private fun GenLanguageModal(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(GenAccentSoft)
+                                .background(c.selectedCardBg)
                                 .border(1.dp, EazColors.Orange, RoundedCornerShape(10.dp))
                                 .clickable { listExpanded = true }
                                 .padding(10.dp),
@@ -1226,10 +1279,10 @@ private fun GenLanguageModal(
                             ) {
                                 selectedLang?.let {
                                     GlassCircularFlag(countryCode = it.flagCode.uppercase(), size = 22.dp)
-                                    Text(it.label, color = GenText, fontSize = 13.sp)
-                                } ?: Text(draft.langLabel, color = GenText, fontSize = 13.sp)
+                                    Text(it.label, color = c.text, fontSize = 13.sp)
+                                } ?: Text(draft.langLabel, color = c.text, fontSize = 13.sp)
                             }
-                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = GenText)
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = c.text)
                         }
                     } else {
                         filtered.forEach { item ->
@@ -1238,10 +1291,14 @@ private fun GenLanguageModal(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSelected) GenAccentSoft else Color.White.copy(alpha = 0.07f))
+                                    .background(
+                                        if (isSelected) c.selectedCardBg
+                                        else if (c.isLight) c.cardBg
+                                        else Color.White.copy(alpha = 0.07f)
+                                    )
                                     .border(
                                         1.dp,
-                                        if (isSelected) EazColors.Orange else GenCardBorder,
+                                        if (isSelected) EazColors.Orange else c.cardBorder,
                                         RoundedCornerShape(10.dp)
                                     )
                                     .clickable {
@@ -1265,7 +1322,7 @@ private fun GenLanguageModal(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     GlassCircularFlag(countryCode = item.flagCode.uppercase(), size = 22.dp)
-                                    Text(item.label, color = GenText, fontSize = 13.sp)
+                                    Text(item.label, color = c.text, fontSize = 13.sp)
                                 }
                                 if (isSelected) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = EazColors.Orange)
@@ -1283,12 +1340,14 @@ private fun GenLanguageModal(
                         if (!languageChildren!!.dialects.isNullOrEmpty()) {
                             GenSummaryButton(
                                 text = draft.dialectLabel.ifBlank { "Dialect" },
+                                chrome = c,
                                 onClick = { showDialectPicker = true }
                             )
                         }
                         if (!languageChildren.scripts.isNullOrEmpty()) {
                             GenSummaryButton(
                                 text = draft.scriptLabel.ifBlank { "Script" },
+                                chrome = c,
                                 onClick = { showScriptPicker = true }
                             )
                         }
@@ -1308,12 +1367,15 @@ private fun GenLanguageVariantModal(
     onDismiss: () -> Unit,
     onClear: () -> Unit,
     onSelect: (ApiLanguageItem) -> Unit,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    shopLightChrome: Boolean = false
 ) {
     if (!visible) return
+    val c = genModalChrome(shopLightChrome)
     GenModalBase(
         title = title,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        shopLightChrome = shopLightChrome
     ) {
         Column(
             modifier = Modifier
@@ -1326,10 +1388,14 @@ private fun GenLanguageVariantModal(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (selectedCode.isBlank()) GenAccentSoft else Color.White.copy(alpha = 0.07f))
+                    .background(
+                        if (selectedCode.isBlank()) c.selectedCardBg
+                        else if (c.isLight) c.cardBg
+                        else Color.White.copy(alpha = 0.07f)
+                    )
                     .border(
                         1.dp,
-                        if (selectedCode.isBlank()) EazColors.Orange else GenCardBorder,
+                        if (selectedCode.isBlank()) EazColors.Orange else c.cardBorder,
                         RoundedCornerShape(10.dp)
                     )
                     .clickable { onClear() }
@@ -1337,7 +1403,7 @@ private fun GenLanguageVariantModal(
             ) {
                 Text(
                     text = translationStore.t("creator.common.default", "Default"),
-                    color = GenText
+                    color = c.text
                 )
             }
             options.forEach { item ->
@@ -1346,10 +1412,14 @@ private fun GenLanguageVariantModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (selected) GenAccentSoft else Color.White.copy(alpha = 0.07f))
+                        .background(
+                            if (selected) c.selectedCardBg
+                            else if (c.isLight) c.cardBg
+                            else Color.White.copy(alpha = 0.07f)
+                        )
                         .border(
                             1.dp,
-                            if (selected) EazColors.Orange else GenCardBorder,
+                            if (selected) EazColors.Orange else c.cardBorder,
                             RoundedCornerShape(10.dp)
                         )
                         .clickable { onSelect(item) }
@@ -1362,7 +1432,7 @@ private fun GenLanguageVariantModal(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         GlassCircularFlag(countryCode = item.flagCode, size = 20.dp)
-                        Text(item.label, color = GenText)
+                        Text(item.label, color = c.text)
                     }
                     if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = EazColors.Orange)
                 }
@@ -1377,9 +1447,11 @@ private fun GenColorsModal(
     state: GenColorState,
     onDismiss: () -> Unit,
     onApply: (GenColorState) -> Unit,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    shopLightChrome: Boolean = false
 ) {
     if (!visible) return
+    val c = genModalChrome(shopLightChrome)
     var draft by remember(visible, state) { mutableStateOf(state) }
     var tab by remember { mutableStateOf("design") }
     var designHex by remember { mutableStateOf("#f59e0b") }
@@ -1390,7 +1462,8 @@ private fun GenColorsModal(
         onDismiss = onDismiss,
         showApply = true,
         applyLabel = translationStore.t("creator.common.apply", "Apply"),
-        onApply = { onApply(draft) }
+        onApply = { onApply(draft) },
+        shopLightChrome = shopLightChrome
     ) {
         Column(
             modifier = Modifier
@@ -1409,17 +1482,21 @@ private fun GenColorsModal(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (selected) GenAccentSoft else Color.White.copy(alpha = 0.08f))
+                            .background(
+                                if (selected) c.selectedCardBg
+                                else if (c.isLight) c.cardBg
+                                else Color.White.copy(alpha = 0.08f)
+                            )
                             .border(
                                 1.dp,
-                                if (selected) EazColors.Orange else GenCardBorder,
+                                if (selected) EazColors.Orange else c.cardBorder,
                                 RoundedCornerShape(10.dp)
                             )
                             .clickable { tab = value }
                             .padding(10.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(label, color = GenText, fontSize = 12.sp)
+                        Text(label, color = c.text, fontSize = 12.sp)
                     }
                 }
             }
@@ -1440,7 +1517,8 @@ private fun GenColorsModal(
                     onRemove = { idx ->
                         draft = draft.copy(designColors = draft.designColors.toMutableList().apply { removeAt(idx) })
                     },
-                    translationStore = translationStore
+                    translationStore = translationStore,
+                    chrome = c
                 )
             } else {
                 Row(
@@ -1450,7 +1528,7 @@ private fun GenColorsModal(
                 ) {
                     Text(
                         text = translationStore.t("creator.generator.background_transparent", "Transparent"),
-                        color = GenText
+                        color = c.text
                     )
                     Switch(
                         checked = draft.backgroundTransparent,
@@ -1473,7 +1551,8 @@ private fun GenColorsModal(
                         onRemove = { idx ->
                             draft = draft.copy(backgroundColors = draft.backgroundColors.toMutableList().apply { removeAt(idx) })
                         },
-                        translationStore = translationStore
+                        translationStore = translationStore,
+                        chrome = c
                     )
                 }
             }
@@ -1489,7 +1568,8 @@ private fun GenColorPickerSection(
     onAdd: () -> Unit,
     onPreset: (String) -> Unit,
     onRemove: (Int) -> Unit,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    chrome: GenModalChrome
 ) {
     val normalized = normalizeHex(inputHex) ?: "#f59e0b"
     var hue by remember(inputHex) { mutableStateOf(hexToHsv(normalized).first) }
@@ -1504,7 +1584,7 @@ private fun GenColorPickerSection(
                         .size(26.dp)
                         .clip(RoundedCornerShape(13.dp))
                         .background(parseHexColor(hex))
-                        .border(1.dp, GenCardBorder, RoundedCornerShape(13.dp))
+                        .border(1.dp, chrome.cardBorder, RoundedCornerShape(13.dp))
                         .clickable {
                             onPreset(hex)
                             onInputHexChange(hex)
@@ -1533,34 +1613,34 @@ private fun GenColorPickerSection(
                     }
                 },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("#hex", color = GenMuted) },
+                placeholder = { Text("#hex", color = chrome.muted) },
                 singleLine = true,
                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = GenText,
-                    unfocusedTextColor = GenText,
+                    focusedTextColor = chrome.text,
+                    unfocusedTextColor = chrome.text,
                     focusedBorderColor = EazColors.Orange.copy(alpha = 0.5f),
-                    unfocusedBorderColor = GenCardBorder,
+                    unfocusedBorderColor = chrome.cardBorder,
                     cursorColor = EazColors.Orange,
-                    focusedContainerColor = Color.Black.copy(alpha = 0.2f),
-                    unfocusedContainerColor = Color.Black.copy(alpha = 0.2f)
+                    focusedContainerColor = chrome.sectionSurface,
+                    unfocusedContainerColor = chrome.sectionSurface
                 )
             )
             TextButton(
                 onClick = onAdd,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .background(GenAccentSoft)
+                    .background(chrome.selectedCardBg)
                     .border(1.dp, EazColors.Orange, RoundedCornerShape(10.dp))
             ) {
-                Text(translationStore.t("creator.common.add", "Add"), color = GenText)
+                Text(translationStore.t("creator.common.add", "Add"), color = chrome.text)
             }
         }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color.Black.copy(alpha = 0.2f))
-                .border(1.dp, GenCardBorder, RoundedCornerShape(10.dp))
+                .background(chrome.sectionSurface)
+                .border(1.dp, chrome.cardBorder, RoundedCornerShape(10.dp))
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -1569,13 +1649,13 @@ private fun GenColorPickerSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Color picker", color = GenText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("Color picker", color = chrome.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 Box(
                     modifier = Modifier
                         .size(width = 56.dp, height = 28.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(parseHexColor(hsvToHex(hue, sat, value)))
-                        .border(1.dp, GenCardBorder, RoundedCornerShape(6.dp))
+                        .border(1.dp, chrome.cardBorder, RoundedCornerShape(6.dp))
                 )
             }
             var colorFieldSize by remember { mutableStateOf(Offset.Zero) }
@@ -1590,7 +1670,7 @@ private fun GenColorPickerSection(
                     .fillMaxWidth()
                     .height(160.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .border(1.dp, GenCardBorder, RoundedCornerShape(10.dp))
+                    .border(1.dp, chrome.cardBorder, RoundedCornerShape(10.dp))
                     .onSizeChanged { colorFieldSize = Offset(it.width.toFloat(), it.height.toFloat()) }
                     .pointerInput(hue) {
                         detectTapGestures { p -> setSatValueFromPoint(p) }
@@ -1632,7 +1712,7 @@ private fun GenColorPickerSection(
                 }
             }
 
-            Text("Hue", color = GenMuted, fontSize = 11.sp)
+            Text("Hue", color = chrome.muted, fontSize = 11.sp)
             var hueBarWidth by remember { mutableStateOf(1f) }
             fun setHueFromX(x: Float) {
                 if (hueBarWidth <= 0f) return
@@ -1644,7 +1724,7 @@ private fun GenColorPickerSection(
                     .fillMaxWidth()
                     .height(22.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .border(1.dp, GenCardBorder, RoundedCornerShape(10.dp))
+                    .border(1.dp, chrome.cardBorder, RoundedCornerShape(10.dp))
                     .onSizeChanged { hueBarWidth = it.width.toFloat() }
                     .pointerInput(Unit) {
                         detectTapGestures { p -> setHueFromX(p.x) }
@@ -1689,7 +1769,7 @@ private fun GenColorPickerSection(
         Text(
             text = translationStore.t("creator.color_modal.max_colors", "Max. 5 colors"),
             fontSize = 12.sp,
-            color = GenMuted
+            color = chrome.muted
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             selectedColors.forEachIndexed { idx, hex ->
@@ -1698,7 +1778,7 @@ private fun GenColorPickerSection(
                         .size(28.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(parseHexColor(hex))
-                        .border(1.dp, GenCardBorder, RoundedCornerShape(14.dp))
+                        .border(1.dp, chrome.cardBorder, RoundedCornerShape(14.dp))
                         .clickable { onRemove(idx) },
                     contentAlignment = Alignment.Center
                 ) {

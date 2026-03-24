@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -31,14 +33,12 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -47,7 +47,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,7 +60,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -71,6 +69,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.api.ShopifyProductsApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,7 +84,6 @@ import java.util.Currency
 import java.util.Locale
 
 private const val MIN_POSTCARD_BALANCE = 50.0
-private const val PRODUCT_STORE_URL = "https://www.eazpire.com"
 
 /** Same pattern as theme `gift-card-detail.js` email validation. */
 private val GIFT_CARD_EMAIL_REGEX = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
@@ -101,6 +99,19 @@ private fun normalizeShopifyProductId(raw: String?): String {
 
 private enum class DeliveryMode { SELF_PRINT, EMAIL, POSTCARD }
 
+private data class ShopifyVariantLine(
+    val id: String,
+    val title: String,
+    val price: Double,
+    val image: String?
+)
+
+private data class ProductDetailTarget(
+    val productId: String,
+    val handle: String,
+    val fromPicker: Boolean
+)
+
 private data class ShopifyProductRow(
     val id: String,
     val title: String,
@@ -108,8 +119,19 @@ private data class ShopifyProductRow(
     val image: String?,
     val price: Double,
     val currency: String,
-    val variantId: String?
+    val variantId: String?,
+    val variants: List<ShopifyVariantLine> = emptyList()
 )
+
+private fun ShopifyProductRow.displayPrice(variantId: String?): Double {
+    val v = variants.find { it.id == variantId } ?: variants.firstOrNull()
+    return v?.price ?: price
+}
+
+private fun ShopifyProductRow.displayImage(variantId: String?): String? {
+    val v = variants.find { it.id == variantId } ?: variants.firstOrNull()
+    return v?.image?.takeIf { !it.isNullOrBlank() } ?: image
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -125,10 +147,10 @@ fun GiftCardDetailNativeModal(
     if (giftCardId.isNullOrBlank()) return
 
     val context = LocalContext.current
-    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val productPickerSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val shopifyDetailApi = remember { ShopifyProductsApi() }
+    val recommendedScroll = rememberScrollState()
 
     var loading by remember(giftCardId) { mutableStateOf(true) }
     var loadError by remember(giftCardId) { mutableStateOf<String?>(null) }
@@ -163,6 +185,13 @@ fun GiftCardDetailNativeModal(
     var showProductPicker by remember(giftCardId) { mutableStateOf(false) }
     var pickerSearch by remember(giftCardId) { mutableStateOf("") }
     var pickerSelection by remember(giftCardId) { mutableStateOf<Set<String>>(emptySet()) }
+
+    var variantByProductId by remember(giftCardId) { mutableStateOf(mapOf<String, String>()) }
+    var productDetailTarget by remember(giftCardId) { mutableStateOf<ProductDetailTarget?>(null) }
+    var detailLoading by remember(giftCardId) { mutableStateOf(false) }
+    var detailLoadError by remember(giftCardId) { mutableStateOf<String?>(null) }
+    var detailData by remember(giftCardId) { mutableStateOf<ShopifyProductsApi.ProductDetail?>(null) }
+    var selectedVariantIdInModal by remember(giftCardId) { mutableStateOf<Long?>(null) }
 
     var saving by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
@@ -264,6 +293,27 @@ fun GiftCardDetailNativeModal(
                 val rows = mutableListOf<ShopifyProductRow>()
                 for (i in 0 until arr.length()) {
                     val p = arr.optJSONObject(i) ?: continue
+                    val varArr = p.optJSONArray("variants")
+                    val vlines = mutableListOf<ShopifyVariantLine>()
+                    if (varArr != null) {
+                        for (j in 0 until varArr.length()) {
+                            val v = varArr.optJSONObject(j) ?: continue
+                            val vid = normalizeShopifyProductId(
+                                v.optString("id", "").ifBlank { v.optLong("id").toString() }
+                            )
+                            if (vid.isBlank()) continue
+                            val avail = v.optBoolean("available", true)
+                            if (!avail) continue
+                            vlines.add(
+                                ShopifyVariantLine(
+                                    id = vid,
+                                    title = v.optString("title", "Default"),
+                                    price = v.optString("price", "0").toDoubleOrNull() ?: 0.0,
+                                    image = v.optString("image").takeIf { it.isNotBlank() }
+                                )
+                            )
+                        }
+                    }
                     rows.add(
                         ShopifyProductRow(
                             id = normalizeShopifyProductId(
@@ -274,11 +324,18 @@ fun GiftCardDetailNativeModal(
                             image = p.optString("image").takeIf { it.isNotBlank() },
                             price = p.optDouble("price", 0.0),
                             currency = p.optString("currency", "EUR"),
-                            variantId = p.optString("variantId").takeIf { it.isNotBlank() }
+                            variantId = p.optString("variantId").takeIf { it.isNotBlank() },
+                            variants = vlines
                         )
                     )
                 }
                 catalogProducts = rows
+                variantByProductId = productIds.mapNotNull { pid ->
+                    val row = rows.find { it.id == pid } ?: return@mapNotNull null
+                    val vid = row.variantId?.takeIf { it.isNotBlank() }
+                        ?: row.variants.firstOrNull()?.id
+                    if (vid.isNullOrBlank()) null else pid to vid
+                }.toMap()
             }
 
             if (isBuyer) {
@@ -337,6 +394,35 @@ fun GiftCardDetailNativeModal(
             loadError = e.message ?: "Error"
         } finally {
             loading = false
+        }
+    }
+
+    LaunchedEffect(productDetailTarget) {
+        val target = productDetailTarget
+        if (target == null) {
+            detailData = null
+            detailLoadError = null
+            selectedVariantIdInModal = null
+            return@LaunchedEffect
+        }
+        detailLoading = true
+        detailLoadError = null
+        detailData = null
+        val loaded = withContext(Dispatchers.IO) {
+            shopifyDetailApi.getProductByHandle(target.handle)
+        }
+        detailLoading = false
+        if (loaded == null) {
+            detailLoadError = t("creator.gift_cards.product_load_error", "Could not load product details.")
+            return@LaunchedEffect
+        }
+        detailData = loaded
+        val existing = variantByProductId[target.productId]?.toLongOrNull()
+        val firstOk = loaded.variants.firstOrNull { it.available }?.id
+            ?: loaded.variants.firstOrNull()?.id
+        selectedVariantIdInModal = when {
+            existing != null && loaded.variants.any { it.id == existing } -> existing
+            else -> firstOk
         }
     }
 
@@ -441,28 +527,32 @@ fun GiftCardDetailNativeModal(
                                     color = EazColors.TextSecondary
                                 )
                             } else {
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    selectedRows.chunked(2).forEach { rowItems ->
-                                        Row(
-                                            Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            rowItems.forEach { p ->
-                                                Box(Modifier.weight(1f)) {
-                                                    ProductTile(
-                                                        p = p,
-                                                        onOpen = {
-                                                            uriHandler.openUri("$PRODUCT_STORE_URL/products/${p.handle}")
-                                                        },
-                                                        fmtMoney = { a, c -> fmtMoney(a, c) }
-                                                    )
-                                                }
-                                            }
-                                            if (rowItems.size == 1) {
-                                                Spacer(Modifier.weight(1f))
+                                    Row(
+                                        Modifier.horizontalScroll(recommendedScroll),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        selectedRows.forEach { p ->
+                                            val vid = variantByProductId[p.id]
+                                            Box(Modifier.width(152.dp)) {
+                                                ProductTile(
+                                                    p = p,
+                                                    selectedVariantId = vid,
+                                                    onOpen = {
+                                                        productDetailTarget = ProductDetailTarget(
+                                                            productId = p.id,
+                                                            handle = p.handle,
+                                                            fromPicker = false
+                                                        )
+                                                    },
+                                                    fmtMoney = { a, c -> fmtMoney(a, c) }
+                                                )
                                             }
                                         }
                                     }
@@ -847,30 +937,13 @@ fun GiftCardDetailNativeModal(
                 q.isEmpty() || it.title.lowercase(Locale.getDefault()).contains(q)
             }
         }
-        ModalBottomSheet(
-            onDismissRequest = { showProductPicker = false },
-            sheetState = productPickerSheetState,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 28.dp)
-            ) {
-                Text(
-                    t("creator.gift_cards.select_products", "Select products"),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                OutlinedTextField(
-                    value = pickerSearch,
-                    onValueChange = { pickerSearch = it },
-                    label = { Text(t("creator.common.search", "Search")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+        GiftCardProductPickerOverlay(
+            onDismiss = { showProductPicker = false },
+            title = t("creator.gift_cards.select_products", "Select products"),
+            searchValue = pickerSearch,
+            onSearchChange = { pickerSearch = it },
+            searchLabel = t("creator.common.search", "Search"),
+            grid = {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier
@@ -882,18 +955,27 @@ fun GiftCardDetailNativeModal(
                     contentPadding = PaddingValues(bottom = 8.dp)
                 ) {
                     items(filtered, key = { it.id }) { p ->
+                        val sel = p.id in pickerSelection
+                        val disabled = !sel && pickerSelection.size >= 20
                         ProductPickerGridItem(
                             p = p,
-                            selected = p.id in pickerSelection,
-                            onToggle = {
-                                pickerSelection = pickerSelection.toMutableSet().apply {
-                                    if (!add(p.id)) remove(p.id)
+                            selected = sel,
+                            disabled = disabled,
+                            onOpenDetail = {
+                                if (!disabled) {
+                                    productDetailTarget = ProductDetailTarget(
+                                        productId = p.id,
+                                        handle = p.handle,
+                                        fromPicker = true
+                                    )
                                 }
                             },
                             fmtMoney = { a, c -> fmtMoney(a, c) }
                         )
                     }
                 }
+            },
+            footer = {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
@@ -933,7 +1015,42 @@ fun GiftCardDetailNativeModal(
                     }
                 }
             }
-        }
+        )
+    }
+
+    val detailTarget = productDetailTarget
+    if (detailTarget != null) {
+        val row = catalogProducts.find { it.id == detailTarget.productId }
+        val currency = row?.currency ?: "EUR"
+        GiftCardProductVariantOverlay(
+            productTitle = row?.title ?: detailTarget.handle,
+            loading = detailLoading,
+            loadError = detailLoadError,
+            detail = detailData,
+            selectedVariantId = selectedVariantIdInModal,
+            onSelectVariant = { selectedVariantIdInModal = it },
+            onConfirm = {
+                val vid = selectedVariantIdInModal ?: return@GiftCardProductVariantOverlay
+                variantByProductId = variantByProductId + (detailTarget.productId to vid.toString())
+                if (detailTarget.fromPicker) {
+                    if (pickerSelection.size < 20) {
+                        pickerSelection = pickerSelection + detailTarget.productId
+                    }
+                }
+                productDetailTarget = null
+            },
+            onDismiss = {
+                productDetailTarget = null
+                detailLoadError = null
+            },
+            confirmLabel = t("creator.common.save", "Save"),
+            dismissLabel = t("creator.common.close", "Close"),
+            cancelLabel = t("creator.common.cancel", "Cancel"),
+            variantSectionLabel = t("creator.gift_cards.variant_options", "Options"),
+            noVariantsText = t("creator.gift_cards.no_variants", "No variants available."),
+            fmtMoney = { a, c -> fmtMoney(a, c) },
+            currencyCode = currency
+        )
     }
 }
 
@@ -941,44 +1058,45 @@ fun GiftCardDetailNativeModal(
 private fun ProductPickerGridItem(
     p: ShopifyProductRow,
     selected: Boolean,
-    onToggle: () -> Unit,
+    disabled: Boolean,
+    onOpenDetail: () -> Unit,
     fmtMoney: (Double, String) -> String
 ) {
+    val vid = p.variantId ?: p.variants.firstOrNull()?.id
+    val price = p.displayPrice(vid)
     Column(
         Modifier
             .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) Color(0xFFFFF7ED) else Color(0xFFF9FAFB))
-            .clickable(onClick = onToggle)
+            .background(
+                when {
+                    disabled -> Color(0xFFF3F4F6)
+                    selected -> Color(0xFFFFF7ED)
+                    else -> Color(0xFFF9FAFB)
+                }
+            )
+            .clickable(enabled = !disabled, onClick = onOpenDetail)
             .padding(8.dp)
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(96.dp)
+                .height(100.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFFE5E7EB))
         ) {
-            if (p.image != null) {
+            val img = p.displayImage(vid)
+            if (img != null) {
                 AsyncImage(
-                    model = p.image,
+                    model = img,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Fit
                 )
             }
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 6.dp)
-        ) {
-            Checkbox(
-                checked = selected,
-                onCheckedChange = { onToggle() }
-            )
-            Column(Modifier.weight(1f)) {
-                Text(p.title, fontSize = 12.sp, maxLines = 2, fontWeight = FontWeight.Medium)
-                Text(fmtMoney(p.price, p.currency), fontSize = 11.sp, color = EazColors.TextSecondary)
-            }
+        Column(Modifier.padding(top = 6.dp)) {
+            Text(p.title, fontSize = 12.sp, maxLines = 2, fontWeight = FontWeight.Medium)
+            Text(fmtMoney(price, p.currency), fontSize = 11.sp, color = EazColors.TextSecondary)
         }
     }
 }
@@ -986,9 +1104,11 @@ private fun ProductPickerGridItem(
 @Composable
 private fun ProductTile(
     p: ShopifyProductRow,
+    selectedVariantId: String?,
     onOpen: () -> Unit,
     fmtMoney: (Double, String) -> String
 ) {
+    val price = p.displayPrice(selectedVariantId)
     Column(
         Modifier
             .clip(RoundedCornerShape(8.dp))
@@ -999,21 +1119,23 @@ private fun ProductTile(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(100.dp)
+                .height(120.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFFE5E7EB))
+                .background(Color(0xFFE5E7EB)),
+            contentAlignment = Alignment.Center
         ) {
-            if (p.image != null) {
+            val img = p.displayImage(selectedVariantId)
+            if (img != null) {
                 AsyncImage(
-                    model = p.image,
+                    model = img,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Fit
                 )
             }
         }
         Text(p.title, fontSize = 12.sp, maxLines = 2, fontWeight = FontWeight.Medium)
-        Text(fmtMoney(p.price, p.currency), fontSize = 11.sp, color = EazColors.TextSecondary)
+        Text(fmtMoney(price, p.currency), fontSize = 11.sp, color = EazColors.TextSecondary)
     }
 }
 
