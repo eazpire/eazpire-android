@@ -41,7 +41,7 @@ private data class MenuItem(
 
 private val MENU_ITEMS = listOf(
     MenuItem("Create", SHOP_MENU_CREATE_HANDLE, ""),
-    MenuItem("Promotions", "eaz-promotions", "https://www.eazpire.com/pages/promotions"),
+    MenuItem("Promotions", "eaz-promotions", "https://www.eazpire.com/collections/eaz-promotions"),
     MenuItem("Women", "women", "https://www.eazpire.com/collections/women"),
     MenuItem("Men", "men", "https://www.eazpire.com/collections/men"),
     MenuItem("Kids", "kids", "https://www.eazpire.com/collections/kids"),
