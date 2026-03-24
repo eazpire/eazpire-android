@@ -36,7 +36,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Redo
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
@@ -99,6 +105,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** Dark theme colors matching web gen-select-overlay */
 private val GenModalOverlay = Color(0x33000000)
@@ -2161,7 +2172,111 @@ private fun GenGridImageShimmer(modifier: Modifier = Modifier) {
     }
 }
 
-data class CanvasStroke(val points: List<Offset>, val color: Color, val width: Float)
+/** Matches theme `creator-canvas-sketch-modal.js` stroke transform (rotation in radians). */
+data class StrokeTransform(
+    val tx: Float = 0f,
+    val ty: Float = 0f,
+    val scale: Float = 1f,
+    val rotation: Float = 0f
+)
+
+data class CanvasStroke(
+    val points: List<Offset>,
+    val color: Color,
+    val width: Float,
+    val transform: StrokeTransform = StrokeTransform()
+)
+
+private const val CANVAS_HIT_TEST_PAD = 12f
+
+private fun getStrokeCentroid(points: List<Offset>): Offset {
+    if (points.isEmpty()) return Offset.Zero
+    var sx = 0f
+    var sy = 0f
+    for (p in points) {
+        sx += p.x
+        sy += p.y
+    }
+    val n = points.size.toFloat()
+    return Offset(sx / n, sy / n)
+}
+
+private fun getTransformedPoints(stroke: CanvasStroke): List<Offset> {
+    val pts = stroke.points
+    if (pts.size < 2) return emptyList()
+    val tr = stroke.transform
+    val c = getStrokeCentroid(pts)
+    val cx = c.x
+    val cy = c.y
+    val cosR = cos(tr.rotation.toDouble()).toFloat()
+    val sinR = sin(tr.rotation.toDouble()).toFloat()
+    val sc = tr.scale
+    return pts.map { p ->
+        val x = p.x - cx
+        val y = p.y - cy
+        val xr = x * cosR * sc - y * sinR * sc
+        val yr = x * sinR * sc + y * cosR * sc
+        Offset(xr + cx + tr.tx, yr + cy + tr.ty)
+    }
+}
+
+private fun distSqToSegment(px: Float, py: Float, x1: Float, y1: Float, x2: Float, y2: Float): Float {
+    val dx = x2 - x1
+    val dy = y2 - y1
+    val len2 = dx * dx + dy * dy
+    if (len2 < 1e-6f) {
+        val dx0 = px - x1
+        val dy0 = py - y1
+        return dx0 * dx0 + dy0 * dy0
+    }
+    val t = ((px - x1) * dx + (py - y1) * dy) / len2
+    val tClamped = t.coerceIn(0f, 1f)
+    val qx = x1 + tClamped * dx
+    val qy = y1 + tClamped * dy
+    val ddx = px - qx
+    val ddy = py - qy
+    return ddx * ddx + ddy * ddy
+}
+
+private fun minDistToPolyline(px: Float, py: Float, points: List<Offset>): Float {
+    if (points.size < 2) return Float.MAX_VALUE
+    var minD = Float.MAX_VALUE
+    for (i in 0 until points.size - 1) {
+        val d = distSqToSegment(px, py, points[i].x, points[i].y, points[i + 1].x, points[i + 1].y)
+        if (d < minD) minD = d
+    }
+    return sqrt(minD)
+}
+
+private fun hitTestLayerIndex(px: Float, py: Float, strokes: List<CanvasStroke>): Int {
+    for (i in strokes.indices.reversed()) {
+        val stroke = strokes[i]
+        val pts = getTransformedPoints(stroke)
+        if (pts.size < 2) continue
+        val sc = abs(stroke.transform.scale).takeIf { it > 0f } ?: 1f
+        val w = stroke.width * sc * 0.5f + CANVAS_HIT_TEST_PAD
+        val dist = minDistToPolyline(px, py, pts)
+        if (dist <= w) return i
+    }
+    return -1
+}
+
+private fun drawStrokeToAndroidPath(path: android.graphics.Path, pts: List<Offset>, canvasScale: Float) {
+    if (pts.size < 2) return
+    path.moveTo(pts[0].x * canvasScale, pts[0].y * canvasScale)
+    for (i in 1 until pts.size) {
+        path.lineTo(pts[i].x * canvasScale, pts[i].y * canvasScale)
+    }
+}
+
+private enum class CanvasSketchMode { Draw, Edit }
+
+private data class EditDragState(
+    val layerIndex: Int,
+    val startPointer: Offset,
+    val startTx: Float,
+    val startTy: Float
+)
 
 /**
  * Holds sketch strokes across modal open/close when passed into [GenCanvasModal].
@@ -2275,192 +2390,21 @@ fun GenCanvasEditModal(
     backgroundImageDataUrl: String?,
     onDismiss: () -> Unit,
     translationStore: TranslationStore,
-    onConfirm: (String) -> Unit
+    onConfirm: (String) -> Unit,
+    externalSession: CanvasSessionState? = null,
+    shopLightChrome: Boolean = false
 ) {
-    if (!visible || backgroundImageDataUrl.isNullOrBlank()) return
-    var drawColor by remember { mutableStateOf(Color.Black) }
-    var strokeWidth by remember { mutableStateOf(8f) }
-    val strokes = remember { mutableStateListOf<CanvasStroke>() }
-    var currentStroke by remember { mutableStateOf<MutableList<Offset>?>(null) }
-    var canvasSize by remember { mutableStateOf(400f) }
-    val scope = rememberCoroutineScope()
-
-    fun exportToDataUrl() {
-        val strokesSnapshot = strokes.toList()
-        val currentSnapshot = currentStroke?.takeIf { it.size >= 2 }?.let { CanvasStroke(it, drawColor, strokeWidth) }
-        val allStrokesSnapshot = strokesSnapshot + (currentSnapshot?.let { listOf(it) } ?: emptyList())
-        val sizeSnapshot = if (canvasSize < 10f) 400f else canvasSize
-        val bgSnapshot = backgroundImageDataUrl
-        scope.launch {
-            val dataUrl = withContext(Dispatchers.Default) {
-                val outSize = 512
-                val bitmap = android.graphics.Bitmap.createBitmap(outSize, outSize, android.graphics.Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(bitmap)
-                try {
-                    val base64 = bgSnapshot.substringAfter(",", "")
-                    if (base64.isNotBlank()) {
-                        val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
-                        val bg = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        if (bg != null) {
-                            val dst = android.graphics.Rect(0, 0, outSize, outSize)
-                            canvas.drawBitmap(bg, null, dst, android.graphics.Paint().apply { isFilterBitmap = true })
-                            if (!bg.isRecycled) bg.recycle()
-                        } else {
-                            canvas.drawColor(android.graphics.Color.WHITE)
-                        }
-                    } else {
-                        canvas.drawColor(android.graphics.Color.WHITE)
-                    }
-                } catch (_: Exception) {
-                    canvas.drawColor(android.graphics.Color.WHITE)
-                }
-                val paint = android.graphics.Paint().apply {
-                    style = android.graphics.Paint.Style.STROKE
-                    strokeCap = android.graphics.Paint.Cap.ROUND
-                    strokeJoin = android.graphics.Paint.Join.ROUND
-                    isAntiAlias = true
-                }
-                val scale = outSize.toFloat() / sizeSnapshot
-                allStrokesSnapshot.forEach { stroke ->
-                    if (stroke.points.size < 2) return@forEach
-                    paint.color = stroke.color.toArgb()
-                    paint.strokeWidth = stroke.width * scale
-                    val path = android.graphics.Path()
-                    path.moveTo(stroke.points[0].x * scale, stroke.points[0].y * scale)
-                    stroke.points.drop(1).forEach { path.lineTo(it.x * scale, it.y * scale) }
-                    canvas.drawPath(path, paint)
-                }
-                val out = java.io.ByteArrayOutputStream()
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-                "data:image/png;base64,${android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)}"
-            }
-            onConfirm(dataUrl)
-        }
-    }
-
-    GenModalBase(
-        title = translationStore.t("creator.canvas.edit_title", "Edit design"),
+    GenCanvasModal(
+        visible = visible && !backgroundImageDataUrl.isNullOrBlank(),
         onDismiss = onDismiss,
-        showApply = true,
-        applyLabel = translationStore.t("creator.canvas.save_edit", "Save & use"),
-        onApply = { exportToDataUrl() }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = translationStore.t("creator.canvas.color", "Color"),
-                        fontSize = 12.sp,
-                        color = GenMuted
-                    )
-                    CANVAS_COLORS.forEach { color ->
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(color)
-                                .border(
-                                    width = if (drawColor == color) 2.dp else 1.dp,
-                                    color = if (drawColor == color) EazColors.Orange else GenCardBorder,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .clickable { drawColor = color }
-                        )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                Text(
-                    text = translationStore.t("creator.canvas.brush_size", "Size"),
-                    fontSize = 12.sp,
-                    color = GenMuted
-                )
-                Slider(
-                    value = strokeWidth,
-                    onValueChange = { strokeWidth = it },
-                    valueRange = 2f..40f,
-                    modifier = Modifier.weight(1f),
-                    colors = SliderDefaults.colors(
-                        thumbColor = EazColors.Orange,
-                        activeTrackColor = EazColors.Orange
-                    )
-                )
-                TextButton(onClick = {
-                    strokes.clear()
-                    currentStroke = null
-                }) {
-                    Text(
-                        text = translationStore.t("creator.common.clear", "Clear"),
-                        color = GenText
-                    )
-                }
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
-                    .border(1.dp, GenCardBorder, RoundedCornerShape(12.dp))
-                    .onSizeChanged { canvasSize = minOf(it.width, it.height).toFloat() }
-                    .pointerInput(backgroundImageDataUrl) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                currentStroke = mutableListOf(offset)
-                            },
-                            onDrag = { change, _ ->
-                                currentStroke?.add(change.position)
-                            },
-                            onDragEnd = {
-                                currentStroke?.let { pts ->
-                                    if (pts.size >= 2) strokes.add(CanvasStroke(pts.toList(), drawColor, strokeWidth))
-                                }
-                                currentStroke = null
-                            }
-                        )
-                    }
-            ) {
-                DataUrlImage(
-                    dataUrl = backgroundImageDataUrl,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    canvasSize = size.minDimension
-                    val allStrokes = strokes + (currentStroke?.takeIf { it.size >= 2 }?.let { listOf(CanvasStroke(it, drawColor, strokeWidth)) } ?: emptyList())
-                    allStrokes.forEach { stroke ->
-                        if (stroke.points.size < 2) return@forEach
-                        val path = Path().apply {
-                            moveTo(stroke.points[0].x, stroke.points[0].y)
-                            stroke.points.drop(1).forEach { lineTo(it.x, it.y) }
-                        }
-                        drawPath(
-                            path = path,
-                            color = stroke.color,
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                width = stroke.width,
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            )
-                        )
-                    }
-                }
-            }
-        }
-    }
+        translationStore = translationStore,
+        onConfirm = onConfirm,
+        shopLightChrome = shopLightChrome,
+        externalSession = externalSession,
+        backgroundImageDataUrl = backgroundImageDataUrl,
+        titleOverride = translationStore.t("creator.canvas.edit_title", "Edit design"),
+        applyLabelOverride = translationStore.t("creator.canvas.save_edit", "Save & use")
+    )
 }
 
 @Composable
@@ -2470,9 +2414,13 @@ fun GenCanvasModal(
     translationStore: TranslationStore,
     onConfirm: (String) -> Unit,
     shopLightChrome: Boolean = false,
-    externalSession: CanvasSessionState? = null
+    externalSession: CanvasSessionState? = null,
+    backgroundImageDataUrl: String? = null,
+    titleOverride: String? = null,
+    applyLabelOverride: String? = null
 ) {
     if (!visible) return
+    val bgUrl = backgroundImageDataUrl?.takeIf { it.isNotBlank() }
     val c = genModalChrome(shopLightChrome)
     val session = externalSession ?: remember { CanvasSessionState() }
     val strokes = session.strokes
@@ -2480,12 +2428,15 @@ fun GenCanvasModal(
     var strokeWidth by remember { mutableStateOf(8f) }
     var currentStroke by remember { mutableStateOf<MutableList<Offset>?>(null) }
     var canvasSize by remember { mutableStateOf(400f) }
+    var canvasMode by remember { mutableStateOf(CanvasSketchMode.Draw) }
+    var selectedLayerIndex by remember { mutableStateOf<Int?>(null) }
+    var editDrag by remember { mutableStateOf<EditDragState?>(null) }
     var showHistory by remember { mutableStateOf(false) }
     val historySnapshots = remember { mutableStateListOf<Pair<Long, List<CanvasStroke>>>() }
     val scope = rememberCoroutineScope()
 
     fun pushHistorySnapshot() {
-        historySnapshots.add(System.currentTimeMillis() to strokes.toList())
+        historySnapshots.add(System.currentTimeMillis() to strokes.map { it.copy() })
         if (historySnapshots.size > 40) historySnapshots.removeAt(0)
     }
 
@@ -2499,7 +2450,28 @@ fun GenCanvasModal(
                 val outSize = 512
                 val bitmap = android.graphics.Bitmap.createBitmap(outSize, outSize, android.graphics.Bitmap.Config.ARGB_8888)
                 val canvas = android.graphics.Canvas(bitmap)
-                canvas.drawColor(android.graphics.Color.WHITE)
+                if (bgUrl != null) {
+                    try {
+                        val base64 = bgUrl.substringAfter(",", "")
+                        if (base64.isNotBlank()) {
+                            val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+                            val bgBmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            if (bgBmp != null) {
+                                val dst = android.graphics.Rect(0, 0, outSize, outSize)
+                                canvas.drawBitmap(bgBmp, null, dst, android.graphics.Paint().apply { isFilterBitmap = true })
+                                if (!bgBmp.isRecycled) bgBmp.recycle()
+                            } else {
+                                canvas.drawColor(android.graphics.Color.WHITE)
+                            }
+                        } else {
+                            canvas.drawColor(android.graphics.Color.WHITE)
+                        }
+                    } catch (_: Exception) {
+                        canvas.drawColor(android.graphics.Color.WHITE)
+                    }
+                } else {
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                }
                 val paint = android.graphics.Paint().apply {
                     style = android.graphics.Paint.Style.STROKE
                     strokeCap = android.graphics.Paint.Cap.ROUND
@@ -2509,11 +2481,13 @@ fun GenCanvasModal(
                 val scale = outSize.toFloat() / sizeSnapshot
                 allStrokesSnapshot.forEach { stroke ->
                     if (stroke.points.size < 2) return@forEach
+                    val pts = getTransformedPoints(stroke)
+                    if (pts.size < 2) return@forEach
+                    val sc = abs(stroke.transform.scale).takeIf { it > 0f } ?: 1f
                     paint.color = stroke.color.toArgb()
-                    paint.strokeWidth = stroke.width * scale
+                    paint.strokeWidth = stroke.width * sc * scale
                     val path = android.graphics.Path()
-                    path.moveTo(stroke.points[0].x * scale, stroke.points[0].y * scale)
-                    stroke.points.drop(1).forEach { path.lineTo(it.x * scale, it.y * scale) }
+                    drawStrokeToAndroidPath(path, pts, scale)
                     canvas.drawPath(path, paint)
                 }
                 val out = java.io.ByteArrayOutputStream()
@@ -2525,85 +2499,245 @@ fun GenCanvasModal(
     }
 
     GenModalBase(
-        title = translationStore.t("creator.canvas.title", "Canvas Sketch"),
+        title = titleOverride ?: translationStore.t("creator.canvas.title", "Canvas Sketch"),
         onDismiss = onDismiss,
         showApply = true,
-        applyLabel = translationStore.t("creator.canvas.use_drawing", "Use drawing"),
+        applyLabel = applyLabelOverride ?: translationStore.t("creator.canvas.use_drawing", "Use drawing"),
         onApply = { exportToDataUrl() },
         shopLightChrome = shopLightChrome
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IconButton(
+                        onClick = {
+                            canvasMode = CanvasSketchMode.Draw
+                            selectedLayerIndex = null
+                            editDrag = null
+                        },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                if (canvasMode == CanvasSketchMode.Draw) EazColors.Orange.copy(alpha = 0.2f) else Color.Transparent,
+                                RoundedCornerShape(8.dp)
+                            )
+                    ) {
+                        Icon(
+                            Icons.Filled.Brush,
+                            contentDescription = translationStore.t("creator.canvas.mode_draw", "Draw"),
+                            tint = c.text,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            canvasMode = CanvasSketchMode.Edit
+                            editDrag = null
+                        },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                if (canvasMode == CanvasSketchMode.Edit) EazColors.Orange.copy(alpha = 0.2f) else Color.Transparent,
+                                RoundedCornerShape(8.dp)
+                            )
+                    ) {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = translationStore.t("creator.canvas.mode_edit", "Edit"),
+                            tint = c.text,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = translationStore.t("creator.canvas.color", "Color"),
-                        fontSize = 12.sp,
-                        color = c.muted
-                    )
-                    CANVAS_COLORS.forEach { color ->
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(color)
-                                .border(
-                                    width = if (drawColor == color) 2.dp else 1.dp,
-                                    color = if (drawColor == color) EazColors.Orange else c.cardBorder,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .clickable { drawColor = color }
+                if (canvasMode == CanvasSketchMode.Draw) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = translationStore.t("creator.canvas.color", "Color"),
+                            fontSize = 12.sp,
+                            color = c.muted
+                        )
+                        CANVAS_COLORS.forEach { color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(color)
+                                    .border(
+                                        width = if (drawColor == color) 2.dp else 1.dp,
+                                        color = if (drawColor == color) EazColors.Orange else c.cardBorder,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { drawColor = color }
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = translationStore.t("creator.canvas.brush_size", "Size"),
+                            fontSize = 12.sp,
+                            color = c.muted
+                        )
+                        Slider(
+                            value = strokeWidth,
+                            onValueChange = { strokeWidth = it },
+                            valueRange = 1f..40f,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = EazColors.Orange,
+                                activeTrackColor = EazColors.Orange
+                            )
+                        )
+                    }
+                } else {
+                    val selIdx = selectedLayerIndex
+                    val selStroke = selIdx?.let { strokes.getOrNull(it) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = translationStore.t("creator.canvas.scale_label", "Scale"),
+                            fontSize = 12.sp,
+                            color = c.muted
+                        )
+                        Slider(
+                            value = ((selStroke?.transform?.scale ?: 1f) * 100f).coerceIn(20f, 300f),
+                            onValueChange = { v ->
+                                val idx = selectedLayerIndex
+                                val s = if (idx != null) strokes.getOrNull(idx) else null
+                                if (idx != null && s != null) {
+                                    val pct = v.coerceIn(20f, 300f)
+                                    val newScale = (pct / 100f).coerceAtLeast(0.05f)
+                                    strokes[idx] = s.copy(transform = s.transform.copy(scale = newScale))
+                                }
+                            },
+                            onValueChangeFinished = { pushHistorySnapshot() },
+                            enabled = selStroke != null,
+                            valueRange = 20f..300f,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = EazColors.Orange,
+                                activeTrackColor = EazColors.Orange
+                            )
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = translationStore.t("creator.canvas.rotation_label", "Rotation"),
+                            fontSize = 12.sp,
+                            color = c.muted
+                        )
+                        Slider(
+                            value = run {
+                                val rad = selStroke?.transform?.rotation ?: 0f
+                                (rad * 180f / PI.toFloat()).coerceIn(-180f, 180f)
+                            },
+                            onValueChange = { deg ->
+                                val idx = selectedLayerIndex
+                                val s = if (idx != null) strokes.getOrNull(idx) else null
+                                if (idx != null && s != null) {
+                                    val d = deg.coerceIn(-180f, 180f)
+                                    val rad = d * PI.toFloat() / 180f
+                                    strokes[idx] = s.copy(transform = s.transform.copy(rotation = rad))
+                                }
+                            },
+                            onValueChangeFinished = { pushHistorySnapshot() },
+                            enabled = selStroke != null,
+                            valueRange = -180f..180f,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = EazColors.Orange,
+                                activeTrackColor = EazColors.Orange
+                            )
                         )
                     }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = translationStore.t("creator.canvas.brush_size", "Size"),
-                        fontSize = 12.sp,
-                        color = c.muted
-                    )
-                    Slider(
-                        value = strokeWidth,
-                        onValueChange = { strokeWidth = it },
-                        valueRange = 2f..40f,
-                        modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(
-                            thumbColor = EazColors.Orange,
-                            activeTrackColor = EazColors.Orange
+                    IconButton(
+                        onClick = {
+                            if (session.undo()) {
+                                selectedLayerIndex = null
+                            }
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Undo,
+                            contentDescription = translationStore.t("creator.canvas.undo", "Undo"),
+                            tint = c.text,
+                            modifier = Modifier.size(22.dp)
                         )
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = { if (session.undo()) { } }) {
-                        Text(translationStore.t("creator.canvas.undo", "Undo"), color = c.text)
                     }
-                    TextButton(onClick = { if (session.redo()) { } }) {
-                        Text(translationStore.t("creator.canvas.redo", "Redo"), color = c.text)
+                    IconButton(
+                        onClick = {
+                            if (session.redo()) {
+                                selectedLayerIndex = null
+                            }
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Redo,
+                            contentDescription = translationStore.t("creator.canvas.redo", "Redo"),
+                            tint = c.text,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
-                    TextButton(onClick = {
-                        pushHistorySnapshot()
-                        session.clearAll()
-                        currentStroke = null
-                    }) {
-                        Text(translationStore.t("creator.common.clear", "Clear"), color = c.text)
+                    IconButton(
+                        onClick = {
+                            pushHistorySnapshot()
+                            session.clearAll()
+                            currentStroke = null
+                            selectedLayerIndex = null
+                            editDrag = null
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.DeleteOutline,
+                            contentDescription = translationStore.t("creator.common.clear", "Clear"),
+                            tint = c.text,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
-                    TextButton(onClick = { showHistory = true }) {
-                        Text(translationStore.t("creator.canvas.history", "History"), color = c.text)
+                    IconButton(
+                        onClick = { showHistory = true },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.History,
+                            contentDescription = translationStore.t("creator.canvas.history", "History"),
+                            tint = c.text,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
             }
@@ -2617,6 +2751,7 @@ fun GenCanvasModal(
                                 val (t, list) = snap
                                 TextButton(onClick = {
                                     session.replaceContent(list)
+                                    selectedLayerIndex = null
                                     showHistory = false
                                 }) {
                                     Text(
@@ -2648,7 +2783,20 @@ fun GenCanvasModal(
                 ) {
                     itemsIndexed(strokes) { index, _ ->
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (canvasMode == CanvasSketchMode.Edit && selectedLayerIndex == index) {
+                                        Modifier.border(2.dp, EazColors.Orange, RoundedCornerShape(8.dp))
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    canvasMode = CanvasSketchMode.Edit
+                                    selectedLayerIndex = index
+                                },
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2660,7 +2808,13 @@ fun GenCanvasModal(
                             Row {
                                 TextButton(onClick = { session.moveLayerUp(index) }) { Text("↑", fontSize = 12.sp) }
                                 TextButton(onClick = { session.moveLayerDown(index) }) { Text("↓", fontSize = 12.sp) }
-                                TextButton(onClick = { session.removeLayerAt(index) }) {
+                                TextButton(onClick = {
+                                    session.removeLayerAt(index)
+                                    if (selectedLayerIndex == index) selectedLayerIndex = null
+                                    else if (selectedLayerIndex != null && selectedLayerIndex!! > index) {
+                                        selectedLayerIndex = selectedLayerIndex!! - 1
+                                    }
+                                }) {
                                     Text(translationStore.t("creator.common.delete", "Delete"), fontSize = 12.sp)
                                 }
                             }
@@ -2677,40 +2831,91 @@ fun GenCanvasModal(
                     .background(Color.White)
                     .border(1.dp, c.cardBorder, RoundedCornerShape(12.dp))
                     .onSizeChanged { canvasSize = minOf(it.width, it.height).toFloat() }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                currentStroke = mutableListOf(offset)
-                            },
-                            onDrag = { change, _ ->
-                                currentStroke?.add(change.position)
-                            },
-                            onDragEnd = {
-                                currentStroke?.let { pts ->
-                                    if (pts.size >= 2) {
-                                        pushHistorySnapshot()
-                                        session.commitStroke(CanvasStroke(pts.toList(), drawColor, strokeWidth))
+                    .pointerInput(canvasMode, strokes.size, bgUrl) {
+                        if (canvasMode == CanvasSketchMode.Draw) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    currentStroke = mutableListOf(offset)
+                                },
+                                onDrag = { change, _ ->
+                                    currentStroke?.add(change.position)
+                                },
+                                onDragEnd = {
+                                    currentStroke?.let { pts ->
+                                        if (pts.size >= 2) {
+                                            pushHistorySnapshot()
+                                            session.commitStroke(CanvasStroke(pts.toList(), drawColor, strokeWidth))
+                                        }
                                     }
+                                    currentStroke = null
                                 }
-                                currentStroke = null
-                            }
-                        )
+                            )
+                        } else {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    val hit = hitTestLayerIndex(offset.x, offset.y, strokes)
+                                    if (hit >= 0) {
+                                        selectedLayerIndex = hit
+                                        val tr = strokes[hit].transform
+                                        editDrag = EditDragState(hit, offset, tr.tx, tr.ty)
+                                    } else {
+                                        selectedLayerIndex = null
+                                        editDrag = null
+                                    }
+                                },
+                                onDrag = { change, _ ->
+                                    val ed = editDrag ?: return@detectDragGestures
+                                    change.consume()
+                                    val nx = ed.startTx + (change.position.x - ed.startPointer.x)
+                                    val ny = ed.startTy + (change.position.y - ed.startPointer.y)
+                                    val idx = ed.layerIndex
+                                    val s = strokes.getOrNull(idx) ?: return@detectDragGestures
+                                    strokes[idx] = s.copy(transform = s.transform.copy(tx = nx, ty = ny))
+                                },
+                                onDragEnd = {
+                                    val ed = editDrag
+                                    if (ed != null) {
+                                        val tr = strokes.getOrNull(ed.layerIndex)?.transform
+                                        if (tr != null) {
+                                            val moved = abs(tr.tx - ed.startTx) > 0.5f || abs(tr.ty - ed.startTy) > 0.5f
+                                            if (moved) pushHistorySnapshot()
+                                        }
+                                    }
+                                    editDrag = null
+                                },
+                                onDragCancel = { editDrag = null }
+                            )
+                        }
                     }
             ) {
+                if (bgUrl != null) {
+                    DataUrlImage(
+                        dataUrl = bgUrl,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     canvasSize = size.minDimension
-                    val allStrokes = strokes + (currentStroke?.takeIf { it.size >= 2 }?.let { listOf(CanvasStroke(it, drawColor, strokeWidth)) } ?: emptyList())
+                    val previewStroke = currentStroke?.takeIf { it.size >= 2 }
+                        ?.let { CanvasStroke(it, drawColor, strokeWidth) }
+                    val allStrokes = strokes + (previewStroke?.let { listOf(it) } ?: emptyList())
                     allStrokes.forEach { stroke ->
                         if (stroke.points.size < 2) return@forEach
+                        val pts = getTransformedPoints(stroke)
+                        if (pts.size < 2) return@forEach
+                        val sc = abs(stroke.transform.scale).takeIf { it > 0f } ?: 1f
                         val path = Path().apply {
-                            moveTo(stroke.points[0].x, stroke.points[0].y)
-                            stroke.points.drop(1).forEach { lineTo(it.x, it.y) }
+                            moveTo(pts[0].x, pts[0].y)
+                            for (i in 1 until pts.size) {
+                                lineTo(pts[i].x, pts[i].y)
+                            }
                         }
                         drawPath(
                             path = path,
                             color = stroke.color,
                             style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                width = stroke.width,
+                                width = stroke.width * sc,
                                 cap = StrokeCap.Round,
                                 join = StrokeJoin.Round
                             )

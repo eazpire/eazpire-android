@@ -227,6 +227,8 @@ fun CreatorGeneratorScreen(
     var showCanvasModal by remember { mutableStateOf(false) }
     var showCanvasEditModal by remember { mutableStateOf(false) }
     var canvasEditIndex by remember { mutableStateOf(0) }
+    val generatorCanvasSession = remember { CanvasSessionState() }
+    val editCanvasSession = remember(canvasEditIndex) { CanvasSessionState() }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showGenConfirmDialog by remember { mutableStateOf(false) }
     var generatingGen by remember { mutableStateOf(false) }
@@ -411,6 +413,7 @@ fun CreatorGeneratorScreen(
         visible = showCanvasModal,
         onDismiss = { showCanvasModal = false },
         translationStore = translationStore,
+        externalSession = generatorCanvasSession,
         onConfirm = { dataUrl ->
             selectedImages = selectedImages + RefImage(dataUrl)
             showCanvasModal = false
@@ -422,6 +425,7 @@ fun CreatorGeneratorScreen(
         backgroundImageDataUrl = selectedImages.getOrNull(canvasEditIndex)?.dataUrl,
         onDismiss = { showCanvasEditModal = false },
         translationStore = translationStore,
+        externalSession = editCanvasSession,
         onConfirm = { dataUrl ->
             if (canvasEditIndex in selectedImages.indices) {
                 scope.launch {

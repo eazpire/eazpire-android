@@ -159,6 +159,7 @@ internal fun ShopDesignStudioGenerateSheet(
     var showCanvas by remember { mutableStateOf(false) }
     var showCanvasEdit by remember { mutableStateOf(false) }
     var canvasEditIndex by remember { mutableStateOf(0) }
+    val shopCanvasEditSession = remember(canvasEditIndex) { CanvasSessionState() }
     val shopCanvasSession = remember { CanvasSessionState() }
     var showDesignType by remember { mutableStateOf(false) }
     var showTargetProducts by remember { mutableStateOf(false) }
@@ -332,6 +333,8 @@ internal fun ShopDesignStudioGenerateSheet(
         backgroundImageDataUrl = refs.getOrNull(canvasEditIndex)?.url,
         onDismiss = { showCanvasEdit = false },
         translationStore = translationStore,
+        externalSession = shopCanvasEditSession,
+        shopLightChrome = true,
         onConfirm = { dataUrl ->
             if (canvasEditIndex in refs.indices) {
                 val r = refs[canvasEditIndex]
