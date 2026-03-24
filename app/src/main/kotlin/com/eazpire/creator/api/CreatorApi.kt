@@ -934,62 +934,92 @@ class CreatorApi(
             JSONObject(response.body?.string() ?: "{}")
         }
 
+    /**
+     * Multipart POST to creator-dispatch tool routes (same as web: `/apps/creator-dispatch?path_prefix=/tools/1.0/...`).
+     */
+    private fun postToolImageMultipart(
+        url: String,
+        ownerId: String,
+        imageBytes: ByteArray,
+        fileName: String,
+        includeFormatPng: Boolean
+    ): okhttp3.Response {
+        val bodyBuilder = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("image", fileName, okhttp3.RequestBody.create("image/png".toMediaType(), imageBytes))
+            .addFormDataPart("owner_id", ownerId)
+        if (includeFormatPng) bodyBuilder.addFormDataPart("format", "PNG")
+        val body = bodyBuilder.build()
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "image/png, application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        return client.newCall(request).execute()
+    }
+
+    private fun readToolImageBytesOrThrow(
+        response: okhttp3.Response,
+        emptyLabel: String,
+        parseRemoveBgError: Boolean
+    ): ByteArray {
+        if (!response.isSuccessful) {
+            val errBody = response.body?.string() ?: ""
+            val errMsg = if (parseRemoveBgError) {
+                try {
+                    val jo = org.json.JSONObject(errBody)
+                    if (jo.optString("code") == "INSUFFICIENT_EAZ") {
+                        "Insufficient EAZ balance. Required: ${jo.opt("required")}, Available: ${jo.opt("balance_eaz")}"
+                    } else jo.optString("error", errBody.take(200))
+                } catch (_: Exception) {
+                    errBody.take(200)
+                }
+            } else {
+                try {
+                    org.json.JSONObject(errBody).optString("error", errBody.take(200))
+                } catch (_: Exception) {
+                    errBody.take(200)
+                }
+            }
+            throw RuntimeException(errMsg.ifBlank { "$emptyLabel (${response.code})" })
+        }
+        return response.body?.bytes() ?: throw RuntimeException("Empty $emptyLabel response")
+    }
+
     /** POST ?path_prefix=/tools/1.0/crop-image&owner_id=xxx – multipart: image
      *  Returns cropped PNG bytes (auto-crop to visible content). */
     suspend fun cropImage(ownerId: String, imageBytes: ByteArray, fileName: String = "upload.png"): ByteArray =
         withContext(Dispatchers.IO) {
-            val url = "$baseUrl?path_prefix=%2Ftools%2F1.0%2Fcrop-image&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}"
-            val body = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("image", fileName, okhttp3.RequestBody.create("image/png".toMediaType(), imageBytes))
-                .addFormDataPart("owner_id", ownerId)
-                .build()
-            val request = Request.Builder()
-                .url(url)
-                .post(body)
-                .addHeader("Accept", "image/png, application/json")
-                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
-                .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val errBody = response.body?.string() ?: ""
-                val errMsg = try {
-                    org.json.JSONObject(errBody).optString("error", errBody.take(200))
-                } catch (_: Exception) { errBody.take(200) }
-                throw RuntimeException(errMsg.ifBlank { "Crop failed (${response.code})" })
+            val encOwner = java.net.URLEncoder.encode(ownerId, "UTF-8")
+            val dispatch = "$baseUrl/apps/creator-dispatch"
+            val primary =
+                "$dispatch?path_prefix=${java.net.URLEncoder.encode("/tools/1.0/crop-image", "UTF-8")}&owner_id=$encOwner"
+            val fallback = "$dispatch?op=crop-image&owner_id=$encOwner"
+            var firstErr: Exception? = null
+            for (url in listOf(primary, fallback)) {
+                try {
+                    postToolImageMultipart(url, ownerId, imageBytes, fileName, includeFormatPng = false).use { resp ->
+                        return@withContext readToolImageBytesOrThrow(resp, "Crop failed", parseRemoveBgError = false)
+                    }
+                } catch (e: Exception) {
+                    if (firstErr == null) firstErr = e
+                }
             }
-            response.body?.bytes() ?: throw RuntimeException("Empty crop response")
+            throw firstErr ?: RuntimeException("Crop failed")
         }
 
     /** POST ?path_prefix=/tools/1.0/remove-background&owner_id=xxx – multipart: image, format=PNG
      *  Returns PNG bytes (background removed via Picsart). Consumes EAZ. */
     suspend fun removeBackground(ownerId: String, imageBytes: ByteArray, fileName: String = "upload.png"): ByteArray =
         withContext(Dispatchers.IO) {
-            val url = "$baseUrl?path_prefix=%2Ftools%2F1.0%2Fremove-background&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}"
-            val body = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("image", fileName, okhttp3.RequestBody.create("image/png".toMediaType(), imageBytes))
-                .addFormDataPart("format", "PNG")
-                .addFormDataPart("owner_id", ownerId)
-                .build()
-            val request = Request.Builder()
-                .url(url)
-                .post(body)
-                .addHeader("Accept", "image/png, application/json")
-                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
-                .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val errBody = response.body?.string() ?: ""
-                val errMsg = try {
-                    val jo = org.json.JSONObject(errBody)
-                    if (jo.optString("code") == "INSUFFICIENT_EAZ") {
-                        "Insufficient EAZ balance. Required: ${jo.opt("required")}, Available: ${jo.opt("balance_eaz")}"
-                    } else jo.optString("error", errBody.take(200))
-                } catch (_: Exception) { errBody.take(200) }
-                throw RuntimeException(errMsg.ifBlank { "Remove background failed (${response.code})" })
+            val encOwner = java.net.URLEncoder.encode(ownerId, "UTF-8")
+            val dispatch = "$baseUrl/apps/creator-dispatch"
+            val url =
+                "$dispatch?path_prefix=${java.net.URLEncoder.encode("/tools/1.0/remove-background", "UTF-8")}&owner_id=$encOwner"
+            postToolImageMultipart(url, ownerId, imageBytes, fileName, includeFormatPng = true).use { resp ->
+                readToolImageBytesOrThrow(resp, "Remove background failed", parseRemoveBgError = true)
             }
-            response.body?.bytes() ?: throw RuntimeException("Empty remove-background response")
         }
 
     /** POST ?op=upload-design&owner_id=xxx – multipart: image, creator_name?, visibility? (My Creations)

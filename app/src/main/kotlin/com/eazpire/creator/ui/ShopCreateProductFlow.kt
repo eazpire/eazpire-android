@@ -1,6 +1,9 @@
 package com.eazpire.creator.ui
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -74,7 +77,7 @@ private sealed interface ShopCreateProductPhase {
     data object Catalog : ShopCreateProductPhase
     data class Mode(val product: CatalogProduct) : ShopCreateProductPhase
     data class StudioGenerate(val product: CatalogProduct) : ShopCreateProductPhase
-    data class StudioUpload(val product: CatalogProduct) : ShopCreateProductPhase
+    data class StudioUpload(val product: CatalogProduct, val imageUri: Uri) : ShopCreateProductPhase
 }
 
 /**
@@ -96,6 +99,16 @@ fun ShopCreateProductFlow(
         mutableStateOf(
             if (visible) ShopCreateProductPhase.Catalog else ShopCreateProductPhase.Closed
         )
+    }
+    var pendingUploadProduct by remember { mutableStateOf<CatalogProduct?>(null) }
+    val uploadPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val p = pendingUploadProduct
+        pendingUploadProduct = null
+        if (p != null && uri != null) {
+            phase = ShopCreateProductPhase.StudioUpload(p, uri)
+        } else if (p != null) {
+            phase = ShopCreateProductPhase.Mode(p)
+        }
     }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -173,7 +186,8 @@ fun ShopCreateProductFlow(
                     phase = ShopCreateProductPhase.StudioGenerate(p)
                 },
                 onUpload = {
-                    phase = ShopCreateProductPhase.StudioUpload(p)
+                    pendingUploadProduct = p
+                    uploadPicker.launch("image/*")
                 }
             )
         }
@@ -193,6 +207,7 @@ fun ShopCreateProductFlow(
             val p = current.product
             ShopUploadNativeSheet(
                 product = p,
+                imageUri = current.imageUri,
                 api = api,
                 ownerId = ownerId,
                 translationStore = translationStore,

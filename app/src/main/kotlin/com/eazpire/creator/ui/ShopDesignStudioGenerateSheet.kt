@@ -528,7 +528,7 @@ internal fun ShopDesignStudioGenerateSheet(
 }
 
 @Composable
-private fun ShopEazySpeechCluster(
+internal fun ShopEazySpeechCluster(
     bubbleText: String,
     enabled: Boolean,
     onStart: () -> Unit
