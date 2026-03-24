@@ -48,6 +48,7 @@ import coil.request.ImageRequest
 import coil.imageLoader
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.api.hasPromoPricingUi
 import kotlinx.coroutines.delay
 import java.text.NumberFormat
 import java.util.Locale
@@ -147,7 +148,7 @@ fun ProductCarousel(
                 itemsIndexed(infiniteProducts, key = { index, p -> "${p.id}-$index" }) { index, product ->
                     ProductCard(
                         product = product,
-                        promoStyle = promoProductLayout,
+                        promoStyle = promoProductLayout || product.hasPromoPricingUi(),
                         promoEndsPrefix = promoEndsPrefix,
                         promoEndedLabel = promoEndedLabel,
                         promoNextDiscountPrefix = promoNextDiscountPrefix,

@@ -827,3 +827,13 @@ class ShopifyProductsApi(
         }
     }
 }
+
+/** True when the product card should use promotion-style pricing (compare-at sale or worker promo fields). Matches web eaz-promo-card / Liquid on_sale. */
+fun ShopifyProductsApi.ProductItem.hasPromoPricingUi(): Boolean {
+    val cmp = compareAtPrice
+    if (cmp != null && cmp > price + 1e-6) return true
+    if (promotionEndsAtMs != null) return true
+    if (promoOutsideSlot) return true
+    if (promoPrelaunch) return true
+    return false
+}

@@ -69,6 +69,7 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.api.hasPromoPricingUi
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import java.text.NumberFormat
@@ -384,11 +385,7 @@ fun CollectionScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(filteredProducts) { product ->
-                    val showPromoUi =
-                        collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE ||
-                            product.promotionEndsAtMs != null ||
-                            product.promoOutsideSlot ||
-                            product.promoPrelaunch
+                    val showPromoUi = product.hasPromoPricingUi()
                     CollectionProductCard(
                         product = product,
                         showPromoUi = showPromoUi,
