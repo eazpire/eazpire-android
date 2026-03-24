@@ -292,7 +292,8 @@ fun CollectionScreen(
             if (r.products.isEmpty() && collectionHandle.isNotBlank()) {
                 r = api.getProducts(limit = PRODUCTS_PER_PAGE, cursor = cursor)
             }
-            r
+            val merged = api.mergeShopPromotionOverlay(r.products, localeStore.getCountryCodeSync(), creatorApi)
+            r.copy(products = merged)
         }
         productsByPage = productsByPage + (currentPage to result.products)
         if (result.hasNextPage && result.nextCursor != null && currentPage >= pageCursors.size) {
@@ -321,7 +322,7 @@ fun CollectionScreen(
                 if (r.products.isEmpty() && collectionHandle.isNotBlank()) {
                     r = api.getProducts(limit = 250, cursor = null)
                 }
-                r.products
+                api.mergeShopPromotionOverlay(r.products, localeStore.getCountryCodeSync(), creatorApi)
             }
         }
     }
@@ -383,13 +384,19 @@ fun CollectionScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(filteredProducts) { product ->
+                    val showPromoUi =
+                        collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE ||
+                            product.promotionEndsAtMs != null ||
+                            product.promoOutsideSlot ||
+                            product.promoPrelaunch
                     CollectionProductCard(
                         product = product,
-                        isPromoCollection = collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE,
+                        showPromoUi = showPromoUi,
                         promoEndsPrefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
                         promoEndedLabel = t("eaz.shop.promo_countdown_ended", "Ended"),
                         promoNextDiscountPrefix = t("eaz.shop.promo_next_discount_prefix", "Discount in"),
                         promoNextPriceHintPrefix = t("eaz.shop.promo_next_price_hint_prefix", "Promo from"),
+                        promoStartsPrefix = t("eaz.shop.promo_starts_prefix", "Starts in"),
                         onClick = { onProductClick(product) }
                     )
                 }
@@ -1088,11 +1095,12 @@ private fun splitProductTitleForCard(title: String, productType: String): Pair<S
 @Composable
 private fun CollectionProductCard(
     product: ShopifyProductsApi.ProductItem,
-    isPromoCollection: Boolean = false,
+    showPromoUi: Boolean = false,
     promoEndsPrefix: String = "",
     promoEndedLabel: String = "",
     promoNextDiscountPrefix: String = "",
     promoNextPriceHintPrefix: String = "",
+    promoStartsPrefix: String = "",
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1170,10 +1178,11 @@ private fun CollectionProductCard(
             }
         }
         if (product.price > 0) {
-            if (isPromoCollection) {
+            if (showPromoUi) {
                 val nextHint = promoNextPriceHintPrefix.ifBlank { "Promo from" }
                 val nextDisc = promoNextDiscountPrefix.ifBlank { "Discount in" }
-                if (product.promoOutsideSlot) {
+                val startsDisc = promoStartsPrefix.ifBlank { "Starts in" }
+                if (product.promoOutsideSlot || product.promoPrelaunch) {
                     Column(modifier = Modifier.padding(top = 4.dp)) {
                         Text(
                             text = formatShopMoneyCard(product.price),
@@ -1191,11 +1200,12 @@ private fun CollectionProductCard(
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
-                        val nextAt = product.promoNextWindowStartsAtMs
+                        val nextAt = product.promoCampaignStartsAtMs ?: product.promoNextWindowStartsAtMs
+                        val countPrefix = if (product.promoPrelaunch) startsDisc else nextDisc
                         if (nextAt != null && nextAt > 0L) {
                             CollectionPromoCountdownChip(
                                 endsAtMs = nextAt,
-                                endsPrefix = nextDisc,
+                                endsPrefix = countPrefix,
                                 endedLabel = promoEndedLabel.ifBlank { "Ended" }
                             )
                         }

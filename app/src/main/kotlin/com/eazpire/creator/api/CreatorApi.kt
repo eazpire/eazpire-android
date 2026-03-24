@@ -395,7 +395,18 @@ class CreatorApi(
         ownerId: String,
         productKey: String,
         prompt: String,
-        referenceImages: List<ShopReferenceImage> = emptyList()
+        referenceImages: List<ShopReferenceImage> = emptyList(),
+        designType: String = "classic",
+        /** Comma-separated catalog keys, e.g. "tee-1,tee-2" — min one key; falls back to [productKey]. */
+        targetProductCsv: String? = null,
+        ratio: String = "portrait",
+        contentType: String = "design-text",
+        styles: List<String> = emptyList(),
+        designColors: List<String> = emptyList(),
+        backgroundColors: List<String> = emptyList(),
+        backgroundMode: String = "transparent",
+        languageMode: String = "as-design",
+        languageCode: String = "en"
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = buildString {
             append("$baseUrl/apps/creator-dispatch?op=accept-customer-design")
@@ -403,20 +414,26 @@ class CreatorApi(
             append("&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
             append("&_t=${System.currentTimeMillis()}")
         }
+        val targetCsv = targetProductCsv?.trim()?.takeIf { it.isNotEmpty() } ?: productKey
+        val stylesJa = JSONArray().apply { styles.forEach { put(it) } }
+        val designColorsJa = JSONArray().apply { designColors.forEach { put(it) } }
+        val bgColorsJa = JSONArray().apply { backgroundColors.forEach { put(it) } }
+        val langObj = JSONObject().put("mode", languageMode)
+        if (languageMode == "manual" && languageCode.isNotBlank()) langObj.put("language", languageCode)
         val body = JSONObject().apply {
             put("type", "generate")
             put("product_key", productKey)
             put("shop_design", true)
             put("prompt", prompt.trim())
-            put("design_type", "classic")
-            put("target_product", productKey)
-            put("ratio", "portrait")
-            put("content_type", "design-text")
-            put("styles", JSONArray())
-            put("design_colors", JSONArray())
-            put("background_colors", JSONArray())
-            put("background", JSONObject().put("mode", "transparent"))
-            put("language", JSONObject().put("mode", "as-design"))
+            put("design_type", designType.ifBlank { "classic" })
+            put("target_product", targetCsv)
+            put("ratio", ratio.ifBlank { "portrait" })
+            put("content_type", contentType.ifBlank { "design-text" })
+            put("styles", stylesJa)
+            put("design_colors", designColorsJa)
+            put("background_colors", bgColorsJa)
+            put("background", JSONObject().put("mode", backgroundMode.ifBlank { "transparent" }))
+            put("language", langObj)
             if (referenceImages.isNotEmpty()) {
                 val arr = JSONArray()
                 referenceImages.forEach { r ->

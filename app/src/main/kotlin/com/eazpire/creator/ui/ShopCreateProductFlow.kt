@@ -76,7 +76,7 @@ private sealed interface ShopCreateProductPhase {
     data object Closed : ShopCreateProductPhase
     data object Catalog : ShopCreateProductPhase
     data class Mode(val product: CatalogProduct) : ShopCreateProductPhase
-    data class StudioGenerate(val product: CatalogProduct) : ShopCreateProductPhase
+    data class StudioGenerate(val product: CatalogProduct, val catalogProducts: List<CatalogProduct>) : ShopCreateProductPhase
     data class StudioUpload(val product: CatalogProduct, val imageUri: Uri) : ShopCreateProductPhase
 }
 
@@ -183,7 +183,7 @@ fun ShopCreateProductFlow(
                 translation = translation,
                 onDismissRequest = { phase = ShopCreateProductPhase.Catalog },
                 onGenerate = {
-                    phase = ShopCreateProductPhase.StudioGenerate(p)
+                    phase = ShopCreateProductPhase.StudioGenerate(p, products)
                 },
                 onUpload = {
                     pendingUploadProduct = p
@@ -195,6 +195,7 @@ fun ShopCreateProductFlow(
             val p = current.product
             ShopDesignStudioGenerateSheet(
                 product = p,
+                catalogProducts = current.catalogProducts,
                 api = api,
                 ownerId = ownerId,
                 translationStore = translationStore,

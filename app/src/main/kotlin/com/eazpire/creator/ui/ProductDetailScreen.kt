@@ -54,6 +54,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -98,6 +99,7 @@ import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.util.SizeAiProductTypeMapper
 import com.eazpire.creator.util.matchShopifySizeOption
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -261,6 +263,42 @@ private fun buildRecommendByTags(
     return scored.map { it.item }.distinctBy { it.id }.take(8)
 }
 
+private fun formatPdpPromoDuration(ms: Long): String {
+    if (ms <= 0L) return ""
+    var s = ms / 1000L
+    val d = s / 86400L
+    s %= 86400L
+    val h = s / 3600L
+    s %= 3600L
+    val m = s / 60L
+    val sec = s % 60L
+    return when {
+        d > 0L -> "${d}d ${h}h"
+        h > 0L -> "${h}h ${m}m ${sec}s"
+        else -> "${m}m ${sec}s"
+    }
+}
+
+@Composable
+private fun PdpPromoCountdownLine(endsAtMs: Long, prefix: String, endedLabel: String) {
+    var now by remember(endsAtMs) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(endsAtMs) {
+        while (now < endsAtMs) {
+            delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val left = endsAtMs - now
+    val label = if (left <= 0L) endedLabel else "$prefix ${formatPdpPromoDuration(left)}"
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = EazColors.Orange,
+        modifier = Modifier.padding(top = 2.dp)
+    )
+}
+
 /**
  * Product Detail Screen – 1:1 wie Web Mobile PDP (eaz-pdp-main.liquid, eaz-redesign-pdp.css).
  * Layout: Info oben, Gallery, Mobile Options (Color/Size), Footer mit Qty + Add to Cart.
@@ -297,11 +335,24 @@ fun ProductDetailScreen(
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
     val accessToken = tokenStore.getAccessToken()
 
+    var promoOverlay by remember(productHandle) { mutableStateOf<ShopifyProductsApi.ProductItem?>(null) }
+
     LaunchedEffect(productHandle) {
         isLoading = true
         product = withContext(Dispatchers.IO) { api.getProductByHandle(productHandle) }
         catalogProducts = withContext(Dispatchers.IO) { api.getProductsWithFullMetafields(100).products }
         isLoading = false
+    }
+
+    LaunchedEffect(productHandle, countryCode) {
+        promoOverlay = withContext(Dispatchers.IO) {
+            try {
+                val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
+                ShopifyProductsApi.parseActivePromotionProductsResponse(j).find { it.handle == productHandle }
+            } catch (_: Exception) {
+                null
+            }
+        }
     }
 
     if (isLoading) {
@@ -839,7 +890,30 @@ fun ProductDetailScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("CHF %.2f".format(price), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = EazColors.TextPrimary)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("CHF %.2f".format(price), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = EazColors.TextPrimary)
+                promoOverlay?.let { po ->
+                    val ends = po.promotionEndsAtMs
+                    val nextSlot = po.promoCampaignStartsAtMs ?: po.promoNextWindowStartsAtMs
+                    when {
+                        ends != null && ends > 0L -> {
+                            PdpPromoCountdownLine(
+                                endsAtMs = ends,
+                                prefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
+                                endedLabel = t("eaz.shop.promo_countdown_ended", "Ended")
+                            )
+                        }
+                        (po.promoOutsideSlot || po.promoPrelaunch) && nextSlot != null && nextSlot > 0L -> {
+                            PdpPromoCountdownLine(
+                                endsAtMs = nextSlot,
+                                prefix = if (po.promoPrelaunch) t("eaz.shop.promo_starts_prefix", "Starts in") else t("eaz.shop.promo_next_discount_prefix", "Discount in"),
+                                endedLabel = t("eaz.shop.promo_countdown_ended", "Ended")
+                            )
+                        }
+                        else -> {}
+                    }
+                }
+            }
             val deliveryDate = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMAN).format(java.util.Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000))
             Text("ca. $deliveryDate", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
             if (comparePrice != null && comparePrice > price) {

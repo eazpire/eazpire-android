@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -31,6 +32,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
@@ -41,6 +44,7 @@ import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -400,7 +404,8 @@ fun GenTargetProductModal(
     currentValue: String,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    shopLightChrome: Boolean = false
 ) {
     if (!visible) return
     val options = listOf(
@@ -409,7 +414,8 @@ fun GenTargetProductModal(
     )
     GenModalBase(
         title = translationStore.t("creator.generator.target_product", "Target product"),
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        shopLightChrome = shopLightChrome
     ) {
         Row(
             modifier = Modifier
@@ -438,7 +444,8 @@ fun GenDesignTypeModal(
     currentValue: String,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    shopLightChrome: Boolean = false
 ) {
     if (!visible) return
     val options = listOf(
@@ -450,7 +457,8 @@ fun GenDesignTypeModal(
     )
     GenModalBase(
         title = translationStore.t("creator.generator.design_type", "Design type"),
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        shopLightChrome = shopLightChrome
     ) {
         Column(
             modifier = Modifier
@@ -525,7 +533,8 @@ fun GenOptionsModal(
     onLanguageChange: (GenLanguageState) -> Unit,
     onColorStateChange: (GenColorState) -> Unit,
     api: CreatorApi,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    shopLightChrome: Boolean = false
 ) {
     val applyLabel = translationStore.t("creator.common.apply", "Apply")
     if (!visible) return
@@ -570,7 +579,8 @@ fun GenOptionsModal(
         onDismiss = onDismiss,
         showApply = true,
         applyLabel = applyLabel,
-        onApply = onApply
+        onApply = onApply,
+        shopLightChrome = shopLightChrome
     ) {
         Column(
             modifier = Modifier
@@ -2071,7 +2081,77 @@ private fun GenGridImageShimmer(modifier: Modifier = Modifier) {
     }
 }
 
-private data class CanvasStroke(val points: List<Offset>, val color: Color, val width: Float)
+data class CanvasStroke(val points: List<Offset>, val color: Color, val width: Float)
+
+/**
+ * Holds sketch strokes across modal open/close when passed into [GenCanvasModal].
+ * Supports undo/redo and per-stroke layers (one layer per completed stroke).
+ */
+class CanvasSessionState {
+    val strokes = mutableStateListOf<CanvasStroke>()
+    private val undoStack = ArrayDeque<List<CanvasStroke>>()
+    private val redoStack = ArrayDeque<List<CanvasStroke>>()
+
+    fun commitStroke(stroke: CanvasStroke) {
+        undoStack.addLast(strokes.toList())
+        redoStack.clear()
+        strokes.add(stroke)
+    }
+
+    fun undo(): Boolean {
+        val prev = undoStack.removeLastOrNull() ?: return false
+        redoStack.addLast(strokes.toList())
+        strokes.clear()
+        strokes.addAll(prev)
+        return true
+    }
+
+    fun redo(): Boolean {
+        val next = redoStack.removeLastOrNull() ?: return false
+        undoStack.addLast(strokes.toList())
+        strokes.clear()
+        strokes.addAll(next)
+        return true
+    }
+
+    fun clearAll() {
+        if (strokes.isEmpty()) return
+        undoStack.addLast(strokes.toList())
+        redoStack.clear()
+        strokes.clear()
+    }
+
+    fun removeLayerAt(index: Int) {
+        if (index !in strokes.indices) return
+        undoStack.addLast(strokes.toList())
+        redoStack.clear()
+        strokes.removeAt(index)
+    }
+
+    fun moveLayerUp(index: Int) {
+        if (index <= 0 || index >= strokes.size) return
+        undoStack.addLast(strokes.toList())
+        redoStack.clear()
+        val item = strokes.removeAt(index)
+        strokes.add(index - 1, item)
+    }
+
+    fun moveLayerDown(index: Int) {
+        if (index < 0 || index >= strokes.size - 1) return
+        undoStack.addLast(strokes.toList())
+        redoStack.clear()
+        val item = strokes.removeAt(index)
+        strokes.add(index + 1, item)
+    }
+
+    /** Replace all strokes and reset undo/redo (e.g. history restore). */
+    fun replaceContent(list: List<CanvasStroke>) {
+        undoStack.clear()
+        redoStack.clear()
+        strokes.clear()
+        strokes.addAll(list)
+    }
+}
 
 private val CANVAS_COLORS = listOf(
     Color.Black, Color.White, Color(0xFFEF4444), Color(0xFFF97316), Color(0xFFEAB308),
@@ -2309,16 +2389,25 @@ fun GenCanvasModal(
     onDismiss: () -> Unit,
     translationStore: TranslationStore,
     onConfirm: (String) -> Unit,
-    shopLightChrome: Boolean = false
+    shopLightChrome: Boolean = false,
+    externalSession: CanvasSessionState? = null
 ) {
     if (!visible) return
     val c = genModalChrome(shopLightChrome)
+    val session = externalSession ?: remember { CanvasSessionState() }
+    val strokes = session.strokes
     var drawColor by remember { mutableStateOf(Color.Black) }
     var strokeWidth by remember { mutableStateOf(8f) }
-    val strokes = remember { mutableStateListOf<CanvasStroke>() }
     var currentStroke by remember { mutableStateOf<MutableList<Offset>?>(null) }
     var canvasSize by remember { mutableStateOf(400f) }
+    var showHistory by remember { mutableStateOf(false) }
+    val historySnapshots = remember { mutableStateListOf<Pair<Long, List<CanvasStroke>>>() }
     val scope = rememberCoroutineScope()
+
+    fun pushHistorySnapshot() {
+        historySnapshots.add(System.currentTimeMillis() to strokes.toList())
+        if (historySnapshots.size > 40) historySnapshots.removeAt(0)
+    }
 
     fun exportToDataUrl() {
         val strokesSnapshot = strokes.toList()
@@ -2396,7 +2485,7 @@ fun GenCanvasModal(
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -2414,14 +2503,88 @@ fun GenCanvasModal(
                             activeTrackColor = EazColors.Orange
                         )
                     )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { if (session.undo()) { } }) {
+                        Text(translationStore.t("creator.canvas.undo", "Undo"), color = c.text)
+                    }
+                    TextButton(onClick = { if (session.redo()) { } }) {
+                        Text(translationStore.t("creator.canvas.redo", "Redo"), color = c.text)
+                    }
                     TextButton(onClick = {
-                        strokes.clear()
+                        pushHistorySnapshot()
+                        session.clearAll()
                         currentStroke = null
                     }) {
-                        Text(
-                            translationStore.t("creator.common.clear", "Clear"),
-                            color = c.text
-                        )
+                        Text(translationStore.t("creator.common.clear", "Clear"), color = c.text)
+                    }
+                    TextButton(onClick = { showHistory = true }) {
+                        Text(translationStore.t("creator.canvas.history", "History"), color = c.text)
+                    }
+                }
+            }
+            if (showHistory) {
+                AlertDialog(
+                    onDismissRequest = { showHistory = false },
+                    title = { Text(translationStore.t("creator.canvas.history", "History")) },
+                    text = {
+                        LazyColumn(modifier = Modifier.height(220.dp)) {
+                            itemsIndexed(historySnapshots.reversed()) { idx, snap ->
+                                val (t, list) = snap
+                                TextButton(onClick = {
+                                    session.replaceContent(list)
+                                    showHistory = false
+                                }) {
+                                    Text(
+                                        "${historySnapshots.size - idx}. ${java.text.DateFormat.getTimeInstance().format(java.util.Date(t))} (${list.size} ${translationStore.t("creator.canvas.layers", "layers")})"
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showHistory = false }) {
+                            Text(translationStore.t("creator.common.close", "Close"))
+                        }
+                    }
+                )
+            }
+            if (strokes.isNotEmpty()) {
+                Text(
+                    translationStore.t("creator.canvas.layers", "Layers"),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = c.muted,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 120.dp)
+                ) {
+                    itemsIndexed(strokes) { index, _ ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "${translationStore.t("creator.canvas.layer", "Layer")} ${index + 1}",
+                                fontSize = 12.sp,
+                                color = c.text
+                            )
+                            Row {
+                                TextButton(onClick = { session.moveLayerUp(index) }) { Text("↑", fontSize = 12.sp) }
+                                TextButton(onClick = { session.moveLayerDown(index) }) { Text("↓", fontSize = 12.sp) }
+                                TextButton(onClick = { session.removeLayerAt(index) }) {
+                                    Text(translationStore.t("creator.common.delete", "Delete"), fontSize = 12.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2444,7 +2607,10 @@ fun GenCanvasModal(
                             },
                             onDragEnd = {
                                 currentStroke?.let { pts ->
-                                    if (pts.size >= 2) strokes.add(CanvasStroke(pts.toList(), drawColor, strokeWidth))
+                                    if (pts.size >= 2) {
+                                        pushHistorySnapshot()
+                                        session.commitStroke(CanvasStroke(pts.toList(), drawColor, strokeWidth))
+                                    }
                                 }
                                 currentStroke = null
                             }

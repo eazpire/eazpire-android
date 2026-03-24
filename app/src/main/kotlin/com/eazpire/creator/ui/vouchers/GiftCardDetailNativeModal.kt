@@ -19,8 +19,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,7 +30,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +38,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -46,6 +47,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,6 +90,15 @@ private const val PRODUCT_STORE_URL = "https://www.eazpire.com"
 /** Same pattern as theme `gift-card-detail.js` email validation. */
 private val GIFT_CARD_EMAIL_REGEX = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
 
+/** Match selection `product_ids` to catalog rows (REST numeric vs GraphQL gid). */
+private fun normalizeShopifyProductId(raw: String?): String {
+    if (raw.isNullOrBlank()) return ""
+    val s = raw.trim()
+    val m = Regex("Product/(\\d+)", RegexOption.IGNORE_CASE).find(s)
+    if (m != null) return m.groupValues[1]
+    return s
+}
+
 private enum class DeliveryMode { SELF_PRINT, EMAIL, POSTCARD }
 
 private data class ShopifyProductRow(
@@ -117,6 +128,7 @@ fun GiftCardDetailNativeModal(
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val productPickerSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var loading by remember(giftCardId) { mutableStateOf(true) }
     var loadError by remember(giftCardId) { mutableStateOf<String?>(null) }
@@ -239,7 +251,9 @@ fun GiftCardDetailNativeModal(
             if (selRes.optBoolean("ok", false)) {
                 val arr = selRes.optJSONArray("product_ids") ?: JSONArray()
                 for (i in 0 until arr.length()) {
-                    ids.add(arr.opt(i)?.toString() ?: continue)
+                    val raw = arr.opt(i)?.toString() ?: continue
+                    val n = normalizeShopifyProductId(raw)
+                    if (n.isNotBlank()) ids.add(n)
                 }
             }
             productIds = ids.toSet()
@@ -252,7 +266,9 @@ fun GiftCardDetailNativeModal(
                     val p = arr.optJSONObject(i) ?: continue
                     rows.add(
                         ShopifyProductRow(
-                            id = p.optString("id", p.optLong("id").toString()),
+                            id = normalizeShopifyProductId(
+                                p.optString("id", "").ifBlank { p.optLong("id").toString() }
+                            ),
                             title = p.optString("title", ""),
                             handle = p.optString("handle", ""),
                             image = p.optString("image").takeIf { it.isNotBlank() },
@@ -831,86 +847,139 @@ fun GiftCardDetailNativeModal(
                 q.isEmpty() || it.title.lowercase(Locale.getDefault()).contains(q)
             }
         }
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showProductPicker = false },
-            title = { Text(t("creator.gift_cards.select_products", "Select products")) },
-            text = {
-                Column(Modifier.heightIn(max = 480.dp)) {
-                    OutlinedTextField(
-                        value = pickerSearch,
-                        onValueChange = { pickerSearch = it },
-                        label = { Text(t("creator.common.search", "Search")) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(vertical = 8.dp)
-                    ) {
-                        items(filtered) { p ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        pickerSelection = pickerSelection.toMutableSet().apply {
-                                            if (!add(p.id)) remove(p.id)
-                                        }
-                                    }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = p.id in pickerSelection,
-                                    onCheckedChange = {
-                                        pickerSelection = pickerSelection.toMutableSet().apply {
-                                            if (p.id in this) remove(p.id) else add(p.id)
-                                        }
-                                    }
-                                )
-                                Column(Modifier.weight(1f)) {
-                                    Text(p.title, fontWeight = FontWeight.Medium)
-                                    Text(fmtMoney(p.price, p.currency), fontSize = 12.sp, color = EazColors.TextSecondary)
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            saving = true
-                            try {
-                                val res = api.saveGiftCardSelection(giftCardId, pickerSelection.toList())
-                                if (res.optBoolean("ok", false)) {
-                                    productIds = pickerSelection
-                                    showProductPicker = false
-                                    snackbarHostState.showSnackbar(
-                                        t("creator.gift_cards.selection_saved", "Selection saved")
-                                    )
-                                } else {
-                                    snackbarHostState.showSnackbar(
-                                        res.optString("error", res.optString("message", "Error"))
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                snackbarHostState.showSnackbar(e.message ?: "Error")
-                            } finally {
-                                saving = false
-                            }
-                        }
-                    }
+            sheetState = productPickerSheetState,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 28.dp)
+            ) {
+                Text(
+                    t("creator.gift_cards.select_products", "Select products"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                OutlinedTextField(
+                    value = pickerSearch,
+                    onValueChange = { pickerSearch = it },
+                    label = { Text(t("creator.common.search", "Search")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 160.dp, max = 440.dp)
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp)
                 ) {
-                    Text(t("creator.common.save", "Save"))
+                    items(filtered, key = { it.id }) { p ->
+                        ProductPickerGridItem(
+                            p = p,
+                            selected = p.id in pickerSelection,
+                            onToggle = {
+                                pickerSelection = pickerSelection.toMutableSet().apply {
+                                    if (!add(p.id)) remove(p.id)
+                                }
+                            },
+                            fmtMoney = { a, c -> fmtMoney(a, c) }
+                        )
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showProductPicker = false }) {
-                    Text(t("creator.common.cancel", "Cancel"))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { showProductPicker = false }) {
+                        Text(t("creator.common.cancel", "Cancel"))
+                    }
+                    Spacer(Modifier.size(8.dp))
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                saving = true
+                                try {
+                                    val res = api.saveGiftCardSelection(giftCardId, pickerSelection.toList())
+                                    if (res.optBoolean("ok", false)) {
+                                        productIds = pickerSelection
+                                        showProductPicker = false
+                                        snackbarHostState.showSnackbar(
+                                            t("creator.gift_cards.selection_saved", "Selection saved")
+                                        )
+                                    } else {
+                                        snackbarHostState.showSnackbar(
+                                            res.optString("error", res.optString("message", "Error"))
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar(e.message ?: "Error")
+                                } finally {
+                                    saving = false
+                                }
+                            }
+                        },
+                        enabled = !saving
+                    ) {
+                        Text(t("creator.common.save", "Save"))
+                    }
                 }
             }
-        )
+        }
+    }
+}
+
+@Composable
+private fun ProductPickerGridItem(
+    p: ShopifyProductRow,
+    selected: Boolean,
+    onToggle: () -> Unit,
+    fmtMoney: (Double, String) -> String
+) {
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) Color(0xFFFFF7ED) else Color(0xFFF9FAFB))
+            .clickable(onClick = onToggle)
+            .padding(8.dp)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(96.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFFE5E7EB))
+        ) {
+            if (p.image != null) {
+                AsyncImage(
+                    model = p.image,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 6.dp)
+        ) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onToggle() }
+            )
+            Column(Modifier.weight(1f)) {
+                Text(p.title, fontSize = 12.sp, maxLines = 2, fontWeight = FontWeight.Medium)
+                Text(fmtMoney(p.price, p.currency), fontSize = 11.sp, color = EazColors.TextSecondary)
+            }
+        }
     }
 }
 

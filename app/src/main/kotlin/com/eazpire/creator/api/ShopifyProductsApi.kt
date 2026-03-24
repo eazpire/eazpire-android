@@ -54,7 +54,10 @@ class ShopifyProductsApi(
         /** True when promo campaign active but outside the 4h window (worker). */
         val promoOutsideSlot: Boolean = false,
         /** Outside slot: lower promo price when the window opens (optional). */
-        val promoPreviewPrice: Double? = null
+        val promoPreviewPrice: Double? = null,
+        /** Campaign not started yet — countdown to [promoCampaignStartsAtMs]. */
+        val promoPrelaunch: Boolean = false,
+        val promoCampaignStartsAtMs: Long? = null
     )
 
     data class ProductsResult(
@@ -101,6 +104,36 @@ class ShopifyProductsApi(
             return@withContext result.copy(products = enriched)
         }
         return@withContext result
+    }
+
+    /**
+     * Merges worker `list-active-shop-promotion-products` into collection/search results (same as web overlay).
+     */
+    suspend fun mergeShopPromotionOverlay(
+        products: List<ProductItem>,
+        countryCode: String,
+        creatorApi: CreatorApi
+    ): List<ProductItem> = withContext(Dispatchers.IO) {
+        if (products.isEmpty()) return@withContext products
+        return@withContext try {
+            val j = creatorApi.listActiveShopPromotionProducts(countryCode)
+            val promos = parseActivePromotionProductsResponse(j).associateBy { it.handle }
+            products.map { p ->
+                val o = promos[p.handle] ?: return@map p
+                p.copy(
+                    promotionEndsAtMs = o.promotionEndsAtMs ?: p.promotionEndsAtMs,
+                    promoBeforePrice = o.promoBeforePrice ?: p.promoBeforePrice,
+                    compareAtPrice = o.compareAtPrice ?: p.compareAtPrice,
+                    promoNextWindowStartsAtMs = o.promoNextWindowStartsAtMs ?: p.promoNextWindowStartsAtMs,
+                    promoOutsideSlot = o.promoOutsideSlot || p.promoOutsideSlot,
+                    promoPreviewPrice = o.promoPreviewPrice ?: p.promoPreviewPrice,
+                    promoPrelaunch = o.promoPrelaunch || p.promoPrelaunch,
+                    promoCampaignStartsAtMs = o.promoCampaignStartsAtMs ?: p.promoCampaignStartsAtMs
+                )
+            }
+        } catch (_: Exception) {
+            products
+        }
     }
 
     private data class ProductMetafields(
@@ -700,6 +733,19 @@ class ShopifyProductsApi(
             }
         }
 
+        private fun parsePromoCampaignStartsAtMs(o: JSONObject): Long? {
+            if (!o.has("promo_campaign_starts_at") || o.isNull("promo_campaign_starts_at")) return null
+            return try {
+                when (val v = o.get("promo_campaign_starts_at")) {
+                    is Number -> v.toLong().takeIf { it > 0L }
+                    is String -> v.trim().toLongOrNull()?.takeIf { it > 0L }
+                    else -> null
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
         /**
          * Public worker op `list-active-shop-promotion-products` — maps to [ProductItem] for shop grid/carousel.
          */
@@ -733,6 +779,7 @@ class ShopifyProductsApi(
                 } else {
                     Double.NaN
                 }
+                val prelaunch = o.optBoolean("promo_prelaunch", false)
                 val outside = o.optBoolean("promo_outside_slot", false)
                 val promoStrike = if (!outside && !beforeRaw.isNaN() && beforeRaw > price + 1e-6) beforeRaw else null
                 val promoPreview =
@@ -743,6 +790,7 @@ class ShopifyProductsApi(
                 }
                 val promoEndsMs = parsePromotionEndsAtMs(o)
                 val promoNextMs = parsePromoNextWindowStartsAtMs(o)
+                val promoCampaignStartMs = parsePromoCampaignStartsAtMs(o)
                 out.add(
                     ProductItem(
                         id = o.optLong("id", 0L),
@@ -769,7 +817,9 @@ class ShopifyProductsApi(
                         promoBeforePrice = promoStrike,
                         promoNextWindowStartsAtMs = promoNextMs,
                         promoOutsideSlot = outside,
-                        promoPreviewPrice = promoPreview
+                        promoPreviewPrice = promoPreview,
+                        promoPrelaunch = prelaunch,
+                        promoCampaignStartsAtMs = promoCampaignStartMs
                     )
                 )
             }
