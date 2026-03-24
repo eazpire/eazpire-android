@@ -2,6 +2,7 @@ package com.eazpire.creator.ui
 
 import android.content.Intent
 import android.net.Uri
+import java.net.URLEncoder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
@@ -48,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -247,20 +250,44 @@ private fun buildPdpCarouselSameDesign(
     }.take(12)
 }
 
-private fun buildRecommendByTags(
+/**
+ * Mirrors web [eaz-pdp-recommendations-grid]: weighted "You may also like" picks.
+ */
+private fun buildYouMayAlsoLike(
     p: ShopifyProductsApi.ProductDetail,
     catalog: List<ShopifyProductsApi.ProductItem>
 ): List<ShopifyProductsApi.ProductItem> {
-    val seed = p.tags.map { it.lowercase() }.filter { it.isNotBlank() }.toSet()
-    if (seed.isEmpty()) return emptyList()
-    val ignore = setOf("new", "deal", "bestseller")
-    data class Scored(val item: ShopifyProductsApi.ProductItem, val score: Int)
-    val scored = catalog.mapNotNull { o ->
-        if (o.id == p.id) return@mapNotNull null
-        val s = o.tags.count { t -> t.lowercase().let { x -> x !in ignore && seed.contains(x) } }
-        if (s < 1) null else Scored(o, s)
-    }.sortedWith(compareByDescending<Scored> { it.score }.thenBy { it.item.handle })
-    return scored.map { it.item }.distinctBy { it.id }.take(8)
+    val seedTitle = p.title.lowercase()
+        .replace("-", " ").replace("_", " ").replace(".", " ")
+        .replace(",", " ").replace("/", " ").replace("(", " ").replace(")", " ")
+    val tokens = seedTitle.split(Regex("\\s+")).filter { it.length >= 4 }.take(8)
+    val maxItems = 6
+    val buckets = Array(6) { mutableListOf<ShopifyProductsApi.ProductItem>() }
+    for (o in catalog) {
+        if (o.id == p.id) continue
+        val isTypeMatch = p.productType.isNotBlank() && o.productType == p.productType
+        val isVendorMatch = p.vendor.isNotBlank() && o.vendor == p.vendor
+        val candidateTitle = o.title.lowercase()
+        val sharesKeyword = tokens.any { t -> candidateTitle.contains(t) }
+        when {
+            isTypeMatch && isVendorMatch && sharesKeyword -> buckets[0].add(o)
+            isTypeMatch && sharesKeyword -> buckets[1].add(o)
+            isVendorMatch && sharesKeyword -> buckets[2].add(o)
+            isTypeMatch || isVendorMatch -> buckets[3].add(o)
+            sharesKeyword -> buckets[4].add(o)
+            else -> buckets[5].add(o)
+        }
+    }
+    val out = mutableListOf<ShopifyProductsApi.ProductItem>()
+    for (b in buckets) {
+        for (item in b) {
+            if (out.none { it.id == item.id }) {
+                out.add(item)
+                if (out.size >= maxItems) return out
+            }
+        }
+    }
+    return out
 }
 
 private fun formatPdpPromoDuration(ms: Long): String {
@@ -469,7 +496,7 @@ fun ProductDetailScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             // pdp-info (order 1) – Brand, Title, Product Details btn, Subtitle
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                 // Brand / Creator
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -479,7 +506,7 @@ fun ProductDetailScreen(
                     val brandLabel = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "?" }
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(42.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFFF0F0F0)),
                         contentAlignment = Alignment.Center
@@ -508,10 +535,10 @@ fun ProductDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            designTitle,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    Text(
+                        designTitle,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                             color = EazColors.TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -546,24 +573,24 @@ fun ProductDetailScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Thumbs (vertical)
                 val imageCount = images.size
                 if (imageCount > 1) {
                     Column(
                         modifier = Modifier
-                            .width(52.dp)
-                            .heightIn(max = 250.dp)
+                            .width(60.dp)
+                            .heightIn(max = 280.dp)
                             .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         images.forEachIndexed { idx: Int, url: String ->
                             val thumbActive = idx == selectedImageIndex
                             Box(
                                 modifier = Modifier
-                                    .size(52.dp)
+                                    .size(60.dp)
                                     .aspectRatio(1f)
                                     .clip(RoundedCornerShape(6.dp))
                                     .border(2.dp, if (thumbActive) EazColors.Orange else Color.Transparent, RoundedCornerShape(6.dp))
@@ -623,7 +650,7 @@ fun ProductDetailScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // Mobile options (order 3) – Color, Size, Stock
-            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 8.dp)) {
                 if (colorOption != null) {
                     Text(
                         "${colorOption.name} $selectedColor",
@@ -729,9 +756,9 @@ fun ProductDetailScreen(
                 }
             }
 
-            val recommendList = remember(p, catalogProducts) { buildRecommendByTags(p, catalogProducts) }
             val carSameType = remember(p, catalogProducts) { buildPdpCarouselSameType(p, catalogProducts) }
             val carSameDesign = remember(p, catalogProducts) { buildPdpCarouselSameDesign(p, catalogProducts) }
+            val youMayAlsoLike = remember(p, catalogProducts) { buildYouMayAlsoLike(p, catalogProducts) }
             val openRelated: (String) -> Unit = { h ->
                 if (onNavigateToProduct != null) onNavigateToProduct.invoke(h)
                 else try {
@@ -739,47 +766,199 @@ fun ProductDetailScreen(
                 } catch (_: Exception) {
                 }
             }
+            val creatorLabel = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "Creator" }
+            val showCreatorSection =
+                carSameType.isNotEmpty() || carSameDesign.isNotEmpty() || p.creatorDisplay.isNotBlank() || p.vendor.isNotBlank()
+            val creatorProfileUrl = remember(creatorLabel) {
+                val enc = try {
+                    URLEncoder.encode(creatorLabel, "UTF-8")
+                } catch (_: Exception) {
+                    creatorLabel
+                }
+                "https://www.eazpire.com/collections/all?filter.v.m.custom.creator=$enc"
+            }
 
+            if (showCreatorSection) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 8.dp)
+                    .padding(horizontal = 8.dp)
+                    .padding(top = 12.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White)
+                    .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(14.dp))
+                    .padding(16.dp)
             ) {
-                PdpProductCarouselRow(
-                    title = t("eaz.pdp.recommend_products_title", "Recommended products"),
-                    products = recommendList,
-                    onProductClick = openRelated
-                )
+                if (carSameType.isNotEmpty() || carSameDesign.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(
+                            modifier = Modifier.widthIn(max = 220.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(EazColors.Orange),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    creatorLabel.take(1).uppercase(),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = creatorLabel,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = EazColors.TextPrimary
+                            )
+                            TextButton(
+                                onClick = {
+                                    try {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(creatorProfileUrl)))
+                                    } catch (_: Exception) {
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    t("eaz.pdp.creator_view_profile", "View profile"),
+                                    color = EazColors.Orange,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (carSameType.isNotEmpty()) {
+                                PdpProductCarouselRow(
+                                    title = t("eaz.pdp.carousel_same_type_designs", "More designs on this product"),
+                                    products = carSameType,
+                                    onProductClick = openRelated
+                                )
+                            }
+                            if (carSameDesign.isNotEmpty()) {
+                                PdpProductCarouselRow(
+                                    title = t("eaz.pdp.carousel_same_design_products", "More products with this design"),
+                                    products = carSameDesign,
+                                    onProductClick = openRelated
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(EazColors.Orange),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    creatorLabel.take(1).uppercase(),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = creatorLabel,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = EazColors.TextPrimary
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(creatorProfileUrl)))
+                                } catch (_: Exception) {
+                                }
+                            }
+                        ) {
+                            Text(
+                                t("eaz.pdp.creator_view_profile", "View profile"),
+                                color = EazColors.Orange,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
             }
-            if (carSameType.isNotEmpty() || carSameDesign.isNotEmpty()) {
+            }
+
+            if (youMayAlsoLike.isNotEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .padding(top = 12.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.White)
-                        .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(14.dp))
-                        .padding(16.dp)
+                        .padding(horizontal = 8.dp)
+                        .padding(top = 20.dp)
                 ) {
                     Text(
-                        text = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "Creator" },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        text = t("eaz.pdp.similar_title", "You may also like"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
                         color = EazColors.TextPrimary,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = 12.dp)
                     )
-                    PdpProductCarouselRow(
-                        title = t("eaz.pdp.carousel_same_type_designs", "More designs on this product"),
-                        products = carSameType,
-                        onProductClick = openRelated
-                    )
-                    PdpProductCarouselRow(
-                        title = t("eaz.pdp.carousel_same_design_products", "More products with this design"),
-                        products = carSameDesign,
-                        onProductClick = openRelated
-                    )
+                    youMayAlsoLike.chunked(2).forEach { rowItems ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            rowItems.forEach { item ->
+                                val img = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
+                                val pk = item.metaProductKey.takeIf { it.isNotBlank() }
+                                val (dt, _) = splitProductTitle(item.title, item.productType, pk)
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFFF5F5F5))
+                                        .clickable { openRelated(item.handle) }
+                                        .padding(8.dp)
+                                ) {
+                                    if (img != null) {
+                                        AsyncImage(
+                                            model = ImageRequest.Builder(context).data(img).build(),
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(1f)
+                                                .clip(RoundedCornerShape(6.dp)),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    Text(
+                                        dt,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = EazColors.TextPrimary,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
+                                }
+                            }
+                            if (rowItems.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
                 }
             }
 

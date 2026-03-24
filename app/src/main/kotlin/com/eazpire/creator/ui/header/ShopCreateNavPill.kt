@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 
 /**
- * Charcoal pill + subtle scale pulse (matches web `#eazShopCreateProductNavBtn` animation).
+ * Charcoal pill + scale pulse; label and pill share the same transform (matches web).
  */
 @Composable
 fun ShopCreateNavPill(
@@ -30,9 +30,9 @@ fun ShopCreateNavPill(
     val pulse = rememberInfiniteTransition(label = "shopCreateNavPulse")
     val scale by pulse.animateFloat(
         initialValue = 1f,
-        targetValue = 1.04f,
+        targetValue = 1.11f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
+            animation = tween(1000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulseScale"

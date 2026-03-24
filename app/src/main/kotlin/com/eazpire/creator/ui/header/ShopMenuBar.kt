@@ -150,7 +150,7 @@ fun ShopMenuBar(
                             ShopCreateNavPill {
                                 Text(
                                     text = label,
-                                    color = if (isSelected) EazColors.OrangeHover else EazColors.Orange,
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     style = androidx.compose.material3.MaterialTheme.typography.labelLarge
                                 )

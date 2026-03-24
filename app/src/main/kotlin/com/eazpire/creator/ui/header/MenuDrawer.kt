@@ -523,7 +523,7 @@ private fun MenuDrawerGridView(
                             text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Bold,
-                            color = EazColors.Orange
+                            color = Color.White
                         )
                     }
                 } else {
