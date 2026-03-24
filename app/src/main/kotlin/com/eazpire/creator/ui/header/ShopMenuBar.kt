@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
@@ -119,6 +120,9 @@ fun ShopMenuBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 items(MENU_ITEMS) { item ->
+                    val isCreate = item.collectionHandle == SHOP_MENU_CREATE_HANDLE
+                    val isSelected = item.collectionHandle != null && item.collectionHandle == selectedHandle
+                    val label = t(MENU_ITEM_KEYS[item.label] ?: item.label, item.label)
                     Box(
                         modifier = Modifier
                             .clickable {
@@ -133,15 +137,31 @@ fun ShopMenuBar(
                                     } catch (_: Exception) {}
                                 }
                             }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .then(
+                                if (isCreate) {
+                                    Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                } else {
+                                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        val isSelected = item.collectionHandle != null && item.collectionHandle == selectedHandle
-                        val label = t(MENU_ITEM_KEYS[item.label] ?: item.label, item.label)
-                        Text(
-                            text = label,
-                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.95f),
-                            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
-                        )
+                        if (isCreate) {
+                            ShopCreateNavPill {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) EazColors.OrangeHover else EazColors.Orange,
+                                    fontWeight = FontWeight.Bold,
+                                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = label,
+                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.95f),
+                                style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                            )
+                        }
                     }
                 }
             }

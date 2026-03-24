@@ -3,6 +3,7 @@ package com.eazpire.creator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /** eazpire Brand Colors (aligned with theme --orange, #f97316) */
@@ -11,6 +12,13 @@ object EazColors {
     val OrangeHover = Color(0xFFFB923C)
     val OrangeDark = Color(0xFFEA580C)
     val OrangeBg = Color(0x0FF97316) // 6% opacity
+
+    /** Shop nav “Create” pill — charcoal + orange label (matches web `eaz-shop-create-product.css`) */
+    val ShopCreateNavPillTop = Color(0xFF454545)
+    val ShopCreateNavPillBottom = Color(0xFF2E2E2E)
+    val ShopCreateNavGradient = Brush.verticalGradient(
+        colors = listOf(ShopCreateNavPillTop, ShopCreateNavPillBottom)
+    )
     val TopbarBorder = Color(0x0A000000)
     val TextPrimary = Color(0xCF000000)
     val TextSecondary = Color(0x66000000)

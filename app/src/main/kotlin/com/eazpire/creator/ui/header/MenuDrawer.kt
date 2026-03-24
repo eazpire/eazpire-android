@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.rotate
@@ -496,6 +497,7 @@ private fun MenuDrawerGridView(
                 }
             }
         } else {
+            val isShopCreate = item.collectionHandle == SHOP_MENU_CREATE_HANDLE
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -513,13 +515,24 @@ private fun MenuDrawerGridView(
                             } catch (_: Exception) {}
                         }
                     }
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .padding(horizontal = 20.dp, vertical = if (isShopCreate) 10.dp else 12.dp)
             ) {
-                Text(
-                    text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = EazColors.TextPrimary
-                )
+                if (isShopCreate) {
+                    ShopCreateNavPill {
+                        Text(
+                            text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = EazColors.Orange
+                        )
+                    }
+                } else {
+                    Text(
+                        text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = EazColors.TextPrimary
+                    )
+                }
             }
         }
     }
