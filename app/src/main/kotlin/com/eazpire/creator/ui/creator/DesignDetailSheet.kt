@@ -1,12 +1,12 @@
 package com.eazpire.creator.ui.creator
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -15,22 +15,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalBottomSheet
@@ -38,9 +44,12 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -55,9 +64,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
@@ -66,6 +75,7 @@ import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -75,7 +85,70 @@ private enum class DesignDetailTab {
     Overview, Reference, Details
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Metadata keys that reflect user/generation inputs — not AI-generated SEO fields. */
+private val REFERENCE_META_KEYS_ORDER = listOf(
+    "user_prompt",
+    "design_prompt",
+    "final_prompt",
+    "system_prompt",
+    "user_image_url",
+    "design_source",
+    "ratio",
+    "design_art"
+)
+
+private fun normalizeTagsString(raw: String): String {
+    val parts = raw.split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+    return parts.joinToString(", ")
+}
+
+private fun parseTagsList(tagsStr: String): List<String> =
+    tagsStr.split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+
+private fun jsonArrayToStringList(arr: JSONArray?): List<String> {
+    if (arr == null) return emptyList()
+    val out = mutableListOf<String>()
+    for (i in 0 until arr.length()) {
+        arr.optString(i)?.trim()?.takeIf { it.isNotEmpty() }?.let { out.add(it) }
+    }
+    return out.distinctBy { it.lowercase(Locale.getDefault()) }
+}
+
+private fun getTopicList(meta: JSONObject): List<String> {
+    val a = meta.optJSONArray("topic") ?: meta.optJSONArray("topics")
+    if (a != null) return jsonArrayToStringList(a)
+    val s = meta.optString("topic").ifBlank { meta.optString("topics") }
+    if (s.isNotBlank()) {
+        return s.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+    }
+    return emptyList()
+}
+
+private fun getSubtopicList(meta: JSONObject): List<String> {
+    val a = meta.optJSONArray("subtopic") ?: meta.optJSONArray("subtopics")
+    if (a != null) return jsonArrayToStringList(a)
+    val s = meta.optString("subtopic").ifBlank { meta.optString("subtopics") }
+    if (s.isNotBlank()) {
+        return s.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+    }
+    return emptyList()
+}
+
+private fun replaceDraftMeta(draftMeta: JSONObject, block: JSONObject.() -> Unit): JSONObject {
+    val n = JSONObject(draftMeta.toString())
+    n.block()
+    return n
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DesignDetailSheet(
     design: CreationDesign,
@@ -86,14 +159,13 @@ fun DesignDetailSheet(
     onRequestGeneratorPrefill: (GeneratorPrefillRequest) -> Unit = {}
 ) {
     val t = { key: String, def: String -> translationStore.t(key, def) }
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val ownerId = remember { runCatching { tokenStore.getOwnerId() }.getOrNull().orEmpty() }
     val api = remember(jwt) { CreatorApi(jwt = jwt) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val drawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val config = LocalConfiguration.current
     val maxSheet = (config.screenHeightDp.dp * 0.96f)
 
@@ -114,6 +186,9 @@ fun DesignDetailSheet(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
     var moveName by remember { mutableStateOf("") }
+
+    var newTopicLine by remember { mutableStateOf("") }
+    var newSubtopicLine by remember { mutableStateOf("") }
 
     val designId = design.id ?: design.designId ?: ""
 
@@ -198,10 +273,18 @@ fun DesignDetailSheet(
         }
     }
 
+    LaunchedEffect(showHistoryDialog) {
+        if (showHistoryDialog) loadHistory()
+    }
+
+    val drawerBg = Color(0xFF020617)
+    val drawerItemSelected = Color(0xFF1E293B)
+    val sheetBg = Color(0xFF0F172A)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF1E293B),
+        containerColor = sheetBg,
         dragHandle = null,
         modifier = Modifier.heightIn(max = maxSheet)
     ) {
@@ -209,13 +292,16 @@ fun DesignDetailSheet(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet(
-                    modifier = Modifier.background(Color(0xFF0F172A))
+                    modifier = Modifier.background(drawerBg),
+                    drawerContainerColor = drawerBg,
+                    drawerContentColor = Color.White
                 ) {
                     Text(
                         t("creator.design_detail.nav_title", "Design"),
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
                         color = Color.White,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
                     )
                     for (dest in DesignDetailTab.values()) {
                         val label = when (dest) {
@@ -228,40 +314,54 @@ fun DesignDetailSheet(
                             label,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .background(if (selected) drawerItemSelected else Color.Transparent)
                                 .clickable {
                                     tab = dest
                                     scope.launch { drawerState.close() }
                                 }
-                                .padding(16.dp),
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) EazColors.Orange else Color.White.copy(alpha = 0.9f)
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) EazColors.Orange else Color.White.copy(alpha = 0.85f),
+                            fontSize = 15.sp
                         )
                     }
                 }
             },
             content = {
                 Scaffold(
-                    containerColor = Color(0xFF1E293B),
+                    containerColor = sheetBg,
                     topBar = {
                         TopAppBar(
+                            modifier = Modifier
+                                .height(52.dp)
+                                .offset(y = (-6).dp),
                             title = {
                                 Text(
                                     draftMeta.optString("title").ifBlank { design.title },
                                     color = Color.White,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    fontSize = 17.sp
                                 )
                             },
                             navigationIcon = {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(Icons.Default.Menu, contentDescription = t("creator.design_detail.menu", "Menu"), tint = Color.White)
+                                    Icon(
+                                        Icons.Default.Menu,
+                                        contentDescription = t("creator.design_detail.menu", "Menu"),
+                                        tint = Color.White
+                                    )
                                 }
                             },
                             actions = {
                                 IconButton(onClick = onDismiss) {
-                                    Icon(Icons.Default.Close, contentDescription = t("accessibility.close", "Close"), tint = Color.White)
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = t("accessibility.close", "Close"),
+                                        tint = Color.White
+                                    )
                                 }
                             },
-                            colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E293B))
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = sheetBg)
                         )
                     },
                     bottomBar = {
@@ -270,26 +370,52 @@ fun DesignDetailSheet(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        .background(sheetBg)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    TextButton(onClick = {
-                                        if (designId.isNotBlank()) {
-                                            onRequestGeneratorPrefill(GeneratorPrefillRequest(designId, "remix"))
-                                            onDismiss()
+                                    IconButton(
+                                        onClick = {
+                                            if (designId.isNotBlank()) {
+                                                onRequestGeneratorPrefill(GeneratorPrefillRequest(designId, "remix"))
+                                                onDismiss()
+                                            }
                                         }
-                                    }) { Text(t("creator.design_detail.remix", "Remix"), color = EazColors.Orange) }
-                                    TextButton(onClick = {
-                                        if (designId.isNotBlank()) {
-                                            onRequestGeneratorPrefill(GeneratorPrefillRequest(designId, "regenerate"))
-                                            onDismiss()
-                                        }
-                                    }) { Text(t("creator.design_detail.generate_new", "Generate New"), color = EazColors.Orange) }
-                                    TextButton(onClick = { showMoveDialog = true }) {
-                                        Text(t("creator.design_detail.move", "Move"), color = Color.White)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = t("creator.design_detail.content_desc_remix", "Remix"),
+                                            tint = EazColors.Orange
+                                        )
                                     }
-                                    TextButton(onClick = { showDeleteConfirm = true }) {
-                                        Text(t("creator.design_detail.delete", "Delete"), color = Color(0xFFFF6B6B))
+                                    IconButton(
+                                        onClick = {
+                                            if (designId.isNotBlank()) {
+                                                onRequestGeneratorPrefill(GeneratorPrefillRequest(designId, "regenerate"))
+                                                onDismiss()
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.AutoAwesome,
+                                            contentDescription = t("creator.design_detail.content_desc_generate_new", "Generate new"),
+                                            tint = EazColors.Orange
+                                        )
+                                    }
+                                    IconButton(onClick = { showMoveDialog = true }) {
+                                        Icon(
+                                            Icons.Default.DriveFileMove,
+                                            contentDescription = t("creator.design_detail.content_desc_move", "Move design"),
+                                            tint = Color.White
+                                        )
+                                    }
+                                    IconButton(onClick = { showDeleteConfirm = true }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = t("creator.design_detail.content_desc_delete", "Delete design"),
+                                            tint = Color(0xFFFF6B6B)
+                                        )
                                     }
                                 }
                             }
@@ -298,10 +424,12 @@ fun DesignDetailSheet(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        .background(sheetBg)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    TextButton(
+                                    IconButton(
                                         onClick = {
                                             scope.launch {
                                                 try {
@@ -310,13 +438,21 @@ fun DesignDetailSheet(
                                                     }
                                                     if (res.optBoolean("ok", false)) {
                                                         val m = res.optJSONObject("metadata") ?: JSONObject()
-                                                        draftMeta = m
+                                                        draftMeta = JSONObject(m.toString())
+                                                        recomputeBaseline()
                                                     }
-                                                } catch (_: Exception) {}
+                                                } catch (_: Exception) {
+                                                }
                                             }
                                         }
-                                    ) { Text(t("creator.design_detail.gen_meta", "Generate New"), color = EazColors.Orange) }
-                                    Button(
+                                    ) {
+                                        Icon(
+                                            Icons.Default.AutoAwesome,
+                                            contentDescription = t("creator.design_detail.content_desc_regenerate", "Regenerate metadata"),
+                                            tint = EazColors.Orange
+                                        )
+                                    }
+                                    IconButton(
                                         onClick = {
                                             scope.launch {
                                                 saving = true
@@ -337,17 +473,31 @@ fun DesignDetailSheet(
                                             }
                                         },
                                         enabled = isDirtyDetails() && !saving
-                                    ) { Text(t("creator.common.save", "Save")) }
-                                    TextButton(onClick = {
-                                        loadHistory()
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Save,
+                                            contentDescription = t("creator.design_detail.content_desc_save", "Save"),
+                                            tint = if (isDirtyDetails() && !saving) EazColors.Orange else Color.White.copy(alpha = 0.35f)
+                                        )
+                                    }
+                                    IconButton(onClick = {
                                         showHistoryDialog = true
-                                    }) { Text(t("creator.design_detail.reset", "Reset"), color = Color.White) }
+                                    }) {
+                                        Icon(
+                                            Icons.Default.History,
+                                            contentDescription = t("creator.design_detail.content_desc_history", "History"),
+                                            tint = Color.White
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 ) { padding ->
-                    Box(
+                    val previewUrl = designJson?.optString("preview_url").orEmpty().ifBlank {
+                        design.imageUrl
+                    }
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .fillMaxHeight()
@@ -359,79 +509,82 @@ fun DesignDetailSheet(
                             }
                             loadError != null -> Text(loadError ?: "", color = Color(0xFFFF6B6B), modifier = Modifier.padding(16.dp))
                             else -> {
+                                if (tab == DesignDetailTab.Overview && previewUrl.isNotBlank()) {
+                                    AsyncImage(
+                                        model = previewUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(1f),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                }
                                 Column(
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .weight(1f, fill = true)
+                                        .fillMaxWidth()
                                         .verticalScroll(rememberScrollState())
                                         .padding(16.dp)
                                 ) {
-                                    val previewUrl = designJson?.optString("preview_url").orEmpty().ifBlank {
-                                        design.imageUrl
-                                    }
-                                    if (previewUrl.isNotBlank()) {
-                                        AsyncImage(
-                                            model = previewUrl,
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .aspectRatio(1f),
-                                            contentScale = ContentScale.Fit
-                                        )
-                                        Spacer(Modifier.height(12.dp))
-                                    }
                                     when (tab) {
                                         DesignDetailTab.Overview -> {
                                             OutlinedTextField(
-                                                value = draftMeta.optString("title").ifBlank { design.title },
-                                                onValueChange = { v ->
-                                                    draftMeta.put("title", v)
-                                                },
-                                                label = { Text(t("creator.design_detail.design_title", "Title"), color = Color.White.copy(0.7f)) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White
-                                                )
-                                            )
-                                            Spacer(Modifier.height(8.dp))
-                                            OutlinedTextField(
                                                 value = draftPrompt,
-                                                onValueChange = { draftPrompt = it },
-                                                label = { Text(t("creator.design_detail.design_prompt", "Design prompt"), color = Color.White.copy(0.7f)) },
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                label = {
+                                                    Text(
+                                                        t("creator.design_detail.design_prompt", "Design prompt"),
+                                                        color = Color.White.copy(alpha = 0.7f)
+                                                    )
+                                                },
                                                 modifier = Modifier.fillMaxWidth(),
                                                 minLines = 3,
                                                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White
+                                                    focusedTextColor = Color.White.copy(alpha = 0.95f),
+                                                    unfocusedTextColor = Color.White.copy(alpha = 0.95f),
+                                                    focusedBorderColor = Color.White.copy(alpha = 0.4f),
+                                                    unfocusedBorderColor = Color.White.copy(alpha = 0.25f)
                                                 )
                                             )
-                                            Spacer(Modifier.height(8.dp))
-                                            Text(t("creator.design_detail.visibility", "Visibility"), color = Color.White)
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                FilterChip(
-                                                    selected = draftVisibility == "private",
-                                                    onClick = { draftVisibility = "private" },
-                                                    label = { Text(t("creator.design_detail.private", "Private")) }
-                                                )
-                                                FilterChip(
-                                                    selected = draftVisibility == "public",
-                                                    onClick = { draftVisibility = "public" },
-                                                    label = { Text(t("creator.design_detail.public", "Public")) }
-                                                )
-                                            }
-                                            Spacer(Modifier.height(16.dp))
-                                            val shopUrl = "$storeBaseUrl/pages/my-creations?design_id=$designId"
-                                            Button(
-                                                onClick = {
-                                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(shopUrl)))
-                                                },
+                                            Spacer(Modifier.height(12.dp))
+                                            Row(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text(t("creator.design_detail.view_in_shop", "View in shop"), color = Color.White)
+                                                Text(
+                                                    t("creator.design_detail.visibility", "Visibility"),
+                                                    color = Color.White,
+                                                    fontSize = 15.sp
+                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        if (draftVisibility == "public") {
+                                                            t("creator.design_detail.visibility_public", "Public")
+                                                        } else {
+                                                            t("creator.design_detail.private", "Private")
+                                                        },
+                                                        color = Color.White.copy(alpha = 0.85f),
+                                                        modifier = Modifier.padding(end = 8.dp),
+                                                        fontSize = 14.sp
+                                                    )
+                                                    Switch(
+                                                        checked = draftVisibility == "public",
+                                                        onCheckedChange = { on ->
+                                                            draftVisibility = if (on) "public" else "private"
+                                                        },
+                                                        colors = SwitchDefaults.colors(
+                                                            checkedThumbColor = Color.White,
+                                                            checkedTrackColor = EazColors.Orange,
+                                                            uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
+                                                            uncheckedTrackColor = Color.White.copy(alpha = 0.25f)
+                                                        )
+                                                    )
+                                                }
                                             }
                                             if (isDirtyOverview()) {
-                                                Spacer(Modifier.height(12.dp))
+                                                Spacer(Modifier.height(16.dp))
                                                 Button(
                                                     onClick = {
                                                         scope.launch {
@@ -455,41 +608,31 @@ fun DesignDetailSheet(
                                                         }
                                                     },
                                                     enabled = !saving,
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) { Text(t("creator.common.save", "Save")) }
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                        containerColor = EazColors.Orange
+                                                    )
+                                                ) {
+                                                    Text(t("creator.design_detail.save", "Save"), color = Color.White)
+                                                }
                                             }
                                         }
                                         DesignDetailTab.Reference -> {
-                                            MetaReadonlyRows(draftMeta, t)
+                                            GenerationReferenceBlock(
+                                                designJson = designJson,
+                                                draftMeta = draftMeta,
+                                                t = t
+                                            )
                                         }
                                         DesignDetailTab.Details -> {
-                                            OutlinedTextField(
-                                                value = draftMeta.optString("title"),
-                                                onValueChange = { draftMeta.put("title", it) },
-                                                label = { Text(t("creator.design_detail.meta_title", "SEO / Title"), color = Color.White.copy(0.7f)) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White
-                                                )
-                                            )
-                                            Spacer(Modifier.height(8.dp))
-                                            OutlinedTextField(
-                                                value = draftMeta.optString("description"),
-                                                onValueChange = { draftMeta.put("description", it) },
-                                                label = { Text(t("creator.design_detail.meta_description", "Description"), color = Color.White.copy(0.7f)) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                minLines = 4,
-                                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White
-                                                )
-                                            )
-                                            Spacer(Modifier.height(8.dp))
-                                            Text(
-                                                t("creator.design_detail.raw_meta_hint", "Additional fields are preserved when you save."),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color.White.copy(alpha = 0.6f)
+                                            DesignDetailsEditor(
+                                                draftMeta = draftMeta,
+                                                onDraftMetaChange = { draftMeta = it },
+                                                newTopicLine = newTopicLine,
+                                                onNewTopicLineChange = { newTopicLine = it },
+                                                newSubtopicLine = newSubtopicLine,
+                                                onNewSubtopicLineChange = { newSubtopicLine = it },
+                                                t = t
                                             )
                                         }
                                     }
@@ -577,9 +720,9 @@ fun DesignDetailSheet(
                             val ts = row.optLong("created_at", 0L)
                             val label = row.optString("source", "")
                             val df = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-                            val title = df.format(Date(ts)) + " · " + label
+                            val lineTitle = df.format(Date(ts)) + " · " + label
                             Text(
-                                title,
+                                lineTitle,
                                 color = EazColors.Orange,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -590,12 +733,17 @@ fun DesignDetailSheet(
                                             if (it == "public") "public" else "private"
                                         }
                                         val m = snap.optJSONObject("metadata")
-                                        if (m != null) draftMeta = try {
-                                            JSONObject(m.toString())
-                                        } catch (_: Exception) {
-                                            draftMeta
+                                        if (m != null) {
+                                            draftMeta = try {
+                                                JSONObject(m.toString())
+                                            } catch (_: Exception) {
+                                                draftMeta
+                                            }
                                         }
+                                        newTopicLine = ""
+                                        newSubtopicLine = ""
                                         showHistoryDialog = false
+                                        recomputeBaseline()
                                     }
                                     .padding(vertical = 8.dp)
                             )
@@ -608,21 +756,246 @@ fun DesignDetailSheet(
 }
 
 @Composable
-private fun MetaReadonlyRows(meta: JSONObject, t: (String, String) -> String) {
-    val keys = meta.keys().asSequence().toList().sorted()
-    for (k in keys) {
-        val v = meta.opt(k)
-        val s = when (v) {
-            is String -> v
-            else -> v?.toString() ?: ""
+private fun GenerationReferenceBlock(
+    designJson: JSONObject?,
+    draftMeta: JSONObject,
+    t: (String, String) -> String
+) {
+    val prompt = designJson?.optString("prompt").orEmpty().trim()
+    val parentId = designJson?.optString("parent_design_id").orEmpty().trim()
+
+    Text(
+        t("creator.design_detail.reference_section_prompt", "Generation prompt"),
+        color = Color.White.copy(alpha = 0.65f),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium
+    )
+    Spacer(Modifier.height(6.dp))
+    Text(
+        if (prompt.isNotBlank()) prompt else "—",
+        color = Color.White,
+        fontSize = 18.sp,
+        lineHeight = 24.sp
+    )
+    Spacer(Modifier.height(16.dp))
+
+    if (parentId.isNotBlank()) {
+        Text(
+            t("creator.design_detail.reference_parent_design", "Parent design"),
+            color = Color.White.copy(alpha = 0.65f),
+            fontSize = 13.sp
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(parentId, color = Color.White, fontSize = 17.sp)
+        Spacer(Modifier.height(16.dp))
+    }
+
+    Text(
+        t("creator.design_detail.reference_section_inputs", "Inputs"),
+        color = Color.White.copy(alpha = 0.65f),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium
+    )
+    Spacer(Modifier.height(8.dp))
+
+    for (key in REFERENCE_META_KEYS_ORDER) {
+        val raw = draftMeta.opt(key) ?: continue
+        val s = when (raw) {
+            is String -> raw.trim()
+            else -> raw.toString().trim()
         }
         if (s.isBlank()) continue
         Text(
-            k,
-            color = Color.White.copy(alpha = 0.6f),
-            style = MaterialTheme.typography.labelSmall
+            key,
+            color = Color.White.copy(alpha = 0.55f),
+            style = MaterialTheme.typography.labelMedium,
+            fontSize = 12.sp
         )
-        Text(s, color = Color.White, style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(
+            s,
+            color = Color.White,
+            fontSize = 17.sp,
+            lineHeight = 22.sp
+        )
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun DesignDetailsEditor(
+    draftMeta: JSONObject,
+    onDraftMetaChange: (JSONObject) -> Unit,
+    newTopicLine: String,
+    onNewTopicLineChange: (String) -> Unit,
+    newSubtopicLine: String,
+    onNewSubtopicLineChange: (String) -> Unit,
+    t: (String, String) -> String
+) {
+    val tagsStr = draftMeta.optString("tags")
+    val tagList = remember(tagsStr) { parseTagsList(tagsStr) }
+
+    OutlinedTextField(
+        value = draftMeta.optString("title"),
+        onValueChange = { v ->
+            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("title", v) })
+        },
+        label = { Text(t("creator.design_detail.meta_title", "Title"), color = Color.White.copy(0.7f)) },
+        modifier = Modifier.fillMaxWidth(),
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White
+        )
+    )
+    Spacer(Modifier.height(10.dp))
+    OutlinedTextField(
+        value = draftMeta.optString("description"),
+        onValueChange = { v ->
+            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("description", v) })
+        },
+        label = {
+            Text(
+                t("creator.design_detail.design_description", "Design description"),
+                color = Color.White.copy(0.7f)
+            )
+        },
+        modifier = Modifier.fillMaxWidth(),
+        minLines = 4,
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White
+        )
+    )
+
+    Spacer(Modifier.height(16.dp))
+    Text(t("creator.design_detail.tags_label", "Tags"), color = Color.White, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(6.dp))
+    OutlinedTextField(
+        value = tagsStr,
+        onValueChange = { v ->
+            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("tags", normalizeTagsString(v)) })
+        },
+        label = {
+            Text(
+                t("creator.design_detail.tags_input_hint", "Add tags, comma-separated"),
+                color = Color.White.copy(0.7f)
+            )
+        },
+        modifier = Modifier.fillMaxWidth(),
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White
+        )
+    )
+    Spacer(Modifier.height(8.dp))
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        tagList.forEach { tag ->
+            InputChip(
+                selected = false,
+                onClick = {
+                    val next = tagList.filter { it != tag }
+                    onDraftMetaChange(
+                        replaceDraftMeta(draftMeta) {
+                            put("tags", next.joinToString(", "))
+                        }
+                    )
+                },
+                label = { Text(tag, color = Color.White, fontSize = 13.sp) },
+                trailingIcon = {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White.copy(0.8f))
+                }
+            )
+        }
+    }
+
+    Spacer(Modifier.height(20.dp))
+    Text(t("creator.design_detail.topics_label", "Topics"), color = Color.White, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(6.dp))
+    val topics = getTopicList(draftMeta)
+    topics.forEachIndexed { idx, item ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(item, color = Color.White, modifier = Modifier.weight(1f))
+            IconButton(onClick = {
+                val next = topics.toMutableList().also { it.removeAt(idx) }
+                onDraftMetaChange(replaceDraftMeta(draftMeta) { put("topic", JSONArray(next)) })
+            }) {
+                Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFFF6B6B))
+            }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = newTopicLine,
+            onValueChange = onNewTopicLineChange,
+            modifier = Modifier.weight(1f),
+            label = { Text(t("creator.design_detail.add_row_hint", "Add…"), color = Color.White.copy(0.6f)) },
+            singleLine = true,
+            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            )
+        )
+        TextButton(onClick = {
+            val add = newTopicLine.trim()
+            if (add.isEmpty()) return@TextButton
+            val next = topics.toMutableList()
+            if (next.none { it.equals(add, ignoreCase = true) }) next.add(add)
+            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("topic", JSONArray(next)) })
+            onNewTopicLineChange("")
+        }) { Text(t("creator.design_detail.add", "Add"), color = EazColors.Orange) }
+    }
+
+    Spacer(Modifier.height(16.dp))
+    Text(t("creator.design_detail.subtopics_label", "Subtopics"), color = Color.White, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(6.dp))
+    val subtopics = getSubtopicList(draftMeta)
+    subtopics.forEachIndexed { idx, item ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(item, color = Color.White, modifier = Modifier.weight(1f))
+            IconButton(onClick = {
+                val next = subtopics.toMutableList().also { it.removeAt(idx) }
+                onDraftMetaChange(replaceDraftMeta(draftMeta) { put("subtopic", JSONArray(next)) })
+            }) {
+                Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFFF6B6B))
+            }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = newSubtopicLine,
+            onValueChange = onNewSubtopicLineChange,
+            modifier = Modifier.weight(1f),
+            label = { Text(t("creator.design_detail.add_row_hint", "Add…"), color = Color.White.copy(0.6f)) },
+            singleLine = true,
+            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            )
+        )
+        TextButton(onClick = {
+            val add = newSubtopicLine.trim()
+            if (add.isEmpty()) return@TextButton
+            val next = subtopics.toMutableList()
+            if (next.none { it.equals(add, ignoreCase = true) }) next.add(add)
+            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("subtopic", JSONArray(next)) })
+            onNewSubtopicLineChange("")
+        }) { Text(t("creator.design_detail.add", "Add"), color = EazColors.Orange) }
     }
 }
