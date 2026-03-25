@@ -21,6 +21,10 @@ private val Context.translationDataStore: DataStore<Preferences> by preferencesD
  * Translation store – loads from DB API with fallback chain (lang → base → en).
  * For dialect/script: fallback to main language, then English.
  * Uses cached translations; refreshes when language changes.
+ *
+ * Fixed wording (see theme shopify-translations rule): **Active Jobs** / **Aktive Jobs** —
+ * never substitute recruitment/job-portal phrasing from API.
+ * Empty jobs line is always English **No active jobs** (legacy key `creator.notifications.empty_jobs` ignored).
  */
 class TranslationStore(
     private val context: Context,
@@ -31,6 +35,9 @@ class TranslationStore(
 
     private val _enFallback = MutableStateFlow<Map<String, String>>(emptyMap())
     val enFallback: StateFlow<Map<String, String>> = _enFallback.asStateFlow()
+
+    /** BCP-like language last passed to [load]; used only for fixed feature labels. */
+    private var loadedUiLang: String = "en"
 
     /**
      * Get translated string. Lookup order: ui:key, key.
@@ -57,6 +64,12 @@ class TranslationStore(
     }
 
     fun t(key: String, default: String? = null): String {
+        if (isFixedActiveJobsKey(key)) {
+            return fixedActiveJobsLabel(loadedUiLang)
+        }
+        if (isFixedNoActiveJobsKey(key)) {
+            return "No active jobs"
+        }
         val map = _translations.value
         val enMap = _enFallback.value
         for (k in resolveKey(key)) {
@@ -75,12 +88,33 @@ class TranslationStore(
         return default ?: key
     }
 
+    private fun isFixedActiveJobsKey(key: String): Boolean = when (key) {
+        "creator.notifications.active_jobs",
+        "ui:creator.notifications.active_jobs",
+        "eazy_fn.active_jobs",
+        "ui:eazy_fn.active_jobs" -> true
+        else -> false
+    }
+
+    private fun isFixedNoActiveJobsKey(key: String): Boolean = when (key) {
+        "creator.notifications.empty_jobs",
+        "ui:creator.notifications.empty_jobs" -> true
+        else -> false
+    }
+
+    /** Matches theme: EN "Active Jobs", DE "Aktive Jobs"; other locales → English label. */
+    private fun fixedActiveJobsLabel(lang: String): String {
+        val base = lang.trim().lowercase(Locale.ROOT).take(2)
+        return if (base == "de") "Aktive Jobs" else "Active Jobs"
+    }
+
     /**
      * Load translations for language. Server applies fallback: lang → base → en.
      * We also load en separately for client-side fallback when key is missing.
      */
     suspend fun load(lang: String) = withContext(Dispatchers.IO) {
         val normalizedLang = lang.trim().lowercase()
+        loadedUiLang = normalizedLang
         // #region agent log
         langDebug("TranslationStore.kt:load", "Entry", mapOf("lang" to normalizedLang), "H4")
         // #endregion

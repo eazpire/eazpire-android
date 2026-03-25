@@ -1389,7 +1389,7 @@ private fun EazyHeroJobsPanel(
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
-                    text = t("creator.notifications.empty_jobs", "No active jobs"),
+                    text = "No active jobs",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ChatMuted,
                     textAlign = TextAlign.Center

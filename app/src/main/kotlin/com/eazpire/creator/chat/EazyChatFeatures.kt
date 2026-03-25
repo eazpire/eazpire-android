@@ -18,7 +18,7 @@ internal object EazyChatFeatureCatalog {
         EazyFeatureDef("my-creations", "eazy_fn.my_creations", "My creations", EazyFeatureCategory.Shared),
         EazyFeatureDef("publish", "eazy_fn.publish", "Publish products", EazyFeatureCategory.Shared),
         EazyFeatureDef("my-products", "eazy_fn.my_products", "My products", EazyFeatureCategory.Shared),
-        EazyFeatureDef("active-jobs", "eazy_fn.active_jobs", "Active jobs", EazyFeatureCategory.Shared),
+        EazyFeatureDef("active-jobs", "eazy_fn.active_jobs", "Active Jobs", EazyFeatureCategory.Shared),
         EazyFeatureDef("favorites", "eazy_fn.favorites", "Favorites", EazyFeatureCategory.Shop),
         EazyFeatureDef("gift-cards", "eazy_fn.gift_cards", "Gift cards", EazyFeatureCategory.Shop),
         EazyFeatureDef("promo-codes", "eazy_fn.promo_codes", "Promo codes", EazyFeatureCategory.Shop),
