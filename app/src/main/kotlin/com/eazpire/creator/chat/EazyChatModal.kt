@@ -361,7 +361,21 @@ fun EazyChatModal(
                                 .padding(horizontal = 8.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Spacer(modifier = Modifier.width(48.dp))
+                            if (selectedTab == EazySidebarTab.Jobs) {
+                                Box(
+                                    modifier = Modifier.width(48.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Bolt,
+                                        contentDescription = null,
+                                        tint = ChatAccent,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.width(48.dp))
+                            }
                             Text(
                                 text = when (selectedTab) {
                                     EazySidebarTab.Chat -> t("eazy_chat.ui_chat_title", "eazy")
@@ -1363,11 +1377,24 @@ private fun EazyHeroJobsPanel(
             }
         }
         if (activeHero == null && activeVideo == null) {
-            Text(
-                text = t("creator.notifications.empty_jobs", "No active jobs"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = ChatMuted
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    Icons.Default.Bolt,
+                    contentDescription = null,
+                    tint = ChatMuted,
+                    modifier = Modifier.size(36.dp)
+                )
+                Text(
+                    text = t("creator.notifications.empty_jobs", "No active jobs"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ChatMuted,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
