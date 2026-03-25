@@ -76,6 +76,7 @@ import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.URL
 import java.util.Locale
 
 private val TARGET_PRODUCT_OPTIONS = listOf(
@@ -200,7 +201,9 @@ fun CreatorGeneratorScreen(
     onGenerationOverlaySyncToShop: (visible: Boolean, loading: Boolean) -> Unit = { _, _ -> },
     onFloatingComposeStart: () -> Unit = {},
     maxHeight: Dp = Dp.Infinity,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    generatorPrefillRequest: GeneratorPrefillRequest? = null,
+    onGeneratorPrefillConsumed: () -> Unit = {}
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
@@ -234,6 +237,61 @@ fun CreatorGeneratorScreen(
     var generatingGen by remember { mutableStateOf(false) }
     var confirmBalanceGenEaz by remember { mutableStateOf<Double?>(null) }
     SideEffect { onGeneratorGeneratingChange(generatingGen) }
+
+    LaunchedEffect(generatorPrefillRequest, ownerId) {
+        val req = generatorPrefillRequest ?: return@LaunchedEffect
+        if (ownerId.isBlank()) {
+            onGeneratorPrefillConsumed()
+            return@LaunchedEffect
+        }
+        try {
+            val res = withContext(Dispatchers.IO) { api.getDesign(ownerId, req.designId) }
+            if (!res.optBoolean("ok", false)) {
+                onGeneratorPrefillConsumed()
+                return@LaunchedEffect
+            }
+            val d = res.optJSONObject("design") ?: run {
+                onGeneratorPrefillConsumed()
+                return@LaunchedEffect
+            }
+            val meta = d.optJSONObject("metadata")
+            prompt = d.optString("prompt", "").ifBlank {
+                val u = meta?.optString("user_prompt", "").orEmpty()
+                if (u.isNotBlank()) u else meta?.optString("design_prompt", "").orEmpty()
+            }
+            meta?.optString("design_type", "")?.takeIf { it.isNotBlank() }?.let { designType = it.lowercase() }
+            meta?.optString("ratio", "")?.takeIf { it.isNotBlank() }?.let { ratio = it.lowercase() }
+            meta?.optString("content_type", "")?.takeIf { it.isNotBlank() }?.let { ct ->
+                contentType = when (ct) {
+                    "design_text", "design-text" -> "design-text"
+                    "text_only", "text-only" -> "text-only"
+                    "design_only", "design-only" -> "design-only"
+                    else -> ct
+                }
+            }
+            val stylesArr = meta?.optJSONArray("styles")
+            if (stylesArr != null && stylesArr.length() > 0) {
+                val list = mutableListOf<String>()
+                for (i in 0 until stylesArr.length()) {
+                    stylesArr.optString(i).takeIf { it.isNotBlank() }?.let { list.add(it) }
+                }
+                if (list.isNotEmpty()) selectedStyles = list
+            }
+            val pu = d.optString("preview_url", "").ifBlank { d.optString("original_url", "") }
+            if (pu.startsWith("http")) {
+                try {
+                    val bytes = withContext(Dispatchers.IO) { URL(pu).openStream().use { it.readBytes() } }
+                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    val mime = "image/png"
+                    selectedImages = listOf(RefImage("data:$mime;base64,$b64"))
+                } catch (_: Exception) { }
+            }
+        } catch (_: Exception) {
+        } finally {
+            onGeneratorPrefillConsumed()
+        }
+    }
+
     LaunchedEffect(headerStartNonce) {
         if (headerStartNonce == 0) return@LaunchedEffect
         if (generatingGen) return@LaunchedEffect

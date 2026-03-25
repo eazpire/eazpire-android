@@ -746,6 +746,18 @@ class CreatorApi(
         mapOf("owner_id" to ownerId, "limit" to limit.toString())
     )
 
+    /** GET ?op=get-system-notifications&owner_id=&audience=creator|shop */
+    suspend fun getSystemNotifications(ownerId: String, audience: String): JSONObject = call(
+        "get-system-notifications",
+        mapOf("owner_id" to ownerId, "audience" to audience.lowercase())
+    )
+
+    /** GET ?op=list-system-jobs&owner_id=&audience=creator|shop&limit= */
+    suspend fun listSystemJobs(ownerId: String, audience: String = "creator", limit: Int = 50): JSONObject = call(
+        "list-system-jobs",
+        mapOf("owner_id" to ownerId, "audience" to audience.lowercase(), "limit" to limit.toString())
+    )
+
     /** GET ?op=list-generated&owner_id=xxx&path_prefix=/apps/creator-dispatch → { ok, items: [...] } */
     suspend fun listGenerated(ownerId: String, limit: Int = 200): JSONObject = call(
         "list-generated",
@@ -952,6 +964,83 @@ class CreatorApi(
             val response = client.newCall(request).execute()
             JSONObject(response.body?.string() ?: "{}")
         }
+
+    private suspend fun putJsonBodyOp(op: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = "$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}"
+            val request = Request.Builder()
+                .url(url)
+                .put(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    private suspend fun deleteWithQuery(op: String, params: Map<String, String>): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}")
+                params.forEach { (k, v) ->
+                    if (v.isNotBlank()) append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}")
+                }
+            }
+            val request = Request.Builder()
+                .url(url)
+                .delete()
+                .addHeader("Accept", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    /** GET ?op=get-design&design_id=&owner_id= */
+    suspend fun getDesign(ownerId: String, designId: String): JSONObject = call(
+        "get-design",
+        mapOf("design_id" to designId, "owner_id" to ownerId)
+    )
+
+    /** PUT ?op=update-design — body must include design_id; optional metadata, prompt, visibility, title, description */
+    suspend fun updateDesign(body: JSONObject): JSONObject = putJsonBodyOp("update-design", body)
+
+    /** DELETE ?op=delete-design&design_id=&owner_id= */
+    suspend fun deleteDesign(ownerId: String, designId: String): JSONObject = deleteWithQuery(
+        "delete-design",
+        mapOf("design_id" to designId, "owner_id" to ownerId)
+    )
+
+    /** PUT ?op=transfer-design — JSON body */
+    suspend fun transferDesign(ownerId: String, designId: String, newCreatorName: String): JSONObject =
+        putJsonBodyOp(
+            "transfer-design",
+            JSONObject()
+                .put("owner_id", ownerId)
+                .put("design_id", designId)
+                .put("new_creator_name", newCreatorName)
+        )
+
+    /** GET ?op=list-design-metadata-history */
+    suspend fun listDesignMetadataHistory(ownerId: String, designId: String, limit: Int = 50): JSONObject = call(
+        "list-design-metadata-history",
+        mapOf("design_id" to designId, "owner_id" to ownerId, "limit" to limit.toString())
+    )
+
+    /** POST ?op=regenerate-design-metadata */
+    suspend fun regenerateDesignMetadata(ownerId: String, designId: String): JSONObject =
+        postJsonBodyOp(
+            "regenerate-design-metadata",
+            JSONObject().put("owner_id", ownerId).put("design_id", designId)
+        )
+
+    /** POST ?op=sync-design-products */
+    suspend fun syncDesignProducts(ownerId: String, designId: String): JSONObject =
+        postJsonBodyOp(
+            "sync-design-products",
+            JSONObject().put("owner_id", ownerId).put("design_id", designId)
+        )
 
     /**
      * Multipart POST to creator-dispatch tool routes (same as web: `/apps/creator-dispatch?path_prefix=/tools/1.0/...`).
@@ -1482,6 +1571,13 @@ class CreatorApi(
                 "user_id" to ownerId,
                 "notification_id" to notificationId
             )
+        )
+
+    /** POST ?op=mark-system-notification-read – body user_id, notification_id */
+    suspend fun markSystemNotificationRead(userId: String, notificationId: String): JSONObject =
+        postJson(
+            "mark-system-notification-read",
+            mapOf("user_id" to userId, "notification_id" to notificationId)
         )
 
     /** POST ?op=register-fcm-token – body token, platform (auth: JWT) */

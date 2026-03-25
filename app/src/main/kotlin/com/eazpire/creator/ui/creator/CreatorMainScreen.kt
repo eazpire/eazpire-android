@@ -117,6 +117,9 @@ fun CreatorMainScreen(
     var marketingHeroTabVisible by remember { mutableStateOf(false) }
     var marketingVideoTabVisible by remember { mutableStateOf(false) }
 
+    /** Open native generator with design prefill (Remix / Generate New from design detail sheet). */
+    var generatorPrefillRequest by remember { mutableStateOf<GeneratorPrefillRequest?>(null) }
+
     var prevOverlayComposeKey by remember { mutableIntStateOf(-1) }
     LaunchedEffect(overlayComposeStartKey) {
         if (overlayComposeStartKey <= 0 || overlayComposeStartKey == prevOverlayComposeKey) return@LaunchedEffect
@@ -376,13 +379,19 @@ fun CreatorMainScreen(
                             },
                             onFloatingComposeStart = { genHeaderStartNonce++ },
                             maxHeight = contentMaxHeight,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            generatorPrefillRequest = generatorPrefillRequest,
+                            onGeneratorPrefillConsumed = { generatorPrefillRequest = null }
                         )
                         2 -> CreatorCreationsScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             maxHeight = contentMaxHeight,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            onRequestGeneratorPrefill = { req ->
+                                generatorPrefillRequest = req
+                                currentScreen = 1
+                            }
                         )
                         else -> MarketingScreen(
                             tokenStore = tokenStore,

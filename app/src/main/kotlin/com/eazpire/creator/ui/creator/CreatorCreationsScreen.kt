@@ -163,7 +163,8 @@ fun CreatorCreationsScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     maxHeight: Dp = Dp.Infinity,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRequestGeneratorPrefill: (GeneratorPrefillRequest) -> Unit = {}
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
@@ -964,11 +965,13 @@ fun CreatorCreationsScreen(
         )
     }
 
-    if (designPreviewDesign != null) {
-        CreatorDesignPreviewModal(
-            design = designPreviewDesign,
+    designPreviewDesign?.let { d ->
+        DesignDetailSheet(
+            design = d,
             onDismiss = { designPreviewDesign = null },
-            translationStore = translationStore
+            translationStore = translationStore,
+            tokenStore = tokenStore,
+            onRequestGeneratorPrefill = onRequestGeneratorPrefill
         )
     }
 }
