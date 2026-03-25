@@ -209,6 +209,24 @@ private fun parseSystemJobs(arr: JSONArray): List<EazySystemJobRow> {
     }
 }
 
+/** System notifications: one combined list (creator + shop APIs), deduped by id. */
+private fun mergeSystemNotificationRows(a: List<EazyNotifRow>, b: List<EazyNotifRow>): List<EazyNotifRow> {
+    val merged = mutableMapOf<String, EazyNotifRow>()
+    for (n in a + b) {
+        val existing = merged[n.id]
+        if (existing == null || (n.createdAt ?: "") >= (existing.createdAt ?: "")) {
+            merged[n.id] = n
+        }
+    }
+    return merged.values.sortedWith(compareByDescending { it.createdAt ?: "" })
+}
+
+/** System jobs: creator + shop lists merged, deduped by session id (no Creator/Shop tabs in UI). */
+private fun mergeSystemJobRows(a: List<EazySystemJobRow>, b: List<EazySystemJobRow>): List<EazySystemJobRow> {
+    val seen = mutableSetOf<String>()
+    return (a + b).filter { seen.add(it.sessionId) }
+}
+
 private fun parseConvTabs(arr: JSONArray): List<EazyConvTabItem> {
     return (0 until arr.length()).mapNotNull { i ->
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
@@ -261,18 +279,16 @@ fun EazyChatModal(
     var notifsSysCreator by remember { mutableStateOf<List<EazyNotifRow>>(emptyList()) }
     var notifsSysShop by remember { mutableStateOf<List<EazyNotifRow>>(emptyList()) }
     var notifFeedScope by remember { mutableStateOf("user") }
-    var notifSystemAudience by remember { mutableStateOf("creator") }
     var loadingNotifs by remember { mutableStateOf(false) }
 
     var jobsFeedScope by remember { mutableStateOf("user") }
-    var jobsSystemAudience by remember { mutableStateOf("creator") }
     var userKvJobs by remember { mutableStateOf<List<EazyKvJobRow>>(emptyList()) }
     var systemJobs by remember { mutableStateOf<List<EazySystemJobRow>>(emptyList()) }
     var loadingJobs by remember { mutableStateOf(false) }
 
-    val displayNotifications = remember(notifsUser, notifsSysCreator, notifsSysShop, notifFeedScope, notifSystemAudience) {
+    val displayNotifications = remember(notifsUser, notifsSysCreator, notifsSysShop, notifFeedScope) {
         when (notifFeedScope) {
-            "system" -> if (notifSystemAudience == "shop") notifsSysShop else notifsSysCreator
+            "system" -> mergeSystemNotificationRows(notifsSysCreator, notifsSysShop)
             else -> notifsUser
         }
     }
@@ -342,18 +358,17 @@ fun EazyChatModal(
         }
     }
 
-    LaunchedEffect(visible, selectedTab, ownerId, jobsFeedScope, jobsSystemAudience) {
+    LaunchedEffect(visible, selectedTab, ownerId, jobsFeedScope) {
         if (!visible || selectedTab != EazySidebarTab.Jobs || ownerId == null) return@LaunchedEffect
         val oid = ownerId ?: return@LaunchedEffect
         suspend fun loadOnce() {
             if (jobsFeedScope == "system") {
-                val r = withContext(Dispatchers.IO) { api.listSystemJobs(oid, jobsSystemAudience, 50) }
-                if (r.optBoolean("ok", false)) {
-                    systemJobs = parseSystemJobs(r.optJSONArray("items") ?: JSONArray())
-                    userKvJobs = emptyList()
-                } else {
-                    systemJobs = emptyList()
-                }
+                val r1 = withContext(Dispatchers.IO) { api.listSystemJobs(oid, "creator", 50) }
+                val r2 = withContext(Dispatchers.IO) { api.listSystemJobs(oid, "shop", 50) }
+                val items1 = if (r1.optBoolean("ok", false)) parseSystemJobs(r1.optJSONArray("items") ?: JSONArray()) else emptyList()
+                val items2 = if (r2.optBoolean("ok", false)) parseSystemJobs(r2.optJSONArray("items") ?: JSONArray()) else emptyList()
+                systemJobs = mergeSystemJobRows(items1, items2)
+                userKvJobs = emptyList()
             } else {
                 val r = withContext(Dispatchers.IO) { api.listJobs(oid, 50) }
                 if (r.optBoolean("ok", false)) {
@@ -361,6 +376,7 @@ fun EazyChatModal(
                     systemJobs = emptyList()
                 } else {
                     userKvJobs = emptyList()
+                    systemJobs = emptyList()
                 }
             }
         }
@@ -1005,8 +1021,6 @@ fun EazyChatModal(
                                 notifications = displayNotifications,
                                 notifFeedScope = notifFeedScope,
                                 onNotifFeedScopeChange = { notifFeedScope = it },
-                                notifSystemAudience = notifSystemAudience,
-                                onNotifSystemAudienceChange = { notifSystemAudience = it },
                                 t = t,
                                 onMarkRead = { row ->
                                     val oid = ownerId ?: return@EazyNotificationsPanel
@@ -1025,8 +1039,6 @@ fun EazyChatModal(
                                 video = videoJob,
                                 jobsFeedScope = jobsFeedScope,
                                 onJobsFeedScopeChange = { jobsFeedScope = it },
-                                jobsSystemAudience = jobsSystemAudience,
-                                onJobsSystemAudienceChange = { jobsSystemAudience = it },
                                 userKvJobs = userKvJobs,
                                 systemJobs = systemJobs,
                                 loadingJobs = loadingJobs,
@@ -1262,8 +1274,6 @@ private fun EazyNotificationsPanel(
     notifications: List<EazyNotifRow>,
     notifFeedScope: String,
     onNotifFeedScopeChange: (String) -> Unit,
-    notifSystemAudience: String,
-    onNotifSystemAudienceChange: (String) -> Unit,
     t: (String, String) -> String,
     onMarkRead: (EazyNotifRow) -> Unit
 ) {
@@ -1293,31 +1303,6 @@ private fun EazyNotificationsPanel(
                 )
             ) {
                 Text(t("creator.notifications.feed_system", "System"))
-            }
-        }
-        if (notifFeedScope == "system") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                TextButton(
-                    onClick = { onNotifSystemAudienceChange("creator") },
-                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        contentColor = if (notifSystemAudience == "creator") ChatAccent else ChatMuted
-                    )
-                ) {
-                    Text(t("creator.notifications.audience_creator", "Creator"))
-                }
-                TextButton(
-                    onClick = { onNotifSystemAudienceChange("shop") },
-                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        contentColor = if (notifSystemAudience == "shop") ChatAccent else ChatMuted
-                    )
-                ) {
-                    Text(t("creator.notifications.audience_shop", "Shop"))
-                }
             }
         }
         Row(
@@ -1524,8 +1509,6 @@ private fun EazyJobsCombinedPanel(
     video: VideoJobState?,
     jobsFeedScope: String,
     onJobsFeedScopeChange: (String) -> Unit,
-    jobsSystemAudience: String,
-    onJobsSystemAudienceChange: (String) -> Unit,
     userKvJobs: List<EazyKvJobRow>,
     systemJobs: List<EazySystemJobRow>,
     loadingJobs: Boolean,
@@ -1554,31 +1537,6 @@ private fun EazyJobsCombinedPanel(
                 )
             ) {
                 Text(t("creator.notifications.feed_system", "System"))
-            }
-        }
-        if (jobsFeedScope == "system") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                TextButton(
-                    onClick = { onJobsSystemAudienceChange("creator") },
-                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        contentColor = if (jobsSystemAudience == "creator") ChatAccent else ChatMuted
-                    )
-                ) {
-                    Text(t("creator.notifications.audience_creator", "Creator"))
-                }
-                TextButton(
-                    onClick = { onJobsSystemAudienceChange("shop") },
-                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        contentColor = if (jobsSystemAudience == "shop") ChatAccent else ChatMuted
-                    )
-                ) {
-                    Text(t("creator.notifications.audience_shop", "Shop"))
-                }
             }
         }
         when {
