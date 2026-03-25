@@ -105,12 +105,43 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import android.util.Base64
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.toArgb
+import com.eazpire.creator.ui.creator.CanvasStroke
+import org.json.JSONArray
+import org.json.JSONObject
 
 private data class ShopRefSlot(
     val label: String,
     val url: String,
-    val strength: Int = 80
+    val strength: Int = 80,
+    /** JSON array string of canvas strokes (same schema as web `creator-canvas-sketch-modal.js`). */
+    val canvasStrokesJson: String? = null
 )
+
+private fun serializeCanvasStrokes(strokes: List<CanvasStroke>): String {
+    val arr = JSONArray()
+    for (st in strokes) {
+        val o = JSONObject()
+        val pts = JSONArray()
+        for (p in st.points) {
+            pts.put(JSONObject().put("x", p.x.toDouble()).put("y", p.y.toDouble()))
+        }
+        o.put("points", pts)
+        o.put("color", String.format("#%08X", st.color.toArgb()))
+        o.put("width", st.width.toDouble())
+        val tr = st.transform
+        o.put(
+            "transform",
+            JSONObject()
+                .put("tx", tr.tx.toDouble())
+                .put("ty", tr.ty.toDouble())
+                .put("scale", tr.scale.toDouble())
+                .put("rotation", tr.rotation.toDouble())
+        )
+        arr.put(o)
+    }
+    return arr.toString()
+}
 
 private val DESIGN_TYPE_LABELS = listOf(
     "classic" to "Classic",
@@ -159,8 +190,10 @@ internal fun ShopDesignStudioGenerateSheet(
     var showCanvas by remember { mutableStateOf(false) }
     var showCanvasEdit by remember { mutableStateOf(false) }
     var canvasEditIndex by remember { mutableStateOf(0) }
-    val shopCanvasEditSession = remember(canvasEditIndex) { CanvasSessionState() }
-    val shopCanvasSession = remember { CanvasSessionState() }
+    var canvasEmptySessionKey by remember { mutableStateOf(0) }
+    var canvasEditSessionKey by remember { mutableStateOf(0) }
+    val shopCanvasSession = remember(canvasEmptySessionKey) { CanvasSessionState() }
+    val shopCanvasEditSession = remember(canvasEditIndex, canvasEditSessionKey) { CanvasSessionState() }
     var showDesignType by remember { mutableStateOf(false) }
     var showTargetProducts by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
@@ -179,9 +212,9 @@ internal fun ShopDesignStudioGenerateSheet(
         return list.mapIndexed { i, r -> r.copy(label = letters.getOrElse(i) { "?" }) }
     }
 
-    fun addRef(url: String) {
+    fun addRef(url: String, canvasStrokesJson: String? = null) {
         if (refs.size >= 5) return
-        refs = relabel(refs + ShopRefSlot("?", url, 80))
+        refs = relabel(refs + ShopRefSlot("?", url, 80, canvasStrokesJson = canvasStrokesJson))
     }
 
     fun removeRef(index: Int) {
@@ -277,6 +310,7 @@ internal fun ShopDesignStudioGenerateSheet(
         },
         onCanvas = {
             showRefSource = false
+            canvasEmptySessionKey++
             showCanvas = true
         }
     )
@@ -323,7 +357,8 @@ internal fun ShopDesignStudioGenerateSheet(
         shopLightChrome = true,
         externalSession = shopCanvasSession,
         onConfirm = { dataUrl ->
-            addRef(dataUrl)
+            val sj = serializeCanvasStrokes(shopCanvasSession.strokes.toList())
+            addRef(dataUrl, sj)
             showCanvas = false
         }
     )
@@ -337,8 +372,10 @@ internal fun ShopDesignStudioGenerateSheet(
         shopLightChrome = true,
         onConfirm = { dataUrl ->
             if (canvasEditIndex in refs.indices) {
-                val r = refs[canvasEditIndex]
-                refs = relabel(refs.mapIndexed { i, x -> if (i == canvasEditIndex) x.copy(url = dataUrl) else x })
+                val sj = serializeCanvasStrokes(shopCanvasEditSession.strokes.toList())
+                refs = relabel(refs.mapIndexed { i, x ->
+                    if (i == canvasEditIndex) x.copy(url = dataUrl, canvasStrokesJson = sj) else x
+                })
             }
             showCanvasEdit = false
         }
@@ -587,6 +624,7 @@ internal fun ShopDesignStudioGenerateSheet(
                                         onRemove = { removeRef(index) },
                                         onCanvas = {
                                             canvasEditIndex = index
+                                            canvasEditSessionKey++
                                             showCanvasEdit = true
                                         },
                                         onSimilarity = { similarityEditIndex = index },
@@ -735,6 +773,38 @@ internal fun ShopDesignStudioGenerateSheet(
                                         }
                                         val bgMode = if (colorState.backgroundTransparent) "transparent" else "solid"
                                         val bgColors = if (bgMode == "solid") colorState.backgroundColors.take(5) else emptyList()
+                                        val strokeArr = JSONArray()
+                                        refs.forEach { ref ->
+                                            val cj = ref.canvasStrokesJson
+                                            if (!cj.isNullOrBlank()) {
+                                                try {
+                                                    strokeArr.put(JSONArray(cj))
+                                                } catch (_: Exception) {
+                                                    strokeArr.put(null)
+                                                }
+                                            } else {
+                                                strokeArr.put(null)
+                                            }
+                                        }
+                                        val generatorUiSnapshot = JSONObject().apply {
+                                            put("v", 1)
+                                            put("prompt", p)
+                                            put("reference_canvas_strokes", strokeArr)
+                                            put("generator_options", JSONObject().apply {
+                                                put("ratio", ratio)
+                                                put("content_type", contentType)
+                                                put("styles", JSONArray().apply { selectedStyles.forEach { put(it) } })
+                                                put("design_colors", JSONArray().apply { colorState.designColors.forEach { put(it) } })
+                                                put("background_colors", JSONArray().apply { bgColors.forEach { put(it) } })
+                                                put("background", JSONObject().put("mode", bgMode))
+                                                put("backgroundTransparent", colorState.backgroundTransparent)
+                                                put("language", JSONObject().apply {
+                                                    put("mode", languageState.mode)
+                                                    if (languageState.mode == "manual") put("language", languageState.langCode)
+                                                })
+                                                put("design_type", designType)
+                                            })
+                                        }
                                         val res = withContext(Dispatchers.IO) {
                                             api.acceptShopCustomerDesignGenerate(
                                                 ownerId = oid,
@@ -750,7 +820,8 @@ internal fun ShopDesignStudioGenerateSheet(
                                                 backgroundColors = bgColors,
                                                 backgroundMode = bgMode,
                                                 languageMode = languageState.mode,
-                                                languageCode = languageState.langCode
+                                                languageCode = languageState.langCode,
+                                                generatorUiSnapshot = generatorUiSnapshot
                                             )
                                         }
                                         if (!res.optBoolean("ok", false)) {

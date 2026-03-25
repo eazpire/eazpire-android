@@ -406,7 +406,8 @@ class CreatorApi(
         backgroundColors: List<String> = emptyList(),
         backgroundMode: String = "transparent",
         languageMode: String = "as-design",
-        languageCode: String = "en"
+        languageCode: String = "en",
+        generatorUiSnapshot: JSONObject? = null
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = buildString {
             append("$baseUrl/apps/creator-dispatch?op=accept-customer-design")
@@ -447,6 +448,7 @@ class CreatorApi(
                 put("reference_images", arr)
                 put("image_url", referenceImages.first().url)
             }
+            generatorUiSnapshot?.let { put("generator_ui_snapshot", it) }
         }
         val request = Request.Builder()
             .url(url)
