@@ -1,5 +1,6 @@
 package com.eazpire.creator.ui.creator
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,11 +16,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -32,18 +37,22 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -61,6 +70,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -85,17 +95,26 @@ private enum class DesignDetailTab {
     Overview, Reference, Details
 }
 
-/** Metadata keys that reflect user/generation inputs — not AI-generated SEO fields. */
-private val REFERENCE_META_KEYS_ORDER = listOf(
-    "user_prompt",
-    "design_prompt",
-    "final_prompt",
-    "system_prompt",
-    "user_image_url",
-    "design_source",
-    "ratio",
-    "design_art"
-)
+/** Header, drawer, footer — darker band */
+private val CHeaderFooter = Color(0xFF020617)
+
+/** Main sheet / scroll area */
+private val CContent = Color(0xFF1E293B)
+
+/** Light surface for design preview / carousel */
+private val CLightSurface = Color(0xFFF1F5F9)
+
+/** Text on dark content */
+private val CTextPrimary = Color(0xFFF8FAFC)
+
+private val CTextOnLight = Color(0xFF0F172A)
+
+private val CTextMuted = Color(0xFF94A3B8)
+
+private val CAccent = EazColors.Orange
+
+/** Small metadata keys under reference (no system prompt / user_image URL) */
+private val REFERENCE_EXTRA_KEYS = listOf("design_source", "ratio", "design_art")
 
 private fun normalizeTagsString(raw: String): String {
     val parts = raw.split(',')
@@ -148,7 +167,154 @@ private fun replaceDraftMeta(draftMeta: JSONObject, block: JSONObject.() -> Unit
     return n
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+private fun collectReferenceImageUrls(
+    designJson: JSONObject?,
+    draftMeta: JSONObject,
+    designFallbackUrl: String
+): List<String> {
+    val seen = LinkedHashSet<String>()
+    fun add(u: String?) {
+        val t = u?.trim().orEmpty()
+        if (t.isNotBlank()) seen.add(t)
+    }
+    designJson?.let { j ->
+        add(j.optString("preview_url"))
+        add(j.optString("original_url"))
+    }
+    add(draftMeta.optString("user_image_url"))
+    add(designFallbackUrl)
+    return seen.toList()
+}
+
+@Composable
+private fun SectionHeader(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(22.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(CAccent)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            title,
+            color = CTextPrimary,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.15.sp
+        )
+    }
+}
+
+@Composable
+private fun BodyTextBlock(text: String, isLarge: Boolean = false) {
+    Text(
+        text = if (text.isNotBlank()) text else "—",
+        color = if (text.isNotBlank()) CTextPrimary else CTextMuted,
+        fontSize = if (isLarge) 17.sp else 15.sp,
+        lineHeight = if (isLarge) 24.sp else 22.sp,
+        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ReferenceImageCarousel(
+    urls: List<String>,
+    t: (String, String) -> String
+) {
+    SectionHeader(t("creator.design_detail.reference_images_title", "Reference images"))
+    Spacer(Modifier.height(8.dp))
+    Surface(
+        color = CLightSurface,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        if (urls.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    t("creator.design_detail.reference_no_images", "No reference images"),
+                    color = CTextMuted,
+                    fontSize = 16.sp
+                )
+            }
+        } else {
+            val pagerState = rememberPagerState(pageCount = { urls.size })
+            Column {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                ) { page ->
+                    AsyncImage(
+                        model = urls[page],
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    repeat(urls.size) { i ->
+                        Box(
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .size(if (pagerState.currentPage == i) 8.dp else 6.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (pagerState.currentPage == i) CAccent else CTextMuted.copy(alpha = 0.45f)
+                                )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesignPreviewLightBox(previewUrl: String) {
+    Surface(
+        color = CLightSurface,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        AsyncImage(
+            model = previewUrl,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .padding(12.dp),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DesignDetailSheet(
     design: CreationDesign,
@@ -277,14 +443,12 @@ fun DesignDetailSheet(
         if (showHistoryDialog) loadHistory()
     }
 
-    val drawerBg = Color(0xFF020617)
     val drawerItemSelected = Color(0xFF1E293B)
-    val sheetBg = Color(0xFF0F172A)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = sheetBg,
+        containerColor = CContent,
         dragHandle = null,
         modifier = Modifier.heightIn(max = maxSheet)
     ) {
@@ -292,17 +456,19 @@ fun DesignDetailSheet(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet(
-                    modifier = Modifier.background(drawerBg),
-                    drawerContainerColor = drawerBg,
+                    modifier = Modifier.background(CHeaderFooter),
+                    drawerContainerColor = CHeaderFooter,
                     drawerContentColor = Color.White
                 ) {
                     Text(
                         t("creator.design_detail.nav_title", "Design"),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
+                        fontSize = 20.sp
                     )
+                    Divider(color = Color.White.copy(alpha = 0.12f))
+                    Spacer(Modifier.height(4.dp))
                     for (dest in DesignDetailTab.values()) {
                         val label = when (dest) {
                             DesignDetailTab.Overview -> t("creator.design_detail.tab_overview", "Design Overview")
@@ -319,9 +485,9 @@ fun DesignDetailSheet(
                                     tab = dest
                                     scope.launch { drawerState.close() }
                                 }
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selected) EazColors.Orange else Color.White.copy(alpha = 0.85f),
+                            color = if (selected) CAccent else Color.White.copy(alpha = 0.92f),
                             fontSize = 15.sp
                         )
                     }
@@ -329,18 +495,17 @@ fun DesignDetailSheet(
             },
             content = {
                 Scaffold(
-                    containerColor = sheetBg,
+                    containerColor = CContent,
                     topBar = {
                         TopAppBar(
-                            modifier = Modifier
-                                .height(52.dp)
-                                .offset(y = (-6).dp),
+                            modifier = Modifier.height(56.dp),
                             title = {
                                 Text(
                                     draftMeta.optString("title").ifBlank { design.title },
                                     color = Color.White,
                                     maxLines = 1,
-                                    fontSize = 17.sp
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             },
                             navigationIcon = {
@@ -361,7 +526,12 @@ fun DesignDetailSheet(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = sheetBg)
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = CHeaderFooter,
+                                titleContentColor = Color.White,
+                                navigationIconContentColor = Color.White,
+                                actionIconContentColor = Color.White
+                            )
                         )
                     },
                     bottomBar = {
@@ -370,7 +540,7 @@ fun DesignDetailSheet(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(sheetBg)
+                                        .background(CHeaderFooter)
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.SpaceEvenly,
                                     verticalAlignment = Alignment.CenterVertically
@@ -386,7 +556,7 @@ fun DesignDetailSheet(
                                         Icon(
                                             Icons.Default.Refresh,
                                             contentDescription = t("creator.design_detail.content_desc_remix", "Remix"),
-                                            tint = EazColors.Orange
+                                            tint = CAccent
                                         )
                                     }
                                     IconButton(
@@ -400,7 +570,7 @@ fun DesignDetailSheet(
                                         Icon(
                                             Icons.Default.AutoAwesome,
                                             contentDescription = t("creator.design_detail.content_desc_generate_new", "Generate new"),
-                                            tint = EazColors.Orange
+                                            tint = CAccent
                                         )
                                     }
                                     IconButton(onClick = { showMoveDialog = true }) {
@@ -424,7 +594,7 @@ fun DesignDetailSheet(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(sheetBg)
+                                        .background(CHeaderFooter)
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.SpaceEvenly,
                                     verticalAlignment = Alignment.CenterVertically
@@ -449,7 +619,7 @@ fun DesignDetailSheet(
                                         Icon(
                                             Icons.Default.AutoAwesome,
                                             contentDescription = t("creator.design_detail.content_desc_regenerate", "Regenerate metadata"),
-                                            tint = EazColors.Orange
+                                            tint = CAccent
                                         )
                                     }
                                     IconButton(
@@ -477,7 +647,7 @@ fun DesignDetailSheet(
                                         Icon(
                                             Icons.Default.Save,
                                             contentDescription = t("creator.design_detail.content_desc_save", "Save"),
-                                            tint = if (isDirtyDetails() && !saving) EazColors.Orange else Color.White.copy(alpha = 0.35f)
+                                            tint = if (isDirtyDetails() && !saving) CAccent else Color.White.copy(alpha = 0.35f)
                                         )
                                     }
                                     IconButton(onClick = {
@@ -497,143 +667,176 @@ fun DesignDetailSheet(
                     val previewUrl = designJson?.optString("preview_url").orEmpty().ifBlank {
                         design.imageUrl
                     }
+                    val refUrls = remember(designJson, draftMeta, previewUrl) {
+                        collectReferenceImageUrls(designJson, draftMeta, previewUrl)
+                    }
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .fillMaxHeight()
                             .padding(padding)
+                            .background(CContent)
                     ) {
                         when {
                             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = EazColors.Orange)
+                                CircularProgressIndicator(color = CAccent)
                             }
-                            loadError != null -> Text(loadError ?: "", color = Color(0xFFFF6B6B), modifier = Modifier.padding(16.dp))
+                            loadError != null -> Text(
+                                loadError ?: "",
+                                color = Color(0xFFFF6B6B),
+                                modifier = Modifier.padding(16.dp)
+                            )
                             else -> {
-                                if (tab == DesignDetailTab.Overview && previewUrl.isNotBlank()) {
-                                    AsyncImage(
-                                        model = previewUrl,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(1f),
-                                        contentScale = ContentScale.Fit
-                                    )
-                                }
                                 Column(
                                     modifier = Modifier
-                                        .weight(1f, fill = true)
                                         .fillMaxWidth()
-                                        .verticalScroll(rememberScrollState())
-                                        .padding(16.dp)
+                                        .fillMaxHeight()
                                 ) {
                                     when (tab) {
                                         DesignDetailTab.Overview -> {
-                                            OutlinedTextField(
-                                                value = draftPrompt,
-                                                onValueChange = {},
-                                                readOnly = true,
-                                                label = {
-                                                    Text(
-                                                        t("creator.design_detail.design_prompt", "Design prompt"),
-                                                        color = Color.White.copy(alpha = 0.7f)
-                                                    )
-                                                },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                minLines = 3,
-                                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White.copy(alpha = 0.95f),
-                                                    unfocusedTextColor = Color.White.copy(alpha = 0.95f),
-                                                    focusedBorderColor = Color.White.copy(alpha = 0.4f),
-                                                    unfocusedBorderColor = Color.White.copy(alpha = 0.25f)
-                                                )
-                                            )
-                                            Spacer(Modifier.height(12.dp))
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    t("creator.design_detail.visibility", "Visibility"),
-                                                    color = Color.White,
-                                                    fontSize = 15.sp
-                                                )
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text(
-                                                        if (draftVisibility == "public") {
-                                                            t("creator.design_detail.visibility_public", "Public")
-                                                        } else {
-                                                            t("creator.design_detail.private", "Private")
-                                                        },
-                                                        color = Color.White.copy(alpha = 0.85f),
-                                                        modifier = Modifier.padding(end = 8.dp),
-                                                        fontSize = 14.sp
-                                                    )
-                                                    Switch(
-                                                        checked = draftVisibility == "public",
-                                                        onCheckedChange = { on ->
-                                                            draftVisibility = if (on) "public" else "private"
-                                                        },
-                                                        colors = SwitchDefaults.colors(
-                                                            checkedThumbColor = Color.White,
-                                                            checkedTrackColor = EazColors.Orange,
-                                                            uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
-                                                            uncheckedTrackColor = Color.White.copy(alpha = 0.25f)
-                                                        )
-                                                    )
-                                                }
-                                            }
-                                            if (isDirtyOverview()) {
-                                                Spacer(Modifier.height(16.dp))
-                                                Button(
-                                                    onClick = {
-                                                        scope.launch {
-                                                            saving = true
-                                                            try {
-                                                                val body = JSONObject()
-                                                                    .put("design_id", designId)
-                                                                    .put("owner_id", ownerId)
-                                                                    .put("prompt", draftPrompt)
-                                                                    .put("visibility", draftVisibility)
-                                                                    .put("metadata", draftMeta)
-                                                                    .put("history_source", "manual_save")
-                                                                val res = withContext(Dispatchers.IO) { api.updateDesign(body) }
-                                                                if (res.optBoolean("ok", false)) {
-                                                                    recomputeBaseline()
-                                                                }
-                                                            } catch (_: Exception) {
-                                                            } finally {
-                                                                saving = false
-                                                            }
-                                                        }
-                                                    },
-                                                    enabled = !saving,
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                                        containerColor = EazColors.Orange
-                                                    )
-                                                ) {
-                                                    Text(t("creator.design_detail.save", "Save"), color = Color.White)
-                                                }
+                                            if (previewUrl.isNotBlank()) {
+                                                DesignPreviewLightBox(previewUrl)
                                             }
                                         }
                                         DesignDetailTab.Reference -> {
-                                            GenerationReferenceBlock(
-                                                designJson = designJson,
-                                                draftMeta = draftMeta,
-                                                t = t
-                                            )
+                                            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                                ReferenceImageCarousel(refUrls, t)
+                                            }
                                         }
                                         DesignDetailTab.Details -> {
-                                            DesignDetailsEditor(
-                                                draftMeta = draftMeta,
-                                                onDraftMetaChange = { draftMeta = it },
-                                                newTopicLine = newTopicLine,
-                                                onNewTopicLineChange = { newTopicLine = it },
-                                                newSubtopicLine = newSubtopicLine,
-                                                onNewSubtopicLineChange = { newSubtopicLine = it },
-                                                t = t
-                                            )
+                                            Spacer(Modifier.height(4.dp))
+                                        }
+                                    }
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxWidth()
+                                            .verticalScroll(rememberScrollState())
+                                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                                    ) {
+                                        when (tab) {
+                                            DesignDetailTab.Overview -> {
+                                                Surface(
+                                                    color = Color(0xFF334155),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Column(Modifier.padding(16.dp)) {
+                                                        SectionHeader(t("creator.design_detail.design_prompt", "Design prompt"))
+                                                        OutlinedTextField(
+                                                            value = draftPrompt,
+                                                            onValueChange = {},
+                                                            readOnly = true,
+                                                            label = null,
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            minLines = 3,
+                                                            colors = OutlinedTextFieldDefaults.colors(
+                                                                focusedTextColor = CTextPrimary,
+                                                                unfocusedTextColor = CTextPrimary,
+                                                                focusedBorderColor = CAccent.copy(alpha = 0.6f),
+                                                                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                                                                cursorColor = CAccent,
+                                                                focusedContainerColor = Color.Transparent,
+                                                                unfocusedContainerColor = Color.Transparent
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(Modifier.height(12.dp))
+                                                Surface(
+                                                    color = Color(0xFF334155),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            t("creator.design_detail.visibility", "Visibility"),
+                                                            color = CTextPrimary,
+                                                            fontSize = 16.sp,
+                                                            fontWeight = FontWeight.Medium
+                                                        )
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Text(
+                                                                if (draftVisibility == "public") {
+                                                                    t("creator.design_detail.visibility_public", "Public")
+                                                                } else {
+                                                                    t("creator.design_detail.private", "Private")
+                                                                },
+                                                                color = CTextMuted,
+                                                                modifier = Modifier.padding(end = 8.dp),
+                                                                fontSize = 14.sp
+                                                            )
+                                                            Switch(
+                                                                checked = draftVisibility == "public",
+                                                                onCheckedChange = { on ->
+                                                                    draftVisibility = if (on) "public" else "private"
+                                                                },
+                                                                colors = SwitchDefaults.colors(
+                                                                    checkedThumbColor = Color.White,
+                                                                    checkedTrackColor = CAccent,
+                                                                    uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
+                                                                    uncheckedTrackColor = Color.White.copy(alpha = 0.25f)
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                if (isDirtyOverview()) {
+                                                    Spacer(Modifier.height(16.dp))
+                                                    Button(
+                                                        onClick = {
+                                                            scope.launch {
+                                                                saving = true
+                                                                try {
+                                                                    val body = JSONObject()
+                                                                        .put("design_id", designId)
+                                                                        .put("owner_id", ownerId)
+                                                                        .put("prompt", draftPrompt)
+                                                                        .put("visibility", draftVisibility)
+                                                                        .put("metadata", draftMeta)
+                                                                        .put("history_source", "manual_save")
+                                                                    val res = withContext(Dispatchers.IO) { api.updateDesign(body) }
+                                                                    if (res.optBoolean("ok", false)) {
+                                                                        recomputeBaseline()
+                                                                    }
+                                                                } catch (_: Exception) {
+                                                                } finally {
+                                                                    saving = false
+                                                                }
+                                                            }
+                                                        },
+                                                        enabled = !saving,
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        colors = ButtonDefaults.buttonColors(containerColor = CAccent)
+                                                    ) {
+                                                        Text(t("creator.design_detail.save", "Save"), color = Color.White)
+                                                    }
+                                                }
+                                            }
+                                            DesignDetailTab.Reference -> {
+                                                GenerationReferenceBlock(
+                                                    designJson = designJson,
+                                                    draftMeta = draftMeta,
+                                                    t = t
+                                                )
+                                            }
+                                            DesignDetailTab.Details -> {
+                                                DesignDetailsEditor(
+                                                    draftMeta = draftMeta,
+                                                    onDraftMetaChange = { draftMeta = it },
+                                                    newTopicLine = newTopicLine,
+                                                    onNewTopicLineChange = { newTopicLine = it },
+                                                    newSubtopicLine = newSubtopicLine,
+                                                    onNewSubtopicLineChange = { newSubtopicLine = it },
+                                                    t = t
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -723,7 +926,7 @@ fun DesignDetailSheet(
                             val lineTitle = df.format(Date(ts)) + " · " + label
                             Text(
                                 lineTitle,
-                                color = EazColors.Orange,
+                                color = CAccent,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
@@ -761,64 +964,65 @@ private fun GenerationReferenceBlock(
     draftMeta: JSONObject,
     t: (String, String) -> String
 ) {
-    val prompt = designJson?.optString("prompt").orEmpty().trim()
+    val genPrompt = designJson?.optString("prompt").orEmpty().trim()
+    val designPrompt = draftMeta.optString("design_prompt").ifBlank {
+        draftMeta.optString("final_prompt")
+    }.trim()
+    val userPrompt = draftMeta.optString("user_prompt").trim()
     val parentId = designJson?.optString("parent_design_id").orEmpty().trim()
 
-    Text(
-        t("creator.design_detail.reference_section_prompt", "Generation prompt"),
-        color = Color.White.copy(alpha = 0.65f),
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium
-    )
-    Spacer(Modifier.height(6.dp))
-    Text(
-        if (prompt.isNotBlank()) prompt else "—",
-        color = Color.White,
-        fontSize = 18.sp,
-        lineHeight = 24.sp
-    )
-    Spacer(Modifier.height(16.dp))
+    Divider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 8.dp))
+
+    SectionHeader(t("creator.design_detail.reference_section_prompt", "Generation prompt"))
+    BodyTextBlock(genPrompt, isLarge = true)
+
+    Spacer(Modifier.height(12.dp))
+    Divider(color = Color.White.copy(alpha = 0.08f))
+    Spacer(Modifier.height(12.dp))
+
+    SectionHeader(t("creator.design_detail.reference_design_prompt_label", "Design prompt"))
+    BodyTextBlock(designPrompt, isLarge = true)
+
+    Spacer(Modifier.height(12.dp))
+    Divider(color = Color.White.copy(alpha = 0.08f))
+    Spacer(Modifier.height(12.dp))
+
+    SectionHeader(t("creator.design_detail.reference_user_prompt_label", "User prompt"))
+    BodyTextBlock(userPrompt, isLarge = true)
 
     if (parentId.isNotBlank()) {
-        Text(
-            t("creator.design_detail.reference_parent_design", "Parent design"),
-            color = Color.White.copy(alpha = 0.65f),
-            fontSize = 13.sp
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(parentId, color = Color.White, fontSize = 17.sp)
         Spacer(Modifier.height(16.dp))
+        SectionHeader(t("creator.design_detail.reference_parent_design", "Parent design"))
+        BodyTextBlock(parentId, isLarge = false)
     }
 
-    Text(
-        t("creator.design_detail.reference_section_inputs", "Inputs"),
-        color = Color.White.copy(alpha = 0.65f),
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium
-    )
-    Spacer(Modifier.height(8.dp))
-
-    for (key in REFERENCE_META_KEYS_ORDER) {
-        val raw = draftMeta.opt(key) ?: continue
+    val extras = REFERENCE_EXTRA_KEYS.mapNotNull { key ->
+        val raw = draftMeta.opt(key) ?: return@mapNotNull null
         val s = when (raw) {
             is String -> raw.trim()
             else -> raw.toString().trim()
         }
-        if (s.isBlank()) continue
-        Text(
-            key,
-            color = Color.White.copy(alpha = 0.55f),
-            style = MaterialTheme.typography.labelMedium,
-            fontSize = 12.sp
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            s,
-            color = Color.White,
-            fontSize = 17.sp,
-            lineHeight = 22.sp
-        )
-        Spacer(Modifier.height(12.dp))
+        if (s.isBlank()) return@mapNotNull null
+        key to s
+    }
+    if (extras.isNotEmpty()) {
+        Spacer(Modifier.height(16.dp))
+        SectionHeader(t("creator.design_detail.reference_section_more", "More"))
+        Spacer(Modifier.height(8.dp))
+        extras.forEach { (key, value) ->
+            Text(
+                key.replace('_', ' '),
+                color = CAccent,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                value,
+                color = CTextPrimary,
+                fontSize = 15.sp,
+                modifier = Modifier.padding(bottom = 10.dp)
+            )
+        }
     }
 }
 
@@ -836,166 +1040,223 @@ private fun DesignDetailsEditor(
     val tagsStr = draftMeta.optString("tags")
     val tagList = remember(tagsStr) { parseTagsList(tagsStr) }
 
-    OutlinedTextField(
-        value = draftMeta.optString("title"),
-        onValueChange = { v ->
-            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("title", v) })
-        },
-        label = { Text(t("creator.design_detail.meta_title", "Title"), color = Color.White.copy(0.7f)) },
-        modifier = Modifier.fillMaxWidth(),
-        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White
-        )
-    )
-    Spacer(Modifier.height(10.dp))
-    OutlinedTextField(
-        value = draftMeta.optString("description"),
-        onValueChange = { v ->
-            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("description", v) })
-        },
-        label = {
-            Text(
-                t("creator.design_detail.design_description", "Design description"),
-                color = Color.White.copy(0.7f)
-            )
-        },
-        modifier = Modifier.fillMaxWidth(),
-        minLines = 4,
-        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White
-        )
-    )
-
-    Spacer(Modifier.height(16.dp))
-    Text(t("creator.design_detail.tags_label", "Tags"), color = Color.White, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.height(6.dp))
-    OutlinedTextField(
-        value = tagsStr,
-        onValueChange = { v ->
-            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("tags", normalizeTagsString(v)) })
-        },
-        label = {
-            Text(
-                t("creator.design_detail.tags_input_hint", "Add tags, comma-separated"),
-                color = Color.White.copy(0.7f)
-            )
-        },
-        modifier = Modifier.fillMaxWidth(),
-        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White
-        )
-    )
-    Spacer(Modifier.height(8.dp))
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Surface(
+        color = Color(0xFF334155),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        tagList.forEach { tag ->
-            InputChip(
-                selected = false,
-                onClick = {
-                    val next = tagList.filter { it != tag }
-                    onDraftMetaChange(
-                        replaceDraftMeta(draftMeta) {
-                            put("tags", next.joinToString(", "))
-                        }
-                    )
+        Column(Modifier.padding(16.dp)) {
+            SectionHeader(t("creator.design_detail.meta_title", "Title"))
+            OutlinedTextField(
+                value = draftMeta.optString("title"),
+                onValueChange = { v ->
+                    onDraftMetaChange(replaceDraftMeta(draftMeta) { put("title", v) })
                 },
-                label = { Text(tag, color = Color.White, fontSize = 13.sp) },
-                trailingIcon = {
-                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White.copy(0.8f))
-                }
+                label = null,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = CTextPrimary,
+                    unfocusedTextColor = CTextPrimary,
+                    focusedBorderColor = CAccent.copy(alpha = 0.7f),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                )
+            )
+        }
+    }
+    Spacer(Modifier.height(12.dp))
+    Surface(
+        color = Color(0xFF334155),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            SectionHeader(t("creator.design_detail.design_description", "Design description"))
+            OutlinedTextField(
+                value = draftMeta.optString("description"),
+                onValueChange = { v ->
+                    onDraftMetaChange(replaceDraftMeta(draftMeta) { put("description", v) })
+                },
+                label = null,
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 4,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = CTextPrimary,
+                    unfocusedTextColor = CTextPrimary,
+                    focusedBorderColor = CAccent.copy(alpha = 0.7f),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                )
             )
         }
     }
 
     Spacer(Modifier.height(20.dp))
-    Text(t("creator.design_detail.topics_label", "Topics"), color = Color.White, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.height(6.dp))
-    val topics = getTopicList(draftMeta)
-    topics.forEachIndexed { idx, item ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(item, color = Color.White, modifier = Modifier.weight(1f))
-            IconButton(onClick = {
-                val next = topics.toMutableList().also { it.removeAt(idx) }
-                onDraftMetaChange(replaceDraftMeta(draftMeta) { put("topic", JSONArray(next)) })
-            }) {
-                Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFFF6B6B))
+    SectionHeader(t("creator.design_detail.tags_label", "Tags"))
+    Spacer(Modifier.height(8.dp))
+    Surface(
+        color = CLightSurface,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            OutlinedTextField(
+                value = tagsStr,
+                onValueChange = { v ->
+                    onDraftMetaChange(replaceDraftMeta(draftMeta) { put("tags", normalizeTagsString(v)) })
+                },
+                label = {
+                    Text(
+                        t("creator.design_detail.tags_input_hint", "Add tags, comma-separated"),
+                        color = CTextOnLight.copy(alpha = 0.65f)
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = CTextOnLight,
+                    unfocusedTextColor = CTextOnLight,
+                    focusedBorderColor = CAccent,
+                    unfocusedBorderColor = CTextOnLight.copy(alpha = 0.35f),
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                )
+            )
+            Spacer(Modifier.height(10.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                tagList.forEach { tag ->
+                    InputChip(
+                        selected = false,
+                        onClick = {
+                            val next = tagList.filter { it != tag }
+                            onDraftMetaChange(
+                                replaceDraftMeta(draftMeta) {
+                                    put("tags", next.joinToString(", "))
+                                }
+                            )
+                        },
+                        label = { Text(tag, color = CTextOnLight, fontSize = 13.sp) },
+                        trailingIcon = {
+                            Icon(Icons.Default.Close, contentDescription = null, tint = CTextOnLight.copy(alpha = 0.65f))
+                        }
+                    )
+                }
             }
         }
     }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value = newTopicLine,
-            onValueChange = onNewTopicLineChange,
-            modifier = Modifier.weight(1f),
-            label = { Text(t("creator.design_detail.add_row_hint", "Add…"), color = Color.White.copy(0.6f)) },
-            singleLine = true,
-            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
-            )
-        )
-        TextButton(onClick = {
-            val add = newTopicLine.trim()
-            if (add.isEmpty()) return@TextButton
-            val next = topics.toMutableList()
-            if (next.none { it.equals(add, ignoreCase = true) }) next.add(add)
-            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("topic", JSONArray(next)) })
-            onNewTopicLineChange("")
-        }) { Text(t("creator.design_detail.add", "Add"), color = EazColors.Orange) }
+
+    Spacer(Modifier.height(20.dp))
+    SectionHeader(t("creator.design_detail.topics_label", "Topics"))
+    Spacer(Modifier.height(8.dp))
+    Surface(
+        color = Color(0xFF334155),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            val topics = getTopicList(draftMeta)
+            topics.forEachIndexed { idx, item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(item, color = CTextPrimary, modifier = Modifier.weight(1f))
+                    IconButton(onClick = {
+                        val next = topics.toMutableList().also { it.removeAt(idx) }
+                        onDraftMetaChange(replaceDraftMeta(draftMeta) { put("topic", JSONArray(next)) })
+                    }) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFFF6B6B))
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = newTopicLine,
+                    onValueChange = onNewTopicLineChange,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(t("creator.design_detail.add_row_hint", "Add…"), color = CTextMuted) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = CTextPrimary,
+                        unfocusedTextColor = CTextPrimary,
+                        focusedBorderColor = CAccent.copy(alpha = 0.7f),
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
+                    )
+                )
+                TextButton(onClick = {
+                    val add = newTopicLine.trim()
+                    if (add.isEmpty()) return@TextButton
+                    val next = topics.toMutableList()
+                    if (next.none { it.equals(add, ignoreCase = true) }) next.add(add)
+                    onDraftMetaChange(replaceDraftMeta(draftMeta) { put("topic", JSONArray(next)) })
+                    onNewTopicLineChange("")
+                }) { Text(t("creator.design_detail.add", "Add"), color = CAccent) }
+            }
+        }
     }
 
     Spacer(Modifier.height(16.dp))
-    Text(t("creator.design_detail.subtopics_label", "Subtopics"), color = Color.White, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.height(6.dp))
-    val subtopics = getSubtopicList(draftMeta)
-    subtopics.forEachIndexed { idx, item ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(item, color = Color.White, modifier = Modifier.weight(1f))
-            IconButton(onClick = {
-                val next = subtopics.toMutableList().also { it.removeAt(idx) }
-                onDraftMetaChange(replaceDraftMeta(draftMeta) { put("subtopic", JSONArray(next)) })
-            }) {
-                Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFFF6B6B))
+    SectionHeader(t("creator.design_detail.subtopics_label", "Subtopics"))
+    Spacer(Modifier.height(8.dp))
+    Surface(
+        color = Color(0xFF334155),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            val subtopics = getSubtopicList(draftMeta)
+            subtopics.forEachIndexed { idx, item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(item, color = CTextPrimary, modifier = Modifier.weight(1f))
+                    IconButton(onClick = {
+                        val next = subtopics.toMutableList().also { it.removeAt(idx) }
+                        onDraftMetaChange(replaceDraftMeta(draftMeta) { put("subtopic", JSONArray(next)) })
+                    }) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFFF6B6B))
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = newSubtopicLine,
+                    onValueChange = onNewSubtopicLineChange,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(t("creator.design_detail.add_row_hint", "Add…"), color = CTextMuted) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = CTextPrimary,
+                        unfocusedTextColor = CTextPrimary,
+                        focusedBorderColor = CAccent.copy(alpha = 0.7f),
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
+                    )
+                )
+                TextButton(onClick = {
+                    val add = newSubtopicLine.trim()
+                    if (add.isEmpty()) return@TextButton
+                    val next = subtopics.toMutableList()
+                    if (next.none { it.equals(add, ignoreCase = true) }) next.add(add)
+                    onDraftMetaChange(replaceDraftMeta(draftMeta) { put("subtopic", JSONArray(next)) })
+                    onNewSubtopicLineChange("")
+                }) { Text(t("creator.design_detail.add", "Add"), color = CAccent) }
             }
         }
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value = newSubtopicLine,
-            onValueChange = onNewSubtopicLineChange,
-            modifier = Modifier.weight(1f),
-            label = { Text(t("creator.design_detail.add_row_hint", "Add…"), color = Color.White.copy(0.6f)) },
-            singleLine = true,
-            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
-            )
-        )
-        TextButton(onClick = {
-            val add = newSubtopicLine.trim()
-            if (add.isEmpty()) return@TextButton
-            val next = subtopics.toMutableList()
-            if (next.none { it.equals(add, ignoreCase = true) }) next.add(add)
-            onDraftMetaChange(replaceDraftMeta(draftMeta) { put("subtopic", JSONArray(next)) })
-            onNewSubtopicLineChange("")
-        }) { Text(t("creator.design_detail.add", "Add"), color = EazColors.Orange) }
     }
 }
