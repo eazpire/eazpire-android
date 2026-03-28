@@ -9,7 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 
 /**
- * Charcoal pill + scale pulse; label and pill share the same transform (matches web).
+ * Charcoal square + scale pulse; label and background share the same transform (matches web).
  */
 @Composable
 fun ShopCreateNavPill(
@@ -43,7 +43,7 @@ fun ShopCreateNavPill(
                 scaleX = scale
                 scaleY = scale
             }
-            .clip(RoundedCornerShape(50))
+            .clip(RectangleShape)
             .background(EazColors.ShopCreateNavGradient)
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
