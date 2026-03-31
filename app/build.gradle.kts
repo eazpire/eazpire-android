@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,9 +7,15 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "com.eazpire.creator"
-    compileSdk = 34
+    compileSdk = 35
     // Build in temp – vermeidet OneDrive-Sperren im Projektordner (nur lokal, nicht in CI)
     if (System.getenv("CI") != "true") {
         buildDir = file("${System.getProperty("java.io.tmpdir")}/eazpire-android-build/${project.name}")
@@ -16,11 +24,21 @@ android {
     defaultConfig {
         applicationId = "com.eazpire.creator"
         minSdk = 26
-        targetSdk = 34
-        versionCode = (System.getenv("VERSION_CODE") ?: "1").toIntOrNull() ?: 1
-        versionName = "1.0.1"
+        targetSdk = 35
+        versionCode = (System.getenv("VERSION_CODE") ?: "2").toIntOrNull() ?: 2
+        versionName = "1.0.2"
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile")!!)
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -28,6 +46,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
@@ -79,4 +100,29 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.activity:activity-ktx:1.8.2")
+}
+
+// Play Console rejects debug-signed bundles; require a real upload keystore for bundleRelease.
+tasks.register("checkReleaseSigning") {
+    group = "verification"
+    doLast {
+        val f = rootProject.file("keystore.properties")
+        require(f.exists()) {
+            """
+            Play requires a signed release bundle. Create android/keystore.properties (see keystore.properties.example).
+            Generate a keystore, e.g.:
+              cd android
+              keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+            """.trimIndent()
+        }
+        val p = Properties()
+        f.inputStream().use { p.load(it) }
+        val store = rootProject.file(p.getProperty("storeFile")!!)
+        require(store.isFile) { "Keystore file not found: ${store.absolutePath}" }
+    }
+}
+afterEvaluate {
+    tasks.named("bundleRelease").configure {
+        dependsOn(tasks.named("checkReleaseSigning"))
+    }
 }
