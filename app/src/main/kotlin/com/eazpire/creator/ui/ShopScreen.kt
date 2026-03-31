@@ -23,7 +23,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.MutableState
@@ -43,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
+import com.eazpire.creator.push.PushTokenRegistrar
 import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
@@ -100,7 +100,9 @@ fun ShopScreen(
 
     var sessionEpoch by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
+        ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
         ShopSessionGuard.validateLegacyShopifySessionIfNeeded(context, tokenStore)
+        PushTokenRegistrar.syncIfLoggedIn(context)
         sessionEpoch++
     }
 

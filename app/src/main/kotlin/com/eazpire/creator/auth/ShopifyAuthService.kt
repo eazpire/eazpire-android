@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -107,6 +108,7 @@ class ShopifyAuthService {
             .add("grant_type", "refresh_token")
             .add("refresh_token", refreshToken)
             .add("client_id", AuthConfig.CLIENT_ID)
+            .add("redirect_uri", AuthConfig.REDIRECT_URI)
             .build()
         val request = Request.Builder()
             .url(endpoints.tokenEndpoint)
@@ -116,6 +118,9 @@ class ShopifyAuthService {
         val response = client.newCall(request).execute()
         val body = response.body?.string() ?: throw AuthException("Empty refresh response")
         if (!response.isSuccessful) {
+            if (response.code >= 500) {
+                throw IOException("Token refresh HTTP ${response.code}")
+            }
             throw AuthException("Token refresh failed: ${response.code} $body")
         }
         val json = JSONObject(body)

@@ -103,7 +103,15 @@ fun AuthScreen(
                 val shopifyExpiresAt = at?.let {
                     System.currentTimeMillis() + tokens.expiresInSeconds * 1000L
                 }
-                tokenStore.saveTokens(result.jwt, result.ownerId, at, shopifyExpiresAt)
+                val rt = tokens.refreshToken?.takeIf { it.isNotBlank() }
+                tokenStore.saveTokens(
+                    result.jwt,
+                    result.ownerId,
+                    at,
+                    shopifyExpiresAt,
+                    refreshToken = rt,
+                    clearRefreshTokenIfNull = rt == null
+                )
                 withContext(Dispatchers.IO) {
                     NotificationPreferencesRepository(context).syncFromServer(
                         CreatorApi(jwt = tokenStore.getJwt())

@@ -1,6 +1,8 @@
 package com.eazpire.creator.cart
 
 import android.content.Context
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
@@ -18,6 +20,10 @@ class CartReminderWorker(
         val np = NotificationPreferencesRepository(applicationContext).readSnapshot()
         if (!np.shopMaster) return@withContext Result.success()
         if (np.shop["cart_reminder"] == false) return@withContext Result.success()
+        // Nur wenn die App nicht im Vordergrund ist (geschlossen / Hintergrund)
+        if (ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            return@withContext Result.success()
+        }
         if (AppCartStore.itemCount <= 0) return@withContext Result.success()
         val cartStore = StorefrontCartStore(applicationContext)
         val cartId = cartStore.cartId ?: return@withContext Result.success()

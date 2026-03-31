@@ -32,6 +32,9 @@ class SecureTokenStore(context: Context) {
     /** Shopify Customer Account API access_token – für GraphQL (Adressen, Payment Methods). */
     fun getAccessToken(): String? = prefs.getString(KEY_ACCESS_TOKEN, null)
 
+    /** OAuth refresh_token – verlängert die Session ohne erneuten Browser-Login. */
+    fun getRefreshToken(): String? = prefs.getString(KEY_REFRESH_TOKEN, null)?.takeIf { it.isNotBlank() }
+
     fun saveJwt(jwt: String, ownerId: String) {
         prefs.edit()
             .putString(KEY_JWT, jwt)
@@ -47,7 +50,9 @@ class SecureTokenStore(context: Context) {
         jwt: String,
         ownerId: String,
         accessToken: String?,
-        shopifyAccessExpiresAtEpochMs: Long? = null
+        shopifyAccessExpiresAtEpochMs: Long? = null,
+        refreshToken: String? = null,
+        clearRefreshTokenIfNull: Boolean = false
     ) {
         val ed = prefs.edit()
             .putString(KEY_JWT, jwt)
@@ -57,6 +62,10 @@ class SecureTokenStore(context: Context) {
             ed.putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, shopifyAccessExpiresAtEpochMs)
         } else {
             ed.remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
+        }
+        when {
+            refreshToken != null -> ed.putString(KEY_REFRESH_TOKEN, refreshToken)
+            clearRefreshTokenIfNull -> ed.remove(KEY_REFRESH_TOKEN)
         }
         ed.apply()
     }
@@ -78,13 +87,16 @@ class SecureTokenStore(context: Context) {
     }
 
     /**
-     * Eingeloggt = gültiges JWT **und** Shopify OAuth access_token vorhanden **und** (noch nicht abgelaufen oder Legacy ohne Ablaufdatum).
+     * Eingeloggt = JWT + access_token; abgelaufener access_token ist ok, solange ein refresh_token
+     * die Session retten kann (Refresh läuft beim App-Start).
      */
     fun isLoggedIn(): Boolean {
         if (getJwt().isNullOrBlank()) return false
         if (getAccessToken().isNullOrBlank()) return false
         val exp = getShopifyAccessExpiresAtEpochMs()
-        if (exp > 0L && System.currentTimeMillis() >= exp) return false
+        if (exp > 0L && System.currentTimeMillis() >= exp) {
+            return getRefreshToken() != null
+        }
         return true
     }
 
@@ -93,6 +105,7 @@ class SecureTokenStore(context: Context) {
         private const val KEY_OWNER_ID = "owner_id"
         private const val KEY_ACCESS_TOKEN = "shopify_access_token"
         private const val KEY_SHOPIFY_ACCESS_EXPIRES_AT = "shopify_access_expires_at"
+        private const val KEY_REFRESH_TOKEN = "shopify_refresh_token"
 
         /**
          * Löscht alle WebView-Cookies (Shopify OAuth, Cart, Checkout).

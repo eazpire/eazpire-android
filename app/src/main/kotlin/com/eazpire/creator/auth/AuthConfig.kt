@@ -15,8 +15,12 @@ object AuthConfig {
     /** Shop für get-product-image (Storefront API) – Produkte sind auf www.eazpire.com */
     const val STOREFRONT_SHOP = "eazpire.myshopify.com"
     const val REDIRECT_URI = "shop.73952035098.eazpire://callback"
-    /** `offline_access` liefert refresh_token für lange Sessions (OAuth-Refresh ohne erneuten Login). */
-    const val SCOPE = "openid email offline_access customer-account-api:full"
+    /**
+     * Nur von Shopify unterstützte Scopes für Customer Account API (OAuth).
+     * `offline_access` führt zu „ungültiger Scope“-Fehler und darf nicht verwendet werden.
+     * Optional kann die Token-Antwort trotzdem ein refresh_token enthalten (Shopify-Verhalten prüfen).
+     */
+    const val SCOPE = "openid email customer-account-api:full"
 
     /**
      * Customer Account API Client ID.

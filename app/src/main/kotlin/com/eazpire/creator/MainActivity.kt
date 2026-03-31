@@ -10,12 +10,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.debug.initDebugLog
@@ -48,6 +50,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // API 35+: Edge-to-edge ist Standard; setDecorFitsSystemWindows(true) reicht oft nicht mehr zuverlässig.
+        // Insets werden in Compose auf der Root-Surface gesetzt (systemBarsPadding).
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         initDebugLog(this)
         initLangSwitchDebug(this)
         val tokenStore = SecureTokenStore(this)
@@ -60,7 +65,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             EazpireCreatorTheme {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .systemBarsPadding(),
                     color = MaterialTheme.colorScheme.background,
                     tonalElevation = 0.dp
                 ) {
