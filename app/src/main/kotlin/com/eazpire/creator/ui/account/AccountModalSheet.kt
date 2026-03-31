@@ -44,7 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.push.PushTokenRegistrar
+import com.eazpire.creator.auth.ShopSessionGuard
 
 enum class AccountTab(val label: String) {
     Profile("Profile"),
@@ -136,9 +136,7 @@ fun AccountModalSheet(
                                 onSaveActionReady = { footerSaveAction = it },
                                 onSavingStateChange = { footerSaveInProgress = it },
                                 onLogout = {
-                                    PushTokenRegistrar.unregisterBeforeLogout(context, tokenStore)
-                                    tokenStore.clear()
-                                    SecureTokenStore.clearAuthCookies()
+                                    ShopSessionGuard.performFullLogout(context, tokenStore)
                                     onDismiss()
                                 }
                             )

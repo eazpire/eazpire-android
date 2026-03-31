@@ -23,6 +23,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.MutableState
@@ -41,6 +42,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
@@ -96,6 +98,12 @@ fun ShopScreen(
     val languageCode by localeStore.languageCode.collectAsState(initial = java.util.Locale.getDefault().language.lowercase())
     val catalogRegion by localeStore.regionCode.collectAsState(initial = "EU")
 
+    var sessionEpoch by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        ShopSessionGuard.validateLegacyShopifySessionIfNeeded(context, tokenStore)
+        sessionEpoch++
+    }
+
     LaunchedEffect(languageCode) {
         // #region agent log
         langDebug("ShopScreen.kt:LaunchedEffect", "languageCode changed, loading", mapOf("languageCode" to languageCode), "H3")
@@ -104,6 +112,7 @@ fun ShopScreen(
     }
 
     CompositionLocalProvider(LocalTranslationStore provides translationStore) {
+    key(sessionEpoch) {
     // Recomposition trigger: when translations load, UI must update
     val translations by translationStore.translations.collectAsState(initial = emptyMap())
     // #region agent log
@@ -121,7 +130,8 @@ fun ShopScreen(
     var eazyStartTab by remember { mutableStateOf(EazySidebarTab.Chat) }
 
     val eazyChatStore = remember { EazyChatStore(context) }
-    val creatorPollApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
+    val pollJwt = tokenStore.getJwt()
+    val creatorPollApi = remember(pollJwt) { CreatorApi(jwt = pollJwt) }
     val heroJobForPoll by eazyChatStore.heroJobState.collectAsState()
     val videoJobForPoll by eazyChatStore.videoJobState.collectAsState()
 
@@ -869,6 +879,7 @@ fun ShopScreen(
                 onTermsClick = { termsModalVisible = true }
             )
         }
+    }
     }
     }
 }

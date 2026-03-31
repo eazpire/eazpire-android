@@ -15,7 +15,8 @@ object AuthConfig {
     /** Shop für get-product-image (Storefront API) – Produkte sind auf www.eazpire.com */
     const val STOREFRONT_SHOP = "eazpire.myshopify.com"
     const val REDIRECT_URI = "shop.73952035098.eazpire://callback"
-    const val SCOPE = "openid email customer-account-api:full"
+    /** `offline_access` liefert refresh_token für lange Sessions (OAuth-Refresh ohne erneuten Login). */
+    const val SCOPE = "openid email offline_access customer-account-api:full"
 
     /**
      * Customer Account API Client ID.

@@ -87,10 +87,59 @@ class ShopifyAuthService {
             if (accessToken.isBlank() && idToken.isBlank()) {
                 throw AuthException("No access_token or id_token in response")
             }
-            TokenResponse(accessToken = accessToken, idToken = idToken)
+            val expiresIn = json.optLong("expires_in", 3600L).coerceIn(60L, 365L * 24 * 3600L)
+            val refreshToken = json.optString("refresh_token").takeIf { it.isNotBlank() }
+            TokenResponse(
+                accessToken = accessToken,
+                idToken = idToken,
+                expiresInSeconds = expiresIn,
+                refreshToken = refreshToken
+            )
         }
 
-    data class TokenResponse(val accessToken: String, val idToken: String)
+    /**
+     * Erneuert access_token (und optional refresh_token) ohne erneuten Browser-Login.
+     */
+    suspend fun refreshAccessToken(refreshToken: String): TokenResponse = withContext(Dispatchers.IO) {
+        if (refreshToken.isBlank()) throw AuthException("Missing refresh_token")
+        val endpoints = discoverEndpoints()
+        val form = FormBody.Builder()
+            .add("grant_type", "refresh_token")
+            .add("refresh_token", refreshToken)
+            .add("client_id", AuthConfig.CLIENT_ID)
+            .build()
+        val request = Request.Builder()
+            .url(endpoints.tokenEndpoint)
+            .post(form)
+            .addHeader("Content-Type", "application/x-www-form-urlencoded")
+            .build()
+        val response = client.newCall(request).execute()
+        val body = response.body?.string() ?: throw AuthException("Empty refresh response")
+        if (!response.isSuccessful) {
+            throw AuthException("Token refresh failed: ${response.code} $body")
+        }
+        val json = JSONObject(body)
+        val accessToken = json.optString("access_token")
+        if (accessToken.isBlank()) {
+            throw AuthException("No access_token in refresh response")
+        }
+        val idToken = json.optString("id_token")
+        val expiresIn = json.optLong("expires_in", 3600L).coerceIn(60L, 365L * 24 * 3600L)
+        val newRefresh = json.optString("refresh_token").takeIf { it.isNotBlank() }
+        TokenResponse(
+            accessToken = accessToken,
+            idToken = idToken,
+            expiresInSeconds = expiresIn,
+            refreshToken = newRefresh
+        )
+    }
+
+    data class TokenResponse(
+        val accessToken: String,
+        val idToken: String,
+        val expiresInSeconds: Long,
+        val refreshToken: String?
+    )
 
     suspend fun exchangeShopifyTokenForJwt(accessToken: String, idToken: String? = null): JwtResult = withContext(Dispatchers.IO) {
         val url = "${AuthConfig.CREATOR_ENGINE_URL}/apps/creator-dispatch?op=exchange-shopify-token"

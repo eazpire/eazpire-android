@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.debug.initDebugLog
 import com.eazpire.creator.debug.initLangSwitchDebug
 import com.eazpire.creator.chat.EazySidebarTab
@@ -50,6 +51,9 @@ class MainActivity : ComponentActivity() {
         initDebugLog(this)
         initLangSwitchDebug(this)
         val tokenStore = SecureTokenStore(this)
+        if (ShopSessionGuard.shouldLogoutSync(tokenStore)) {
+            ShopSessionGuard.performFullLogout(this, tokenStore)
+        }
         pendingDeepLink.value = intent?.data
         consumeIntentExtras(intent)
         requestNotificationPermissionAndSyncPush()

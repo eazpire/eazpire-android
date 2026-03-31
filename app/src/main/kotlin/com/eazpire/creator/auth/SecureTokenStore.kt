@@ -39,12 +39,34 @@ class SecureTokenStore(context: Context) {
             .apply()
     }
 
-    fun saveTokens(jwt: String, ownerId: String, accessToken: String?) {
-        prefs.edit()
+    /**
+     * @param shopifyAccessExpiresAtEpochMs Absolutzeit (ms), zu der der Shopify OAuth access_token abläuft.
+     * Aus [expires_in] der Token-Response: `System.currentTimeMillis() + expiresIn * 1000`.
+     */
+    fun saveTokens(
+        jwt: String,
+        ownerId: String,
+        accessToken: String?,
+        shopifyAccessExpiresAtEpochMs: Long? = null
+    ) {
+        val ed = prefs.edit()
             .putString(KEY_JWT, jwt)
             .putString(KEY_OWNER_ID, ownerId)
             .putString(KEY_ACCESS_TOKEN, accessToken ?: "")
-            .apply()
+        if (shopifyAccessExpiresAtEpochMs != null && shopifyAccessExpiresAtEpochMs > 0L) {
+            ed.putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, shopifyAccessExpiresAtEpochMs)
+        } else {
+            ed.remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
+        }
+        ed.apply()
+    }
+
+    /** 0 = nicht gesetzt (Legacy nach Update). */
+    fun getShopifyAccessExpiresAtEpochMs(): Long =
+        prefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L)
+
+    fun setShopifyAccessExpiresAtEpochMs(epochMs: Long) {
+        prefs.edit().putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, epochMs).apply()
     }
 
     /**
@@ -55,12 +77,22 @@ class SecureTokenStore(context: Context) {
         prefs.edit().clear().commit()
     }
 
-    fun isLoggedIn(): Boolean = !getJwt().isNullOrBlank()
+    /**
+     * Eingeloggt = gültiges JWT **und** Shopify OAuth access_token vorhanden **und** (noch nicht abgelaufen oder Legacy ohne Ablaufdatum).
+     */
+    fun isLoggedIn(): Boolean {
+        if (getJwt().isNullOrBlank()) return false
+        if (getAccessToken().isNullOrBlank()) return false
+        val exp = getShopifyAccessExpiresAtEpochMs()
+        if (exp > 0L && System.currentTimeMillis() >= exp) return false
+        return true
+    }
 
     companion object {
         private const val KEY_JWT = "jwt"
         private const val KEY_OWNER_ID = "owner_id"
         private const val KEY_ACCESS_TOKEN = "shopify_access_token"
+        private const val KEY_SHOPIFY_ACCESS_EXPIRES_AT = "shopify_access_expires_at"
 
         /**
          * Löscht alle WebView-Cookies (Shopify OAuth, Cart, Checkout).
