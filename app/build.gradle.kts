@@ -102,6 +102,9 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.activity:activity-ktx:1.8.2")
+
+    // OAuth: Google blocks sign-in inside WebView (403 disallowed_useragent) — use system browser tab
+    implementation("androidx.browser:browser:1.8.0")
 }
 
 // Play Console rejects debug-signed bundles; require a real upload keystore for bundleRelease.

@@ -1,8 +1,11 @@
 package com.eazpire.creator.ui
 
+import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.runtime.MutableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,12 +43,15 @@ import com.eazpire.creator.auth.ShopifyAuthService
 import com.eazpire.creator.notifications.NotificationPreferencesRepository
 import com.eazpire.creator.push.PushTokenRegistrar
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 fun AuthScreen(
     tokenStore: SecureTokenStore,
     onAuthSuccess: () -> Unit,
-    onCheckUpdate: (() -> Unit)? = null
+    onCheckUpdate: (() -> Unit)? = null,
+    /** Set when MainActivity receives shop.*://callback (e.g. after Google OAuth in Custom Tab) */
+    oauthCallbackUri: MutableState<String?>? = null
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -136,12 +143,18 @@ fun AuthScreen(
         }
     }
 
+    LaunchedEffect(oauthCallbackUri?.value) {
+        val holder = oauthCallbackUri ?: return@LaunchedEffect
+        val url = holder.value ?: return@LaunchedEffect
+        holder.value = null
+        handleCallback(url)
+    }
+
     if (showWebView && authUrl != null) {
         WebViewAuth(
-            url = authUrl!!,
+            initialUrl = authUrl!!,
             redirectUri = AuthConfig.REDIRECT_URI,
-            onRedirect = { handleCallback(it) },
-            onDismiss = { showWebView = false }
+            onRedirect = { handleCallback(it) }
         )
         return
     }
@@ -192,10 +205,9 @@ fun AuthScreen(
 
 @Composable
 private fun WebViewAuth(
-    url: String,
+    initialUrl: String,
     redirectUri: String,
-    onRedirect: (String) -> Unit,
-    onDismiss: () -> Unit
+    onRedirect: (String) -> Unit
 ) {
     val prefix = redirectUri.substringBefore("?")
     AndroidView(
@@ -212,13 +224,27 @@ private fun WebViewAuth(
                             onRedirect(reqUrl)
                             return true
                         }
+                        // Google blocks OAuth in embedded WebViews (403 disallowed_useragent)
+                        if (isGoogleOAuthNavigationUrl(reqUrl)) {
+                            CustomTabsIntent.Builder()
+                                .build()
+                                .launchUrl(ctx, Uri.parse(reqUrl))
+                            return true
+                        }
                         return false
                     }
                 }
-                loadUrl(url)
+                loadUrl(initialUrl)
             }
         },
         modifier = Modifier.fillMaxSize()
     )
-    // Back-Button würde WebView schließen – Nutzer kann mit System-Back raus
+}
+
+/** Google Sign-In must run in a real browser tab, not WebView — see disallowed_useragent */
+private fun isGoogleOAuthNavigationUrl(url: String): Boolean {
+    val host = Uri.parse(url).host?.lowercase(Locale.ROOT) ?: return false
+    return host == "accounts.google.com" ||
+        host == "oauth2.googleapis.com" ||
+        host == "signin.google.com"
 }

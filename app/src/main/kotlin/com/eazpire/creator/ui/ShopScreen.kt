@@ -125,6 +125,8 @@ fun ShopScreen(
     var accountModalVisible by remember { mutableStateOf(false) }
     var showLoginOptions by remember { mutableStateOf(false) }
     var showAuthScreen by remember { mutableStateOf(false) }
+    /** OAuth redirect shop.*://callback?code=… delivered via MainActivity intent → token exchange in AuthScreen */
+    val oauthCallbackForAuth = remember { mutableStateOf<String?>(null) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
     var favoritesModalVisible by remember { mutableStateOf(false) }
@@ -316,6 +318,15 @@ fun ShopScreen(
 
     LaunchedEffect(pendingDeepLink?.value) {
         val uri = pendingDeepLink?.value ?: return@LaunchedEffect
+        // Shopify OAuth callback (e.g. after Google sign-in in Chrome Custom Tab)
+        if (uri.scheme?.startsWith("shop.") == true && uri.host == "callback" &&
+            uri.getQueryParameter("code") != null
+        ) {
+            oauthCallbackForAuth.value = uri.toString()
+            pendingDeepLink.value = null
+            showAuthScreen = true
+            return@LaunchedEffect
+        }
         pendingDeepLink.value = null
         val path = when (uri.host) {
             "join.eazpire.com" -> {
@@ -854,7 +865,8 @@ fun ShopScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             AuthScreen(
                 tokenStore = tokenStore,
-                onAuthSuccess = { showAuthScreen = false }
+                onAuthSuccess = { showAuthScreen = false },
+                oauthCallbackUri = oauthCallbackForAuth
             )
         }
     }
