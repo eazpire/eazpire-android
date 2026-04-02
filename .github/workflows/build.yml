@@ -40,12 +40,7 @@ jobs:
           VERSION_CODE: ${{ github.run_number }}
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Build Release AAB (bundle)
-        env:
-          GRADLE_OPTS: ""
-          JAVA_OPTS: ""
-        run: ./gradlew bundleRelease --no-daemon
-        continue-on-error: true
+      # Release-AAB: nur im Workflow „Google Play (AAB)“ (signiert, Secrets) — bundleRelease hier ohne Keystore schlägt fehl und täuscht mit continue-on-error „Success“.
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

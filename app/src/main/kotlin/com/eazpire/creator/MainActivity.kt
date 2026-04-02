@@ -25,6 +25,7 @@ import com.eazpire.creator.debug.initLangSwitchDebug
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.push.PushTokenRegistrar
 import com.eazpire.creator.ui.ShopScreen
+import com.eazpire.creator.update.PlayInAppUpdateHelper
 
 class MainActivity : ComponentActivity() {
 
@@ -48,6 +49,11 @@ class MainActivity : ComponentActivity() {
             if (granted) PushTokenRegistrar.syncIfLoggedIn(this)
         }
 
+    private val playInAppUpdateLauncher =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { _ -> }
+
+    private lateinit var playInAppUpdateHelper: PlayInAppUpdateHelper
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // API 35+: Edge-to-edge ist Standard; setDecorFitsSystemWindows(true) reicht oft nicht mehr zuverlässig.
@@ -62,6 +68,7 @@ class MainActivity : ComponentActivity() {
         pendingDeepLink.value = intent?.data
         consumeIntentExtras(intent)
         requestNotificationPermissionAndSyncPush()
+        playInAppUpdateHelper = PlayInAppUpdateHelper(this, playInAppUpdateLauncher)
         setContent {
             EazpireCreatorTheme {
                 Surface(
@@ -82,6 +89,11 @@ class MainActivity : ComponentActivity() {
             }
         }
         handleOAuthCallback(intent, tokenStore)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        playInAppUpdateHelper.onResume()
     }
 
     override fun onNewIntent(intent: Intent) {

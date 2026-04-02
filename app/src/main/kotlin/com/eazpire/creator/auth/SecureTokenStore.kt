@@ -45,6 +45,7 @@ class SecureTokenStore(context: Context) {
     /**
      * @param shopifyAccessExpiresAtEpochMs Absolutzeit (ms), zu der der Shopify OAuth access_token abläuft.
      * Aus [expires_in] der Token-Response: `System.currentTimeMillis() + expiresIn * 1000`.
+     * @param sync Wenn true: [commit] statt [apply], damit [isLoggedIn] und UI im nächsten Frame korrekt sind.
      */
     fun saveTokens(
         jwt: String,
@@ -52,7 +53,8 @@ class SecureTokenStore(context: Context) {
         accessToken: String?,
         shopifyAccessExpiresAtEpochMs: Long? = null,
         refreshToken: String? = null,
-        clearRefreshTokenIfNull: Boolean = false
+        clearRefreshTokenIfNull: Boolean = false,
+        sync: Boolean = false
     ) {
         val ed = prefs.edit()
             .putString(KEY_JWT, jwt)
@@ -67,7 +69,7 @@ class SecureTokenStore(context: Context) {
             refreshToken != null -> ed.putString(KEY_REFRESH_TOKEN, refreshToken)
             clearRefreshTokenIfNull -> ed.remove(KEY_REFRESH_TOKEN)
         }
-        ed.apply()
+        if (sync) ed.commit() else ed.apply()
     }
 
     /** 0 = nicht gesetzt (Legacy nach Update). */

@@ -108,19 +108,23 @@ fun AuthScreen(
             error = null
             try {
                 val tokens = authService.exchangeCodeForTokens(code, verifier)
-                val result = authService.exchangeShopifyTokenForJwt(tokens.accessToken, tokens.idToken.ifBlank { null })
-                val at = tokens.accessToken.ifBlank { null }
-                val shopifyExpiresAt = at?.let {
+                val bearer =
+                    tokens.accessToken.ifBlank { null } ?: tokens.idToken.ifBlank { null }
+                        ?: throw AuthException("No access_token or id_token")
+                val result = authService.exchangeShopifyTokenForJwt(bearer, tokens.idToken.ifBlank { null })
+                val at = tokens.accessToken.ifBlank { null } ?: tokens.idToken.ifBlank { null }
+                val shopifyExpiresAt =
                     System.currentTimeMillis() + tokens.expiresInSeconds * 1000L
-                }
                 val rt = tokens.refreshToken?.takeIf { it.isNotBlank() }
+                // sync=true: EncryptedSharedPreferences.apply() kann einen Frame verzögern → isLoggedIn() sonst false
                 tokenStore.saveTokens(
                     result.jwt,
                     result.ownerId,
                     at,
                     shopifyExpiresAt,
                     refreshToken = rt,
-                    clearRefreshTokenIfNull = rt == null
+                    clearRefreshTokenIfNull = rt == null,
+                    sync = true
                 )
                 withContext(Dispatchers.IO) {
                     NotificationPreferencesRepository(context).syncFromServer(

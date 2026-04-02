@@ -65,8 +65,9 @@ fun SubFooter(
     var languageStandard by remember { mutableStateOf(AVAILABLE_LANGUAGES) }
     var languageChildren by remember { mutableStateOf<Map<String, LanguageChildren>>(emptyMap()) }
 
-    val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
-    val walletApi = remember(tokenStore) { CreatorApi(jwt = tokenStore?.getJwt()) }
+    val jwt = tokenStore?.getJwt()
+    val ownerId = tokenStore?.getOwnerId().orEmpty()
+    val walletApi = remember(jwt, ownerId) { CreatorApi(jwt = jwt) }
     val loadingWallet = remember(translationStore) {
         translationStore?.t("eaz.wallet.loading", "…") ?: "…"
     }

@@ -116,8 +116,9 @@ fun MainHeader(
     val favoritesModalVisible = favoritesModalVisibleControl ?: internalFavoritesModalVisible
     val onFavoritesModalChangeActual = onFavoritesModalChange ?: { internalFavoritesModalVisible = it }
     var favoritesCount by remember { mutableStateOf(0) }
-    val ownerId = remember(tokenStore) { tokenStore?.getOwnerId() ?: "" }
-    val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
+    val jwt = tokenStore?.getJwt()
+    val ownerId = tokenStore?.getOwnerId().orEmpty()
+    val api = remember(jwt, ownerId) { CreatorApi(jwt = jwt) }
     val favoritesRefreshTick = FavoritesRefreshTrigger.value
     var shareUrl by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()

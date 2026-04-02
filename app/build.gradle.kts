@@ -105,6 +105,10 @@ dependencies {
 
     // OAuth: Google blocks sign-in inside WebView (403 disallowed_useragent) — use system browser tab
     implementation("androidx.browser:browser:1.8.0")
+
+    // Play Store: prompt for update when a newer version is available (Play-installed builds only)
+    implementation("com.google.android.play:app-update:2.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
 }
 
 // Play Console rejects debug-signed bundles; require a real upload keystore for bundleRelease.

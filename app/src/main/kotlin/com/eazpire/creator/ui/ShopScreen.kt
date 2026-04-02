@@ -266,8 +266,9 @@ fun ShopScreen(
     var termsModalVisible by remember { mutableStateOf(false) }
     var voucherModalVisible by remember { mutableStateOf(false) }
 
-    val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
-    val eazySyncApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
+    val jwtForApi = tokenStore.getJwt()
+    val ownerId = tokenStore.getOwnerId().orEmpty()
+    val eazySyncApi = remember(jwtForApi, ownerId) { CreatorApi(jwt = jwtForApi) }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isBlank()) return@LaunchedEffect
@@ -865,7 +866,10 @@ fun ShopScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             AuthScreen(
                 tokenStore = tokenStore,
-                onAuthSuccess = { showAuthScreen = false },
+                onAuthSuccess = {
+                    showAuthScreen = false
+                    sessionEpoch++
+                },
                 oauthCallbackUri = oauthCallbackForAuth
             )
         }
