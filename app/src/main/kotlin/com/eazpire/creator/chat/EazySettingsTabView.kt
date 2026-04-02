@@ -41,11 +41,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-private val SHeader = Color(0xFF111827)
-private val SAccent = Color(0xFFF97316)
-private val SText = Color(0xFFE5E7EB)
-private val SMuted = Color(0xFF9CA3AF)
-
 @Composable
 fun EazySettingsTabView(
     eazySettingsStore: EazySettingsStore,
@@ -79,11 +74,11 @@ fun EazySettingsTabView(
         Text(
             t("eazy_chat.settings_audio", "Eazy Audio"),
             style = MaterialTheme.typography.titleSmall,
-            color = SAccent
+            color = LocalEazyModalPalette.current.accent
         )
         val audioOn = settings.optBoolean("audio_enabled", true)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(t("eazy_chat.settings_audio_enabled", "Audio"), color = SText)
+            Text(t("eazy_chat.settings_audio_enabled", "Audio"), color = LocalEazyModalPalette.current.text)
             Switch(
                 checked = audioOn,
                 onCheckedChange = {
@@ -99,8 +94,8 @@ fun EazySettingsTabView(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(t("eazy_chat.settings_volume", "Volume"), color = SText, modifier = Modifier.weight(1f))
-            Text("${settings.optInt("audio_volume", 75)}%", color = SMuted, style = MaterialTheme.typography.labelMedium)
+            Text(t("eazy_chat.settings_volume", "Volume"), color = LocalEazyModalPalette.current.text, modifier = Modifier.weight(1f))
+            Text("${settings.optInt("audio_volume", 75)}%", color = LocalEazyModalPalette.current.muted, style = MaterialTheme.typography.labelMedium)
         }
         Slider(
             value = settings.optInt("audio_volume", 75).toFloat(),
@@ -113,7 +108,7 @@ fun EazySettingsTabView(
             modifier = Modifier.fillMaxWidth()
         )
         Row(Modifier.fillMaxWidth().alpha(if (audioOn) 1f else 0.45f), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(t("eazy_chat.settings_autoplay", "Auto-play voice messages"), color = SText)
+            Text(t("eazy_chat.settings_autoplay", "Auto-play voice messages"), color = LocalEazyModalPalette.current.text)
             Switch(
                 checked = settings.optBoolean("audio_autoplay", false),
                 onCheckedChange = {
@@ -124,16 +119,16 @@ fun EazySettingsTabView(
             )
         }
 
-        Divider(color = SMuted.copy(alpha = 0.25f))
+        Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.25f))
 
         Text(
             t("eazy_chat.settings_messages", "Automatic Messages"),
             style = MaterialTheme.typography.titleSmall,
-            color = SAccent
+            color = LocalEazyModalPalette.current.accent
         )
         val msgMaster = settings.optBoolean("messages_enabled", true)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(t("eazy_chat.settings_messages_master", "All automatic messages"), color = SText)
+            Text(t("eazy_chat.settings_messages_master", "All automatic messages"), color = LocalEazyModalPalette.current.text)
             Switch(
                 checked = msgMaster,
                 onCheckedChange = {
@@ -236,17 +231,17 @@ fun EazySettingsTabView(
             onFreq = { k, v -> eazySettingsStore.setInt(k, v); sync() }
         )
 
-        Divider(color = SMuted.copy(alpha = 0.25f))
+        Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.25f))
 
         Text(
             t("eazy_chat.settings_mood", "Mood / Tone"),
             style = MaterialTheme.typography.titleSmall,
-            color = SAccent
+            color = LocalEazyModalPalette.current.accent
         )
         Text(
             t("eazy_chat.settings_mood_hint", "Choose which types of messages Eazy sends you."),
             style = MaterialTheme.typography.bodySmall,
-            color = SMuted
+            color = LocalEazyModalPalette.current.muted
         )
         val tags = listOf(
             "lustig" to ("eazy_chat.settings_tag_lustig" to "Funny"),
@@ -276,12 +271,12 @@ fun EazySettingsTabView(
             }
         }
 
-        Divider(color = SMuted.copy(alpha = 0.25f))
+        Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.25f))
 
         Text(
             t("eazy_chat.settings_placement", "Eazy Placement"),
             style = MaterialTheme.typography.titleSmall,
-            color = SAccent
+            color = LocalEazyModalPalette.current.accent
         )
         val placement = settings.optString("placement", "page").ifBlank { "page" }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -307,34 +302,34 @@ fun EazySettingsTabView(
             eazySettingsStore.setString("placement", "page")
             sync()
         }) {
-            Text(t("eazy_chat.settings_reset_position", "Reset position"), color = SAccent)
+            Text(t("eazy_chat.settings_reset_position", "Reset position"), color = LocalEazyModalPalette.current.accent)
         }
 
-        Divider(color = SMuted.copy(alpha = 0.25f))
+        Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.25f))
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Default.Settings, contentDescription = null, tint = SAccent, modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.Settings, contentDescription = null, tint = LocalEazyModalPalette.current.accent, modifier = Modifier.size(20.dp))
             Text(
                 t("eazy_chat.ui_functions_tab", "Functions"),
                 style = MaterialTheme.typography.titleSmall,
-                color = SAccent
+                color = LocalEazyModalPalette.current.accent
             )
         }
         Text(
             t("eazy_fn.hint", "Eye: show or hide shortcuts in the chat carousel."),
             style = MaterialTheme.typography.bodySmall,
-            color = SMuted
+            color = LocalEazyModalPalette.current.muted
         )
         TextButton(onClick = onOpenFunctions) {
-            Text(t("eazy_chat.settings_open_functions", "Manage function shortcuts"), color = SAccent)
+            Text(t("eazy_chat.settings_open_functions", "Manage function shortcuts"), color = LocalEazyModalPalette.current.accent)
         }
 
-        Divider(color = SMuted.copy(alpha = 0.25f))
+        Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.25f))
 
         Text(
             t("eazy_chat.settings_privacy", "Privacy"),
             style = MaterialTheme.typography.titleSmall,
-            color = SAccent
+            color = LocalEazyModalPalette.current.accent
         )
         TextButton(onClick = { showClearHistory = true }) {
             Text(t("eazy_chat.settings_clear_history", "Delete chat history"), color = Color(0xFFEF4444))
@@ -347,11 +342,11 @@ fun EazySettingsTabView(
     if (showClearHistory) {
         AlertDialog(
             onDismissRequest = { showClearHistory = false },
-            title = { Text(t("eazy_chat.settings_clear_history", "Delete chat history"), color = SText) },
+            title = { Text(t("eazy_chat.settings_clear_history", "Delete chat history"), color = LocalEazyModalPalette.current.text) },
             text = {
                 Text(
                     t("eazy_chat.settings_clear_history_confirm", "All chats and conversations will be permanently deleted. This cannot be undone."),
-                    color = SMuted
+                    color = LocalEazyModalPalette.current.muted
                 )
             },
             confirmButton = {
@@ -366,21 +361,21 @@ fun EazySettingsTabView(
             },
             dismissButton = {
                 TextButton(onClick = { showClearHistory = false }) {
-                    Text(t("eazy_chat.settings_confirm_cancel", "Cancel"), color = SMuted)
+                    Text(t("eazy_chat.settings_confirm_cancel", "Cancel"), color = LocalEazyModalPalette.current.muted)
                 }
             },
-            containerColor = SHeader
+            containerColor = LocalEazyModalPalette.current.header
         )
     }
 
     if (showClearMemory) {
         AlertDialog(
             onDismissRequest = { showClearMemory = false },
-            title = { Text(t("eazy_chat.settings_clear_memory", "Reset Eazy memory"), color = SText) },
+            title = { Text(t("eazy_chat.settings_clear_memory", "Reset Eazy memory"), color = LocalEazyModalPalette.current.text) },
             text = {
                 Text(
                     t("eazy_chat.settings_clear_memory_confirm", "All preferences and Eazy's memories of you will be reset."),
-                    color = SMuted
+                    color = LocalEazyModalPalette.current.muted
                 )
             },
             confirmButton = {
@@ -388,14 +383,14 @@ fun EazySettingsTabView(
                     showClearMemory = false
                     eazySettingsStore.resetToDefaults()
                     sync()
-                }) { Text(t("eazy_chat.settings_confirm_ok", "Confirm"), color = SAccent) }
+                }) { Text(t("eazy_chat.settings_confirm_ok", "Confirm"), color = LocalEazyModalPalette.current.accent) }
             },
             dismissButton = {
                 TextButton(onClick = { showClearMemory = false }) {
-                    Text(t("eazy_chat.settings_confirm_cancel", "Cancel"), color = SMuted)
+                    Text(t("eazy_chat.settings_confirm_cancel", "Cancel"), color = LocalEazyModalPalette.current.muted)
                 }
             },
-            containerColor = SHeader
+            containerColor = LocalEazyModalPalette.current.header
         )
     }
 }
@@ -423,7 +418,7 @@ private fun EazyMsgToggleRow(
 ) {
     Column(Modifier.fillMaxWidth().alpha(if (msgMaster) 1f else 0.45f)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(t(labelKey, labelDefault), color = SText, modifier = Modifier.weight(1f))
+            Text(t(labelKey, labelDefault), color = LocalEazyModalPalette.current.text, modifier = Modifier.weight(1f))
             Switch(
                 checked = settings.optBoolean(key, true),
                 onCheckedChange = { onToggle(key, it) },
@@ -434,7 +429,7 @@ private fun EazyMsgToggleRow(
             Text(
                 t(hk, hintDefault ?: ""),
                 style = MaterialTheme.typography.bodySmall,
-                color = SMuted,
+                color = LocalEazyModalPalette.current.muted,
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
@@ -443,7 +438,7 @@ private fun EazyMsgToggleRow(
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     t("eazy_chat.settings_frequency", "Frequency"),
-                    color = SMuted,
+                    color = LocalEazyModalPalette.current.muted,
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.width(72.dp)
                 )
@@ -455,7 +450,7 @@ private fun EazyMsgToggleRow(
                     enabled = msgMaster && settings.optBoolean(key, true),
                     modifier = Modifier.weight(1f)
                 )
-                Text(freqLabel(fv, t), color = SMuted, style = MaterialTheme.typography.labelSmall)
+                Text(freqLabel(fv, t), color = LocalEazyModalPalette.current.muted, style = MaterialTheme.typography.labelSmall)
             }
         }
     }

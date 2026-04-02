@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
@@ -78,6 +78,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -119,14 +120,6 @@ private fun formatResetTime(seconds: Int): String {
     val s = seconds % 60
     return "%d:%02d".format(m, s)
 }
-
-private val ChatBg = Color(0xFF1F2937)
-private val ChatHeader = Color(0xFF111827)
-private val ChatAccent = Color(0xFFF97316)
-private val ChatText = Color(0xFFE5E7EB)
-private val ChatMuted = Color(0xFF9CA3AF)
-private val UserBubble = Color(0xFF374151)
-private val AssistantBubble = Color(0xFF4B5563)
 
 private data class EazyConvTabItem(
     val id: String,
@@ -359,6 +352,39 @@ private fun parseConvTabs(arr: JSONArray): List<EazyConvTabItem> {
     }
 }
 
+/**
+ * Merges server active list with local tabs so a newly created conversation stays in the strip
+ * until the list endpoint includes it; current conversation is listed first.
+ */
+private fun mergeActiveConversations(
+    server: List<EazyConvTabItem>,
+    previous: List<EazyConvTabItem>,
+    currentConvId: String?
+): List<EazyConvTabItem> {
+    val byId = LinkedHashMap<String, EazyConvTabItem>()
+    server.forEach { byId[it.id] = it }
+    previous.forEach { prev ->
+        val existing = byId[prev.id]
+        if (existing == null) {
+            byId[prev.id] = prev
+        } else {
+            byId[prev.id] = existing.copy(
+                preview = prev.preview?.takeIf { isUsableTabText(it) } ?: existing.preview,
+                summary = prev.summary ?: existing.summary,
+                messageCount = kotlin.math.max(existing.messageCount, prev.messageCount)
+            )
+        }
+    }
+    currentConvId?.let { cid ->
+        val entry = byId.remove(cid)
+            ?: previous.find { it.id == cid }
+            ?: EazyConvTabItem(cid, null, null)
+        val rest = byId.values.filter { it.id != cid }
+        return listOf(entry) + rest
+    }
+    return byId.values.toList()
+}
+
 /** Carousel + Functions tab: one icon per feature id (text via contentDescription only). */
 private fun eazyFeatureIcon(featureId: String): ImageVector = when (featureId) {
     "interests" -> Icons.Default.Favorite
@@ -420,6 +446,25 @@ fun EazyChatModal(
     val pagePath = if (chatContext == EazyChatContext.Creator) "/creator" else "/shop"
     val ownerId = tokenStore?.getOwnerId()
 
+    val sidebarTabs = remember(chatContext) {
+        when (chatContext) {
+            EazyChatContext.Shop -> listOf(
+                EazySidebarTab.Chat to Icons.Default.Chat,
+                EazySidebarTab.Notifications to Icons.Default.Notifications,
+                EazySidebarTab.Settings to Icons.Default.Settings,
+                EazySidebarTab.Functions to Icons.Default.Build
+            )
+            EazyChatContext.Creator -> listOf(
+                EazySidebarTab.Chat to Icons.Default.Chat,
+                EazySidebarTab.Notifications to Icons.Default.Notifications,
+                EazySidebarTab.Jobs to Icons.Default.Bolt,
+                EazySidebarTab.Settings to Icons.Default.Settings,
+                EazySidebarTab.Functions to Icons.Default.Build,
+                EazySidebarTab.Mascot to Icons.Default.Pets
+            )
+        }
+    }
+
     var selectedTab by remember { mutableStateOf(EazySidebarTab.Chat) }
     var convTabs by remember { mutableStateOf<List<EazyConvTabItem>>(emptyList()) }
     var notifFilter by remember { mutableStateOf("unread") }
@@ -452,8 +497,25 @@ fun EazyChatModal(
     val tabListState = rememberLazyListState()
     val carouselScroll = rememberScrollState()
 
-    LaunchedEffect(visible, startTab) {
-        if (visible) selectedTab = startTab
+    LaunchedEffect(visible, startTab, chatContext) {
+        if (visible) {
+            selectedTab = if (chatContext == EazyChatContext.Shop) {
+                when (startTab) {
+                    EazySidebarTab.Jobs, EazySidebarTab.Mascot -> EazySidebarTab.Chat
+                    else -> startTab
+                }
+            } else {
+                startTab
+            }
+        }
+    }
+
+    LaunchedEffect(chatContext) {
+        if (chatContext == EazyChatContext.Shop) {
+            if (selectedTab == EazySidebarTab.Jobs || selectedTab == EazySidebarTab.Mascot) {
+                selectedTab = EazySidebarTab.Chat
+            }
+        }
     }
 
     LaunchedEffect(visible) {
@@ -502,17 +564,15 @@ fun EazyChatModal(
     fun loadActiveTabs(uid: String) {
         scope.launch {
             try {
+                val prevSnapshot = convTabs
+                val cur = chatStore.conversationId.value
                 val resp = withContext(Dispatchers.IO) {
                     api.getEazyConversation(uid, mapOf("list" to "1", "status" to "active"))
                 }
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("conversations") ?: JSONArray()
-                    var parsed = parseConvTabs(arr)
-                    val ensure = chatStore.conversationId.value
-                    if (ensure != null && parsed.none { it.id == ensure }) {
-                        parsed = listOf(EazyConvTabItem(ensure, null, null)) + parsed
-                    }
-                    convTabs = parsed
+                    val parsed = parseConvTabs(arr)
+                    convTabs = mergeActiveConversations(parsed, prevSnapshot, cur)
                 }
             } catch (_: Exception) {}
         }
@@ -599,6 +659,8 @@ fun EazyChatModal(
         loadActiveTabs(userId)
     }
 
+    val eazyPalette = remember(chatContext) { eazyPaletteFor(chatContext) }
+    CompositionLocalProvider(LocalEazyModalPalette provides eazyPalette) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -611,24 +673,19 @@ fun EazyChatModal(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(ChatBg)
+                    .systemBarsPadding()
+                    .imePadding()
+                    .background(LocalEazyModalPalette.current.bg)
             ) {
                 Row(modifier = Modifier.fillMaxSize()) {
                     Column(
                         modifier = Modifier
                             .width(56.dp)
                             .fillMaxSize()
-                            .background(ChatHeader)
-                            .border(1.dp, ChatMuted.copy(alpha = 0.3f))
+                            .background(LocalEazyModalPalette.current.headerSecondary)
+                            .border(1.dp, LocalEazyModalPalette.current.muted.copy(alpha = 0.3f))
                     ) {
-                        listOf(
-                            EazySidebarTab.Chat to Icons.Default.Chat,
-                            EazySidebarTab.Notifications to Icons.Default.Notifications,
-                            EazySidebarTab.Jobs to Icons.Default.Bolt,
-                            EazySidebarTab.Settings to Icons.Default.Settings,
-                            EazySidebarTab.Functions to Icons.Default.Build,
-                            EazySidebarTab.Mascot to Icons.Default.Pets
-                        ).forEach { (tab, icon) ->
+                        sidebarTabs.forEach { (tab, icon) ->
                             val unreadCount = totalUnreadNotifs
                             Box {
                                 IconButton(
@@ -636,11 +693,11 @@ fun EazyChatModal(
                                     modifier = Modifier
                                         .size(56.dp)
                                         .then(
-                                            if (selectedTab == tab) Modifier.background(ChatAccent.copy(alpha = 0.2f))
+                                            if (selectedTab == tab) Modifier.background(LocalEazyModalPalette.current.accent.copy(alpha = 0.2f))
                                             else Modifier
                                         )
                                 ) {
-                                    Icon(icon, contentDescription = tab.name, tint = if (selectedTab == tab) ChatAccent else ChatMuted)
+                                    Icon(icon, contentDescription = tab.name, tint = if (selectedTab == tab) LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted)
                                 }
                                 if (tab == EazySidebarTab.Notifications && unreadCount > 0) {
                                     Box(
@@ -649,7 +706,7 @@ fun EazyChatModal(
                                             .padding(4.dp)
                                             .size(16.dp)
                                             .clip(CircleShape)
-                                            .background(ChatAccent),
+                                            .background(LocalEazyModalPalette.current.accent),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
@@ -663,28 +720,28 @@ fun EazyChatModal(
                         }
                     }
 
-                    Column(modifier = Modifier.weight(1f).fillMaxSize().background(ChatBg)) {
+                    Column(modifier = Modifier.weight(1f).fillMaxSize().background(LocalEazyModalPalette.current.bg)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(ChatHeader)
-                                .padding(horizontal = 8.dp, vertical = 12.dp),
+                                .background(LocalEazyModalPalette.current.header)
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (selectedTab == EazySidebarTab.Jobs) {
                                 Box(
-                                    modifier = Modifier.width(48.dp),
+                                    modifier = Modifier.width(40.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         Icons.Default.Bolt,
                                         contentDescription = null,
-                                        tint = ChatAccent,
-                                        modifier = Modifier.size(22.dp)
+                                        tint = LocalEazyModalPalette.current.accent,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             } else {
-                                Spacer(modifier = Modifier.width(48.dp))
+                                Spacer(modifier = Modifier.width(40.dp))
                             }
                             Text(
                                 text = when (selectedTab) {
@@ -696,12 +753,22 @@ fun EazyChatModal(
                                     EazySidebarTab.Mascot -> t("eazy_chat.ui_mascot_tab", "Mascot")
                                 },
                                 modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = ChatText,
-                                textAlign = TextAlign.Center
+                                style = MaterialTheme.typography.titleSmall,
+                                color = LocalEazyModalPalette.current.text,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            IconButton(onClick = onDismiss) {
-                                Icon(Icons.Default.Close, contentDescription = t("eazy_chat.ui_close_chat", "Close"), tint = ChatText)
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = t("eazy_chat.ui_close_chat", "Close"),
+                                    tint = LocalEazyModalPalette.current.text,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
 
@@ -718,7 +785,7 @@ fun EazyChatModal(
                                         Text(
                                             text = t("eazy_chat.login_required_text", "Sign in to chat with eazy"),
                                             style = MaterialTheme.typography.bodyLarge,
-                                            color = ChatMuted,
+                                            color = LocalEazyModalPalette.current.muted,
                                             textAlign = TextAlign.Center
                                         )
                                         Spacer(modifier = Modifier.height(16.dp))
@@ -727,7 +794,7 @@ fun EazyChatModal(
                                                 onDismiss()
                                                 onLoginClick()
                                             },
-                                            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = ChatAccent)
+                                            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = LocalEazyModalPalette.current.accent)
                                         ) {
                                             Text(t("eazy_chat.login_required_btn", "Sign in"))
                                         }
@@ -742,7 +809,7 @@ fun EazyChatModal(
                                         Text(
                                             text = t("eazy_chat.ui_limit_quota_used", "Your chat quota for this hour is used up."),
                                             style = MaterialTheme.typography.bodyMedium,
-                                            color = ChatMuted,
+                                            color = LocalEazyModalPalette.current.muted,
                                             textAlign = TextAlign.Center
                                         )
                                     }
@@ -755,7 +822,7 @@ fun EazyChatModal(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .background(ChatHeader.copy(alpha = 0.5f))
+                                                .background(LocalEazyModalPalette.current.header.copy(alpha = 0.5f))
                                                 .padding(horizontal = 4.dp, vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
@@ -774,7 +841,7 @@ fun EazyChatModal(
                                                     Row(
                                                         modifier = Modifier
                                                             .clip(RoundedCornerShape(8.dp))
-                                                            .background(if (active) ChatAccent.copy(alpha = 0.25f) else Color.Transparent)
+                                                            .background(if (active) LocalEazyModalPalette.current.accent.copy(alpha = 0.25f) else Color.Transparent)
                                                             .clickable {
                                                                 scope.launch {
                                                                     val u = chatStore.getUserId(ownerId)
@@ -801,7 +868,7 @@ fun EazyChatModal(
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis,
                                                             style = MaterialTheme.typography.labelMedium,
-                                                            color = if (active) ChatAccent else ChatText,
+                                                            color = if (active) LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.text,
                                                             modifier = Modifier.widthIn(max = 120.dp)
                                                         )
                                                         IconButton(
@@ -847,7 +914,7 @@ fun EazyChatModal(
                                                             },
                                                             modifier = Modifier.size(24.dp)
                                                         ) {
-                                                            Icon(Icons.Default.Close, contentDescription = t("chatCloseTitle", "Close chat"), tint = ChatMuted, modifier = Modifier.size(14.dp))
+                                                            Icon(Icons.Default.Close, contentDescription = t("chatCloseTitle", "Close chat"), tint = LocalEazyModalPalette.current.muted, modifier = Modifier.size(14.dp))
                                                         }
                                                     }
                                                 }
@@ -868,7 +935,7 @@ fun EazyChatModal(
                                                     }
                                                 }
                                             ) {
-                                                Icon(Icons.Default.Add, contentDescription = t("eazy_chat.new_chat", "New chat"), tint = ChatAccent)
+                                                Icon(Icons.Default.Add, contentDescription = t("eazy_chat.new_chat", "New chat"), tint = LocalEazyModalPalette.current.accent)
                                             }
                                             IconButton(onClick = {
                                                 historyOpen = true
@@ -881,7 +948,10 @@ fun EazyChatModal(
                                                         }
                                                         if (resp.optBoolean("ok", false)) {
                                                             val arr = resp.optJSONArray("conversations") ?: JSONArray()
-                                                            historyRows = parseConvTabs(arr)
+                                                            val curId = conversationId
+                                                            historyRows = parseConvTabs(arr).filter { row ->
+                                                                curId == null || row.id != curId
+                                                            }
                                                         } else historyRows = emptyList()
                                                     } catch (_: Exception) {
                                                         historyRows = emptyList()
@@ -889,7 +959,7 @@ fun EazyChatModal(
                                                     loadingHistory = false
                                                 }
                                             }) {
-                                                Icon(Icons.Default.History, contentDescription = t("eazy_chat.ui_chat_history", "Chat history"), tint = ChatAccent)
+                                                Icon(Icons.Default.History, contentDescription = t("eazy_chat.ui_chat_history", "Chat history"), tint = LocalEazyModalPalette.current.accent)
                                             }
                                         }
 
@@ -897,7 +967,7 @@ fun EazyChatModal(
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .background(ChatHeader)
+                                                    .background(LocalEazyModalPalette.current.header)
                                                     .padding(8.dp)
                                             ) {
                                                 Row(
@@ -910,7 +980,7 @@ fun EazyChatModal(
                                                             carouselScroll.scrollTo((carouselScroll.value - 200).coerceAtLeast(0))
                                                         }
                                                     }) {
-                                                        Text("\u2039", color = ChatText)
+                                                        Text("\u2039", color = LocalEazyModalPalette.current.text)
                                                     }
                                                     Row(
                                                         modifier = Modifier
@@ -925,7 +995,7 @@ fun EazyChatModal(
                                                                     .padding(horizontal = 4.dp)
                                                                     .size(48.dp)
                                                                     .clip(RoundedCornerShape(10.dp))
-                                                                    .border(1.dp, ChatMuted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                                                    .border(1.dp, LocalEazyModalPalette.current.muted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                                                                     .clickable {
                                                                         drawerExpanded = false
                                                                         scope.launch {
@@ -976,7 +1046,7 @@ fun EazyChatModal(
                                                                 Icon(
                                                                     eazyFeatureIcon(def.id),
                                                                     contentDescription = cd,
-                                                                    tint = ChatText,
+                                                                    tint = LocalEazyModalPalette.current.text,
                                                                     modifier = Modifier.size(26.dp)
                                                                 )
                                                             }
@@ -987,7 +1057,7 @@ fun EazyChatModal(
                                                             carouselScroll.scrollTo(carouselScroll.value + 200)
                                                         }
                                                     }) {
-                                                        Text("\u203A", color = ChatText)
+                                                        Text("\u203A", color = LocalEazyModalPalette.current.text)
                                                     }
                                                 }
                                             }
@@ -997,7 +1067,7 @@ fun EazyChatModal(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable { drawerExpanded = !drawerExpanded }
-                                                .background(ChatHeader)
+                                                .background(LocalEazyModalPalette.current.header)
                                                 .padding(vertical = 6.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -1007,12 +1077,12 @@ fun EazyChatModal(
                                                         .width(40.dp)
                                                         .height(4.dp)
                                                         .clip(RoundedCornerShape(2.dp))
-                                                        .background(ChatMuted)
+                                                        .background(LocalEazyModalPalette.current.muted)
                                                 )
                                                 Icon(
                                                     imageVector = if (drawerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                                     contentDescription = null,
-                                                    tint = ChatMuted,
+                                                    tint = LocalEazyModalPalette.current.muted,
                                                     modifier = Modifier.size(20.dp)
                                                 )
                                             }
@@ -1026,7 +1096,7 @@ fun EazyChatModal(
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .background(ChatHeader)
+                                                    .background(LocalEazyModalPalette.current.header)
                                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                                             ) {
                                                 Row(
@@ -1036,13 +1106,13 @@ fun EazyChatModal(
                                                     Text(
                                                         text = "$rem ${t("eazy_chat.ui_messages_of", "of")} $lim ${t("eazy_chat.ui_messages", "messages")}",
                                                         style = MaterialTheme.typography.labelSmall,
-                                                        color = ChatMuted
+                                                        color = LocalEazyModalPalette.current.muted
                                                     )
                                                     if (rl.resetIn > 0) {
                                                         Text(
                                                             text = "${t("eazy_chat.ui_reset_in", "Reset in")} ${formatResetTime(rl.resetIn)}",
                                                             style = MaterialTheme.typography.labelSmall,
-                                                            color = ChatMuted
+                                                            color = LocalEazyModalPalette.current.muted
                                                         )
                                                     }
                                                 }
@@ -1051,14 +1121,14 @@ fun EazyChatModal(
                                                         .fillMaxWidth()
                                                         .height(4.dp)
                                                         .clip(RoundedCornerShape(2.dp))
-                                                        .background(ChatMuted.copy(alpha = 0.2f))
+                                                        .background(LocalEazyModalPalette.current.muted.copy(alpha = 0.2f))
                                                 ) {
                                                     Box(
                                                         modifier = Modifier
                                                             .fillMaxWidth(pct / 100f)
                                                             .height(4.dp)
                                                             .clip(RoundedCornerShape(2.dp))
-                                                            .background(if (pct <= 10) ChatMuted else ChatAccent)
+                                                            .background(if (pct <= 10) LocalEazyModalPalette.current.muted else LocalEazyModalPalette.current.accent)
                                                     )
                                                 }
                                             }
@@ -1082,7 +1152,7 @@ fun EazyChatModal(
                                             if (isLoading && messages.isEmpty()) {
                                                 item {
                                                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                                        CircularProgressIndicator(color = ChatAccent, modifier = Modifier.size(32.dp))
+                                                        CircularProgressIndicator(color = LocalEazyModalPalette.current.accent, modifier = Modifier.size(32.dp))
                                                     }
                                                 }
                                             }
@@ -1104,9 +1174,7 @@ fun EazyChatModal(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .navigationBarsPadding()
-                                                .imePadding()
-                                                .padding(12.dp),
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.Bottom
                                         ) {
                                             BasicTextField(
@@ -1115,10 +1183,10 @@ fun EazyChatModal(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .clip(RoundedCornerShape(24.dp))
-                                                    .background(UserBubble)
+                                                    .background(LocalEazyModalPalette.current.userBubble)
                                                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = ChatText),
-                                                cursorBrush = SolidColor(ChatAccent),
+                                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = LocalEazyModalPalette.current.text),
+                                                cursorBrush = SolidColor(LocalEazyModalPalette.current.accent),
                                                 singleLine = false,
                                                 maxLines = 4,
                                                 decorationBox = { inner ->
@@ -1127,7 +1195,7 @@ fun EazyChatModal(
                                                             Text(
                                                                 text = t("eazy_chat.ui_message_placeholder", "Type a message..."),
                                                                 style = MaterialTheme.typography.bodyMedium,
-                                                                color = ChatMuted
+                                                                color = LocalEazyModalPalette.current.muted
                                                             )
                                                         }
                                                         inner()
@@ -1196,7 +1264,7 @@ fun EazyChatModal(
                                                 modifier = Modifier
                                                     .size(48.dp)
                                                     .clip(CircleShape)
-                                                    .background(ChatAccent)
+                                                    .background(LocalEazyModalPalette.current.accent)
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Send,
@@ -1270,7 +1338,7 @@ fun EazyChatModal(
                                         Text(
                                             text = t("eazy_chat.login_required_text", "Sign in to chat with eazy"),
                                             style = MaterialTheme.typography.bodyLarge,
-                                            color = ChatMuted,
+                                            color = LocalEazyModalPalette.current.muted,
                                             textAlign = TextAlign.Center
                                         )
                                         Spacer(modifier = Modifier.height(16.dp))
@@ -1279,7 +1347,7 @@ fun EazyChatModal(
                                                 onDismiss()
                                                 onLoginClick()
                                             },
-                                            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = ChatAccent)
+                                            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = LocalEazyModalPalette.current.accent)
                                         ) {
                                             Text(t("eazy_chat.login_required_btn", "Sign in"))
                                         }
@@ -1351,7 +1419,7 @@ fun EazyChatModal(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(ChatHeader)
+                    .background(LocalEazyModalPalette.current.header)
                     .padding(16.dp)
             ) {
                 Row(
@@ -1359,25 +1427,25 @@ fun EazyChatModal(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(t("eazy_chat.ui_chat_history", "Chat history"), color = ChatText, style = MaterialTheme.typography.titleMedium)
+                    Text(t("eazy_chat.ui_chat_history", "Chat history"), color = LocalEazyModalPalette.current.text, style = MaterialTheme.typography.titleMedium)
                     Row {
                         TextButton(onClick = { showDeleteAllHistoryConfirm = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = ChatMuted, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = LocalEazyModalPalette.current.muted, modifier = Modifier.size(18.dp))
                         }
                         IconButton(onClick = { historyOpen = false }) {
-                            Icon(Icons.Default.Close, contentDescription = t("eazy_chat.ui_close", "Close"), tint = ChatText)
+                            Icon(Icons.Default.Close, contentDescription = t("eazy_chat.ui_close", "Close"), tint = LocalEazyModalPalette.current.text)
                         }
                     }
                 }
-                Divider(color = ChatMuted.copy(alpha = 0.3f))
+                Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f))
                 if (loadingHistory) {
                     Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = ChatAccent)
+                        CircularProgressIndicator(color = LocalEazyModalPalette.current.accent)
                     }
                 } else if (historyRows.isEmpty()) {
                     Text(
                         t("eazy_chat.history_empty", "No past chats available."),
-                        color = ChatMuted,
+                        color = LocalEazyModalPalette.current.muted,
                         modifier = Modifier.padding(16.dp)
                     )
                 } else {
@@ -1419,17 +1487,17 @@ fun EazyChatModal(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         tabStripLabel(row.preview, row.summary, "Chat"),
-                                        color = ChatText,
+                                        color = LocalEazyModalPalette.current.text,
                                         maxLines = 2
                                     )
                                     Text(
                                         "${row.messageCount} ${t("eazy_chat.ui_messages", "messages")}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = ChatMuted
+                                        color = LocalEazyModalPalette.current.muted
                                     )
                                 }
                                 IconButton(onClick = { deleteHistoryTargetId = row.id }) {
-                                    Icon(Icons.Default.Delete, contentDescription = t("chatDelete", "Delete"), tint = ChatMuted)
+                                    Icon(Icons.Default.Delete, contentDescription = t("chatDelete", "Delete"), tint = LocalEazyModalPalette.current.muted)
                                 }
                             }
                         }
@@ -1455,7 +1523,7 @@ fun EazyChatModal(
             dismissButton = {
                 TextButton(onClick = { showDeleteAllHistoryConfirm = false }) { Text(t("eazy_chat.ui_close", "Close")) }
             },
-            title = { Text(t("chatDeleteHistoryConfirm", "Delete complete chat history permanently? Open chats remain."), color = ChatText) }
+            title = { Text(t("chatDeleteHistoryConfirm", "Delete complete chat history permanently? Open chats remain."), color = LocalEazyModalPalette.current.text) }
         )
     }
 
@@ -1478,8 +1546,9 @@ fun EazyChatModal(
             dismissButton = {
                 TextButton(onClick = { deleteHistoryTargetId = null }) { Text(t("eazy_chat.ui_close", "Close")) }
             },
-            title = { Text(t("chatDeleteChatConfirm", "Delete this chat permanently?"), color = ChatText) }
+            title = { Text(t("chatDeleteChatConfirm", "Delete this chat permanently?"), color = LocalEazyModalPalette.current.text) }
         )
+    }
     }
 }
 
@@ -1508,7 +1577,7 @@ private fun EazyNotificationsPanel(
             TextButton(
                 onClick = { onNotifFeedScopeChange("user") },
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (notifFeedScope == "user") ChatAccent else ChatMuted
+                    contentColor = if (notifFeedScope == "user") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
                 )
             ) {
                 Text(t("creator.notifications.feed_user", "User"))
@@ -1516,7 +1585,7 @@ private fun EazyNotificationsPanel(
             TextButton(
                 onClick = { onNotifFeedScopeChange("system") },
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (notifFeedScope == "system") ChatAccent else ChatMuted
+                    contentColor = if (notifFeedScope == "system") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
                 )
             ) {
                 Text(t("creator.notifications.feed_system", "System"))
@@ -1531,7 +1600,7 @@ private fun EazyNotificationsPanel(
             TextButton(
                 onClick = { onFilterChange("unread") },
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (notifFilter == "unread") ChatAccent else ChatMuted
+                    contentColor = if (notifFilter == "unread") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
                 )
             ) {
                 Text(t("creator.notifications.unread", "Unread"))
@@ -1539,7 +1608,7 @@ private fun EazyNotificationsPanel(
             TextButton(
                 onClick = { onFilterChange("read") },
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (notifFilter == "read") ChatAccent else ChatMuted
+                    contentColor = if (notifFilter == "read") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
                 )
             ) {
                 Text(t("creator.notifications.read", "Read"))
@@ -1547,7 +1616,7 @@ private fun EazyNotificationsPanel(
         }
         if (loading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = ChatAccent)
+                CircularProgressIndicator(color = LocalEazyModalPalette.current.accent)
             }
         } else if (shown.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -1557,7 +1626,7 @@ private fun EazyNotificationsPanel(
                     } else {
                         t("chat_notifications_none_read", "No read notifications")
                     },
-                    color = ChatMuted,
+                    color = LocalEazyModalPalette.current.muted,
                     textAlign = TextAlign.Center
                 )
             }
@@ -1572,7 +1641,7 @@ private fun EazyNotificationsPanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (!n.isRead) ChatAccent.copy(alpha = 0.12f) else ChatMuted.copy(alpha = 0.08f))
+                            .background(if (!n.isRead) LocalEazyModalPalette.current.accent.copy(alpha = 0.12f) else LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
                             .clickable {
                                 if (!n.isRead) onMarkRead(n)
                             }
@@ -1591,12 +1660,12 @@ private fun EazyNotificationsPanel(
                             Spacer(modifier = Modifier.width(12.dp))
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(n.title, style = MaterialTheme.typography.titleSmall, color = ChatText)
+                            Text(n.title, style = MaterialTheme.typography.titleSmall, color = LocalEazyModalPalette.current.text)
                             if (n.message.isNotBlank()) {
-                                Text(n.message, style = MaterialTheme.typography.bodySmall, color = ChatMuted)
+                                Text(n.message, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
                             }
                             n.createdAt?.let {
-                                Text(it, style = MaterialTheme.typography.labelSmall, color = ChatMuted.copy(alpha = 0.7f))
+                                Text(it, style = MaterialTheme.typography.labelSmall, color = LocalEazyModalPalette.current.muted.copy(alpha = 0.7f))
                             }
                         }
                     }
@@ -1642,10 +1711,10 @@ private fun EazyFunctionsGrid(
                 Text(
                     EazyChatFeatureCatalog.categoryLabel(cat, t),
                     style = MaterialTheme.typography.titleSmall,
-                    color = ChatAccent
+                    color = LocalEazyModalPalette.current.accent
                 )
                 TextButton(onClick = { onCategoryToggle(ids, !allVis) }) {
-                    Text(if (allVis) t("eazy_fn.hide_all", "Hide all") else t("eazy_fn.show_all", "Show all"), color = ChatMuted)
+                    Text(if (allVis) t("eazy_fn.hide_all", "Hide all") else t("eazy_fn.show_all", "Show all"), color = LocalEazyModalPalette.current.muted)
                 }
             }
             defs.chunked(2).forEach { rowDefs ->
@@ -1660,7 +1729,7 @@ private fun EazyFunctionsGrid(
                                 .weight(1f)
                                 .heightIn(min = 72.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .border(1.dp, ChatMuted.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                .border(1.dp, LocalEazyModalPalette.current.muted.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
                         ) {
                             Box(
                                 modifier = Modifier
@@ -1672,7 +1741,7 @@ private fun EazyFunctionsGrid(
                                 Icon(
                                     imageVector = eazyFeatureIcon(def.id),
                                     contentDescription = t(def.labelKey, def.defaultLabel),
-                                    tint = ChatText,
+                                    tint = LocalEazyModalPalette.current.text,
                                     modifier = Modifier.size(36.dp)
                                 )
                             }
@@ -1685,7 +1754,7 @@ private fun EazyFunctionsGrid(
                                 Icon(
                                     imageVector = if (vis) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                                     contentDescription = null,
-                                    tint = ChatMuted,
+                                    tint = LocalEazyModalPalette.current.muted,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -1694,12 +1763,12 @@ private fun EazyFunctionsGrid(
                     if (rowDefs.size == 1) Spacer(modifier = Modifier.weight(1f))
                 }
             }
-            Divider(color = ChatMuted.copy(alpha = 0.2f))
+            Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.2f))
         }
         Text(
             t("eazy_fn.hint", "Eye: show or hide shortcuts in the chat carousel."),
             style = MaterialTheme.typography.labelSmall,
-            color = ChatMuted
+            color = LocalEazyModalPalette.current.muted
         )
     }
 }
@@ -1726,7 +1795,7 @@ private fun EazyJobsCombinedPanel(
             TextButton(
                 onClick = { onJobsFeedScopeChange("user") },
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (jobsFeedScope == "user") ChatAccent else ChatMuted
+                    contentColor = if (jobsFeedScope == "user") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
                 )
             ) {
                 Text(t("creator.notifications.feed_user", "User"))
@@ -1734,7 +1803,7 @@ private fun EazyJobsCombinedPanel(
             TextButton(
                 onClick = { onJobsFeedScopeChange("system") },
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (jobsFeedScope == "system") ChatAccent else ChatMuted
+                    contentColor = if (jobsFeedScope == "system") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
                 )
             ) {
                 Text(t("creator.notifications.feed_system", "System"))
@@ -1747,7 +1816,7 @@ private fun EazyJobsCombinedPanel(
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = ChatAccent)
+                CircularProgressIndicator(color = LocalEazyModalPalette.current.accent)
             }
             jobsFeedScope == "system" -> {
                 if (systemJobs.isEmpty()) {
@@ -1758,7 +1827,7 @@ private fun EazyJobsCombinedPanel(
                             .padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(t("eazy_chat.chat_no_active_jobs", "No active jobs"), color = ChatMuted)
+                        Text(t("eazy_chat.chat_no_active_jobs", "No active jobs"), color = LocalEazyModalPalette.current.muted)
                     }
                 } else {
                     LazyColumn(
@@ -1779,17 +1848,17 @@ private fun EazyJobsCombinedPanel(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(ChatMuted.copy(alpha = 0.08f))
+                                    .background(LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
                                     .padding(12.dp)
                             ) {
-                                Text(j.title, style = MaterialTheme.typography.titleSmall, color = ChatText)
+                                Text(j.title, style = MaterialTheme.typography.titleSmall, color = LocalEazyModalPalette.current.text)
                                 LinearProgressIndicator(
                                     progress = prog.coerceIn(0, 100) / 100f,
                                     modifier = Modifier.fillMaxWidth(),
-                                    color = ChatAccent,
-                                    trackColor = ChatMuted.copy(alpha = 0.3f)
+                                    color = LocalEazyModalPalette.current.accent,
+                                    trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
                                 )
-                                j.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ChatMuted) }
+                                j.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted) }
                             }
                         }
                     }
@@ -1808,7 +1877,7 @@ private fun EazyJobsCombinedPanel(
                             t("creator.notifications.active_jobs", "Active Jobs"),
                             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.labelMedium,
-                            color = ChatMuted
+                            color = LocalEazyModalPalette.current.muted
                         )
                         userKvJobs.forEach { j ->
                             Column(
@@ -1816,17 +1885,17 @@ private fun EazyJobsCombinedPanel(
                                     .fillMaxWidth()
                                     .padding(horizontal = 24.dp, vertical = 6.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(ChatMuted.copy(alpha = 0.08f))
+                                    .background(LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
                                     .padding(12.dp)
                             ) {
-                                Text(j.title, style = MaterialTheme.typography.bodyMedium, color = ChatText)
+                                Text(j.title, style = MaterialTheme.typography.bodyMedium, color = LocalEazyModalPalette.current.text)
                                 LinearProgressIndicator(
                                     progress = (if (j.done) 100 else j.progress).coerceIn(0, 100) / 100f,
                                     modifier = Modifier.fillMaxWidth(),
-                                    color = ChatAccent,
-                                    trackColor = ChatMuted.copy(alpha = 0.3f)
+                                    color = LocalEazyModalPalette.current.accent,
+                                    trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
                                 )
-                                j.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ChatMuted) }
+                                j.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted) }
                             }
                         }
                     }
@@ -1854,42 +1923,42 @@ private fun EazyHeroJobsPanel(
             Text(
                 text = t("creator.hero_eazy.job_summary_title", "Hero image generation"),
                 style = MaterialTheme.typography.labelMedium,
-                color = ChatMuted
+                color = LocalEazyModalPalette.current.muted
             )
             Text(
                 text = activeHero.summary,
                 style = MaterialTheme.typography.bodyMedium,
-                color = ChatText
+                color = LocalEazyModalPalette.current.text
             )
             LinearProgressIndicator(
                 progress = activeHero.progress.coerceIn(0, 100) / 100f,
                 modifier = Modifier.fillMaxWidth(),
-                color = ChatAccent,
-                trackColor = ChatMuted.copy(alpha = 0.3f)
+                color = LocalEazyModalPalette.current.accent,
+                trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
             )
             activeHero.message?.takeIf { it.isNotBlank() }?.let { msg ->
-                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = ChatMuted)
+                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
             }
         }
         if (activeVideo != null) {
             Text(
                 text = t("creator.content_creation.videos.job_summary_title", "Video generation"),
                 style = MaterialTheme.typography.labelMedium,
-                color = ChatMuted
+                color = LocalEazyModalPalette.current.muted
             )
             Text(
                 text = activeVideo.summary,
                 style = MaterialTheme.typography.bodyMedium,
-                color = ChatText
+                color = LocalEazyModalPalette.current.text
             )
             LinearProgressIndicator(
                 progress = activeVideo.progress.coerceIn(0, 100) / 100f,
                 modifier = Modifier.fillMaxWidth(),
-                color = ChatAccent,
-                trackColor = ChatMuted.copy(alpha = 0.3f)
+                color = LocalEazyModalPalette.current.accent,
+                trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
             )
             activeVideo.message?.takeIf { it.isNotBlank() }?.let { msg ->
-                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = ChatMuted)
+                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
             }
         }
         if (activeHero == null && activeVideo == null) {
@@ -1901,13 +1970,13 @@ private fun EazyHeroJobsPanel(
                 Icon(
                     Icons.Default.Bolt,
                     contentDescription = null,
-                    tint = ChatMuted,
+                    tint = LocalEazyModalPalette.current.muted,
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
                     text = "No active jobs",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = ChatMuted,
+                    color = LocalEazyModalPalette.current.muted,
                     textAlign = TextAlign.Center
                 )
             }
@@ -1928,12 +1997,12 @@ private fun ChatBubble(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(if (isUser) ChatAccent else AssistantBubble)
+                .background(if (isUser) LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.assistantBubble)
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .widthIn(max = 280.dp)
         ) {
             if (isTyping) {
-                CircularProgressIndicator(color = ChatText, modifier = Modifier.size(20.dp))
+                CircularProgressIndicator(color = LocalEazyModalPalette.current.text, modifier = Modifier.size(20.dp))
             } else {
                 Text(
                     text = message.content,
