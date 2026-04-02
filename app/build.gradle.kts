@@ -105,7 +105,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.activity:activity-ktx:1.8.2")
 
-    // OAuth: Google blocks sign-in inside WebView (403 disallowed_useragent) — use system browser tab
+    // OAuth: Customer Account PKCE runs in an in-app WebView (see AuthScreen). androidx.browser kept if needed elsewhere.
     implementation("androidx.browser:browser:1.8.0")
 
     // Play Store: prompt for update when a newer version is available (Play-installed builds only)

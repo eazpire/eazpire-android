@@ -859,7 +859,7 @@ fun ShopScreen(
     if (showLoginOptions) {
         LoginOptionsModal(
             onDismiss = { showLoginOptions = false },
-            onShopifyLoginClick = {
+            onLoginClick = {
                 showLoginOptions = false
                 productModalHandleState.value = null
                 authAutoStartOAuth = true
