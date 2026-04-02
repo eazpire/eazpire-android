@@ -15,7 +15,7 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.EazpireCreator"
-        tools:targetApi="34">
+        tools:targetApi="35">
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="eaz_push_in_app" />

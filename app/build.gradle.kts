@@ -25,8 +25,9 @@ android {
         applicationId = "com.eazpire.creator"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("VERSION_CODE") ?: "2").toIntOrNull() ?: 2
-        versionName = "1.0.2"
+        // Increment for every Play upload (must be > previous release).
+        versionCode = (System.getenv("VERSION_CODE") ?: "3").toIntOrNull() ?: 3
+        versionName = "1.0.3"
     }
 
     signingConfigs {
