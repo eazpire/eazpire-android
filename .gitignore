@@ -10,3 +10,8 @@
 *.apk
 *.aab
 cmdline-tools-download.zip
+
+# Play upload signing — never commit (see repo root .gitignore)
+keystore.properties
+*.jks
+*.keystore
