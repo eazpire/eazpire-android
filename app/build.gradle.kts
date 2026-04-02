@@ -26,8 +26,10 @@ android {
         minSdk = 26
         targetSdk = 35
         // Increment for every Play upload (must be > previous release).
-        versionCode = (System.getenv("VERSION_CODE") ?: "3").toIntOrNull() ?: 3
-        versionName = "1.0.3"
+        val appVersionCode = (System.getenv("VERSION_CODE") ?: "3").toIntOrNull() ?: 3
+        versionCode = appVersionCode
+        // Play Console: same versionName for every build is confusing — include versionCode (or set VERSION_NAME in CI).
+        versionName = System.getenv("VERSION_NAME") ?: "1.0.3 ($appVersionCode)"
     }
 
     signingConfigs {
