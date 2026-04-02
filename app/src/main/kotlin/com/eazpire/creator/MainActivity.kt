@@ -96,6 +96,11 @@ class MainActivity : ComponentActivity() {
         playInAppUpdateHelper.onResume()
     }
 
+    override fun onDestroy() {
+        playInAppUpdateHelper.onDestroy()
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
