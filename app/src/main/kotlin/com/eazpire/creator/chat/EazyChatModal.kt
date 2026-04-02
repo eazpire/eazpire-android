@@ -391,6 +391,7 @@ fun EazyChatModal(
     visible: Boolean,
     tokenStore: SecureTokenStore?,
     chatStore: EazyChatStore,
+    eazySettingsStore: EazySettingsStore,
     onDismiss: () -> Unit,
     onLoginClick: () -> Unit,
     onResetMascot: () -> Unit = {},
@@ -407,6 +408,7 @@ fun EazyChatModal(
     val scope = rememberCoroutineScope()
 
     val messages by chatStore.messages.collectAsState()
+    val fnVisibility by chatStore.fnVisibility.collectAsState()
     val conversationId by chatStore.conversationId.collectAsState()
     val isLoading by chatStore.isLoading.collectAsState()
     val isTyping by chatStore.isTyping.collectAsState()
@@ -456,6 +458,19 @@ fun EazyChatModal(
 
     LaunchedEffect(visible) {
         if (visible) chatStore.loadFnVisibilityFromStorage()
+    }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            eazySettingsStore.loadFromDisk()
+        }
+    }
+
+    LaunchedEffect(visible, ownerId, isLoggedIn) {
+        if (visible && isLoggedIn && ownerId != null) {
+            val u = chatStore.getUserId(ownerId)
+            eazySettingsStore.tryMergeFromServer(api, u)
+        }
     }
 
     fun loadNotificationsList() {
@@ -902,7 +917,7 @@ fun EazyChatModal(
                                                             .weight(1f)
                                                             .horizontalScroll(carouselScroll)
                                                     ) {
-                                                        val defs = EazyChatFeatureCatalog.forContext(chatContext).filter { chatStore.isFeatureInCarousel(it.id) }
+                                                        val defs = EazyChatFeatureCatalog.forContext(chatContext).filter { fnVisibility[it.id] != false }
                                                         defs.forEach { def ->
                                                             val cd = t(def.labelKey, def.defaultLabel)
                                                             Box(
@@ -1225,7 +1240,24 @@ fun EazyChatModal(
                                 loadingJobs = loadingJobs,
                                 t = t
                             )
-                            EazySidebarTab.Settings -> EazySettingsView(t, onDismiss, onResetMascot)
+                            EazySidebarTab.Settings -> EazySettingsTabView(
+                                eazySettingsStore = eazySettingsStore,
+                                api = api,
+                                chatStore = chatStore,
+                                ownerId = ownerId,
+                                scope = scope,
+                                t = t,
+                                onResetMascot = onResetMascot,
+                                onOpenFunctions = { selectedTab = EazySidebarTab.Functions },
+                                onChatHistoryCleared = {
+                                    scope.launch {
+                                        val u = chatStore.getUserId(ownerId)
+                                        chatStore.clearMessages()
+                                        convTabs = emptyList()
+                                        loadActiveTabs(u)
+                                    }
+                                }
+                            )
                             EazySidebarTab.Functions -> {
                                 if (!isLoggedIn) {
                                     Column(
@@ -1583,6 +1615,9 @@ private fun EazyFunctionsGrid(
     onCategoryToggle: (List<String>, Boolean) -> Unit,
     onRunFeature: (String) -> Unit
 ) {
+    val fnVisibility by chatStore.fnVisibility.collectAsState()
+    fun isInCarousel(id: String) = fnVisibility[id] != false
+
     val categories = listOf(
         EazyFeatureCategory.Shared to EazyChatFeatureCatalog.forContext(chatContext).filter { it.category == EazyFeatureCategory.Shared },
         EazyFeatureCategory.Shop to EazyChatFeatureCatalog.forContext(EazyChatContext.Shop).filter { it.category == EazyFeatureCategory.Shop },
@@ -1598,7 +1633,7 @@ private fun EazyFunctionsGrid(
     ) {
         categories.forEach { (cat, defs) ->
             val ids = defs.map { it.id }
-            val allVis = ids.all { chatStore.isFeatureInCarousel(it) }
+            val allVis = ids.all { isInCarousel(it) }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1619,29 +1654,33 @@ private fun EazyFunctionsGrid(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     rowDefs.forEach { def ->
-                        val vis = chatStore.isFeatureInCarousel(def.id)
+                        val vis = isInCarousel(def.id)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 72.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .border(1.dp, ChatMuted.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .clickable { onRunFeature(def.id) }
-                                .padding(8.dp)
                         ) {
-                            Icon(
-                                imageVector = eazyFeatureIcon(def.id),
-                                contentDescription = t(def.labelKey, def.defaultLabel),
-                                tint = ChatText,
+                            Box(
                                 modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .size(36.dp)
-                            )
+                                    .matchParentSize()
+                                    .clickable { onRunFeature(def.id) }
+                                    .padding(8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = eazyFeatureIcon(def.id),
+                                    contentDescription = t(def.labelKey, def.defaultLabel),
+                                    tint = ChatText,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
                             IconButton(
                                 onClick = { onToggle(def.id) },
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
-                                    .size(32.dp)
+                                    .size(36.dp)
                             ) {
                                 Icon(
                                     imageVector = if (vis) Icons.Default.Visibility else Icons.Default.VisibilityOff,
@@ -1660,46 +1699,6 @@ private fun EazyFunctionsGrid(
         Text(
             t("eazy_fn.hint", "Eye: show or hide shortcuts in the chat carousel."),
             style = MaterialTheme.typography.labelSmall,
-            color = ChatMuted
-        )
-    }
-}
-
-@Composable
-private fun EazySettingsView(
-    t: (String, String) -> String,
-    onDismiss: () -> Unit,
-    onResetMascot: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        Text(
-            text = t("eazy_chat.settings_placement", "Placement"),
-            style = MaterialTheme.typography.titleSmall,
-            color = ChatMuted
-        )
-        androidx.compose.material3.TextButton(
-            onClick = {
-                onResetMascot()
-                onDismiss()
-            },
-            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = ChatAccent)
-        ) {
-            Text(t("eazy_chat.settings_reset_mascot", "Reset mascot position"))
-        }
-        Text(
-            text = t("eazy_chat.settings_privacy", "Privacy"),
-            style = MaterialTheme.typography.titleSmall,
-            color = ChatMuted
-        )
-        Text(
-            text = t("eazy_chat.settings_clear_history_hint", "Clear chat history and memory. Coming soon."),
-            style = MaterialTheme.typography.bodySmall,
             color = ChatMuted
         )
     }

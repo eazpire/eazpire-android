@@ -52,6 +52,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.chat.EazyChatContext
 import com.eazpire.creator.chat.EazyChatModal
 import com.eazpire.creator.chat.EazyChatStore
+import com.eazpire.creator.chat.EazySettingsStore
 import com.eazpire.creator.chat.EazyMascot
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.chat.EazyMascotStore
@@ -136,6 +137,7 @@ fun ShopScreen(
     var eazyStartTab by remember { mutableStateOf(EazySidebarTab.Chat) }
 
     val eazyChatStore = remember { EazyChatStore(context) }
+    val eazySettingsStore = remember { EazySettingsStore(context) }
     val pollJwt = tokenStore.getJwt()
     val creatorPollApi = remember(pollJwt) { CreatorApi(jwt = pollJwt) }
     val heroJobForPoll by eazyChatStore.heroJobState.collectAsState()
@@ -782,6 +784,7 @@ fun ShopScreen(
         visible = eazyChatVisible,
         tokenStore = tokenStore,
         chatStore = eazyChatStore,
+        eazySettingsStore = eazySettingsStore,
         onDismiss = { eazyChatVisible = false },
         onLoginClick = {
             eazyChatVisible = false

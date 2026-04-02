@@ -1642,6 +1642,10 @@ class CreatorApi(
     suspend fun eazyConvDeleteHistory(userId: String): JSONObject =
         postJson("eazy-conv", mapOf("user_id" to userId), mapOf("delete_history" to "1"))
 
+    /** POST ?op=eazy-conv&delete_all=1 – delete all conversations + messages for user (Eazy settings: clear chat history). */
+    suspend fun eazyConvDeleteAllChats(userId: String): JSONObject =
+        postJson("eazy-conv", mapOf("user_id" to userId), mapOf("delete_all" to "1"))
+
     /** POST ?op=eazy-conv&reopen=1 */
     suspend fun eazyConvReopen(userId: String, conversationId: String): JSONObject =
         postJson(
