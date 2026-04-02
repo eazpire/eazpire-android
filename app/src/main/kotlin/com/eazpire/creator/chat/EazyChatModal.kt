@@ -421,7 +421,12 @@ fun EazyChatModal(
                 }
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("conversations") ?: JSONArray()
-                    convTabs = parseConvTabs(arr)
+                    var parsed = parseConvTabs(arr)
+                    val ensure = chatStore.conversationId.value
+                    if (ensure != null && parsed.none { it.id == ensure }) {
+                        parsed = listOf(EazyConvTabItem(ensure, null, null)) + parsed
+                    }
+                    convTabs = parsed
                 }
             } catch (_: Exception) {}
         }
