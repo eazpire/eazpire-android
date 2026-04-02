@@ -92,11 +92,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
@@ -141,7 +143,9 @@ private data class EazyNotifRow(
     val createdAt: String?,
     val category: String?,
     val isSystem: Boolean = false,
-    val systemAudience: String? = null
+    val systemAudience: String? = null,
+    /** From notification `data` JSON: design/hero/product/job preview when available. */
+    val previewImageUrl: String? = null
 )
 
 private data class EazyKvJobRow(
@@ -183,6 +187,67 @@ private fun JSONObject.notificationIsRead(): Boolean {
     }
 }
 
+private fun String?.asHttpImageUrl(): String? {
+    val s = this?.trim() ?: return null
+    if (s.length < 8) return null
+    return when {
+        s.startsWith("http://", ignoreCase = true) || s.startsWith("https://", ignoreCase = true) -> s
+        else -> null
+    }
+}
+
+private fun JSONObject.firstHttpUrl(vararg keys: String): String? {
+    for (k in keys) {
+        optString(k, "").asHttpImageUrl()?.let { return it }
+    }
+    return null
+}
+
+/**
+ * Reads `data` from user or system notification rows (string JSON or object).
+ * Covers design/hero/video/product jobs: thumbnail_url, preview_url, result.*, product_image_url, etc.
+ */
+private fun extractNotificationPreviewUrl(notification: JSONObject): String? {
+    val data = when {
+        notification.has("data") && !notification.isNull("data") -> {
+            when (val d = notification.get("data")) {
+                is JSONObject -> d
+                is String -> try {
+                    JSONObject(d)
+                } catch (_: Exception) {
+                    null
+                }
+                else -> null
+            }
+        }
+        else -> null
+    } ?: return null
+
+    data.firstHttpUrl(
+        "thumbnail_url",
+        "preview_url",
+        "image_url",
+        "product_image_url",
+        "hero_image_url",
+        "video_thumbnail_url",
+        "user_image_url",
+        "reference_image_url"
+    )?.let { return it }
+
+    data.optJSONObject("result")?.firstHttpUrl("preview_url", "image_url", "thumbnail_url", "url", "public_url", "file_url")
+        ?.let { return it }
+
+    data.optJSONArray("product_image_urls")?.takeIf { it.length() > 0 }?.optString(0)?.asHttpImageUrl()?.let { return it }
+    data.optJSONArray("images")?.takeIf { it.length() > 0 }?.optString(0)?.asHttpImageUrl()?.let { return it }
+
+    data.optJSONObject("metadata")?.firstHttpUrl("preview_url", "image_url", "thumbnail_url")?.let { return it }
+
+    data.optJSONObject("result")?.optJSONObject("metadata")?.firstHttpUrl("preview_url", "image_url")
+        ?.let { return it }
+
+    return null
+}
+
 private fun parseNotifications(
     arr: JSONArray,
     isSystem: Boolean = false,
@@ -191,15 +256,17 @@ private fun parseNotifications(
     return (0 until arr.length()).mapNotNull { i ->
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val id = o.optString("notification_id", o.optString("id", "")).ifBlank { return@mapNotNull null }
+        val cat = o.optString("category", o.optString("event_type", "")).takeIf { it.isNotBlank() }
         EazyNotifRow(
             id = id,
             title = o.optString("title", "").ifBlank { "Notification" },
             message = o.optString("message", ""),
             isRead = o.notificationIsRead(),
             createdAt = o.optString("created_at", "").takeIf { it.isNotBlank() },
-            category = o.optString("category", "").takeIf { it.isNotBlank() },
+            category = cat,
             isSystem = isSystem,
-            systemAudience = systemAudience
+            systemAudience = systemAudience,
+            previewImageUrl = extractNotificationPreviewUrl(o)
         )
     }
 }
@@ -238,8 +305,12 @@ private fun mergeSystemNotificationRows(a: List<EazyNotifRow>, b: List<EazyNotif
     val merged = mutableMapOf<String, EazyNotifRow>()
     for (n in a + b) {
         val existing = merged[n.id]
-        if (existing == null || (n.createdAt ?: "") >= (existing.createdAt ?: "")) {
+        if (existing == null) {
             merged[n.id] = n
+        } else {
+            val newer = if ((n.createdAt ?: "") >= (existing.createdAt ?: "")) n else existing
+            val older = if (newer === n) existing else n
+            merged[n.id] = newer.copy(previewImageUrl = newer.previewImageUrl ?: older.previewImageUrl)
         }
     }
     return merged.values.sortedWith(compareByDescending { it.createdAt ?: "" })
@@ -1465,7 +1536,7 @@ private fun EazyNotificationsPanel(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(shown, key = { it.id }) { n ->
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
@@ -1473,14 +1544,28 @@ private fun EazyNotificationsPanel(
                             .clickable {
                                 if (!n.isRead) onMarkRead(n)
                             }
-                            .padding(12.dp)
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(n.title, style = MaterialTheme.typography.titleSmall, color = ChatText)
-                        if (n.message.isNotBlank()) {
-                            Text(n.message, style = MaterialTheme.typography.bodySmall, color = ChatMuted)
+                        n.previewImageUrl?.let { url ->
+                            AsyncImage(
+                                model = url,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
                         }
-                        n.createdAt?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall, color = ChatMuted.copy(alpha = 0.7f))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(n.title, style = MaterialTheme.typography.titleSmall, color = ChatText)
+                            if (n.message.isNotBlank()) {
+                                Text(n.message, style = MaterialTheme.typography.bodySmall, color = ChatMuted)
+                            }
+                            n.createdAt?.let {
+                                Text(it, style = MaterialTheme.typography.labelSmall, color = ChatMuted.copy(alpha = 0.7f))
+                            }
                         }
                     }
                 }
