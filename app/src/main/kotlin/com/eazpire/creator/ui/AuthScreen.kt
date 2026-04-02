@@ -1,9 +1,6 @@
 package com.eazpire.creator.ui
 
 import android.net.Uri
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.MutableState
 import androidx.compose.foundation.layout.Arrangement
@@ -29,10 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
-import com.eazpire.creator.auth.AuthConfig
+import com.eazpire.creator.auth.OAuthPkceStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -43,23 +39,21 @@ import com.eazpire.creator.auth.ShopifyAuthService
 import com.eazpire.creator.notifications.NotificationPreferencesRepository
 import com.eazpire.creator.push.PushTokenRegistrar
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @Composable
 fun AuthScreen(
     tokenStore: SecureTokenStore,
     onAuthSuccess: () -> Unit,
     onCheckUpdate: (() -> Unit)? = null,
-    /** Set when MainActivity receives shop.*://callback (e.g. after Google OAuth in Custom Tab) */
+    /** Set when MainActivity receives shop.*://callback (e.g. after OAuth in Chrome Custom Tab) */
     oauthCallbackUri: MutableState<String?>? = null
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val appCtx = context.applicationContext
     val authService = remember { ShopifyAuthService() }
     val storefrontCartStore = remember { StorefrontCartStore(context) }
     val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
-    var showWebView by remember { mutableStateOf(false) }
-    var authUrl by remember { mutableStateOf<String?>(null) }
     var codeVerifier by remember { mutableStateOf<String?>(null) }
     var savedState by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -75,12 +69,17 @@ fun AuthScreen(
                 val state = PkceUtils.generateState()
                 codeVerifier = verifier
                 savedState = state
-                authUrl = authService.buildAuthorizationUrl(
+                OAuthPkceStore.save(appCtx, state, verifier)
+                val url = authService.buildAuthorizationUrl(
                     endpoints.authorizationEndpoint,
                     verifier,
                     state
                 )
-                showWebView = true
+                // Full flow in Custom Tab — WebView + Custom Tab for Google broke Shopify OAuth state (t.eazpire.com "invalid state").
+                CustomTabsIntent.Builder()
+                    .setShowTitle(true)
+                    .build()
+                    .launchUrl(context, Uri.parse(url))
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
             } finally {
@@ -90,16 +89,20 @@ fun AuthScreen(
     }
 
     fun handleCallback(url: String) {
-        val uri = android.net.Uri.parse(url)
+        val uri = Uri.parse(url)
         val code = uri.getQueryParameter("code")
         val state = uri.getQueryParameter("state")
         if (code == null || state == null) return
-        if (state != savedState) {
+        val verifier = when {
+            state == savedState && codeVerifier != null -> {
+                OAuthPkceStore.clear(appCtx)
+                codeVerifier!!
+            }
+            else -> OAuthPkceStore.consume(appCtx, state)
+        } ?: run {
             error = "Invalid state"
             return
         }
-        val verifier = codeVerifier ?: return
-        showWebView = false  // WebView schließen, Loading anzeigen
         scope.launch {
             isLoading = true
             error = null
@@ -125,13 +128,14 @@ fun AuthScreen(
                     )
                 }
                 PushTokenRegistrar.syncIfLoggedIn(context)
-                // Link guest cart to customer for address prefill at checkout
                 val cartId = storefrontCartStore.cartId
                 if (cartId != null && tokens.accessToken.isNotBlank()) {
                     withContext(Dispatchers.IO) {
                         storefrontCartApi.updateBuyerIdentity(cartId, tokens.accessToken)
                     }
                 }
+                codeVerifier = null
+                savedState = null
                 onAuthSuccess()
             } catch (e: AuthException) {
                 error = e.message
@@ -148,15 +152,6 @@ fun AuthScreen(
         val url = holder.value ?: return@LaunchedEffect
         holder.value = null
         handleCallback(url)
-    }
-
-    if (showWebView && authUrl != null) {
-        WebViewAuth(
-            initialUrl = authUrl!!,
-            redirectUri = AuthConfig.REDIRECT_URI,
-            onRedirect = { handleCallback(it) }
-        )
-        return
     }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
@@ -201,50 +196,4 @@ fun AuthScreen(
             }
         }
     }
-}
-
-@Composable
-private fun WebViewAuth(
-    initialUrl: String,
-    redirectUri: String,
-    onRedirect: (String) -> Unit
-) {
-    val prefix = redirectUri.substringBefore("?")
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(
-                        view: WebView?,
-                        request: WebResourceRequest?
-                    ): Boolean {
-                        val reqUrl = request?.url?.toString() ?: return false
-                        if (reqUrl.startsWith(prefix)) {
-                            onRedirect(reqUrl)
-                            return true
-                        }
-                        // Google blocks OAuth in embedded WebViews (403 disallowed_useragent)
-                        if (isGoogleOAuthNavigationUrl(reqUrl)) {
-                            CustomTabsIntent.Builder()
-                                .build()
-                                .launchUrl(ctx, Uri.parse(reqUrl))
-                            return true
-                        }
-                        return false
-                    }
-                }
-                loadUrl(initialUrl)
-            }
-        },
-        modifier = Modifier.fillMaxSize()
-    )
-}
-
-/** Google Sign-In must run in a real browser tab, not WebView — see disallowed_useragent */
-private fun isGoogleOAuthNavigationUrl(url: String): Boolean {
-    val host = Uri.parse(url).host?.lowercase(Locale.ROOT) ?: return false
-    return host == "accounts.google.com" ||
-        host == "oauth2.googleapis.com" ||
-        host == "signin.google.com"
 }

@@ -125,7 +125,7 @@ fun ShopScreen(
     var accountModalVisible by remember { mutableStateOf(false) }
     var showLoginOptions by remember { mutableStateOf(false) }
     var showAuthScreen by remember { mutableStateOf(false) }
-    /** OAuth redirect shop.*://callback?code=… delivered via MainActivity intent → token exchange in AuthScreen */
+    /** OAuth redirect shop.*://callback?code=… (Chrome Custom Tab) → MainActivity / pendingDeepLink → AuthScreen */
     val oauthCallbackForAuth = remember { mutableStateOf<String?>(null) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
