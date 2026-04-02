@@ -80,10 +80,15 @@ fun AuthScreen(
                     state
                 )
                 // Full flow in Custom Tab — WebView + Custom Tab for Google broke Shopify OAuth state (t.eazpire.com "invalid state").
-                CustomTabsIntent.Builder()
+                // Prefer Chrome: Edge Custom Tabs can send Accept */* only → Shopify 406 → blank/black page (mitigate + Worker Accept patch).
+                val tabs = CustomTabsIntent.Builder()
                     .setShowTitle(true)
                     .build()
-                    .launchUrl(context, Uri.parse(url))
+                val chrome = "com.android.chrome"
+                if (context.packageManager.getLaunchIntentForPackage(chrome) != null) {
+                    tabs.intent.setPackage(chrome)
+                }
+                tabs.launchUrl(context, Uri.parse(url))
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
             } finally {
