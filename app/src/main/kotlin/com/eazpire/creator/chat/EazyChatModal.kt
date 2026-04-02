@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
@@ -30,21 +32,42 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Checkroom
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Straighten
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VolunteerActivism
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
@@ -66,6 +89,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -227,17 +251,68 @@ private fun mergeSystemJobRows(a: List<EazySystemJobRow>, b: List<EazySystemJobR
     return (a + b).filter { seen.add(it.sessionId) }
 }
 
+private fun isUsableTabText(s: String?): Boolean {
+    val t = s?.trim() ?: return false
+    if (t.isEmpty()) return false
+    if (t.equals("null", ignoreCase = true)) return false
+    if (t.equals("undefined", ignoreCase = true)) return false
+    return true
+}
+
+private fun sanitizeTabPreviewSummary(preview: String?, summary: String?): Pair<String?, String?> {
+    val p = preview?.takeIf { isUsableTabText(it) }
+    val s = summary?.takeIf { isUsableTabText(it) }
+    return p to s
+}
+
+private fun tabStripLabel(preview: String?, summary: String?, newChatFallback: String): String {
+    val p = preview?.takeIf { isUsableTabText(it) }
+    val s = summary?.takeIf { isUsableTabText(it) }
+    return p ?: s ?: newChatFallback
+}
+
 private fun parseConvTabs(arr: JSONArray): List<EazyConvTabItem> {
     return (0 until arr.length()).mapNotNull { i ->
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val id = o.optString("id", "").ifBlank { return@mapNotNull null }
+        val (pv, sm) = sanitizeTabPreviewSummary(
+            o.optString("preview", "").takeIf { it.isNotBlank() },
+            o.optString("summary", "").takeIf { it.isNotBlank() }
+        )
         EazyConvTabItem(
             id = id,
-            preview = o.optString("preview", "").takeIf { it.isNotBlank() },
-            summary = o.optString("summary", "").takeIf { it.isNotBlank() },
+            preview = pv,
+            summary = sm,
             messageCount = o.optInt("message_count", 0)
         )
     }
+}
+
+/** Carousel + Functions tab: one icon per feature id (text via contentDescription only). */
+private fun eazyFeatureIcon(featureId: String): ImageVector = when (featureId) {
+    "interests" -> Icons.Default.Favorite
+    "community" -> Icons.Default.Groups
+    "generate-design" -> Icons.Default.AutoAwesome
+    "my-creations" -> Icons.Default.Palette
+    "publish" -> Icons.Default.Upload
+    "my-products" -> Icons.Default.Inventory2
+    "active-jobs" -> Icons.Default.Work
+    "favorites" -> Icons.Default.Favorite
+    "gift-cards" -> Icons.Default.CardGiftcard
+    "promo-codes" -> Icons.Default.LocalOffer
+    "size-ai" -> Icons.Default.Straighten
+    "my-orders" -> Icons.Default.ReceiptLong
+    "product-search" -> Icons.Default.Search
+    "browse-shop" -> Icons.Default.Storefront
+    "wardrobe" -> Icons.Default.Checkroom
+    "my-mockups" -> Icons.Default.Collections
+    "hero-images" -> Icons.Default.Image
+    "creator-image" -> Icons.Default.Face
+    "creator-settings" -> Icons.Default.Settings
+    "balance" -> Icons.Default.AccountBalanceWallet
+    "level" -> Icons.Default.TrendingUp
+    "mentor-support" -> Icons.Default.VolunteerActivism
+    else -> Icons.Default.Brush
 }
 
 @Composable
@@ -581,8 +656,11 @@ fun EazyChatModal(
                                         )
                                     }
                                 } else {
-                                    val uid = remember(ownerId) { ownerId?.let { runCatching { kotlinx.coroutines.runBlocking { chatStore.getUserId(it) } }.getOrNull() } }
-                                    Column(modifier = Modifier.fillMaxSize()) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f)
+                                    ) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -599,7 +677,8 @@ fun EazyChatModal(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 items(convTabs, key = { it.id }) { tab ->
-                                                    val label = tab.preview ?: tab.summary ?: t("eazy_chat.tab_new_chat", "Chat")
+                                                    val newChatFb = t("eazy_chat.tab_new_chat", "Chat")
+                                                    val label = tabStripLabel(tab.preview, tab.summary, newChatFb)
                                                     val active = tab.id == conversationId
                                                     Row(
                                                         modifier = Modifier
@@ -634,17 +713,18 @@ fun EazyChatModal(
                                                             color = if (active) ChatAccent else ChatText,
                                                             modifier = Modifier.widthIn(max = 120.dp)
                                                         )
-                                                        if (convTabs.size > 1) {
-                                                            IconButton(
-                                                                onClick = {
-                                                                    scope.launch {
-                                                                        val u = chatStore.getUserId(ownerId)
-                                                                        withContext(Dispatchers.IO) {
-                                                                            api.eazyConvClose(u, tab.id)
-                                                                        }
-                                                                        convTabs = convTabs.filter { it.id != tab.id }
-                                                                        if (tab.id == conversationId && convTabs.isNotEmpty()) {
-                                                                            val next = convTabs.first().id
+                                                        IconButton(
+                                                            onClick = {
+                                                                scope.launch {
+                                                                    val u = chatStore.getUserId(ownerId)
+                                                                    withContext(Dispatchers.IO) {
+                                                                        api.eazyConvClose(u, tab.id)
+                                                                    }
+                                                                    val remaining = convTabs.filter { it.id != tab.id }
+                                                                    convTabs = remaining
+                                                                    when {
+                                                                        tab.id == conversationId && remaining.isNotEmpty() -> {
+                                                                            val next = remaining.first().id
                                                                             val resp = withContext(Dispatchers.IO) {
                                                                                 api.getEazyConversation(u, mapOf("conv_id" to next))
                                                                             }
@@ -654,15 +734,29 @@ fun EazyChatModal(
                                                                                 conv?.optString("id")?.let { chatStore.setConversationId(it) }
                                                                                 chatStore.setMessages(parseMessagesArray(msgs))
                                                                             }
-                                                                        } else if (convTabs.isEmpty()) {
+                                                                        }
+                                                                        remaining.isEmpty() -> {
                                                                             chatStore.clearMessages()
+                                                                            val newR = withContext(Dispatchers.IO) { api.eazyConvNew(u) }
+                                                                            if (newR.optBoolean("ok", false)) {
+                                                                                val c = newR.optJSONObject("conversation")
+                                                                                val nid = c?.optString("id")
+                                                                                if (!nid.isNullOrBlank()) {
+                                                                                    chatStore.setConversationId(nid)
+                                                                                    chatStore.setMessages(emptyList())
+                                                                                    convTabs = listOf(
+                                                                                        EazyConvTabItem(id = nid, preview = null, summary = null)
+                                                                                    )
+                                                                                }
+                                                                            }
+                                                                            loadActiveTabs(u)
                                                                         }
                                                                     }
-                                                                },
-                                                                modifier = Modifier.size(24.dp)
-                                                            ) {
-                                                                Icon(Icons.Default.Close, contentDescription = t("chatCloseTitle", "Close chat"), tint = ChatMuted, modifier = Modifier.size(14.dp))
-                                                            }
+                                                                }
+                                                            },
+                                                            modifier = Modifier.size(24.dp)
+                                                        ) {
+                                                            Icon(Icons.Default.Close, contentDescription = t("chatCloseTitle", "Close chat"), tint = ChatMuted, modifier = Modifier.size(14.dp))
                                                         }
                                                     }
                                                 }
@@ -677,6 +771,7 @@ fun EazyChatModal(
                                                             val id = c?.optString("id") ?: return@launch
                                                             chatStore.setConversationId(id)
                                                             chatStore.setMessages(emptyList())
+                                                            convTabs = listOf(EazyConvTabItem(id, null, null)) + convTabs.filter { it.id != id }
                                                             loadActiveTabs(u)
                                                         }
                                                     }
@@ -733,11 +828,11 @@ fun EazyChatModal(
                                                     ) {
                                                         val defs = EazyChatFeatureCatalog.forContext(chatContext).filter { chatStore.isFeatureInCarousel(it.id) }
                                                         defs.forEach { def ->
-                                                            val label = t(def.labelKey, def.defaultLabel)
+                                                            val cd = t(def.labelKey, def.defaultLabel)
                                                             Box(
                                                                 modifier = Modifier
                                                                     .padding(horizontal = 4.dp)
-                                                                    .widthIn(min = 72.dp)
+                                                                    .size(48.dp)
                                                                     .clip(RoundedCornerShape(10.dp))
                                                                     .border(1.dp, ChatMuted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                                                                     .clickable {
@@ -787,7 +882,12 @@ fun EazyChatModal(
                                                                     .padding(8.dp),
                                                                 contentAlignment = Alignment.Center
                                                             ) {
-                                                                Text(label, style = MaterialTheme.typography.labelSmall, color = ChatText, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                                                Icon(
+                                                                    eazyFeatureIcon(def.id),
+                                                                    contentDescription = cd,
+                                                                    tint = ChatText,
+                                                                    modifier = Modifier.size(26.dp)
+                                                                )
                                                             }
                                                         }
                                                     }
@@ -913,6 +1013,8 @@ fun EazyChatModal(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .navigationBarsPadding()
+                                                .imePadding()
                                                 .padding(12.dp),
                                             verticalAlignment = Alignment.Bottom
                                         ) {
@@ -985,8 +1087,11 @@ fun EazyChatModal(
                                                                 }
                                                             }
                                                             conversationId?.let { cid ->
+                                                                val newChatFb = t("eazy_chat.tab_new_chat", "Chat")
                                                                 convTabs = convTabs.map { tab ->
-                                                                    if (tab.id == cid && (tab.preview == null || tab.preview == t("eazy_chat.tab_new_chat", "New chat"))) {
+                                                                    val emptyPreview = tab.preview == null || !isUsableTabText(tab.preview)
+                                                                    val wasPlaceholder = tab.preview?.trim() == newChatFb
+                                                                    if (tab.id == cid && (emptyPreview || wasPlaceholder)) {
                                                                         tab.copy(preview = text.take(60))
                                                                     } else tab
                                                                 }
@@ -1204,7 +1309,11 @@ fun EazyChatModal(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(row.preview ?: row.summary ?: "Chat", color = ChatText, maxLines = 2)
+                                    Text(
+                                        tabStripLabel(row.preview, row.summary, "Chat"),
+                                        color = ChatText,
+                                        maxLines = 2
+                                    )
                                     Text(
                                         "${row.messageCount} ${t("eazy_chat.ui_messages", "messages")}",
                                         style = MaterialTheme.typography.labelSmall,
@@ -1421,32 +1530,35 @@ private fun EazyFunctionsGrid(
                 ) {
                     rowDefs.forEach { def ->
                         val vis = chatStore.isFeatureInCarousel(def.id)
-                        Column(
+                        Box(
                             modifier = Modifier
                                 .weight(1f)
+                                .heightIn(min = 72.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .border(1.dp, ChatMuted.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
                                 .clickable { onRunFeature(def.id) }
-                                .padding(12.dp)
+                                .padding(8.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            Icon(
+                                imageVector = eazyFeatureIcon(def.id),
+                                contentDescription = t(def.labelKey, def.defaultLabel),
+                                tint = ChatText,
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .size(36.dp)
+                            )
+                            IconButton(
+                                onClick = { onToggle(def.id) },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(32.dp)
                             ) {
-                                Text(
-                                    t(def.labelKey, def.defaultLabel),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = ChatText,
-                                    modifier = Modifier.weight(1f)
+                                Icon(
+                                    imageVector = if (vis) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = null,
+                                    tint = ChatMuted,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                IconButton(onClick = { onToggle(def.id) }, modifier = Modifier.size(36.dp)) {
-                                    Icon(
-                                        imageVector = if (vis) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                        contentDescription = null,
-                                        tint = ChatMuted,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
                             }
                         }
                     }
