@@ -12,6 +12,8 @@
 #   ANDROID_KEY_PASSWORD          — Key-Passwort
 #
 # Play Console: Dienstkonto mit „Releases verwalten“ (oder passend für deinen Track) freigeben.
+# versionCode muss IMMER höher sein als jede bereits hochgeladene Version (alle Tracks).
+# Optional: Repository variable PLAY_VERSION_CODE_BASE (Zahl), z. B. 2010000000 — Standard: 2000000000
 # Siehe: https://github.com/r0adkll/upload-google-play
 
 name: Google Play (AAB)
@@ -82,10 +84,17 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # versionCode = BASE + run_number (muss > höchster Code in Play Console, sonst „existing users cannot upgrade“)
+      - name: Compute VERSION_CODE
+        run: |
+          BASE='${{ vars.PLAY_VERSION_CODE_BASE }}'
+          if [ -z "$BASE" ]; then BASE=2000000000; fi
+          echo "VERSION_CODE=$(( BASE + ${{ github.run_number }} ))" >> "$GITHUB_ENV"
+          echo "Using VERSION_CODE=$(( BASE + ${{ github.run_number }} )) (BASE=$BASE + run=${{ github.run_number }})"
+
       - name: Build release AAB
         env:
           CI: "true"
-          VERSION_CODE: ${{ github.run_number }}
         run: ./gradlew bundleRelease --no-daemon --stacktrace
 
       - name: Upload to Google Play
