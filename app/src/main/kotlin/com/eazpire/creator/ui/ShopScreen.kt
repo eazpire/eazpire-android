@@ -125,6 +125,8 @@ fun ShopScreen(
     var accountModalVisible by remember { mutableStateOf(false) }
     var showLoginOptions by remember { mutableStateOf(false) }
     var showAuthScreen by remember { mutableStateOf(false) }
+    /** Nach „Mit Shopify fortfahren“: OAuth-Tab sofort öffnen (ohne zweiten Tap). */
+    var authAutoStartOAuth by remember { mutableStateOf(false) }
     /** OAuth redirect shop.*://callback?code=… (Chrome Custom Tab) → MainActivity / pendingDeepLink → AuthScreen */
     val oauthCallbackForAuth = remember { mutableStateOf<String?>(null) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
@@ -325,6 +327,7 @@ fun ShopScreen(
         ) {
             oauthCallbackForAuth.value = uri.toString()
             pendingDeepLink.value = null
+            authAutoStartOAuth = false
             showAuthScreen = true
             return@LaunchedEffect
         }
@@ -443,15 +446,16 @@ fun ShopScreen(
                     isCreatorMode = isCreatorMode,
                     onCreatorModeChange = { isCreatorMode = it },
                     onLogoClick = {
-                        accountModalVisible = false
-                        showLoginOptions = false
-                        menuDrawerVisible = false
-                        showAuthScreen = false
-                        selectedCollection = null
-                        shopSearchQuery = null
-                        selectedProductHandle = null
-                        productModalHandleState.value = null
-                        scrollToTopTrigger++
+                        if (!showAuthScreen) {
+                            accountModalVisible = false
+                            showLoginOptions = false
+                            menuDrawerVisible = false
+                            selectedCollection = null
+                            shopSearchQuery = null
+                            selectedProductHandle = null
+                            productModalHandleState.value = null
+                            scrollToTopTrigger++
+                        }
                     },
                     onAccountClick = {
                         if (tokenStore.isLoggedIn()) {
@@ -617,7 +621,7 @@ fun ShopScreen(
     val showGenOverlay = isCreatorMode && eazyGenerationOverlay
     // Full-screen zIndex layer must not cover product detail or product modal — it would steal touches (cart / buy now).
     val showEazyFloatingLayer =
-        (!eazyDocked || showGenOverlay) && selectedProductHandle == null && productModalHandleState.value == null
+        (!eazyDocked || showGenOverlay) && selectedProductHandle == null && productModalHandleState.value == null && !showAuthScreen
     if (showEazyFloatingLayer) {
         var liveMascotX by remember { mutableStateOf<Float?>(null) }
         var liveMascotY by remember { mutableStateOf<Float?>(null) }
@@ -857,22 +861,11 @@ fun ShopScreen(
             onDismiss = { showLoginOptions = false },
             onShopifyLoginClick = {
                 showLoginOptions = false
+                productModalHandleState.value = null
+                authAutoStartOAuth = true
                 showAuthScreen = true
             }
         )
-    }
-
-    if (showAuthScreen) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AuthScreen(
-                tokenStore = tokenStore,
-                onAuthSuccess = {
-                    showAuthScreen = false
-                    sessionEpoch++
-                },
-                oauthCallbackUri = oauthCallbackForAuth
-            )
-        }
     }
 
     val modalHandle = productModalHandleState.value
@@ -895,6 +888,30 @@ fun ShopScreen(
                 onDismiss = { productModalHandleState.value = null },
                 tokenStore = tokenStore,
                 onTermsClick = { termsModalVisible = true }
+            )
+        }
+    }
+
+    if (showAuthScreen) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(Float.MAX_VALUE)
+        ) {
+            AuthScreen(
+                tokenStore = tokenStore,
+                onAuthSuccess = {
+                    showAuthScreen = false
+                    authAutoStartOAuth = false
+                    sessionEpoch++
+                },
+                onDismiss = {
+                    showAuthScreen = false
+                    authAutoStartOAuth = false
+                },
+                autoStartOAuth = authAutoStartOAuth,
+                onAutoStartConsumed = { authAutoStartOAuth = false },
+                oauthCallbackUri = oauthCallbackForAuth
             )
         }
     }

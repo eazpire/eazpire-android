@@ -44,6 +44,10 @@ import kotlinx.coroutines.launch
 fun AuthScreen(
     tokenStore: SecureTokenStore,
     onAuthSuccess: () -> Unit,
+    onDismiss: () -> Unit = {},
+    /** True when user chose „Mit Shopify fortfahren“ — opens OAuth tab immediately (no extra tap). */
+    autoStartOAuth: Boolean = false,
+    onAutoStartConsumed: () -> Unit = {},
     onCheckUpdate: (() -> Unit)? = null,
     /** Set when MainActivity receives shop.*://callback (e.g. after OAuth in Chrome Custom Tab) */
     oauthCallbackUri: MutableState<String?>? = null
@@ -158,6 +162,13 @@ fun AuthScreen(
         handleCallback(url)
     }
 
+    LaunchedEffect(autoStartOAuth) {
+        if (autoStartOAuth) {
+            onAutoStartConsumed()
+            startLogin()
+        }
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
             modifier = Modifier
@@ -181,7 +192,7 @@ fun AuthScreen(
                 CircularProgressIndicator()
             } else {
                 Button(onClick = { startLogin() }) {
-                    Text("Anmelden")
+                    Text(if (error != null) "Erneut versuchen" else "Anmelden")
                 }
             }
             error?.let { msg ->
@@ -197,6 +208,10 @@ fun AuthScreen(
                 TextButton(onClick = check) {
                     Text("Nach Updates suchen")
                 }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            TextButton(onClick = onDismiss) {
+                Text("Abbrechen")
             }
         }
     }
