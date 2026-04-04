@@ -99,6 +99,7 @@ fun CreatorMainScreen(
     var languageModalVisible by remember { mutableStateOf(false) }
     var termsModalVisible by remember { mutableStateOf(false) }
     var marketingTitleOverride by remember { mutableStateOf<String?>(null) }
+    var automationsTitleOverride by remember { mutableStateOf<String?>(null) }
     var marketingSessionKey by remember { mutableIntStateOf(0) }
     val audioStore = remember { com.eazpire.creator.audio.CreatorAudioStore() }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -257,7 +258,8 @@ fun CreatorMainScreen(
                         translationStore.t("creator.mobile.dashboard", "Dashboard"),
                         translationStore.t("creator.mobile.generator", "Generator"),
                         translationStore.t("creator.mobile.creations", "Creations"),
-                        translationStore.t("creator.mobile.marketing", "Marketing")
+                        translationStore.t("creator.mobile.marketing", "Marketing"),
+                        translationStore.t("creator.mobile.automations", "Automations")
                     ),
                     translationStore = translationStore,
                     onMenuClick = { drawerVisible = true },
@@ -272,6 +274,7 @@ fun CreatorMainScreen(
                     audioStore = audioStore,
                     onAudioModalOpen = { audioModalVisible = true },
                     marketingTitleOverride = marketingTitleOverride,
+                    automationsTitleOverride = automationsTitleOverride,
                     eazyLookLeft = generationBubbleFaceLeft
                         ?: run {
                             val marketingLook =
@@ -306,6 +309,9 @@ fun CreatorMainScreen(
                     marketingSessionKey++
                 } else {
                     marketingTitleOverride = null
+                }
+                if (currentScreen != 4) {
+                    automationsTitleOverride = null
                 }
             }
             BoxWithConstraints(
@@ -348,7 +354,7 @@ fun CreatorMainScreen(
                                         termsModalVisible
                                     if (modalVisible) return@detectHorizontalDragGestures
                                     when {
-                                        dragX <= -120f -> currentScreen = (currentScreen + 1).coerceAtMost(3)
+                                        dragX <= -120f -> currentScreen = (currentScreen + 1).coerceAtMost(4)
                                         dragX >= 120f -> currentScreen = (currentScreen - 1).coerceAtLeast(0)
                                     }
                                     dragX = 0f
@@ -393,7 +399,7 @@ fun CreatorMainScreen(
                                 currentScreen = 1
                             }
                         )
-                        else -> MarketingScreen(
+                        3 -> MarketingScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onHeaderTitleChange = { marketingTitleOverride = it },
@@ -422,6 +428,13 @@ fun CreatorMainScreen(
                                 marketingHeroTabVisible = heroVis
                                 marketingVideoTabVisible = videoVis
                             },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        4 -> AutomationsScreen(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore,
+                            onHeaderTitleChange = { automationsTitleOverride = it },
+                            maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -459,7 +472,8 @@ fun CreatorMainScreen(
                         translationStore.t("creator.mobile.dashboard", "Dashboard"),
                         translationStore.t("creator.mobile.generator", "Generator"),
                         translationStore.t("creator.mobile.creations", "Creations"),
-                        translationStore.t("creator.mobile.marketing", "Marketing")
+                        translationStore.t("creator.mobile.marketing", "Marketing"),
+                        translationStore.t("creator.mobile.automations", "Automations")
                     ),
                     onDismiss = { drawerVisible = false },
                     onSwitchToShop = onSwitchToShop,

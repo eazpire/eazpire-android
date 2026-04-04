@@ -1965,6 +1965,18 @@ class CreatorApi(
         val response = client.newCall(request).execute()
         JSONObject(response.body?.string() ?: "{}")
     }
+
+    /** GET ?op=list-design-automations&owner_id=&filter=active|scheduled|expired */
+    suspend fun listDesignAutomations(ownerId: String, filter: String): JSONObject =
+        call("list-design-automations", mapOf("owner_id" to ownerId, "filter" to filter))
+
+    /** POST ?op=create-design-automation */
+    suspend fun createDesignAutomation(body: JSONObject): JSONObject =
+        postDispatchJson("create-design-automation", emptyMap(), body)
+
+    /** POST ?op=end-design-automation body: { id } */
+    suspend fun endDesignAutomation(automationId: Long): JSONObject =
+        postDispatchJson("end-design-automation", emptyMap(), JSONObject().put("id", automationId))
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)

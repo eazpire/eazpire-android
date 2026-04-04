@@ -207,6 +207,7 @@ fun CreatorHeader(
     audioStore: com.eazpire.creator.audio.CreatorAudioStore? = null,
     onAudioModalOpen: () -> Unit = {},
     marketingTitleOverride: String? = null,
+    automationsTitleOverride: String? = null,
     /** Generator / Hero: face toward header speech bubble */
     eazyLookLeft: Boolean = false,
     /** Hide header snap slot + docked mascot while bottom "Start generation" cluster is shown (single Eazy). */
@@ -432,10 +433,10 @@ fun CreatorHeader(
                     }
                 }
                 Text(
-                    text = if (currentScreen == 3 && marketingTitleOverride != null) {
-                        marketingTitleOverride
-                    } else {
-                        screenLabels.getOrElse(currentScreen) { "" }
+                    text = when {
+                        currentScreen == 3 && marketingTitleOverride != null -> marketingTitleOverride
+                        currentScreen == 4 && automationsTitleOverride != null -> automationsTitleOverride
+                        else -> screenLabels.getOrElse(currentScreen) { "" }
                     },
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontSize = 22.sp,
