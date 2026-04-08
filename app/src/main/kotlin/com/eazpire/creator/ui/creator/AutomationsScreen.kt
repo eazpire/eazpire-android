@@ -1,5 +1,7 @@
 package com.eazpire.creator.ui.creator
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,18 +15,32 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -35,7 +51,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -50,14 +68,70 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 private const val MAIN_DESIGN = "design-generator"
 private const val MAIN_PUBLISH = "publish"
 private const val MAIN_MARKETING = "marketing"
 
+/** Same defaults as web `defaultModalDates` in creator-automations-screen.js */
+private fun computeDefaultStartEndMillis(): Pair<Long, Long> {
+    val cal = Calendar.getInstance()
+    cal.add(Calendar.HOUR_OF_DAY, 1)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    cal.set(Calendar.MINUTE, 0)
+    val start = cal.timeInMillis
+    val endCal = Calendar.getInstance().apply {
+        timeInMillis = start
+        add(Calendar.DAY_OF_MONTH, 7)
+    }
+    return start to endCal.timeInMillis
+}
+
+private fun formatLocalDateTime(millis: Long): String {
+    if (millis <= 0L) return "—"
+    return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(millis)
+}
+
+private fun openLocalDateTimePicker(
+    context: android.content.Context,
+    initialMillis: Long,
+    onPicked: (Long) -> Unit
+) {
+    val cal = Calendar.getInstance().apply { timeInMillis = initialMillis.coerceAtLeast(1L) }
+    DatePickerDialog(
+        context,
+        { _, y, m, d ->
+            cal.set(Calendar.YEAR, y)
+            cal.set(Calendar.MONTH, m)
+            cal.set(Calendar.DAY_OF_MONTH, d)
+            TimePickerDialog(
+                context,
+                { _, h, min ->
+                    cal.set(Calendar.HOUR_OF_DAY, h)
+                    cal.set(Calendar.MINUTE, min)
+                    cal.set(Calendar.SECOND, 0)
+                    cal.set(Calendar.MILLISECOND, 0)
+                    onPicked(cal.timeInMillis)
+                },
+                cal.get(Calendar.HOUR_OF_DAY),
+                cal.get(Calendar.MINUTE),
+                true
+            ).show()
+        },
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH)
+    ).show()
+}
+
 /**
  * Automations — Design Generator | Publish | Marketing (placeholders), status tabs, grid like web.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AutomationsScreen(
     tokenStore: SecureTokenStore,
@@ -75,7 +149,16 @@ fun AutomationsScreen(
     var loading by remember { mutableStateOf(false) }
     var err by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableIntStateOf(0) }
-    var showCreateHint by remember { mutableStateOf(false) }
+
+    var showCreateSheet by remember { mutableStateOf(false) }
+    var formTitle by remember { mutableStateOf("") }
+    var formPrompt by remember { mutableStateOf("") }
+    var workflowGenerateOnly by remember { mutableStateOf(true) }
+    var perDay by remember { mutableIntStateOf(1) }
+    var startsAtMillis by remember { mutableLongStateOf(0L) }
+    var endsAtMillis by remember { mutableLongStateOf(0L) }
+    var createSubmitting by remember { mutableStateOf(false) }
+    var createError by remember { mutableStateOf<String?>(null) }
 
     fun titleForStatus(): String = when (statusFilter) {
         "scheduled" -> translationStore.t("creator.automations.status_scheduled", "Scheduled")
@@ -113,6 +196,278 @@ fun AutomationsScreen(
                 list.add(rows.getJSONObject(i))
             }
             automations = list
+        }
+    }
+
+    val createSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+
+    if (showCreateSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                if (!createSubmitting) showCreateSheet = false
+            },
+            sheetState = createSheetState,
+            containerColor = Color(0xFF12141f),
+            dragHandle = null
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    translationStore.t("creator.automations.modal_title", "New design automation"),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                Text(
+                    translationStore.t("creator.automations.modal_title_label", "Title"),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                OutlinedTextField(
+                    value = formTitle,
+                    onValueChange = { if (it.length <= 120) formTitle = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EazColors.Orange,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                        cursorColor = EazColors.Orange,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    translationStore.t("creator.automations.modal_prompt_label", "Prompt"),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                OutlinedTextField(
+                    value = formPrompt,
+                    onValueChange = { if (it.length <= 2000) formPrompt = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 100.dp),
+                    minLines = 3,
+                    placeholder = {
+                        Text(
+                            translationStore.t("creator.automations.modal_prompt_placeholder", "Describe what to generate…"),
+                            color = Color.White.copy(alpha = 0.4f)
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EazColors.Orange,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                        cursorColor = EazColors.Orange,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    translationStore.t("creator.automations.modal_workflow_label", "Workflow"),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { workflowGenerateOnly = true }
+                        .padding(vertical = 4.dp)
+                ) {
+                    RadioButton(
+                        selected = workflowGenerateOnly,
+                        onClick = { workflowGenerateOnly = true },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = EazColors.Orange,
+                            unselectedColor = Color.White.copy(alpha = 0.6f)
+                        )
+                    )
+                    Text(
+                        translationStore.t("creator.automations.workflow_generate_only", "Generate only"),
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { workflowGenerateOnly = false }
+                        .padding(vertical = 4.dp)
+                ) {
+                    RadioButton(
+                        selected = !workflowGenerateOnly,
+                        onClick = { workflowGenerateOnly = false },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = EazColors.Orange,
+                            unselectedColor = Color.White.copy(alpha = 0.6f)
+                        )
+                    )
+                    Text(
+                        translationStore.t("creator.automations.workflow_generate_publish", "Generate and publish"),
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    translationStore.t("creator.automations.modal_per_day_label", "Designs per day"),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                OutlinedTextField(
+                    value = perDay.toString(),
+                    onValueChange = { v ->
+                        val n = v.filter { it.isDigit() }.toIntOrNull()
+                        if (n != null) perDay = n.coerceIn(1, 10)
+                        else if (v.isEmpty()) perDay = 1
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EazColors.Orange,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                        cursorColor = EazColors.Orange,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    translationStore.t("creator.automations.modal_starts_label", "Starts"),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    formatLocalDateTime(startsAtMillis),
+                    color = EazColors.Orange,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .clickable(enabled = !createSubmitting) {
+                            openLocalDateTimePicker(context, startsAtMillis) { startsAtMillis = it }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    translationStore.t("creator.automations.modal_ends_label", "Ends"),
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    formatLocalDateTime(endsAtMillis),
+                    color = EazColors.Orange,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .clickable(enabled = !createSubmitting) {
+                            openLocalDateTimePicker(context, endsAtMillis) { endsAtMillis = it }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .fillMaxWidth()
+                )
+                createError?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = Color(0xFFfca5a5), fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    TextButton(
+                        onClick = { if (!createSubmitting) showCreateSheet = false },
+                        enabled = !createSubmitting,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(translationStore.t("creator.automations.modal_cancel", "Cancel"))
+                    }
+                    Button(
+                        onClick = {
+                            val titleT = formTitle.trim()
+                            if (titleT.isEmpty()) {
+                                createError = translationStore.t("creator.automations.create_validation_title", "Please enter a title.")
+                                return@Button
+                            }
+                            if (endsAtMillis <= startsAtMillis) {
+                                createError = translationStore.t(
+                                    "creator.automations.create_validation_dates",
+                                    "End must be after start."
+                                )
+                                return@Button
+                            }
+                            createError = null
+                            val wf = if (workflowGenerateOnly) "generate_only" else "generate_publish"
+                            scope.launch {
+                                createSubmitting = true
+                                val body = JSONObject().apply {
+                                    put("title", titleT)
+                                    put("prompt", formPrompt)
+                                    put("workflow", wf)
+                                    put("designs_per_day", perDay.coerceIn(1, 10))
+                                    put("starts_at", startsAtMillis)
+                                    put("ends_at", endsAtMillis)
+                                }
+                                val resp = withContext(Dispatchers.IO) {
+                                    try {
+                                        api.createDesignAutomation(body)
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                }
+                                createSubmitting = false
+                                if (resp != null && resp.optBoolean("ok", false)) {
+                                    showCreateSheet = false
+                                    reloadKey++
+                                } else {
+                                    createError = resp?.optString("error")?.takeIf { it.isNotBlank() }
+                                        ?: translationStore.t("creator.automations.create_error", "Could not create automation.")
+                                }
+                            }
+                        },
+                        enabled = !createSubmitting,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange, contentColor = Color.Black)
+                    ) {
+                        if (createSubmitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .height(22.dp)
+                                    .padding(2.dp),
+                                color = Color.Black,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(translationStore.t("creator.automations.modal_submit", "Create"))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
         }
     }
 
@@ -220,7 +575,17 @@ fun AutomationsScreen(
                     item {
                         AddAutomationTile(
                             label = translationStore.t("creator.automations.add_tile", "Add automation"),
-                            onClick = { showCreateHint = true }
+                            onClick = {
+                                val (s, e) = computeDefaultStartEndMillis()
+                                startsAtMillis = s
+                                endsAtMillis = e
+                                formTitle = ""
+                                formPrompt = ""
+                                workflowGenerateOnly = true
+                                perDay = 1
+                                createError = null
+                                showCreateSheet = true
+                            }
                         )
                     }
                     items(automations.size) { idx ->
@@ -245,27 +610,6 @@ fun AutomationsScreen(
                 }
             }
         }
-    }
-
-    if (showCreateHint) {
-        AlertDialog(
-            onDismissRequest = { showCreateHint = false },
-            confirmButton = {
-                TextButton(onClick = { showCreateHint = false }) {
-                    Text(translationStore.t("creator.common.close", "Close"))
-                }
-            },
-            title = { Text(translationStore.t("creator.automations.modal_title", "New design automation")) },
-            text = {
-                Text(
-                    "Create automations in the web creator dashboard for now. Android will match soon.",
-                    color = Color.White.copy(alpha = 0.9f)
-                )
-            },
-            containerColor = Color(0xFF12141f),
-            titleContentColor = Color.White,
-            textContentColor = Color.White.copy(alpha = 0.85f)
-        )
     }
 }
 
