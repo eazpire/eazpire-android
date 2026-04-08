@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,6 +55,10 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { _ -> }
 
     private lateinit var playInAppUpdateHelper: PlayInAppUpdateHelper
+    private val playUpdateHandler = Handler(Looper.getMainLooper())
+    private val playUpdateRetryRunnable = Runnable {
+        playInAppUpdateHelper.onResume()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,9 +100,18 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         playInAppUpdateHelper.onResume()
+        // Play Core ist manchmal beim ersten Frame noch nicht bereit — zweite Prüfung nach kurzer Verzögerung.
+        playUpdateHandler.removeCallbacks(playUpdateRetryRunnable)
+        playUpdateHandler.postDelayed(playUpdateRetryRunnable, 2_500L)
+    }
+
+    override fun onPause() {
+        playUpdateHandler.removeCallbacks(playUpdateRetryRunnable)
+        super.onPause()
     }
 
     override fun onDestroy() {
+        playUpdateHandler.removeCallbacks(playUpdateRetryRunnable)
         playInAppUpdateHelper.onDestroy()
         super.onDestroy()
     }
