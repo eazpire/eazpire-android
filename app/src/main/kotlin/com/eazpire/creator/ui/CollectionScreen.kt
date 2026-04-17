@@ -72,6 +72,7 @@ import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.api.hasPromoPricingUi
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import java.text.Normalizer
 import java.text.NumberFormat
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -193,6 +194,40 @@ private fun applyFilters(
     }
 }
 
+private fun normalizeWithinSearch(s: String): String {
+    val n = try {
+        Normalizer.normalize(s, Normalizer.Form.NFD)
+    } catch (_: Exception) {
+        s
+    }
+    return n.replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+        .lowercase(Locale.ROOT)
+        .trim()
+}
+
+private fun productSearchHaystack(p: ShopifyProductsApi.ProductItem): String = buildString {
+    append(p.title).append(' ')
+    append(p.vendor).append(' ')
+    append(p.productType).append(' ')
+    append(p.creator).append(' ')
+    append(p.handle).append(' ')
+    p.tags.forEach { append(it).append(' ') }
+}.toString()
+
+private fun productMatchesWithinSearch(p: ShopifyProductsApi.ProductItem, queryRaw: String): Boolean {
+    val q = queryRaw.trim()
+    if (q.isEmpty()) return true
+    return normalizeWithinSearch(productSearchHaystack(p)).contains(normalizeWithinSearch(q))
+}
+
+private fun applyWithinSearchFilter(
+    products: List<ShopifyProductsApi.ProductItem>,
+    query: String
+): List<ShopifyProductsApi.ProductItem> {
+    if (query.isBlank()) return products
+    return products.filter { productMatchesWithinSearch(it, query) }
+}
+
 private val SORT_OPTIONS = listOf(
     SortOption("manual", "Featured"),
     SortOption("created-descending", "Newest"),
@@ -240,6 +275,7 @@ fun CollectionScreen(
     var sortSheetVisible by remember { mutableStateOf(false) }
     var filterDrawerVisible by remember { mutableStateOf(false) }
     var productFilters by remember { mutableStateOf(ProductFilters()) }
+    var withinSearchQuery by remember { mutableStateOf("") }
     var filterCountProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     val context = LocalContext.current
     val localeStore = remember { LocaleStore(context) }
@@ -254,6 +290,7 @@ fun CollectionScreen(
         hasNextPage = false
         currentPage = 1
         filterCountProducts = emptyList()
+        withinSearchQuery = ""
         productFilters = if (initialProductType != null) {
             ProductFilters(productTypes = setOf(initialProductType))
         } else {
@@ -338,6 +375,9 @@ fun CollectionScreen(
     val filteredProducts = remember(sortedProducts, productFilters) {
         applyFilters(sortedProducts, productFilters)
     }
+    val displayProducts = remember(filteredProducts, withinSearchQuery) {
+        applyWithinSearchFilter(filteredProducts, withinSearchQuery)
+    }
     val currentSortLabel = SORT_OPTIONS.find { it.value == sortBy }?.label?.let { t("collection.sort_$sortBy", it) } ?: t("collection.sort_by", "Sort by")
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -354,7 +394,7 @@ fun CollectionScreen(
             CollectionComingSoon(title = title, onBrowseAll = onBack)
         } else {
             ResultsBar(
-                filteredCount = filteredProducts.size,
+                filteredCount = displayProducts.size,
                 totalCount = if (filterCountProducts.isNotEmpty()) filterCountProducts.size else productsToFilter.size,
                 sortBy = sortBy,
                 sortLabel = currentSortLabel,
@@ -384,7 +424,7 @@ fun CollectionScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(filteredProducts) { product ->
+                items(displayProducts) { product ->
                     val showPromoUi = product.hasPromoPricingUi()
                     CollectionProductCard(
                         product = product,
@@ -398,7 +438,7 @@ fun CollectionScreen(
                     )
                 }
             }
-            if (totalPages > 1 && productFilters.isEmpty()) {
+            if (totalPages > 1 && productFilters.isEmpty() && withinSearchQuery.isBlank()) {
                 ProductPaginationDots(
                     totalPages = totalPages,
                     currentPage = currentPage,
@@ -419,6 +459,8 @@ fun CollectionScreen(
         FilterDrawer(
             filters = productFilters,
             products = productsForCounts,
+            withinSearchQuery = withinSearchQuery,
+            onWithinSearchChange = { withinSearchQuery = it },
             onFiltersChange = { productFilters = it },
             onDismiss = { filterDrawerVisible = false },
             t = t
@@ -627,6 +669,8 @@ private fun FilterOptionRow(
 private fun FilterDrawer(
     filters: ProductFilters,
     products: List<ShopifyProductsApi.ProductItem>,
+    withinSearchQuery: String,
+    onWithinSearchChange: (String) -> Unit,
     onFiltersChange: (ProductFilters) -> Unit,
     onDismiss: () -> Unit,
     t: (String, String) -> String = { _, d -> d },
@@ -680,8 +724,8 @@ private fun FilterDrawer(
             value to products.count { productTypeToCategory(it.productType, it.title) == value }
         }
     }
-    val filteredCount = remember(products, filters) {
-        applyFilters(products, filters).size
+    val filteredCount = remember(products, filters, withinSearchQuery) {
+        applyWithinSearchFilter(applyFilters(products, filters), withinSearchQuery).size
     }
 
     ModalBottomSheet(
@@ -730,6 +774,27 @@ private fun FilterDrawer(
                     .verticalScroll(scrollState)
                     .padding(horizontal = 20.dp)
             ) {
+            Text(
+                t("collection.within_search_label", "Search in results"),
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+            TextField(
+                value = withinSearchQuery,
+                onValueChange = onWithinSearchChange,
+                placeholder = {
+                    Text(
+                        t("collection.within_search_placeholder", "Search titles, creator, type…"),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp)
+                    .heightIn(min = 44.dp),
+                singleLine = true
+            )
             Text(
                 t("collection.price", "Price"),
                 style = MaterialTheme.typography.labelLarge,
@@ -944,7 +1009,10 @@ private fun FilterDrawer(
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.White)
-                        .clickable { onFiltersChange(ProductFilters()) }
+                        .clickable {
+                        onFiltersChange(ProductFilters())
+                        onWithinSearchChange("")
+                    }
                         .padding(horizontal = 20.dp, vertical = 14.dp),
                     contentAlignment = Alignment.Center
                 ) {
