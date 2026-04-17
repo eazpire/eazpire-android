@@ -43,6 +43,8 @@ class ShopifyProductsApi(
         val creator: String = "",
         /** custom.product_key */
         val metaProductKey: String = "",
+        /** custom.product_name (PAT/display name, shop filter „Produkt“) */
+        val patProductName: String = "",
         /** custom.design_id */
         val designId: String = "",
         /** Worker `list-active-shop-promotion-products`: promotion end (ms) for countdown. */
@@ -98,7 +100,8 @@ class ShopifyProductsApi(
                     designLanguage = mf.designLanguage,
                     creator = mf.creator.ifBlank { p.creator },
                     metaProductKey = mf.productKey.ifBlank { p.metaProductKey },
-                    designId = mf.designId.ifBlank { p.designId }
+                    designId = mf.designId.ifBlank { p.designId },
+                    patProductName = mf.productName.ifBlank { p.patProductName }
                 ) else p
             }
             return@withContext result.copy(products = enriched)
@@ -144,7 +147,8 @@ class ShopifyProductsApi(
         val designLanguage: String,
         val creator: String = "",
         val productKey: String = "",
-        val designId: String = ""
+        val designId: String = "",
+        val productName: String = ""
     )
 
     private fun fetchMetafieldsFromWorker(handles: List<String>): Map<String, ProductMetafields> {
@@ -175,7 +179,8 @@ class ShopifyProductsApi(
                     designLanguage = obj.optString("designLanguage", ""),
                     creator = obj.optString("creator", ""),
                     productKey = obj.optString("productKey", ""),
-                    designId = obj.optString("designId", "")
+                    designId = obj.optString("designId", ""),
+                    productName = obj.optString("productName", "")
                 )
             }
             result
@@ -701,6 +706,7 @@ class ShopifyProductsApi(
             designLanguage = obj.optString("designLanguage", "").ifBlank { obj.optString("design_language", "") },
             creator = obj.optString("creator", ""),
             metaProductKey = obj.optString("productKey", "").ifBlank { obj.optString("metaProductKey", "") },
+            patProductName = obj.optString("patProductName", "").ifBlank { obj.optString("product_name", "").ifBlank { obj.optString("productName", "") } },
             designId = obj.optString("designId", "")
         )
     }

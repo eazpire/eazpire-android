@@ -87,7 +87,7 @@ const val EAZ_PROMOTIONS_COLLECTION_HANDLE = "eaz-promotions"
 
 private data class SortOption(val value: String, val label: String)
 
-// Design filter (creator-mobile-filter-modal): Price, Content Type, Design Type, Design Style, Ratio, Design Language, Product Category, Product Type
+// Design filter (creator-mobile-filter-modal): Price, Content Type, …, Product Type (Shopify), PAT display name (custom.product_name)
 private data class ProductFilters(
     val priceMin: String = "",
     val priceMax: String = "",
@@ -97,12 +97,14 @@ private data class ProductFilters(
     val ratios: Set<String> = emptySet(),           // Portrait, Landscape, Square
     val designLanguages: Set<String> = emptySet(),   // English, German, Bilingual
     val categories: Set<String> = emptySet(),        // Clothing, Accessories, Home & Living, Other
-    val productTypes: Set<String> = emptySet()       // dynamic: T-Shirt, Hoodie, Poster, etc.
+    val productTypes: Set<String> = emptySet(),       // dynamic: T-Shirt, Hoodie, Poster, etc.
+    val patProductNames: Set<String> = emptySet()    // custom.product_name (same as web „Produkt“ filter)
 ) {
     fun isEmpty(): Boolean =
         priceMin.isBlank() && priceMax.isBlank() && contentTypes.isEmpty() &&
         designTypes.isEmpty() && designStyles.isEmpty() && ratios.isEmpty() &&
-        designLanguages.isEmpty() && categories.isEmpty() && productTypes.isEmpty()
+        designLanguages.isEmpty() && categories.isEmpty() && productTypes.isEmpty() &&
+        patProductNames.isEmpty()
 }
 
 /** Wie Web: normalizeValue für Vergleich (creator-inspiration-filter-modal.js, creator-mobile-filter-modal.js) */
@@ -190,9 +192,30 @@ private fun applyFilters(
             val pt = p.productType.ifBlank { "Other" }
             if (pt !in filters.productTypes) return@filter false
         }
+        if (filters.patProductNames.isNotEmpty()) {
+            val pn = p.patProductName.trim()
+            if (pn.isBlank() || filters.patProductNames.none { it.equals(pn, ignoreCase = true) }) return@filter false
+        }
         true
     }
 }
+
+private fun poolForFacetCounts(
+    products: List<ShopifyProductsApi.ProductItem>,
+    filters: ProductFilters,
+    withinSearchQuery: String,
+    adjust: (ProductFilters) -> ProductFilters
+): List<ShopifyProductsApi.ProductItem> =
+    applyWithinSearchFilter(applyFilters(products, adjust(filters)), withinSearchQuery)
+
+private fun ProductFilters.clearContentTypes() = copy(contentTypes = emptySet())
+private fun ProductFilters.clearDesignTypes() = copy(designTypes = emptySet())
+private fun ProductFilters.clearDesignStyles() = copy(designStyles = emptySet())
+private fun ProductFilters.clearRatios() = copy(ratios = emptySet())
+private fun ProductFilters.clearDesignLanguages() = copy(designLanguages = emptySet())
+private fun ProductFilters.clearCategories() = copy(categories = emptySet())
+private fun ProductFilters.clearProductTypes() = copy(productTypes = emptySet())
+private fun ProductFilters.clearPatProductNames() = copy(patProductNames = emptySet())
 
 private fun normalizeWithinSearch(s: String): String {
     val n = try {
@@ -209,6 +232,7 @@ private fun productSearchHaystack(p: ShopifyProductsApi.ProductItem): String = b
     append(p.title).append(' ')
     append(p.vendor).append(' ')
     append(p.productType).append(' ')
+    append(p.patProductName).append(' ')
     append(p.creator).append(' ')
     append(p.handle).append(' ')
     p.tags.forEach { append(it).append(' ') }
@@ -677,16 +701,27 @@ private fun FilterDrawer(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
-    val productTypesWithCounts = remember(products) {
-        products
+    val productTypesWithCounts = remember(products, filters, withinSearchQuery) {
+        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearProductTypes() }
+        pool
             .map { it.productType.ifBlank { "Other" } }
             .groupingBy { it }
             .eachCount()
             .toList()
             .sortedByDescending { it.second }
     }
-    // Wie Web (creator-inspiration-filter-modal, creator-mobile-filter-modal): normalizeValue + content_type mapping
-    val contentTypesCount = remember(products) {
+    val patProductNamesWithCounts = remember(products, filters, withinSearchQuery) {
+        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearPatProductNames() }
+        pool
+            .map { it.patProductName.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+            .associateWith { v -> pool.count { it.patProductName.trim() == v } }
+    }
+    // Counts: other facets + search applied; this group’s selection cleared (matches web tri-toggle recount)
+    val contentTypesCount = remember(products, filters, withinSearchQuery) {
+        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearContentTypes() }
         CONTENT_TYPE_OPTIONS.associate { (value, _) ->
             val filterKey = when (value) {
                 "Design + Text" -> "design_text"
@@ -694,34 +729,39 @@ private fun FilterDrawer(
                 "Text Only" -> "text_only"
                 else -> normalizeValue(value)
             }
-            value to products.count { normalizeValue(contentTypeToFilterKey(it.contentType)) == filterKey }
+            value to pool.count { normalizeValue(contentTypeToFilterKey(it.contentType)) == filterKey }
         }
     }
-    val designTypesCount = remember(products) {
+    val designTypesCount = remember(products, filters, withinSearchQuery) {
+        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearDesignTypes() }
         DESIGN_TYPE_OPTIONS.associate { (value, _) ->
-            value to products.count { normalizeValue(designTypeToFilterValue(it.designType)) == normalizeValue(value) }
+            value to pool.count { normalizeValue(designTypeToFilterValue(it.designType)) == normalizeValue(value) }
         }
     }
-    val designStylesCount = remember(products) {
+    val designStylesCount = remember(products, filters, withinSearchQuery) {
+        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearDesignStyles() }
         DESIGN_STYLE_OPTIONS.associate { (value, _) ->
-            value to products.count { p ->
+            value to pool.count { p ->
                 p.designStyle.any { normalizeValue(it) == normalizeValue(value) }
             }
         }
     }
-    val ratiosCount = remember(products) {
+    val ratiosCount = remember(products, filters, withinSearchQuery) {
+        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearRatios() }
         RATIO_OPTIONS.associate { (value, _) ->
-            value to products.count { normalizeValue(ratioToFilterValue(it.ratio)) == normalizeValue(value) }
+            value to pool.count { normalizeValue(ratioToFilterValue(it.ratio)) == normalizeValue(value) }
         }
     }
-    val designLanguagesCount = remember(products) {
+    val designLanguagesCount = remember(products, filters, withinSearchQuery) {
+        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearDesignLanguages() }
         DESIGN_LANGUAGE_OPTIONS.associate { (value, _) ->
-            value to products.count { normalizeValue(it.designLanguage) == normalizeValue(value) }
+            value to pool.count { normalizeValue(it.designLanguage) == normalizeValue(value) }
         }
     }
-    val categoriesCount = remember(products) {
+    val categoriesCount = remember(products, filters, withinSearchQuery) {
+        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearCategories() }
         CATEGORY_OPTIONS.associate { (value, _) ->
-            value to products.count { productTypeToCategory(it.productType, it.title) == value }
+            value to pool.count { productTypeToCategory(it.productType, it.title) == value }
         }
     }
     val filteredCount = remember(products, filters, withinSearchQuery) {
@@ -934,6 +974,7 @@ private fun FilterDrawer(
                 DESIGN_LANGUAGE_OPTIONS.forEach { (value, label) ->
                     FilterOptionRow(
                         label = label,
+                        count = designLanguagesCount[value] ?: 0,
                         checked = value in filters.designLanguages,
                         onCheckedChange = {
                             val next = if (it) filters.designLanguages + value else filters.designLanguages - value
@@ -968,6 +1009,33 @@ private fun FilterDrawer(
                             onFiltersChange(filters.copy(categories = next))
                         }
                     )
+                }
+            }
+
+            if (patProductNamesWithCounts.isNotEmpty()) {
+                Text(
+                    t("collection.facet_label_product", "Product"),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = EazColors.TextPrimary,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                Column(modifier = Modifier.padding(bottom = 14.dp)) {
+                    patProductNamesWithCounts.forEach { (name, count) ->
+                        FilterOptionRow(
+                            label = name,
+                            count = count,
+                            checked = filters.patProductNames.any { it.equals(name, ignoreCase = true) },
+                            onCheckedChange = {
+                                val next = if (it) filters.patProductNames + name else filters.patProductNames.filterNot { x -> x.equals(name, ignoreCase = true) }.toSet()
+                                onFiltersChange(filters.copy(patProductNames = next))
+                            },
+                            onClick = {
+                                val has = filters.patProductNames.any { it.equals(name, ignoreCase = true) }
+                                val next = if (has) filters.patProductNames.filterNot { it.equals(name, ignoreCase = true) }.toSet() else filters.patProductNames + name
+                                onFiltersChange(filters.copy(patProductNames = next))
+                            }
+                        )
+                    }
                 }
             }
 
