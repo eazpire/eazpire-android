@@ -870,6 +870,30 @@ private fun FilterDrawer(
             }
 
             Text(
+                t("content.facet_label_product", "Product"),
+                style = MaterialTheme.typography.labelLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+            Column(modifier = Modifier.padding(bottom = 14.dp)) {
+                productTypesWithCounts.forEach { (pt, count) ->
+                    FilterOptionRow(
+                        label = pt,
+                        count = count,
+                        checked = pt in filters.productTypes,
+                        onCheckedChange = {
+                            val next = if (it) filters.productTypes + pt else filters.productTypes - pt
+                            onFiltersChange(filters.copy(productTypes = next))
+                        },
+                        onClick = {
+                            val next = if (pt in filters.productTypes) filters.productTypes - pt else filters.productTypes + pt
+                            onFiltersChange(filters.copy(productTypes = next))
+                        }
+                    )
+                }
+            }
+
+            Text(
                 t("collection.content_type", "Content Type"),
                 style = MaterialTheme.typography.labelLarge,
                 color = EazColors.TextPrimary,
@@ -1014,7 +1038,7 @@ private fun FilterDrawer(
 
             if (patProductNamesWithCounts.isNotEmpty()) {
                 Text(
-                    t("collection.facet_label_product", "Product"),
+                    t("content.product_name_filter", "Product name"),
                     style = MaterialTheme.typography.labelLarge,
                     color = EazColors.TextPrimary,
                     modifier = Modifier.padding(bottom = 6.dp)
@@ -1036,30 +1060,6 @@ private fun FilterDrawer(
                             }
                         )
                     }
-                }
-            }
-
-            Text(
-                t("collection.product_type", "Product Type"),
-                style = MaterialTheme.typography.labelLarge,
-                color = EazColors.TextPrimary,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
-            Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                productTypesWithCounts.forEach { (pt, count) ->
-                    FilterOptionRow(
-                        label = pt,
-                        count = count,
-                        checked = pt in filters.productTypes,
-                        onCheckedChange = {
-                            val next = if (it) filters.productTypes + pt else filters.productTypes - pt
-                            onFiltersChange(filters.copy(productTypes = next))
-                        },
-                        onClick = {
-                            val next = if (pt in filters.productTypes) filters.productTypes - pt else filters.productTypes + pt
-                            onFiltersChange(filters.copy(productTypes = next))
-                        }
-                    )
                 }
             }
             }
