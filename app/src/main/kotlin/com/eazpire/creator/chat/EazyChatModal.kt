@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Straighten
@@ -111,7 +112,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class EazySidebarTab { Chat, Notifications, Jobs, Settings, Functions, Mascot }
+enum class EazySidebarTab { Chat, Notifications, Jobs, Settings, Games, Functions, Mascot }
 
 enum class EazyChatContext { Shop, Creator }
 
@@ -469,6 +470,7 @@ fun EazyChatModal(
                 EazySidebarTab.Chat to Icons.Default.Chat,
                 EazySidebarTab.Notifications to Icons.Default.Notifications,
                 EazySidebarTab.Settings to Icons.Default.Settings,
+                EazySidebarTab.Games to Icons.Default.SportsEsports,
                 EazySidebarTab.Functions to Icons.Default.Build
             )
             EazyChatContext.Creator -> listOf(
@@ -476,6 +478,7 @@ fun EazyChatModal(
                 EazySidebarTab.Notifications to Icons.Default.Notifications,
                 EazySidebarTab.Jobs to Icons.Default.Bolt,
                 EazySidebarTab.Settings to Icons.Default.Settings,
+                EazySidebarTab.Games to Icons.Default.SportsEsports,
                 EazySidebarTab.Functions to Icons.Default.Build,
                 EazySidebarTab.Mascot to Icons.Default.Pets
             )
@@ -766,6 +769,7 @@ fun EazyChatModal(
                                     EazySidebarTab.Notifications -> t("creator.notifications.notifications_tab", "Notifications")
                                     EazySidebarTab.Jobs -> t("creator.notifications.active_jobs", "Active Jobs")
                                     EazySidebarTab.Settings -> t("eazy_chat.ui_settings_tab", "Settings")
+                                    EazySidebarTab.Games -> t("eazy_chat.ui_games_tab", "Games")
                                     EazySidebarTab.Functions -> t("eazy_chat.ui_functions_tab", "Functions")
                                     EazySidebarTab.Mascot -> t("eazy_chat.ui_mascot_tab", "Mascot")
                                 },
@@ -1342,6 +1346,14 @@ fun EazyChatModal(
                                         loadActiveTabs(u)
                                     }
                                 }
+                            )
+                            EazySidebarTab.Games -> EazyDailyGamePanel(
+                                api = api,
+                                ownerId = ownerId,
+                                isLoggedIn = isLoggedIn,
+                                onLoginClick = onLoginClick,
+                                onDismiss = onDismiss,
+                                t = t,
                             )
                             EazySidebarTab.Functions -> {
                                 if (!isLoggedIn) {

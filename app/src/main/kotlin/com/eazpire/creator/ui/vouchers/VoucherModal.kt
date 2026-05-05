@@ -63,6 +63,12 @@ import org.json.JSONObject
 import java.util.Currency
 import java.util.Locale
 
+private enum class GiftCardSubTab {
+    PURCHASED,
+    REWARDS,
+    SENT,
+}
+
 private enum class MainTab {
     STORE_CREDIT,
     GIFT_CARDS,
@@ -96,7 +102,7 @@ fun VoucherModal(
     if (!visible) return
 
     var mainTab by remember { mutableStateOf(MainTab.STORE_CREDIT) }
-    var giftSubOwn by remember { mutableStateOf(true) }
+    var giftSubTab by remember { mutableStateOf(GiftCardSubTab.PURCHASED) }
     var promoSubCreated by remember { mutableStateOf(true) }
 
     var loading by remember { mutableStateOf(true) }
@@ -136,12 +142,15 @@ fun VoucherModal(
         }
     }
 
-    val screenTitle = remember(mainTab, giftSubOwn, promoSubCreated, translationStore) {
+    val screenTitle = remember(mainTab, giftSubTab, promoSubCreated, translationStore) {
         when (mainTab) {
             MainTab.STORE_CREDIT -> t("creator.voucher_page.subtab_store_credit", "Store Credit")
             MainTab.GIFT_CARDS ->
-                if (giftSubOwn) t("creator.voucher_page.subtab_own_gift_cards", "My Gift Cards")
-                else t("creator.voucher_page.subtab_sent_gift_cards", "Sent Gift Cards")
+                when (giftSubTab) {
+                    GiftCardSubTab.PURCHASED -> t("creator.voucher_page.subtab_purchased_gift_cards", "Purchased")
+                    GiftCardSubTab.REWARDS -> t("creator.voucher_page.subtab_reward_gift_cards", "Won")
+                    GiftCardSubTab.SENT -> t("creator.voucher_page.subtab_sent_gift_cards", "Sent Gift Cards")
+                }
             MainTab.PROMO_CODES ->
                 if (promoSubCreated) t("creator.voucher_page.subtab_created_promos", "Created Promos")
                 else t("creator.voucher_page.subtab_redeemed_promos", "Redeemed Promos")
@@ -164,7 +173,7 @@ fun VoucherModal(
     val mainDrawerItems = remember(t) {
         listOf(
             MainTab.STORE_CREDIT to t("creator.voucher_page.subtab_store_credit", "Store Credit"),
-            MainTab.GIFT_CARDS to t("creator.voucher_page.tab_gift_cards", "Purchased Gift Cards"),
+            MainTab.GIFT_CARDS to t("creator.voucher_page.tab_gift_cards", "Gift Cards"),
             MainTab.PROMO_CODES to t("creator.voucher_page.tab_promo_codes", "Promo Codes")
         )
     }
@@ -224,12 +233,10 @@ fun VoucherModal(
                             .padding(padding)
                     ) {
                         when (mainTab) {
-                            MainTab.GIFT_CARDS -> VoucherSubTabRow(
-                                leftLabel = t("creator.voucher_page.subtab_own_gift_cards", "My Gift Cards"),
-                                rightLabel = t("creator.voucher_page.subtab_sent_gift_cards", "Sent Gift Cards"),
-                                selectedLeft = giftSubOwn,
-                                onSelectLeft = { giftSubOwn = true },
-                                onSelectRight = { giftSubOwn = false }
+                            MainTab.GIFT_CARDS -> VoucherGiftSubTabRow(
+                                selected = giftSubTab,
+                                onSelect = { giftSubTab = it },
+                                t = t,
                             )
                             MainTab.PROMO_CODES -> VoucherSubTabRow(
                                 leftLabel = t("creator.voucher_page.subtab_created_promos", "Created Promos"),
@@ -251,7 +258,7 @@ fun VoucherModal(
                                 MainTab.GIFT_CARDS ->
                                     GiftCardsPanel(
                                         giftCards = giftCards,
-                                        own = giftSubOwn,
+                                        mode = giftSubTab,
                                         loading = loading,
                                         errorText = errorText,
                                         t = t,
@@ -274,6 +281,40 @@ fun VoucherModal(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun VoucherGiftSubTabRow(
+    selected: GiftCardSubTab,
+    onSelect: (GiftCardSubTab) -> Unit,
+    t: (String, String) -> String,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            SubTabChip(
+                t("creator.voucher_page.subtab_purchased_gift_cards", "Purchased"),
+                selected == GiftCardSubTab.PURCHASED,
+                Modifier.weight(1f),
+            ) { onSelect(GiftCardSubTab.PURCHASED) }
+            SubTabChip(
+                t("creator.voucher_page.subtab_reward_gift_cards", "Won"),
+                selected == GiftCardSubTab.REWARDS,
+                Modifier.weight(1f),
+            ) { onSelect(GiftCardSubTab.REWARDS) }
+            SubTabChip(
+                t("creator.voucher_page.subtab_sent_gift_cards", "Sent"),
+                selected == GiftCardSubTab.SENT,
+                Modifier.weight(1f),
+            ) { onSelect(GiftCardSubTab.SENT) }
+        }
+        Divider(color = Color(0xFFE5E7EB))
     }
 }
 
@@ -367,6 +408,9 @@ private fun StoreCreditPanel(
     }
 }
 
+private fun giftIsReward(gc: JSONObject): Boolean =
+    gc.optString("gift_card_origin", "") == "reward"
+
 private fun giftIsSent(gc: JSONObject): Boolean {
     return gc.optBoolean("is_buyer", false) &&
         gc.optJSONObject("email_template")?.optString("status") == "sent"
@@ -375,7 +419,7 @@ private fun giftIsSent(gc: JSONObject): Boolean {
 @Composable
 private fun GiftCardsPanel(
     giftCards: List<JSONObject>,
-    own: Boolean,
+    mode: GiftCardSubTab,
     loading: Boolean,
     errorText: String?,
     t: (String, String) -> String,
@@ -391,15 +435,23 @@ private fun GiftCardsPanel(
         Text(errorText, modifier = Modifier.padding(16.dp))
         return
     }
-    val list = remember(giftCards, own) {
-        giftCards.filter { gc -> if (own) !giftIsSent(gc) else giftIsSent(gc) }
+    val list = remember(giftCards, mode) {
+        giftCards.filter { gc ->
+            when (mode) {
+                GiftCardSubTab.SENT -> giftIsSent(gc)
+                GiftCardSubTab.REWARDS -> !giftIsSent(gc) && giftIsReward(gc)
+                GiftCardSubTab.PURCHASED -> !giftIsSent(gc) && !giftIsReward(gc)
+            }
+        }
     }
     if (list.isEmpty()) {
-        Text(
-            if (own) t("creator.gift_cards.no_gift_cards", "No gift cards")
-            else t("creator.voucher_page.no_sent_gift_cards", "No sent gift cards"),
-            modifier = Modifier.padding(16.dp)
-        )
+        val emptyMsg =
+            when (mode) {
+                GiftCardSubTab.SENT -> t("creator.voucher_page.no_sent_gift_cards", "No sent gift cards")
+                GiftCardSubTab.REWARDS -> t("creator.gift_cards.no_reward_gift_cards", "No prizes yet")
+                GiftCardSubTab.PURCHASED -> t("creator.gift_cards.no_gift_cards", "No gift cards")
+            }
+        Text(emptyMsg, modifier = Modifier.padding(16.dp))
         return
     }
     LazyVerticalGrid(

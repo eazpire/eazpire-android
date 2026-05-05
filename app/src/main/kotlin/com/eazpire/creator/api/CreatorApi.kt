@@ -143,6 +143,14 @@ class CreatorApi(
         mapOf("customer_id" to customerId, "shop" to shop)
     )
 
+    /** GET ?op=daily-game-state&shop=… — JWT auth */
+    suspend fun getDailyGameState(shop: String): JSONObject =
+        call("daily-game-state", mapOf("shop" to shop))
+
+    /** POST ?op=daily-game-play&shop=… Body: owner_id */
+    suspend fun postDailyGamePlay(shop: String, ownerId: String): JSONObject =
+        postJson("daily-game-play", mapOf("owner_id" to ownerId), mapOf("shop" to shop))
+
     /**
      * GET ?op=get-customer-wallet-total&owner_id=xxx&currency=EUR
      */
