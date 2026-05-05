@@ -146,6 +146,7 @@ private data class EazyKvJobRow(
     val title: String,
     val progress: Int,
     val done: Boolean,
+    val saving: Boolean,
     val status: String?
 )
 
@@ -153,7 +154,11 @@ private data class EazySystemJobRow(
     val sessionId: String,
     val title: String,
     val status: String,
-    val message: String?
+    val message: String?,
+    val jobKind: String,
+    val subtitleDetail: String,
+    val progress: Int,
+    val thumbUrl: String?,
 )
 
 private fun parseMessagesArray(msgs: JSONArray): List<ChatMessage> {
@@ -273,22 +278,34 @@ private fun parseKvJobs(arr: JSONArray): List<EazyKvJobRow> {
             title = o.optString("prompt", o.optString("title", "")).ifBlank { id },
             progress = o.optInt("progress", 0).coerceIn(0, 100),
             done = o.optBoolean("done", false),
+            saving = o.optBoolean("saving", false),
             status = o.optString("status", "").takeIf { it.isNotBlank() }
         )
-    }
+    }.filter { !it.done || it.saving }
 }
 
 private fun parseSystemJobs(arr: JSONArray): List<EazySystemJobRow> {
     return (0 until arr.length()).mapNotNull { i ->
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val sid = o.optString("session_id", "").ifBlank { return@mapNotNull null }
-        val msg = o.optString("error_message", "").takeIf { it.isNotBlank() }
-            ?: o.optString("summary", "").takeIf { it.isNotBlank() }
+        val effMsg = sequenceOf(
+            o.optString("effective_message", ""),
+            o.optString("message", ""),
+            o.optString("error_message", ""),
+            o.optString("summary", ""),
+        ).firstOrNull { it.isNotBlank() }
+        val msg = effMsg?.takeIf { it.isNotBlank() }
+        val thumbRaw = o.optString("effective_preview_url", "").asHttpImageUrl()
+        val kind = o.optString("job_kind", "system_publish").ifBlank { "system_publish" }
         EazySystemJobRow(
             sessionId = sid,
             title = o.optString("title", "").ifBlank { "System publish" },
             status = o.optString("status", ""),
-            message = msg
+            message = msg,
+            jobKind = kind,
+            subtitleDetail = o.optString("subtitle_detail", ""),
+            progress = o.optInt("effective_progress", 55).coerceIn(0, 100),
+            thumbUrl = thumbRaw,
         )
     }
 }
@@ -1773,6 +1790,12 @@ private fun EazyFunctionsGrid(
     }
 }
 
+private fun systemJobKindUiLabel(jobKind: String, t: (String, String) -> String): String =
+    when (jobKind.trim()) {
+        "automation_design" -> t("eazy_chat.chat_job_kind_automation_design", "Scheduled design automation")
+        else -> t("eazy_chat.chat_job_kind_system_publish", "Automatic publishing")
+    }
+
 @Composable
 private fun EazyJobsCombinedPanel(
     hero: HeroJobState?,
@@ -1838,12 +1861,8 @@ private fun EazyJobsCombinedPanel(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(systemJobs, key = { it.sessionId }) { j ->
-                            val st = j.status.lowercase()
-                            val prog = when {
-                                st.contains("complete") -> 100
-                                st.contains("fail") || st.contains("cancel") -> 0
-                                else -> 50
-                            }
+                            val kindLbl = systemJobKindUiLabel(j.jobKind, t)
+                            val prog = j.progress.coerceIn(0, 100)
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1852,13 +1871,23 @@ private fun EazyJobsCombinedPanel(
                                     .padding(12.dp)
                             ) {
                                 Text(j.title, style = MaterialTheme.typography.titleSmall, color = LocalEazyModalPalette.current.text)
+                                Text(kindLbl, style = MaterialTheme.typography.labelSmall, color = LocalEazyModalPalette.current.muted)
+                                if (j.subtitleDetail.isNotBlank()) {
+                                    Text(
+                                        j.subtitleDetail.take(140),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = LocalEazyModalPalette.current.muted
+                                    )
+                                }
                                 LinearProgressIndicator(
                                     progress = prog.coerceIn(0, 100) / 100f,
                                     modifier = Modifier.fillMaxWidth(),
                                     color = LocalEazyModalPalette.current.accent,
                                     trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
                                 )
-                                j.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted) }
+                                j.message?.takeIf { it.isNotBlank() }?.let { m ->
+                                    Text(m, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
+                                }
                             }
                         }
                     }

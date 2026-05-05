@@ -752,11 +752,21 @@ class CreatorApi(
         mapOf("owner_id" to ownerId, "audience" to audience.lowercase())
     )
 
-    /** GET ?op=list-system-jobs&owner_id=&audience=creator|shop&limit= */
-    suspend fun listSystemJobs(ownerId: String, audience: String = "creator", limit: Int = 50): JSONObject = call(
-        "list-system-jobs",
-        mapOf("owner_id" to ownerId, "audience" to audience.lowercase(), "limit" to limit.toString())
-    )
+    /** GET ?op=list-system-jobs&owner_id=&audience=creator|shop&limit=&active_only=1 */
+    suspend fun listSystemJobs(
+        ownerId: String,
+        audience: String = "creator",
+        limit: Int = 50,
+        activeOnly: Boolean = true,
+    ): JSONObject {
+        val params = mutableMapOf(
+            "owner_id" to ownerId,
+            "audience" to audience.lowercase(),
+            "limit" to limit.toString(),
+        )
+        if (activeOnly) params["active_only"] = "1"
+        return call("list-system-jobs", params)
+    }
 
     /** GET ?op=list-generated&owner_id=xxx&path_prefix=/apps/creator-dispatch → { ok, items: [...] } */
     suspend fun listGenerated(ownerId: String, limit: Int = 200): JSONObject = call(
