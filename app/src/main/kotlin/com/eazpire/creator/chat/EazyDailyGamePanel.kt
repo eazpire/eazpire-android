@@ -28,6 +28,25 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+
+private fun parseMemorySession(j: JSONObject): Pair<MemoryDeckUi, MemoryTimingUi>? {
+    val deck = j.optJSONObject("memory_deck") ?: return null
+    val timing = j.optJSONObject("memory_timing") ?: return null
+    val sk = deck.optJSONArray("slot_pair_keys") ?: return null
+    val im = deck.optJSONArray("images") ?: return null
+    val keys = List(sk.length()) { sk.getInt(it) }
+    val imgs = List(im.length()) { im.getString(it) }
+    val d = MemoryDeckUi(keys, imgs)
+    val t =
+        MemoryTimingUi(
+            deadlineMs = timing.optLong("deadline_ms"),
+            previewGraceMs = timing.optLong("preview_grace_ms"),
+            matchFlipMs = timing.optLong("match_flip_ms", 850L),
+            serverNowMs = timing.optLong("server_now_ms"),
+        )
+    return d to t
+}
 
 @Composable
 fun EazyDailyGamePanel(
@@ -45,8 +64,10 @@ fun EazyDailyGamePanel(
     var status by remember { mutableStateOf("") }
     var prizeLine by remember { mutableStateOf<String?>(null) }
     var playEnabled by remember { mutableStateOf(false) }
+    var resumeMemory by remember { mutableStateOf(false) }
+    var memorySession by remember { mutableStateOf<Pair<MemoryDeckUi, MemoryTimingUi>?>(null) }
 
-    fun applyStateJson(j: org.json.JSONObject) {
+    fun applyStateJson(j: JSONObject) {
         val prize = j.optString("prize_amount", "").trim()
         prizeLine =
             if (prize.isNotEmpty()) {
@@ -54,6 +75,17 @@ fun EazyDailyGamePanel(
             } else {
                 null
             }
+
+        if (j.optBoolean("pending_memory", false)) {
+            playEnabled = false
+            status =
+                t(
+                    "eazy_chat.games_memory_resume",
+                    "You have a game in progress — loading board…",
+                )
+            resumeMemory = true
+            return
+        }
 
         if (j.optBoolean("pending", false)) {
             playEnabled = false
@@ -87,6 +119,8 @@ fun EazyDailyGamePanel(
     }
 
     LaunchedEffect(ownerId, isLoggedIn) {
+        memorySession = null
+        resumeMemory = false
         if (!isLoggedIn || ownerId.isNullOrBlank()) return@LaunchedEffect
         loading = true
         status = t("eazy_chat.games_loading", "Loading…")
@@ -104,6 +138,33 @@ fun EazyDailyGamePanel(
         } catch (_: Exception) {
             status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
             playEnabled = false
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(resumeMemory, ownerId, isLoggedIn) {
+        val oid = ownerId ?: return@LaunchedEffect
+        if (!isLoggedIn || !resumeMemory) return@LaunchedEffect
+        resumeMemory = false
+        loading = true
+        try {
+            val j = api.postDailyGameMemoryBegin(shop, oid)
+            val parsed = parseMemorySession(j)
+            if (j.optBoolean("ok", false) && parsed != null) {
+                memorySession = parsed
+                status = ""
+            } else {
+                status =
+                    j.optString(
+                        "message",
+                        t("eazy_chat.games_memory_board_error", "Could not load the game board."),
+                    )
+                playEnabled = true
+            }
+        } catch (_: Exception) {
+            status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
+            playEnabled = true
         } finally {
             loading = false
         }
@@ -138,6 +199,61 @@ fun EazyDailyGamePanel(
         return
     }
 
+    val sess = memorySession
+    if (sess != null) {
+        val deck = sess.first
+        val timing = sess.second
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            prizeLine?.let { line ->
+                Text(text = line, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
+            }
+            EazyMemoryDailyBoard(
+                deck = deck,
+                timing = timing,
+                onFinishRequest = fin@{ forfeit, flipLog ->
+                    val oid = ownerId ?: return@fin
+                    scope.launch {
+                        busy = true
+                        try {
+                            val j = api.postDailyGameMemoryFinish(shop, oid, forfeit, flipLog)
+                            memorySession = null
+                            when {
+                                j.optBoolean("ok", false) && j.optString("outcome") == "win" -> {
+                                    status = t("eazy_chat.games_outcome_win", "You won a gift card!")
+                                    playEnabled = false
+                                }
+                                j.optBoolean("ok", false) && j.optString("outcome") == "loss" -> {
+                                    status = t("eazy_chat.games_outcome_loss", "Not this time. Come back tomorrow.")
+                                    playEnabled = false
+                                }
+                                else -> {
+                                    val st = api.getDailyGameState(shop)
+                                    if (st.optBoolean("ok", false)) applyStateJson(st)
+                                }
+                            }
+                        } catch (_: Exception) {
+                            status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
+                            playEnabled = true
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+                t = t,
+            )
+            if (busy) {
+                CircularProgressIndicator(color = LocalEazyModalPalette.current.accent)
+            }
+        }
+        return
+    }
+
     Column(
         modifier =
             Modifier
@@ -146,7 +262,11 @@ fun EazyDailyGamePanel(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = t("eazy_chat.games_daily_intro", "Play once per day for a chance to win a gift card."),
+            text =
+                t(
+                    "eazy_chat.games_memory_daily_intro",
+                    "Flip two tiles at a time. Beat the countdown after the peek.",
+                ),
             style = MaterialTheme.typography.bodyMedium,
             color = LocalEazyModalPalette.current.text,
         )
@@ -171,30 +291,26 @@ fun EazyDailyGamePanel(
                     busy = true
                     status = t("eazy_chat.games_loading", "Loading…")
                     try {
-                        val j = api.postDailyGamePlay(shop, oid)
-                        if (!j.optBoolean("ok", false)) {
-                            if (j.optString("error") == "play_in_progress") {
-                                status = t("eazy_chat.games_pending", "Still processing — try again shortly.")
+                        val j = api.postDailyGameMemoryBegin(shop, oid)
+                        val parsed = parseMemorySession(j)
+                        if (j.optBoolean("ok", false) && parsed != null) {
+                            memorySession = parsed
+                            status = ""
+                        } else if (!j.optBoolean("ok", false)) {
+                            if (j.optString("error") == "memory_pool_empty") {
+                                status =
+                                    t(
+                                        "eazy_chat.games_memory_pool_empty",
+                                        "Not enough designs available for today's puzzle.",
+                                    )
                             } else {
-                                status = j.optString("message", t("eazy_chat.games_outcome_failed", "Could not complete play."))
-                                playEnabled = true
+                                status =
+                                    j.optString(
+                                        "message",
+                                        t("eazy_chat.games_outcome_failed", "Could not complete play."),
+                                    )
                             }
-                            busy = false
-                            return@launch
-                        }
-                        when (j.optString("outcome")) {
-                            "win" -> {
-                                playEnabled = false
-                                status = t("eazy_chat.games_outcome_win", "You won a gift card!")
-                            }
-                            "loss" -> {
-                                playEnabled = false
-                                status = t("eazy_chat.games_outcome_loss", "Not this time. Come back tomorrow.")
-                            }
-                            else -> {
-                                val st = api.getDailyGameState(shop)
-                                if (st.optBoolean("ok", false)) applyStateJson(st)
-                            }
+                            playEnabled = true
                         }
                     } catch (_: Exception) {
                         status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
@@ -208,7 +324,7 @@ fun EazyDailyGamePanel(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = LocalEazyModalPalette.current.accent),
         ) {
-            Text(t("eazy_chat.games_play", "Play today"), color = Color.White)
+            Text(t("eazy_chat.games_play", "Start game"), color = Color.White)
         }
     }
 }

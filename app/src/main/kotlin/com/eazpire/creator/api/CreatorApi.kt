@@ -151,6 +151,59 @@ class CreatorApi(
     suspend fun postDailyGamePlay(shop: String, ownerId: String): JSONObject =
         postJson("daily-game-play", mapOf("owner_id" to ownerId), mapOf("shop" to shop))
 
+    /** POST ?op=daily-game-play memory_action begin */
+    suspend fun postDailyGameMemoryBegin(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("memory_action", "begin")
+            },
+        )
+
+    /** POST ?op=daily-game-play memory_action finish */
+    suspend fun postDailyGameMemoryFinish(
+        shop: String,
+        ownerId: String,
+        forfeit: Boolean,
+        flipLog: List<Int>,
+    ): JSONObject {
+        val arr = org.json.JSONArray()
+        flipLog.forEach { arr.put(it) }
+        return postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("memory_action", "finish")
+                put("memory_forfeit", forfeit)
+                put("memory_flip_log", arr)
+            },
+        )
+    }
+
+    private suspend fun postDailyGamePlayJson(shop: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url =
+                "$baseUrl/apps/creator-dispatch?op=daily-game-play&shop=${
+                    java.net.URLEncoder.encode(
+                        shop,
+                        "UTF-8",
+                    )
+                }&_t=${System.currentTimeMillis()}"
+            val request =
+                Request.Builder()
+                    .url(url)
+                    .post(body.toString().toRequestBody("application/json".toMediaType()))
+                    .addHeader("Accept", "application/json")
+                    .addHeader("Content-Type", "application/json")
+                    .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                    .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
     /**
      * GET ?op=get-customer-wallet-total&owner_id=xxx&currency=EUR
      */
