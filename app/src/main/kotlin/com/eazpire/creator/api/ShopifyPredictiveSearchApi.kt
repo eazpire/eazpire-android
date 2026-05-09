@@ -103,10 +103,12 @@ class ShopifyPredictiveSearchApi(
             val title = o.optString("title", "").takeIf { it.isNotBlank() } ?: handle
             val price = o.opt("price")
             val priceCents = computePriceCents(price)
+            val imageStr = o.optString("image", "").takeIf { it.isNotBlank() }
+                ?: o.optJSONObject("featured_image")?.optString("url", "")?.takeIf { it.isNotBlank() }
             ProductSuggestion(
                 title = title,
                 url = absUrl,
-                image = o.optString("image", "").takeIf { it.isNotBlank() },
+                image = imageStr,
                 priceCents = priceCents,
                 vendor = o.optString("vendor", "").takeIf { it.isNotBlank() }
             )
