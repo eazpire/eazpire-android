@@ -1,8 +1,10 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.eazpire.creator.ui.header
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -77,11 +81,12 @@ fun HeaderSearch(
     val noResultsText = store?.t("eaz.search.no_results", "No results") ?: "No results"
     val suggestionsLabel = store?.t("eaz.search.section_suggestions", "Suggestions") ?: "Suggestions"
     val productsLabel = store?.t("eaz.search.section_products", "Products") ?: "Products"
+    val loadingMoreText = store?.t("eaz.search.loading_more", "Loading more results…") ?: "Loading more results…"
 
     var focused by remember { mutableStateOf(false) }
     var fieldHeightPx by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<ShopifyPredictiveSearchApi.Result?>(null) }
+    var result by remember { mutableStateOf<ShopifyPredictiveSearchApi.PredictiveSearchState?>(null) }
 
     LaunchedEffect(query) {
         val q = query.trim()
@@ -92,8 +97,12 @@ fun HeaderSearch(
         }
         delay(300)
         loading = true
+        result = null
         try {
-            result = api.fetchSuggestions(q)
+            api.collectPredictiveSearch(q) { state ->
+                result = state
+                loading = false
+            }
         } finally {
             loading = false
         }
@@ -175,7 +184,7 @@ fun HeaderSearch(
                     clippingEnabled = false
                 )
             ) {
-                val maxH = with(density) { 420.dp }
+                val maxH = with(density) { 520.dp }
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -199,7 +208,35 @@ fun HeaderSearch(
                                 )
                             }
                         }
-                        result != null && result!!.queries.isEmpty() && result!!.products.isEmpty() -> {
+                        result != null &&
+                            result!!.queries.isEmpty() &&
+                            result!!.products.isEmpty() &&
+                            result!!.sectionStillLoading -> {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(28.dp),
+                                        color = EazColors.Orange,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(
+                                        text = loadingMoreText,
+                                        style = TextStyle(fontSize = 13.sp, color = EazColors.TextSecondary),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                        result != null &&
+                            result!!.queries.isEmpty() &&
+                            result!!.products.isEmpty() &&
+                            !result!!.sectionStillLoading -> {
                             Text(
                                 text = noResultsText,
                                 modifier = Modifier
@@ -255,20 +292,35 @@ fun HeaderSearch(
                                         item { Divider(color = EazColors.TopbarBorder) }
                                     }
                                 }
-                                if (result!!.products.isNotEmpty()) {
+                                if (result!!.products.isNotEmpty() || result!!.sectionStillLoading) {
                                     item {
-                                        Text(
-                                            text = productsLabel,
+                                        Row(
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                                            style = TextStyle(
-                                                fontSize = 11.sp,
-                                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                                                color = EazColors.TextSecondary,
-                                                letterSpacing = 0.8.sp
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = productsLabel,
+                                                style = TextStyle(
+                                                    fontSize = 11.sp,
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                                    color = EazColors.TextSecondary,
+                                                    letterSpacing = 0.8.sp
+                                                )
                                             )
-                                        )
+                                            if (result!!.sectionStillLoading) {
+                                                Spacer(Modifier.width(10.dp))
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(14.dp),
+                                                    color = EazColors.Orange,
+                                                    strokeWidth = 2.dp
+                                                )
+                                            }
+                                        }
                                     }
-                                    items(result!!.products) { p ->
+                                    items(result!!.products, key = { it.handle }) { p ->
+                                        val title =
+                                            p.title?.takeIf { it.isNotBlank() }
+                                                ?: ShopifyPredictiveSearchApi.titleFromHandle(p.handle)
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -278,28 +330,11 @@ fun HeaderSearch(
                                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(48.dp)
-                                                    .background(
-                                                        Color(0xFFF5F5F5),
-                                                        RoundedCornerShape(6.dp)
-                                                    )
-                                            ) {
-                                                if (!p.image.isNullOrBlank()) {
-                                                    AsyncImage(
-                                                        model = p.image,
-                                                        contentDescription = null,
-                                                        modifier = Modifier
-                                                            .fillMaxSize()
-                                                            .padding(2.dp)
-                                                    )
-                                                }
-                                            }
+                                            PredictiveProductThumb(urls = p.images)
                                             Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f)) {
                                                 Text(
-                                                    text = p.title,
+                                                    text = title,
                                                     style = TextStyle(
                                                         fontSize = 13.sp,
                                                         color = EazColors.TextPrimary,
@@ -337,6 +372,44 @@ fun HeaderSearch(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PredictiveProductThumb(urls: List<String>) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .background(Color(0xFFF5F5F5), RoundedCornerShape(6.dp))
+    ) {
+        when {
+            urls.isEmpty() -> Unit
+            urls.size == 1 -> {
+                AsyncImage(
+                    model = urls[0],
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(2.dp)
+                )
+            }
+            else -> {
+                val state = rememberPagerState(pageCount = { urls.size })
+                HorizontalPager(
+                    state = state,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    AsyncImage(
+                        model = urls[page],
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(2.dp)
+                    )
                 }
             }
         }
