@@ -95,15 +95,14 @@ class ShopifyPredictiveSearchApi(
         val productsArr = results.optJSONArray("products") ?: JSONArray()
         val products = (0 until productsArr.length()).mapNotNull { i ->
             val o = productsArr.optJSONObject(i) ?: return@mapNotNull null
-            val title = o.optString("title", "").takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val rawUrl = o.optString("url", "").takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val absUrl = resolveUrl(rawUrl)
+            val handleJson = o.optString("handle", "").trim()
+            val handle = handleJson.takeIf { it.isNotBlank() } ?: productHandleFromUrl(absUrl)
+            if (handle.isBlank()) return@mapNotNull null
+            val title = o.optString("title", "").takeIf { it.isNotBlank() } ?: handle
             val price = o.opt("price")
-            val priceCents = when (price) {
-                is Number -> price.toLong()
-                is String -> price.toLongOrNull()
-                else -> null
-            }
+            val priceCents = computePriceCents(price)
             ProductSuggestion(
                 title = title,
                 url = absUrl,
@@ -304,6 +303,8 @@ class ShopifyPredictiveSearchApi(
             .url(url)
             .header("Accept", accept)
             .header("X-Requested-With", "XMLHttpRequest")
+            .header("User-Agent", STOREFRONT_HTTP_UA)
+            .header("Referer", storeBaseUrl.trimEnd('/') + "/")
             .get()
             .build()
         return try {
@@ -329,9 +330,23 @@ class ShopifyPredictiveSearchApi(
 
     private fun enc(s: String): String = java.net.URLEncoder.encode(s, "UTF-8")
 
+    private fun computePriceCents(price: Any?): Long? {
+        val d = when (price) {
+            is Number -> price.toDouble()
+            is String -> price.toDoubleOrNull() ?: return null
+            else -> return null
+        }
+        if (d <= 0) return null
+        return (d * 100.0).toLong()
+    }
+
     companion object {
         private const val PREDICTIVE_VIEW = "eaz-predictive"
         private const val PRODUCT_CAP = 50
+
+        /** Shopify storefront + Cloudflare expect a browser-like UA; default OkHttp UA often gets empty/challenge HTML. */
+        private const val STOREFRONT_HTTP_UA =
+            "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36"
 
         private val SECTION_ID_STRICT = Regex("^template--\\d+__eaz_predictive_search_json$")
 
