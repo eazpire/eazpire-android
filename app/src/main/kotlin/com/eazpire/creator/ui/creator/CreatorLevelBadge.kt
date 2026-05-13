@@ -45,6 +45,7 @@ import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 /** Level Badge 1:1 wie Web: creator-level-badge + creator-level-share-row (nur Share) */
 @Composable
@@ -70,38 +71,90 @@ fun CreatorLevelBadge(
             try {
                 val r = withContext(Dispatchers.IO) { api.getLevel(ownerId!!) }
                 if (r.optBoolean("ok", false)) {
-                    val totalXp = r.optInt("total_xp", 0)
-                    val thresholds = r.optJSONArray("thresholds")
-                    var level = 1
-                    var nextXp = 50
-                    if (thresholds != null) {
-                        for (i in thresholds.length() - 1 downTo 0) {
-                            val t = thresholds.getJSONObject(i)
-                            if (totalXp >= t.optInt("xp_required", 0)) {
-                                level = t.optInt("level", 1)
-                                break
-                            }
-                        }
-                        for (i in 0 until thresholds.length()) {
-                            val t = thresholds.getJSONObject(i)
-                            if (t.optInt("level", 0) == level + 1) {
-                                nextXp = t.optInt("xp_required", 50)
-                                break
-                            }
-                        }
-                    }
-                    val curT = (0 until (thresholds?.length() ?: 0)).firstOrNull {
-                        thresholds?.getJSONObject(it)?.optInt("level", 0) == level
-                    }?.let { thresholds?.getJSONObject(it) }
-                    val curXpReq = curT?.optInt("xp_required", 0) ?: 0
-                    val xpInLevel = totalXp - curXpReq
-                    val xpNeeded = nextXp - curXpReq
-                    val pct = if (xpNeeded > 0) (xpInLevel.toFloat() / xpNeeded * 100).coerceIn(0f, 100f) else 100f
+                    val thresholds: JSONArray? = when {
+                        r.has("level_thresholds") && r.getJSONArray("level_thresholds").length() > 0 ->
+                            r.getJSONArray("level_thresholds")
 
-                    levelNum = level
-                    levelName = translationStore.t("creator.overview.level_names.$level", "Level $level")
-                    xpValue = "$totalXp / $nextXp XP"
-                    xpFillPercent = pct
+                        r.has("thresholds") && r.getJSONArray("thresholds").length() > 0 ->
+                            r.getJSONArray("thresholds")
+
+                        else -> null
+                    }
+                    fun xpAt(L: Int): Int {
+                        if (thresholds == null) return 0
+                        for (j in 0 until thresholds.length()) {
+                            val row = thresholds.getJSONObject(j)
+                            if (row.optInt("level", 0) == L) return row.optInt("xp_required", 0)
+                        }
+                        return 0
+                    }
+                    val totalXp = r.optInt("total_xp", 0)
+                    val displayLevel = r.optInt("current_level", r.optInt("level", 1)).coerceIn(1, 10)
+                    val trialMode = r.optBoolean("trial_mode", false)
+                    val trialNeedsCreatorCode = r.optBoolean("trial_needs_creator_code", false)
+
+                    levelNum = displayLevel
+
+                    levelName =
+                        translationStore.t(
+                            "creator.overview.level_names.$displayLevel",
+                            translationStore.t("creator.overview.default_level", "Starter")
+                        )
+
+                    val labels = r.optJSONObject("level_labels")
+                    if (labels != null && labels.has(displayLevel.toString())) {
+                        val s = labels.optString(displayLevel.toString(), "").trim()
+                        if (s.isNotEmpty()) levelName = s
+                    }
+
+                    if (trialMode) {
+                        val capXp = kotlin.math.max(1, xpAt(2))
+                        xpFillPercent =
+                            kotlin.math.min(100f, totalXp.toFloat() / capXp.toFloat() * 100f)
+                        xpValue = "$totalXp / $capXp XP"
+                        xpHint =
+                            if (trialNeedsCreatorCode || totalXp >= capXp) {
+                                translationStore.t(
+                                    "creator.overview.xp_need_creator_code",
+                                    translationStore.t("creator.mobile.xp_need_creator_code", "")
+                                )
+                            } else {
+                                val remTrial = kotlin.math.max(0, capXp - totalXp)
+                                translationStore.t(
+                                    "creator.overview.xp_until_next",
+                                    translationStore.t("creator.mobile.xp_until_next", "XP until next level")
+                                )
+                                    .replace("{xp}", remTrial.toString())
+                                    .replace("{level}", "2")
+                            }
+                    } else {
+                        val curXpReq = xpAt(displayLevel)
+                        val nextXpAbs = xpAt(displayLevel + 1)
+                        val hasNext = displayLevel < 10 && nextXpAbs > curXpReq
+                        val xpInLevel = kotlin.math.max(0, totalXp - curXpReq)
+                        val xpNeeded = if (hasNext) kotlin.math.max(1, nextXpAbs - curXpReq) else 1
+                        xpFillPercent =
+                            if (hasNext)
+                                kotlin.math.min(100f, xpInLevel.toFloat() / xpNeeded.toFloat() * 100f)
+                            else 100f
+                        xpValue =
+                            if (hasNext) "$xpInLevel / $xpNeeded XP" else "$totalXp XP"
+                        xpHint =
+                            if (!hasNext || displayLevel >= 10) {
+                                translationStore.t(
+                                    "creator.overview.max_level_reached",
+                                    translationStore.t("creator.mobile.max_level_reached", "")
+                                )
+                            } else {
+                                val rem = kotlin.math.max(0, nextXpAbs - totalXp)
+                                translationStore.t(
+                                    "creator.overview.xp_until_next",
+                                    translationStore.t("creator.mobile.xp_until_next", "XP until next level")
+                                )
+                                    .replace("{xp}", rem.toString())
+                                    .replace("{level}", (displayLevel + 1).toString())
+                            }
+                    }
                 }
             } catch (_: Exception) {}
         }

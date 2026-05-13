@@ -39,6 +39,20 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+private fun journeyHrefFromPresentationJson(pres: JSONObject, fallbackPath: String?): String? {
+    val wb = pres.optString("web_href", "").trim()
+    val base = wb.ifBlank { fallbackPath?.takeIf { it.startsWith("/") } ?: "" }.ifBlank { return null }
+    var path = base
+    val query = pres.optString("query", "").trim()
+    if (query.isNotEmpty()) {
+        val qp = query.removePrefix("?")
+        path += if ('?' in path) "&$qp" else "?$qp"
+    }
+    val anchor = pres.optString("anchor", "").trim()
+    if (anchor.isNotEmpty()) path += if (anchor.startsWith('#')) anchor else "#$anchor"
+    return path
+}
+
 private data class JourneyTodo(
     val id: String,
     val title: String,
@@ -51,17 +65,57 @@ private data class JourneyTodo(
     val countTarget: Int?
 )
 
+private fun parseJourneyTodo(
+    tObj: JSONObject,
+    t: (String, String) -> String
+): JourneyTodo {
+    val id = tObj.optString("id", "")
+    val pres = when {
+        tObj.isNull("presentation") -> JSONObject()
+        else -> tObj.optJSONObject("presentation") ?: JSONObject()
+    }
+    val fb = TODO_CONFIG[id]
+
+    val icon =
+        pres.optString("icon", "").takeUnless { it.isBlank() } ?: fb?.first ?: "✓"
+
+    val shopKey =
+        pres.optString("title_shopify_key", "").takeUnless { it.isBlank() }
+            ?: fb?.third
+            ?: "creator.overview.todos_error"
+    val label =
+        t(shopKey, id.replace("todo_", "").replace('_', ' ').replaceFirstChar { it.uppercase() })
+
+    val fbPath = fb?.second?.takeIf { it.startsWith("/") }
+    val path =
+        journeyHrefFromPresentationJson(pres, fbPath)?.takeIf { it.startsWith("/") }
+            ?: fbPath
+
+    return JourneyTodo(
+        id = id,
+        title = label,
+        icon = icon,
+        xp = tObj.optInt("xp", 10),
+        link = path,
+        action = null,
+        completed = false,
+        countCurrent = tObj.optInt("count_current", -1).takeIf { it >= 0 },
+        countTarget = tObj.optInt("count_target", -1).takeIf { it >= 0 }
+    )
+}
+
 private val TODO_CONFIG = mapOf(
-    "todo_first_design" to Triple("💾", "/pages/design-generator", "creator.overview.todo_save_design"),
-    "todo_first_product" to Triple("📦", "/pages/my-creations", "creator.overview.todo_publish_product"),
+    "todo_first_design" to Triple("💾", "/pages/design-generator", "creator.overview.todo_first_design"),
+    "todo_first_product" to Triple("📦", "/pages/my-creations", "creator.overview.todo_first_product"),
     "todo_five_designs" to Triple("🎨", "/pages/design-generator", "creator.overview.todo_five_designs"),
     "todo_twenty_products" to Triple("🚀", "/pages/my-creations", "creator.overview.todo_twenty_products"),
     "todo_first_transaction" to Triple("🛒", "#", "creator.overview.todo_first_transaction"),
-    "todo_become_creator" to Triple("⭐", "modal:creator_code", "creator.overview.todo_become_creator"),
-    "todo_creator_name" to Triple("👤", "modal:creator_name", "creator.overview.todo_creator_name"),
+    "todo_become_creator" to Triple("⭐", "/pages/creator-settings", "creator.overview.todo_become_creator"),
+    "todo_creator_name" to Triple("👤", "/pages/creator-settings", "creator.overview.todo_creator_name"),
     "todo_generate_design" to Triple("🎨", "/pages/design-generator", "creator.overview.todo_generate_design"),
     "todo_publish_product" to Triple("🚀", "/pages/my-creations", "creator.overview.todo_publish_product"),
     "todo_upload_design" to Triple("📤", "/pages/design-generator?mode=upload", "creator.overview.todo_upload_design"),
+    "todo_save_design" to Triple("💾", "/pages/design-generator", "creator.overview.todo_save_design"),
     "todo_create_hero" to Triple("🖼️", "/pages/content-creation", "creator.overview.todo_create_hero"),
     "todo_create_avatar" to Triple("👤", "/pages/creator-settings#creator-image", "creator.overview.todo_create_avatar"),
     "todo_create_cover" to Triple("🎨", "/pages/creator-settings#cover-image", "creator.overview.todo_create_cover"),
@@ -97,7 +151,6 @@ fun CreatorJourneySection(
                         completedCount = stats.optInt("completed_count", 0)
                         totalCount = stats.optInt("total_todos", 0)
                     }
-                    val progress = r.optJSONObject("progress") ?: JSONObject()
                     val completedIds = (r.optJSONArray("completed_todos") ?: JSONArray()).let { arr ->
                         (0 until arr.length()).map { arr.getString(it) }.toSet()
                     }
@@ -107,20 +160,8 @@ fun CreatorJourneySection(
                     for (i in 0 until todosArr.length()) {
                         val tObj = todosArr.getJSONObject(i)
                         val id = tObj.optString("id", "")
-                        val cfg = TODO_CONFIG[id] ?: Triple("✓", "#", "creator.overview.todos_error")
-                        val label = t( cfg.third, id.replace("todo_", "").replace("_", " ").replaceFirstChar { it.uppercase() })
                         val isClaimed = completedIds.contains(id) || tObj.optBoolean("completed", false)
-                        val todo = JourneyTodo(
-                            id = id,
-                            title = label,
-                            icon = cfg.first,
-                            xp = tObj.optInt("xp", 10),
-                            link = if (cfg.second.startsWith("/")) cfg.second else null,
-                            action = if (cfg.second.startsWith("modal:")) cfg.second else null,
-                            completed = isClaimed,
-                            countCurrent = tObj.optInt("count_current", -1).takeIf { it >= 0 },
-                            countTarget = tObj.optInt("count_target", -1).takeIf { it >= 0 }
-                        )
+                        val todo = parseJourneyTodo(tObj, t).copy(completed = isClaimed)
                         if (isClaimed) completed.add(todo) else open.add(todo)
                     }
                     openTodos = open

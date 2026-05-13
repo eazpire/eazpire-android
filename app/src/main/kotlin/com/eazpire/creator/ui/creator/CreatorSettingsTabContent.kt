@@ -546,11 +546,10 @@ private fun CreatorSettingsLevelContent(
         try {
             val resp = withContext(Dispatchers.IO) { api.getLevel(ownerId) }
             if (resp.optBoolean("ok", false)) {
-                val data = resp.optJSONObject("level") ?: resp
-                level = data.optInt("level", 0)
-                xpCurrent = data.optInt("xp_current", 0)
-                xpNext = data.optInt("xp_next", 100)
-                val arr = data.optJSONArray("features")
+                level = resp.optInt("level", resp.optInt("current_level", 1)).coerceIn(1, 10)
+                xpCurrent = resp.optInt("xp_current", 0)
+                xpNext = resp.optInt("xp_next", 100).coerceAtLeast(0)
+                val arr = resp.optJSONArray("features")
                 features = (0 until (arr?.length() ?: 0)).mapNotNull { i ->
                     arr?.optString(i, null)?.takeIf { it.isNotBlank() }
                 }
