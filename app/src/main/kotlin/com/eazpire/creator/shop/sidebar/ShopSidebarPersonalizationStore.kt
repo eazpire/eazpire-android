@@ -7,9 +7,9 @@ import org.json.JSONObject
 
 /** Web parity: [theme/assets/eaz-redesign-sidebar.js] `eaz_sidebar_hidden`. */
 data class SidebarHiddenState(
-    val containers: MutableSet<String>,
-    val categories: MutableSet<String>,
-    val midcategories: MutableSet<String>,
+    val containers: Set<String>,
+    val categories: Set<String>,
+    val midcategories: Set<String>,
 ) {
     fun hiddenCategoryBadgeCount(): Int = categories.size + midcategories.size
 
@@ -19,42 +19,65 @@ data class SidebarHiddenState(
             .put("categories", JSONArray(categories.toList()))
             .put("midcategories", JSONArray(midcategories.toList()))
 
+    fun toggledContainer(id: String): SidebarHiddenState {
+        val m = containers.toMutableSet()
+        if (!m.remove(id)) m.add(id)
+        return copy(containers = m)
+    }
+
+    fun toggledCategory(id: String): SidebarHiddenState {
+        val m = categories.toMutableSet()
+        if (!m.remove(id)) m.add(id)
+        return copy(categories = m)
+    }
+
+    fun toggledMid(id: String): SidebarHiddenState {
+        val m = midcategories.toMutableSet()
+        if (!m.remove(id)) m.add(id)
+        return copy(midcategories = m)
+    }
+
+    fun removeMid(id: String) = copy(midcategories = midcategories - id)
+
+    fun removeCategory(id: String) = copy(categories = categories - id)
+
+    fun removeContainer(id: String) = copy(containers = containers - id)
+
     companion object {
-        fun empty() = SidebarHiddenState(mutableSetOf(), mutableSetOf(), mutableSetOf())
+        fun empty(): SidebarHiddenState = SidebarHiddenState(emptySet(), emptySet(), emptySet())
 
         fun fromJsonObject(o: JSONObject?): SidebarHiddenState {
-            val s = empty()
-            val root = o ?: return s
-            readArray(root.optJSONArray("containers"), s.containers)
-            readArray(root.optJSONArray("categories"), s.categories)
-            readArray(root.optJSONArray("midcategories"), s.midcategories)
-            return s
+            val root = o ?: return empty()
+            return SidebarHiddenState(
+                containers = readSet(root.optJSONArray("containers")),
+                categories = readSet(root.optJSONArray("categories")),
+                midcategories = readSet(root.optJSONArray("midcategories")),
+            )
         }
 
-        private fun readArray(arr: JSONArray?, into: MutableSet<String>) {
-            if (arr == null) return
-            for (i in 0 until arr.length()) {
-                val v = arr.optString(i, "").trim()
-                if (v.isNotEmpty()) into.add(v)
+        private fun readSet(arr: JSONArray?): Set<String> {
+            if (arr == null) return emptySet()
+            return buildSet {
+                for (i in 0 until arr.length()) {
+                    val v = arr.optString(i, "").trim()
+                    if (v.isNotEmpty()) add(v)
+                }
             }
         }
 
+        /** Union: hidden if either marks it hidden */
         fun mergePreferRemote(local: SidebarHiddenState, remote: JSONObject?): SidebarHiddenState {
-            if (remote == null) return local
+            if (remote == null || remote.length() == 0) return local
             val r = fromJsonObject(remote)
             return SidebarHiddenState(
-                (local.containers + r.containers).toMutableSet(),
-                (local.categories + r.categories).toMutableSet(),
-                (local.midcategories + r.midcategories).toMutableSet(),
+                containers = local.containers + r.containers,
+                categories = local.categories + r.categories,
+                midcategories = local.midcategories + r.midcategories,
             )
         }
     }
 }
 
-/**
- * Persists grid sidebar personalization (web `localStorage` keys).
- * Uses [SharedPreferences] separate file from legacy [SidebarVisibilityStore].
- */
 class ShopSidebarPersonalizationStore(context: Context) {
     private val p: SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -83,9 +106,12 @@ class ShopSidebarPersonalizationStore(context: Context) {
         val raw = p.getString(KEY_ORDER, null) ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
-            buildList(arr.length()) { i ->
-                arr.optString(i, "").trim()
-            }.filter { it.isNotEmpty() }
+            buildList(arr.length()) {
+                for (i in 0 until arr.length()) {
+                    val v = arr.optString(i, "").trim()
+                    if (v.isNotEmpty()) add(v)
+                }
+            }
         } catch (_: Exception) {
             emptyList()
         }

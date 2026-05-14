@@ -1,7 +1,8 @@
-package com.eazpire.creator.ui.header
+﻿package com.eazpire.creator.ui.header
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -12,114 +13,111 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
-import com.eazpire.creator.debug.langDebug
+import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.auth.AuthConfig
+import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
-import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.shop.sidebar.AudienceCard
+import com.eazpire.creator.shop.sidebar.AudienceCategoryColumn
+import com.eazpire.creator.shop.sidebar.AudienceDetailLine
+import com.eazpire.creator.shop.sidebar.AudiencePanelBody
+import com.eazpire.creator.shop.sidebar.AudienceSidebarSection
+import com.eazpire.creator.shop.sidebar.CategoryTile
+import com.eazpire.creator.shop.sidebar.CreatePromoSection
+import com.eazpire.creator.shop.sidebar.ExpandCell
+import com.eazpire.creator.shop.sidebar.GroupedCategorySection
+import com.eazpire.creator.shop.sidebar.GutscheineGridSection
+import com.eazpire.creator.shop.sidebar.ParsedMenu
+import com.eazpire.creator.shop.sidebar.ParsedNavItem
+import com.eazpire.creator.shop.sidebar.RemainingTopSection
+import com.eazpire.creator.shop.sidebar.RemainderBody
+import com.eazpire.creator.shop.sidebar.ShopSidebarConstants
+import com.eazpire.creator.shop.sidebar.ShopSidebarLayoutEngine
+import com.eazpire.creator.shop.sidebar.ShopSidebarMenuParser
+import com.eazpire.creator.shop.sidebar.ShopSidebarPersonalizationStore
+import com.eazpire.creator.shop.sidebar.SidebarGridSection
+import com.eazpire.creator.shop.sidebar.SidebarHiddenState
 import com.eazpire.creator.sidebar.SidebarViewMode
 import com.eazpire.creator.sidebar.SidebarViewStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import kotlin.math.roundToInt
-import com.eazpire.creator.api.CreatorApi
-
-private data class DrawerItem(
-    val label: String,
-    val collectionHandle: String?,
-    val url: String
-)
-
-private val AUDIENCE_HANDLES = listOf("women", "men", "kids", "toddler")
-
-private val CLOTHING_SUBMENU = listOf(
-    "T-Shirts" to "T-Shirt", "Hoodies" to "Hoodie", "Sweatshirts" to "Sweatshirt",
-    "Tank Tops" to "Tank Top", "Jackets" to "Jacket", "Shorts" to "Shorts",
-    "Dresses" to "Dress", "Long Sleeves" to "Long Sleeve", "Pants" to "Pants",
-    "Joggers" to "Joggers", "Jeans" to "Jeans", "Leggings" to "Leggings",
-    "Skirts" to "Skirt", "Socks" to "Sock"
-)
-private val SHOES_SUBMENU = listOf(
-    "Sneakers" to "Sneakers", "Boots" to "Boots", "Sandals" to "Sandals"
-)
-private val ACCESSORIES_SUBMENU = listOf(
-    "Bags" to "Bags", "Jewelry" to "Jewelry", "Hats & Caps" to "Hats", "Scarves" to "Scarves"
-)
-
-private val DRAWER_ITEMS = listOf(
-    DrawerItem("Create", SHOP_MENU_CREATE_HANDLE, ""),
-    DrawerItem("Women", "women", "https://www.eazpire.com/collections/women"),
-    DrawerItem("Men", "men", "https://www.eazpire.com/collections/men"),
-    DrawerItem("Kids", "kids", "https://www.eazpire.com/collections/kids"),
-    DrawerItem("Toddler", "toddler", "https://www.eazpire.com/collections/toddler"),
-    DrawerItem("Home & Living", "home-living", "https://www.eazpire.com/collections/home-living"),
-)
-
-/** Maps drawer label to DB translation key (ui:key format used by API) */
-private val DRAWER_ITEM_KEYS = mapOf(
-    "Create" to "creator.shop_create_product.entry",
-    "Women" to "sidebar.women",
-    "Men" to "sidebar.men",
-    "Kids" to "sidebar.kids",
-    "Toddler" to "eaz.header.toddler",
-    "Home & Living" to "menu.home-living",
-)
-
-private val LIST_VIEW_ITEMS = listOf(
-    "Accessories" to "accessories",
-    "Bags" to "bags",
-    "Drinkware" to "drinkware",
-    "Wall Art" to "wall-art",
-    "Home & Living" to "home-living",
-    "Jewelry" to "jewelry",
-    "Phone Cases" to "phone-cases",
-    "Plush Toys" to "plush-toys",
-    "Stationery" to "stationery",
-    "Tech" to "tech"
-)
 
 @Composable
 fun MenuDrawer(
@@ -139,33 +137,14 @@ fun MenuDrawer(
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
+
     val context = LocalContext.current
     val viewStore = remember { SidebarViewStore(context) }
+    val personalStore = remember { ShopSidebarPersonalizationStore(context) }
     var viewMode by remember { mutableStateOf(viewStore.getViewMode()) }
-    var greetingName by remember { mutableStateOf<String?>(null) }
-    var hiddenPanelVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewMode = viewStore.getViewMode()
-    }
-    LaunchedEffect(tokenStore) {
-        val ownerId = tokenStore?.getOwnerId()
-        if (!ownerId.isNullOrBlank()) {
-            try {
-                val api = CreatorApi(jwt = tokenStore?.getJwt())
-                val resp = withContext(Dispatchers.IO) { api.getCustomerProfile(ownerId) }
-                if (resp.optBoolean("ok", false)) {
-                    val profile = resp.optJSONObject("profile")
-                    greetingName = profile?.optString("first_name", "")?.takeIf { it.isNotBlank() }
-                }
-            } catch (_: Exception) {}
-        } else {
-            greetingName = null
-        }
-    }
-
-    fun dismissWithAnimation() {
-        onDismiss()
     }
 
     Dialog(
@@ -176,222 +155,672 @@ fun MenuDrawer(
             dismissOnClickOutside = true
         )
     ) {
-        // #region agent log
-        langDebug("MenuDrawer.kt:Dialog", "Dialog composing", mapOf("translationStoreNull" to (translationStore == null), "mapSize" to (translationStore?.getTranslationsSync()?.size ?: 0)), "H6")
-        // #endregion
         CompositionLocalProvider(LocalTranslationStore provides translationStore) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val density = LocalDensity.current
-            val drawerWidthPx = with(density) {
-                minOf(maxWidth * 0.85f, 340.dp).toPx()
+            val t = (translationStore ?: LocalTranslationStore.current)?.let { store ->
+                { k: String, d: String -> store.t(k, d) }
+            } ?: { _: String, d: String -> d }
+
+            BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+                val density = LocalDensity.current
+                val drawerWidthPx =
+                    with(density) {
+                        kotlin.math.min(maxWidth.toPx() * 0.85f, 340.dp.toPx())
+                    }
+
+                var isEntered by remember { mutableStateOf(false) }
+                var isExiting by remember { mutableStateOf(false) }
+
+                LaunchedEffect(Unit) {
+                    isEntered = true
+                }
+
+                val offsetXPx by animateFloatAsState(
+                    targetValue = when {
+                        !isEntered -> -drawerWidthPx
+                        isExiting -> -drawerWidthPx
+                        else -> 0f
+                    },
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                )
+
+                LaunchedEffect(isExiting, offsetXPx) {
+                    if (isExiting && offsetXPx <= -drawerWidthPx + 1f) {
+                        onDismiss()
+                    }
+                }
+
+                fun doDismiss() {
+                    isExiting = true
+                }
+
+                MenuDrawerInteractiveRoot(
+                    onDimClick = { doDismiss() },
+                    offsetXPx = offsetXPx,
+                    viewMode = viewMode,
+                    onViewModeChange = {
+                        viewMode = it
+                        viewStore.setViewMode(it)
+                    },
+                    onCloseClick = { doDismiss() },
+                    cartCount = cartCount,
+                    t = t,
+                    tokenStore = tokenStore,
+                    personalStore = personalStore,
+                    onHomeClick = { onHomeClick(); doDismiss() },
+                    onSearchClick = { onSearchClick(); doDismiss() },
+                    onFavoritesClick = { onFavoritesClick(); doDismiss() },
+                    onCartClick = { onCartClick(); doDismiss() },
+                    onAccountClick = { onAccountClick(); doDismiss() },
+                    onCategoryClick = onCategoryClick,
+                    onExternalUrl = onExternalUrl,
+                    dismissDrawer = { doDismiss() },
+                    onVouchersClick = { onVouchersClick(); doDismiss() }
+                )
             }
-            var isEntered by remember { mutableStateOf(false) }
-            var isExiting by remember { mutableStateOf(false) }
+        }
+    }
+}
 
-            LaunchedEffect(Unit) { isEntered = true }
+private fun memoryPreferences(memory: JSONObject?): JSONObject {
+    if (memory == null) return JSONObject()
+    val prefRaw = memory.opt("preferences") ?: return JSONObject()
+    return when (prefRaw) {
+        is String ->
+            prefRaw.trim().takeIf { it.isNotEmpty() }?.let {
+                try {
+                    JSONObject(it)
+                } catch (_: Exception) {
+                    JSONObject()
+                }
+            } ?: JSONObject()
 
-            val offsetXPx by animateFloatAsState(
-                targetValue = when {
-                    !isEntered -> -drawerWidthPx
-                    isExiting -> -drawerWidthPx
-                    else -> 0f
-                },
-                animationSpec = tween(300, easing = FastOutSlowInEasing)
-            )
+        is JSONObject -> prefRaw
+        else -> JSONObject()
+    }
+}
 
-            LaunchedEffect(isExiting, offsetXPx) {
-                if (isExiting && offsetXPx <= -drawerWidthPx + 1f) {
-                    onDismiss()
+private fun ParsedNavItem.squashDuplicateParents(): ParsedNavItem {
+    var cur = this
+    while (cur.links.size == 1 && cur.links.first().handle == cur.handle) {
+        val inner = cur.links.first()
+        cur = copy(url = inner.url.ifBlank { cur.url }, links = inner.links)
+    }
+    return copy(links = cur.links.map { it.squashDuplicateParents() })
+}
+
+private fun absolutizeShopUrl(raw: String): String {
+    val u = raw.trim()
+    return when {
+        u.isEmpty() -> ""
+        u.startsWith("//") -> "https:$u"
+        u.startsWith("/") -> "https://www.eazpire.com$u"
+        Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(u) -> u
+        else -> u
+    }
+}
+
+private fun collectionHandleFromAbsoluteUrl(abs: String): String? {
+    if (abs.isBlank()) return null
+    try {
+        val path = Uri.parse(abs).path ?: return null
+        val m = Regex("/collections/([^/?#]+)", RegexOption.IGNORE_CASE).find(path) ?: return null
+        return m.groupValues[1].trim().takeIf { it.isNotEmpty() }?.lowercase()
+    } catch (_: Exception) {
+        return null
+    }
+}
+
+private fun firstProductTypeFromUrl(abs: String): String? {
+    if (!abs.contains("filter")) return null
+    return try {
+        val uri = Uri.parse(abs)
+        val direct = uri.getQueryParameter("filter.p.product_type")
+        if (!direct.isNullOrBlank()) {
+            return URLDecoder.decode(direct, StandardCharsets.UTF_8.name()).trim().takeIf { it.isNotEmpty() }
+        }
+        val needle = Regex("filter\\.p\\.product_type=([^&]+)")
+        val qStr = uri.encodedQuery ?: abs
+        val enc = needle.find(qStr)?.groupValues?.getOrNull(1) ?: return null
+        try {
+            URLDecoder.decode(enc, StandardCharsets.UTF_8.name()).trim().takeIf { it.isNotEmpty() }
+        } catch (_: Exception) {
+            enc.replace('+', ' ').takeIf { it.isNotBlank() }
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun openParsedNavLeaf(
+    item: ParsedNavItem,
+    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
+    onExternalUrl: ((url: String) -> Unit)?,
+    context: android.content.Context,
+    dismiss: () -> Unit
+) {
+    val abs = absolutizeShopUrl(item.url)
+    val title = item.title
+    val handle = collectionHandleFromAbsoluteUrl(abs)
+    val pt = firstProductTypeFromUrl(abs)
+
+    if (handle != null && onCategoryClick != null) {
+        onCategoryClick(title, handle, pt)
+        dismiss()
+        return
+    }
+
+    if (abs.startsWith("/collections/")) {
+        val h =
+            Regex("/collections/([^/?#]+)", RegexOption.IGNORE_CASE).find(abs)?.groupValues?.getOrNull(1)?.lowercase()
+        if (!h.isNullOrEmpty() && onCategoryClick != null) {
+            onCategoryClick(title, h, pt)
+            dismiss()
+            return
+        }
+    }
+
+    if (abs.isNotBlank()) {
+        if (Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(abs)) {
+            if (onExternalUrl != null) {
+                onExternalUrl(abs)
+            } else {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(abs)))
+                } catch (_: Exception) {}
+            }
+            dismiss()
+        }
+    }
+}
+
+private fun openNavAbsolute(
+    absoluteUrl: String,
+    fallbackLabel: String,
+    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
+    onExternalUrl: ((url: String) -> Unit)?,
+    context: android.content.Context,
+    dismiss: () -> Unit
+) {
+    val abs = absolutizeShopUrl(absoluteUrl).ifBlank { return }
+    val handle = collectionHandleFromAbsoluteUrl(abs)
+    val pt = firstProductTypeFromUrl(abs)
+    if (handle != null && onCategoryClick != null) {
+        onCategoryClick(fallbackLabel, handle, pt)
+        dismiss()
+        return
+    }
+    if (onExternalUrl != null) onExternalUrl(abs)
+    else {
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(abs)))
+        } catch (_: Exception) {}
+    }
+    dismiss()
+}
+
+private fun movableOrderAfterSwap(
+    sections: List<SidebarGridSection>,
+    id: String,
+    delta: Int
+): List<String>? {
+    val cur = sections.mapNotNull { ShopSidebarLayoutEngine.draggableSectionId(it) }.toMutableList()
+    val ix = cur.indexOf(id)
+    if (ix < 0) return null
+    val j = ix + delta
+    if (j < 0 || j >= cur.size) return null
+    val tmp = cur[ix]
+    cur[ix] = cur[j]
+    cur[j] = tmp
+    return cur
+}
+
+private fun SidebarHiddenState.totalHiddenBadge(): Int =
+    containers.size + categories.size + midcategories.size
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MenuDrawerInteractiveRoot(
+    onDimClick: () -> Unit,
+    offsetXPx: Float,
+    viewMode: SidebarViewMode,
+    onViewModeChange: (SidebarViewMode) -> Unit,
+    onCloseClick: () -> Unit,
+    cartCount: Int,
+    t: (String, String) -> String,
+    tokenStore: SecureTokenStore?,
+    personalStore: ShopSidebarPersonalizationStore,
+    onHomeClick: () -> Unit,
+    onSearchClick: () -> Unit,
+    onFavoritesClick: () -> Unit,
+    onCartClick: () -> Unit,
+    onAccountClick: () -> Unit,
+    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
+    onExternalUrl: ((url: String) -> Unit)?,
+    dismissDrawer: () -> Unit,
+    onVouchersClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val ownerId = remember(tokenStore) { tokenStore?.getOwnerId()?.trim().orEmpty() }
+    val api = remember(tokenStore) {
+        CreatorApi(jwt = tokenStore?.getJwt())
+    }
+
+    var greetingName by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(tokenStore, ownerId) {
+        if (ownerId.isBlank()) {
+            greetingName = null
+            return@LaunchedEffect
+        }
+        try {
+            val resp = withContext(Dispatchers.IO) { api.getCustomerProfile(ownerId) }
+            if (resp.optBoolean("ok", false)) {
+                val profile = resp.optJSONObject("profile")
+                greetingName = profile?.optString("first_name", "")?.takeIf { it.isNotBlank() }
+            }
+        } catch (_: Exception) {}
+    }
+
+    var mainMenu by remember { mutableStateOf<ParsedMenu?>(null) }
+    var navLoading by remember { mutableStateOf(false) }
+    var navError by remember { mutableStateOf<String?>(null) }
+
+    var hidden by remember { mutableStateOf(personalStore.loadHidden()) }
+    var eyeRevealHidden by remember { mutableStateOf(personalStore.getEyeRevealHiddenItems()) }
+    var sectionOrder by remember { mutableStateOf(personalStore.loadSectionOrder()) }
+
+    var memoryFlushJob by remember { mutableStateOf<Job?>(null) }
+
+    fun persistHidden(state: SidebarHiddenState) {
+        hidden = state
+        personalStore.saveHidden(state)
+        memoryFlushJob?.cancel()
+        if (ownerId.isBlank()) return
+        memoryFlushJob =
+            scope.launch {
+                delay(450)
+                withContext(Dispatchers.IO) {
+                    try {
+                        api.postEazyMemory(ownerId, JSONObject().put("sidebar_hidden", state.toJsonObject()))
+                    } catch (_: Exception) {}
                 }
             }
+    }
 
-            fun doDismiss() {
-                isExiting = true
+    fun persistSectionOrder(ids: List<String>) {
+        sectionOrder = ids
+        personalStore.saveSectionOrder(ids)
+        memoryFlushJob?.cancel()
+        if (ownerId.isBlank()) return
+        memoryFlushJob =
+            scope.launch {
+                delay(450)
+                withContext(Dispatchers.IO) {
+                    try {
+                        val prefs =
+                            JSONObject()
+                                .put("sidebar_hidden", hidden.toJsonObject())
+                                .put("sidebar_order", JSONArray(ids))
+                        api.postEazyMemory(ownerId, prefs)
+                    } catch (_: Exception) {}
+                }
+            }
+    }
+
+    LaunchedEffect(ownerId) {
+        navLoading = true
+        navError = null
+        try {
+            var local = personalStore.loadHidden()
+            sectionOrder = personalStore.loadSectionOrder()
+            if (ownerId.isNotBlank()) {
+                try {
+                    val memResp = withContext(Dispatchers.IO) { api.getEazyMemory(ownerId) }
+                    if (memResp.optBoolean("ok", false)) {
+                        val prefs = memoryPreferences(memResp.optJSONObject("memory"))
+                        val shObj = prefs.optJSONObject("sidebar_hidden")
+                        local = SidebarHiddenState.mergePreferRemote(local, shObj)
+                    }
+                } catch (_: Exception) {}
+            }
+            hidden = local
+            personalStore.saveHidden(local)
+
+            val navResp = withContext(Dispatchers.IO) { api.getShopNavigation() }
+            if (!navResp.optBoolean("ok", false)) {
+                navError =
+                    navResp.optString("message", "")
+                        .ifBlank { t("eaz.sidebar.menu_reload", "Could not load menu") }
+                mainMenu = null
+                return@LaunchedEffect
+            }
+            val (main, _) = ShopSidebarMenuParser.parseMenusResponse(navResp)
+            mainMenu = main
+        } catch (e: Exception) {
+            navError = e.message ?: t("eaz.sidebar.menu_reload", "Could not load menu")
+            mainMenu = null
+        } finally {
+            navLoading = false
+        }
+    }
+
+    val (_, listRootsRaw, sections) =
+        remember(mainMenu, sectionOrder) {
+            ShopSidebarLayoutEngine.buildGridSections(mainMenu, null, true, sectionOrder)
+        }
+    val listRoots = remember(listRootsRaw) { listRootsRaw.map { it.squashDuplicateParents() } }
+
+    var hiddenPanelVisible by remember { mutableStateOf(false) }
+    var audienceSheet by remember { mutableStateOf<AudiencePanelBody?>(null) }
+
+    val audienceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val listExpandedMap = remember { mutableStateMapOf<String, Boolean>() }
+    val tileExpandMap = remember { mutableStateMapOf<String, Boolean>() }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable { onDimClick() }
+        )
+
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 340.dp)
+                    .fillMaxWidth(0.85f)
+                    .align(Alignment.CenterStart)
+                    .offset { IntOffset(offsetXPx.roundToInt(), 0) }
+                    .background(Color(0xFFFEF5ED))
+        ) {
+            MenuDrawerHeaderShell(
+                greetingName = greetingName,
+                viewMode = viewMode,
+                onViewModeToggle = {
+                    val next =
+                        if (viewMode == SidebarViewMode.Grid) SidebarViewMode.List else SidebarViewMode.Grid
+                    onViewModeChange(next)
+                },
+                hiddenPanelVisible = hiddenPanelVisible,
+                onHiddenPanelToggle = {
+                    hiddenPanelVisible = !hiddenPanelVisible
+                },
+                eyeRevealHidden = eyeRevealHidden,
+                onEyeRevealToggle = {
+                    eyeRevealHidden = !eyeRevealHidden
+                    personalStore.setEyeRevealHiddenItems(eyeRevealHidden)
+                },
+                badgeCount = hidden.totalHiddenBadge(),
+                t = t,
+                onClose = onCloseClick
+            )
+
+            AnimatedVisibility(visible = hiddenPanelVisible) {
+                SidebarHiddenRestorePanel(
+                    hidden = hidden,
+                    t = t,
+                    onDismiss = { hiddenPanelVisible = false },
+                    onRestoreContainer = { persistHidden(hidden.removeContainer(it)) },
+                    onRestoreMid = { persistHidden(hidden.removeMid(it)) },
+                    onRestoreCat = { persistHidden(hidden.removeCategory(it)) }
+                )
             }
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.45f))
-                        .clickable { doDismiss() }
-                )
-                Column(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .widthIn(max = 340.dp)
-                        .fillMaxWidth(0.85f)
-                        .align(Alignment.CenterStart)
-                        .offset { IntOffset(offsetXPx.roundToInt(), 0) }
-                        .background(Color(0xFFFEF5ED))
-                ) {
-                    MenuDrawerHeader(
-                        greetingName = greetingName,
-                        viewMode = viewMode,
-                        onViewModeChange = {
-                            viewMode = it
-                            viewStore.setViewMode(it)
-                        },
-                        hiddenPanelVisible = hiddenPanelVisible,
-                        onHiddenPanelToggle = { hiddenPanelVisible = !hiddenPanelVisible },
-                        hiddenCount = 0,
-                        onClose = { doDismiss() }
-                    )
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(vertical = 8.dp)
-                    ) {
-                        when (viewMode) {
-                            SidebarViewMode.Grid -> {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    MenuDrawerVouchersRow(
-                                        translationStore = translationStore,
-                                        onOpen = {
-                                            onVouchersClick()
-                                            doDismiss()
-                                        }
-                                    )
-                                    MenuDrawerGridView(
-                                        items = DRAWER_ITEMS,
-                                        audienceHandles = AUDIENCE_HANDLES,
-                                        context = context,
-                                        onCategoryClick = onCategoryClick,
-                                        onExternalUrl = onExternalUrl,
-                                        dismissWithAnimation = { doDismiss() },
-                                        t = (translationStore ?: LocalTranslationStore.current)?.let { store -> { k: String, d: String -> store.t(k, d) } } ?: { _: String, d: String -> d }
-                                    )
-                                }
-                            }
-                            SidebarViewMode.List -> MenuDrawerListView(
-                                items = LIST_VIEW_ITEMS,
-                                onCategoryClick = onCategoryClick,
-                                dismissWithAnimation = { doDismiss() }
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 8.dp)
+            ) {
+                when {
+                    navLoading -> {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator(Modifier.size(32.dp), color = EazColors.Orange)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                t("eaz.sidebar.menu_loading", "Loading shop menuâ€¦"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = EazColors.TextSecondary
                             )
                         }
                     }
-                    MenuDrawerFooter(
-                        cartCount = cartCount,
-                        t = (translationStore ?: LocalTranslationStore.current)?.let { store -> { k: String, d: String -> store.t(k, d) } } ?: { _: String, d: String -> d },
-                        onHomeClick = {
-                            onHomeClick()
-                            doDismiss()
-                        },
-                        onSearchClick = {
-                            onSearchClick()
-                            doDismiss()
-                        },
-                        onFavoritesClick = {
-                            onFavoritesClick()
-                            doDismiss()
-                        },
-                        onCartClick = {
-                            onCartClick()
-                            doDismiss()
-                        },
-                        onAccountClick = {
-                            onAccountClick()
-                            doDismiss()
+                    navError != null -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                navError ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        navLoading = true
+                                        navError = null
+                                        try {
+                                            val navResp = withContext(Dispatchers.IO) { api.getShopNavigation() }
+                                            if (navResp.optBoolean("ok", false)) {
+                                                val (main, _) =
+                                                    ShopSidebarMenuParser.parseMenusResponse(navResp)
+                                                mainMenu = main
+                                                navError = null
+                                            } else {
+                                                navError =
+                                                    navResp.optString("message", "").ifBlank {
+                                                        t(
+                                                            "eaz.sidebar.menu_reload",
+                                                            "Could not load menu"
+                                                        )
+                                                    }
+                                            }
+                                        } catch (e: Exception) {
+                                            navError = e.message
+                                        } finally {
+                                            navLoading = false
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text(t("eaz.sidebar.menu_reload", "Reload menu"))
+                            }
                         }
-                    )
+                    }
+                    else ->
+                        when (viewMode) {
+                            SidebarViewMode.Grid ->
+                                SidebarDrawerGridEngine(
+                                    sections = sections,
+                                    hidden = hidden,
+                                    eyeReveal = eyeRevealHidden,
+                                    t = t,
+                                    ownerId = ownerId,
+                                    api = api,
+                                    persistHidden = { persistHidden(it) },
+                                    onMoveSection = { id, delta ->
+                                        movableOrderAfterSwap(sections, id, delta)
+                                            ?.let { persistSectionOrder(it) }
+                                    },
+                                    onCategoryClick = onCategoryClick,
+                                    onExternalUrl = onExternalUrl,
+                                    dismiss = dismissDrawer,
+                                    context = context,
+                                    onOpenAudienceCategories = { audienceSheet = it },
+                                    onVouchersClickFull = onVouchersClick,
+                                    collapsedMap = tileExpandMap,
+                                )
+
+                            SidebarViewMode.List ->
+                                Column(Modifier.fillMaxWidth()) {
+                                    listRoots.forEach { root ->
+                                        MenuDrawerRecursiveListItems(
+                                            item = root,
+                                            depth = 0,
+                                            expanded = listExpandedMap,
+                                            path = "r",
+                                            t = t,
+                                            onLeafClick = {
+                                                openParsedNavLeaf(it, onCategoryClick, onExternalUrl, context, dismissDrawer)
+                                            },
+                                        )
+                                    }
+                                }
+                        }
                 }
             }
+
+            MenuDrawerFooter(
+                cartCount = cartCount,
+                t = t,
+                onHomeClick = onHomeClick,
+                onSearchClick = onSearchClick,
+                onFavoritesClick = onFavoritesClick,
+                onCartClick = onCartClick,
+                onAccountClick = onAccountClick
+            )
         }
+    }
+
+    if (audienceSheet != null) {
+        val body = audienceSheet!!
+        ModalBottomSheet(
+            onDismissRequest = { audienceSheet = null },
+            sheetState = audienceSheetState
+        ) {
+            AudienceCategoriesSheetBody(
+                body = body,
+                hidden = hidden,
+                eyeReveal = eyeRevealHidden,
+                t = t,
+                persistHidden = { persistHidden(it) },
+                onLineClick = { line ->
+                    openNavAbsolute(line.url, line.labelRaw, onCategoryClick, onExternalUrl, context, dismissDrawer)
+                },
+                onTitleClick = { col ->
+                    openNavAbsolute(col.titleUrl, col.title, onCategoryClick, onExternalUrl, context, dismissDrawer)
+                },
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
         }
     }
 }
 
 @Composable
-private fun MenuDrawerVouchersRow(
-    translationStore: TranslationStore?,
-    onOpen: () -> Unit
-) {
-    val tStore = translationStore ?: LocalTranslationStore.current ?: return
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onOpen() }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = tStore.t("eaz.sidebar.gift_cards_coupons", "Gift Cards & Coupons"),
-            style = MaterialTheme.typography.titleSmall,
-            color = EazColors.TextPrimary
-        )
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = tStore.t("eaz.wallet.open_vouchers", "Open gift cards"),
-            tint = EazColors.TextSecondary,
-            modifier = Modifier.size(22.dp)
-        )
-    }
-}
-
-@Composable
-private fun MenuDrawerHeader(
+private fun MenuDrawerHeaderShell(
     greetingName: String?,
     viewMode: SidebarViewMode,
-    onViewModeChange: (SidebarViewMode) -> Unit,
+    onViewModeToggle: () -> Unit,
     hiddenPanelVisible: Boolean,
     onHiddenPanelToggle: () -> Unit,
-    hiddenCount: Int = 0,
-    onClose: () -> Unit
+    eyeRevealHidden: Boolean,
+    onEyeRevealToggle: () -> Unit,
+    badgeCount: Int,
+    t: (String, String) -> String,
+    onClose: () -> Unit,
 ) {
+    val greet =
+        greetingName?.let { n ->
+            "${t("eaz.sidebar.drawer_hello", "Hello,")} $n".trimEnd()
+        } ?: t("eaz.sidebar.drawer_guest", "Guest")
+
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(EazColors.Orange)
-            .padding(14.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(EazColors.Orange)
+                .padding(10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = if (greetingName != null) "Hello, $greetingName" else "Guest",
-            style = MaterialTheme.typography.titleMedium,
+            text = greet,
+            style = MaterialTheme.typography.titleSmall,
             color = Color.White,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick = { onViewModeChange(if (viewMode == SidebarViewMode.Grid) SidebarViewMode.List else SidebarViewMode.Grid) }
-            ) {
+            Surface(color = Color.White.copy(alpha = 0.22f), shape = RoundedCornerShape(8.dp)) {
+                Row {
+                    IconButton(onClick = { if (viewMode != SidebarViewMode.Grid) onViewModeToggle() }) {
+                        Icon(
+                            Icons.Default.GridView,
+                            contentDescription = t("eaz.sidebar.view_grid", "Grid view"),
+                            tint =
+                                if (viewMode == SidebarViewMode.Grid) {
+                                    Color.White
+                                } else {
+                                    Color.White.copy(alpha = 0.55f)
+                                },
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    IconButton(onClick = { if (viewMode != SidebarViewMode.List) onViewModeToggle() }) {
+                        Icon(
+                            Icons.Default.List,
+                            contentDescription = t("eaz.sidebar.view_list", "List view"),
+                            tint =
+                                if (viewMode == SidebarViewMode.List) {
+                                    Color.White
+                                } else {
+                                    Color.White.copy(alpha = 0.55f)
+                                },
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            }
+            IconButton(onClick = onEyeRevealToggle) {
                 Icon(
-                    imageVector = if (viewMode == SidebarViewMode.Grid) Icons.Default.List else Icons.Default.GridView,
-                    contentDescription = if (viewMode == SidebarViewMode.Grid) "List view" else "Grid view",
+                    imageVector =
+                        if (eyeRevealHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                    contentDescription = t("eaz.sidebar.eye_toggle", "Toggle hidden items"),
                     tint = Color.White,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(22.dp),
                 )
             }
             Box {
                 IconButton(onClick = onHiddenPanelToggle) {
                     Icon(
-                        imageVector = Icons.Default.Visibility,
-                        contentDescription = "Hidden sections",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
+                        Icons.Default.Menu,
+                        contentDescription = t("eaz.sidebar.hidden_items_title", "Hidden items"),
+                        tint =
+                            if (hiddenPanelVisible) Color(0xFFFFE08A) else Color.White,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
-                if (hiddenCount > 0) {
+                if (badgeCount > 0) {
                     Text(
-                        text = "$hiddenCount",
+                        text = if (badgeCount < 99) "$badgeCount" else "99+",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 4.dp, y = (-2).dp)
-                            .background(EazColors.Orange, androidx.compose.foundation.shape.CircleShape)
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 6.dp, y = (-4).dp)
+                                .clip(CircleShape)
+                                .background(EazColors.OrangeDark)
+                                .padding(horizontal = 5.dp, vertical = 1.dp),
                     )
                 }
             }
             IconButton(onClick = onClose) {
                 Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Close",
-                    tint = Color.White
+                    Icons.Default.Close,
+                    contentDescription =
+                        t("accessibility.close_dialog", "Close dialog"),
+                    tint = Color.White,
                 )
             }
         }
@@ -399,138 +828,123 @@ private fun MenuDrawerHeader(
 }
 
 @Composable
-private fun MenuDrawerGridView(
-    items: List<DrawerItem>,
-    audienceHandles: List<String>,
-    context: android.content.Context,
-    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
-    onExternalUrl: ((url: String) -> Unit)?,
-    dismissWithAnimation: () -> Unit,
-    t: (String, String) -> String = { _, d -> d }
+private fun SidebarHiddenRestorePanel(
+    hidden: SidebarHiddenState,
+    t: (String, String) -> String,
+    onDismiss: () -> Unit,
+    onRestoreContainer: (String) -> Unit,
+    onRestoreMid: (String) -> Unit,
+    onRestoreCat: (String) -> Unit,
 ) {
-    var expandedAudience by remember { mutableStateOf<String?>(null) }
-    items.forEach { item ->
-        val isAudience = item.collectionHandle != null && item.collectionHandle in audienceHandles
-        if (isAudience) {
-            val isExpanded = expandedAudience == item.collectionHandle
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                if (isExpanded) {
-                                    onCategoryClick?.invoke(item.label, item.collectionHandle, null)
-                                    dismissWithAnimation()
-                                } else {
-                                    expandedAudience = item.collectionHandle
-                                }
-                            }
-                    ) {
-                        Text(
-                            text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = EazColors.TextPrimary
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            expandedAudience = if (isExpanded) null else item.collectionHandle
-                        },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ExpandMore,
-                            contentDescription = if (isExpanded) "Collapse" else "Expand",
-                            tint = EazColors.TextPrimary,
-                            modifier = Modifier
-                                .size(20.dp)
-                                .rotate(if (isExpanded) 180f else 0f)
-                        )
-                    }
-                }
-                if (isExpanded) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 24.dp, end = 20.dp, bottom = 8.dp)
-                    ) {
-                        listOf(
-                            "Clothing" to CLOTHING_SUBMENU,
-                            "Shoes" to SHOES_SUBMENU,
-                            "Accessories" to ACCESSORIES_SUBMENU
-                        ).forEach { (catLabel, subItems) ->
-                            Text(
-                                text = catLabel,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = EazColors.TextSecondary,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                            )
-                            subItems.forEach { (subLabel, productType) ->
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            onCategoryClick?.invoke(
-                                                item.label,
-                                                item.collectionHandle,
-                                                productType
-                                            )
-                                            dismissWithAnimation()
-                                        }
-                                        .padding(vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = subLabel,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = EazColors.TextPrimary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFF2EDE6))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            Arrangement.SpaceBetween,
+            Alignment.CenterVertically
+        ) {
+            Text(text = t("eaz.sidebar.hidden_items_title", "Hidden items"), fontWeight = FontWeight.SemiBold)
+            TextButton(onClick = onDismiss) {
+                Text(t("accessibility.close_dialog", "Close dialog"))
             }
-        } else {
-            val isShopCreate = item.collectionHandle == SHOP_MENU_CREATE_HANDLE
-            Box(
-                modifier = Modifier
+        }
+        if (hidden.containers.isEmpty() && hidden.midcategories.isEmpty() && hidden.categories.isEmpty()) {
+            Text(
+                text = t("eaz.sidebar.no_hidden_yet", "No hidden rows."),
+                style = MaterialTheme.typography.bodySmall,
+                color = EazColors.TextSecondary,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            return
+        }
+        hidden.containers.forEach { id ->
+            TextButton(onClick = { onRestoreContainer(id) }) {
+                Text("${t("eaz.sidebar.restore_item", "Show again")}: $id", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        hidden.midcategories.forEach { id ->
+            TextButton(onClick = { onRestoreMid(id) }) {
+                Text("${t("eaz.sidebar.restore_item", "Show again")}: $id")
+            }
+        }
+        hidden.categories.forEach { id ->
+            TextButton(onClick = { onRestoreCat(id) }) {
+                Text("${t("eaz.sidebar.restore_item", "Show again")}: $id")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuDrawerRecursiveListItems(
+    item: ParsedNavItem,
+    depth: Int,
+    expanded: SnapshotStateMap<String, Boolean>,
+    path: String,
+    t: (String, String) -> String,
+    onLeafClick: (ParsedNavItem) -> Unit,
+) {
+    val key = "${path}_${depth}_${item.handle}_${item.title}"
+    val branch = item.links.isNotEmpty()
+    val open = expanded[key] ?: (depth == 0 && branch)
+    val padStart = (8 + depth * 12).dp
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier =
+                Modifier
                     .fillMaxWidth()
                     .clickable {
-                        if (item.collectionHandle != null && onCategoryClick != null) {
-                            onCategoryClick(item.label, item.collectionHandle, null)
-                            dismissWithAnimation()
-                        } else if (onExternalUrl != null) {
-                            onExternalUrl(item.url)
-                            dismissWithAnimation()
-                        } else {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)))
-                                dismissWithAnimation()
-                            } catch (_: Exception) {}
+                        when {
+                            !branch -> onLeafClick(item)
+                            else -> expanded[key] = !open
                         }
                     }
-                    .padding(horizontal = 20.dp, vertical = if (isShopCreate) 10.dp else 12.dp)
-            ) {
-                if (isShopCreate) {
-                    ShopCreateNavPill {
-                        Text(
-                            text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                } else {
-                    Text(
-                        text = DRAWER_ITEM_KEYS[item.label]?.let { t(it, item.label) } ?: item.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = EazColors.TextPrimary
+                    .padding(start = padStart, top = 6.dp, end = 8.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text =
+                    if (item.title.isBlank()) item.handle else item.title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = EazColors.TextPrimary,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (branch) {
+                Icon(
+                    Icons.Default.ExpandMore,
+                    contentDescription =
+                        if (open) {
+                            t("eaz.sidebar.accordion_collapse", "Collapse submenu")
+                        } else {
+                            t("eaz.sidebar.accordion_expand", "Expand submenu")
+                        },
+                    Modifier
+                        .size(22.dp)
+                        .rotate(if (open) 180f else 0f),
+                    tint = EazColors.TextSecondary,
+                )
+            }
+        }
+
+        AnimatedVisibility(open && branch) {
+            Column(Modifier.padding(start = padStart)) {
+                item.links.forEach { child ->
+                    MenuDrawerRecursiveListItems(
+                        item = child,
+                        depth = depth + 1,
+                        expanded = expanded,
+                        path = key,
+                        t = t,
+                        onLeafClick = onLeafClick,
                     )
                 }
             }
@@ -539,26 +953,782 @@ private fun MenuDrawerGridView(
 }
 
 @Composable
-private fun MenuDrawerListView(
-    items: List<Pair<String, String>>,
-    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
-    dismissWithAnimation: () -> Unit
+private fun AudienceCategoriesSheetBody(
+    body: AudiencePanelBody,
+    hidden: SidebarHiddenState,
+    eyeReveal: Boolean,
+    t: (String, String) -> String,
+    persistHidden: (SidebarHiddenState) -> Unit,
+    onLineClick: (AudienceDetailLine) -> Unit,
+    onTitleClick: (AudienceCategoryColumn) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    items.forEach { (label, handle) ->
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    onCategoryClick?.invoke(label, handle, null)
-                    dismissWithAnimation()
+    Column(modifier.padding(horizontal = 16.dp)) {
+        Text(
+            text =
+                body.audHandle.replaceFirstChar { ch ->
+                    if (ch.isLowerCase()) ch.titlecaseChar() else ch
+                },
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+
+        body.categories.forEach { col ->
+            val colHidden = hidden.categories.contains(col.catHidePrefix)
+            if (colHidden && !eyeReveal) return@forEach
+
+            Divider(modifier = Modifier.padding(vertical = 6.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text =
+                        if (col.navTitleKey.isNotBlank()) t(col.navTitleKey, col.title)
+                        else col.title,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .alpha(if (colHidden && eyeReveal) 0.45f else 1f)
+                            .clickable { onTitleClick(col) },
+                )
+                IconButton(onClick = { persistHidden(hidden.toggledCategory(col.catHidePrefix)) }) {
+                    Icon(
+                        imageVector =
+                            if (hidden.categories.contains(col.catHidePrefix)) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+            }
+
+            col.lines.forEach { line ->
+                val hidRow = hidden.categories.contains(line.hideCatId)
+                if (hidRow && !eyeReveal) return@forEach
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onLineClick(line) }
+                        .padding(vertical = 8.dp),
+                    Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (line.navTitleKey.isNotBlank()) t(line.navTitleKey, line.labelRaw) else line.labelRaw,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .alpha(if (hidRow && eyeReveal) 0.45f else 1f),
+                    )
+                    IconButton(onClick = { persistHidden(hidden.toggledCategory(line.hideCatId)) }) {
+                        Icon(
+                            imageVector =
+                                if (hidRow) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun draggableIdsMemo(sections: List<SidebarGridSection>): List<String> =
+    sections.mapNotNull { ShopSidebarLayoutEngine.draggableSectionId(it) }
+
+@Composable
+private fun SidebarDrawerGridEngine(
+    sections: List<SidebarGridSection>,
+    hidden: SidebarHiddenState,
+    eyeReveal: Boolean,
+    t: (String, String) -> String,
+    ownerId: String,
+    api: CreatorApi,
+    persistHidden: (SidebarHiddenState) -> Unit,
+    onMoveSection: (String, Int) -> Unit,
+    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
+    onExternalUrl: ((url: String) -> Unit)?,
+    dismiss: () -> Unit,
+    context: android.content.Context,
+    onOpenAudienceCategories: (AudiencePanelBody) -> Unit,
+    onVouchersClickFull: () -> Unit,
+    collapsedMap: SnapshotStateMap<String, Boolean>,
+) {
+    val movable = remember(sections) { draggableIdsMemo(sections) }
+
+    fun containerHiddenSkip(cid: String): Pair<Boolean, Float> =
+        when {
+            !hidden.containers.contains(cid) -> false to 1f
+            eyeReveal -> false to 0.42f
+            else -> true to 1f
+        }
+
+    Column(Modifier.fillMaxWidth()) {
+        sections.forEach { sec ->
+            when (sec) {
+                is GutscheineGridSection -> {
+                    val id = ShopSidebarConstants.CONTAINER_GUTSCHEINE
+                    val (skip, _) = containerHiddenSkip(id)
+                    if (skip) return@forEach
+
+                    SidebarSectionChrome(
+                        title = t("eaz.sidebar.gift_cards_coupons", "Gift Cards & Coupons"),
+                        draggableId = id,
+                        movableIds = movable,
+                        containerEyeId = id,
+                        hidden = hidden,
+                        onMoveSection = onMoveSection,
+                        persistHidden = persistHidden,
+                        contentAlpha = containerHiddenSkip(id).second,
+                        t = t,
+                    )
+                    Column(Modifier.padding(horizontal = 12.dp)) {
+                        SidebarGutscheineInline(ownerId = ownerId, api = api, t = t, onOpenFullWallet = onVouchersClickFull)
+                    }
+                }
+
+                is CreatePromoSection -> {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onCategoryClick?.invoke("", SHOP_MENU_CREATE_HANDLE, null)
+                                dismiss()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                    ) {
+                        ShopCreateNavPill {
+                            Text(
+                                t("creator.shop_create_product.entry", "Create"),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                        }
+                    }
+                }
+
+                is AudienceSidebarSection -> {
+                    val id = ShopSidebarConstants.CONTAINER_AUDIENCE
+                    val (skip, alphaBg) = containerHiddenSkip(id)
+                    if (skip) return@forEach
+                    SidebarSectionChrome(
+                        title = t("creator.shop_create_product.catalog_filter_audience", "Audience"),
+                        draggableId = id,
+                        movableIds = movable,
+                        containerEyeId = id,
+                        hidden = hidden,
+                        onMoveSection = onMoveSection,
+                        persistHidden = persistHidden,
+                        contentAlpha = alphaBg,
+                        t = t,
+                    )
+                    Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).alpha(alphaBg)) {
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            sec.cards.forEach { card ->
+                                AudienceCardCell(
+                                    card = card,
+                                    hidden = hidden,
+                                    eyeReveal = eyeReveal,
+                                    t = t,
+                                    persistHidden = persistHidden,
+                                    onOpenBrowse = {
+                                        openNavAbsolute(
+                                            card.collectionUrl,
+                                            card.title,
+                                            onCategoryClick,
+                                            onExternalUrl,
+                                            context,
+                                            dismiss,
+                                        )
+                                    },
+                                    onOpenCategories = {
+                                        sec.panelBodies.firstOrNull { it.audHandle == card.audHandle }
+                                            ?.let { body -> onOpenAudienceCategories(body) }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                is GroupedCategorySection -> {
+                    val (skip, alphaBg) = containerHiddenSkip(sec.containerId)
+                    if (skip) return@forEach
+                    SidebarSectionChrome(
+                        title = t(sec.sectionTitleKey, sec.sectionTitleKey),
+                        draggableId = sec.containerId,
+                        movableIds = movable,
+                        containerEyeId = sec.containerId,
+                        hidden = hidden,
+                        onMoveSection = onMoveSection,
+                        persistHidden = persistHidden,
+                        contentAlpha = alphaBg,
+                        t = t,
+                    )
+                    SidebarCategoryTiles(
+                        tiles = sec.tiles,
+                        hidden = hidden,
+                        eyeReveal = eyeReveal,
+                        collapsedMap = collapsedMap,
+                        t = t,
+                        persistHidden = persistHidden,
+                        onExternalUrl = onExternalUrl,
+                        onCategoryClick = onCategoryClick,
+                        dismiss = dismiss,
+                        context = context,
+                        modifier = Modifier.padding(horizontal = 12.dp).alpha(alphaBg),
+                    )
+                }
+
+                is RemainingTopSection -> {
+                    val (skip, alphaBg) = containerHiddenSkip(sec.containerId)
+                    if (skip) return@forEach
+                    SidebarSectionChrome(
+                        title =
+                            if (sec.navTitleKey.isNotBlank()) {
+                                t(sec.navTitleKey, sec.title)
+                            } else sec.title,
+                        draggableId = sec.containerId,
+                        movableIds = movable,
+                        containerEyeId = sec.containerId,
+                        hidden = hidden,
+                        onMoveSection = onMoveSection,
+                        persistHidden = persistHidden,
+                        contentAlpha = alphaBg,
+                        t = t,
+                    )
+
+                    Column(Modifier.padding(horizontal = 12.dp).alpha(alphaBg)) {
+                        when (val b = sec.body) {
+                            is RemainderBody.SingleTrending -> {
+                                val midHidden = hidden.midcategories.contains(b.midHideId)
+                                if (midHidden && !eyeReveal) return@Column
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .alpha(if (midHidden && eyeReveal) 0.45f else 1f)
+                                        .clickable {
+                                            openNavAbsolute(
+                                                b.url,
+                                                b.label,
+                                                onCategoryClick,
+                                                onExternalUrl,
+                                                context,
+                                                dismiss,
+                                            )
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text =
+                                            if (b.navKey.isNotBlank()) t(b.navKey, b.label) else b.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier =
+                                            Modifier
+                                                .weight(1f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    IconButton(onClick = { persistHidden(hidden.toggledMid(b.midHideId)) }) {
+                                        Icon(
+                                            if (midHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription =
+                                                t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                }
+                            }
+
+                            is RemainderBody.Tiles -> {
+                                SidebarCategoryTiles(
+                                    tiles = b.tiles,
+                                    hidden = hidden,
+                                    eyeReveal = eyeReveal,
+                                    collapsedMap = collapsedMap,
+                                    t = t,
+                                    persistHidden = persistHidden,
+                                    onExternalUrl = onExternalUrl,
+                                    onCategoryClick = onCategoryClick,
+                                    dismiss = dismiss,
+                                    context = context,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SidebarSectionChrome(
+    title: String,
+    draggableId: String?,
+    movableIds: List<String>,
+    containerEyeId: String?,
+    hidden: SidebarHiddenState,
+    onMoveSection: (String, Int) -> Unit,
+    persistHidden: (SidebarHiddenState) -> Unit,
+    contentAlpha: Float,
+    t: (String, String) -> String,
+) {
+    val ix = draggableId?.let { d -> movableIds.indexOf(d) } ?: -1
+    Row(
+        Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = EazColors.TextPrimary,
+            modifier = Modifier.weight(1f).alpha(contentAlpha.coerceIn(0f, 1f)),
+        )
+        draggableId?.let {
+            IconButton(onClick = { onMoveSection(it, -1) }, enabled = ix > 0) {
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription =
+                        t("eaz.sidebar.section_move_up", "Move section up"),
+                )
+            }
+            IconButton(
+                onClick = { onMoveSection(it, +1) },
+                enabled = ix >= 0 && ix < movableIds.lastIndex,
+            ) {
+                Icon(Icons.Default.KeyboardArrowDown, t("eaz.sidebar.section_move_down", "Move section down"))
+            }
+        }
+        containerEyeId?.let { cid ->
+            val hiddenC = hidden.containers.contains(cid)
+            IconButton(onClick = { persistHidden(hidden.toggledContainer(cid)) }) {
+                Icon(
+                    if (hiddenC) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                    tint = EazColors.TextSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudienceCardCell(
+    card: AudienceCard,
+    hidden: SidebarHiddenState,
+    eyeReveal: Boolean,
+    t: (String, String) -> String,
+    persistHidden: (SidebarHiddenState) -> Unit,
+    onOpenBrowse: () -> Unit,
+    onOpenCategories: () -> Unit,
+) {
+    val hid = hidden.midcategories.contains(card.midId)
+    if (!(hid && !eyeReveal)) {
+        Surface(
+            color = Color.White,
+            tonalElevation = 1.dp,
+            shadowElevation = 0.dp,
+            shape = RoundedCornerShape(10.dp),
+            modifier =
+                Modifier
+                    .widthIn(min = 118.dp)
+                    .alpha(if (hid && eyeReveal) 0.45f else 1f),
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                color = EazColors.TextPrimary
+            Column(Modifier.padding(10.dp)) {
+                Text(text = card.emoji, style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    text =
+                        if (card.navTitleKey.isNotBlank()) t(card.navTitleKey, card.title) else card.title,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = onOpenBrowse) {
+                        Text(t("eaz.sidebar.browse_collections", "Browse"))
+                    }
+                    TextButton(onClick = onOpenCategories) {
+                        Text(t("eaz.sidebar.categories_short", "Categories"))
+                    }
+                }
+                TextButton(onClick = { persistHidden(hidden.toggledMid(card.midId)) }) {
+                    Text(
+                        if (hid) {
+                            t("eaz.sidebar.restore_item", "Show again")
+                        } else {
+                            t("eaz.sidebar.hide", "Hide")
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SidebarCategoryTiles(
+    tiles: List<CategoryTile>,
+    hidden: SidebarHiddenState,
+    eyeReveal: Boolean,
+    collapsedMap: SnapshotStateMap<String, Boolean>,
+    t: (String, String) -> String,
+    persistHidden: (SidebarHiddenState) -> Unit,
+    onExternalUrl: ((url: String) -> Unit)?,
+    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
+    dismiss: () -> Unit,
+    context: android.content.Context,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier) {
+        tiles.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { tile ->
+                    SidebarCategoryTileSingle(
+                        tile = tile,
+                        hidden = hidden,
+                        eyeReveal = eyeReveal,
+                        collapsedMap = collapsedMap,
+                        t = t,
+                        persistHidden = persistHidden,
+                        onExternalUrl = onExternalUrl,
+                        onCategoryClick = onCategoryClick,
+                        dismiss = dismiss,
+                        context = context,
+                        Modifier.weight(1f),
+                    )
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun SidebarCategoryTileSingle(
+    tile: CategoryTile,
+    hidden: SidebarHiddenState,
+    eyeReveal: Boolean,
+    collapsedMap: SnapshotStateMap<String, Boolean>,
+    t: (String, String) -> String,
+    persistHidden: (SidebarHiddenState) -> Unit,
+    onExternalUrl: ((url: String) -> Unit)?,
+    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
+    dismiss: () -> Unit,
+    context: android.content.Context,
+    modifier: Modifier = Modifier,
+) {
+    val hidMid = hidden.midcategories.contains(tile.midId)
+    if (!(hidMid && !eyeReveal)) {
+        val expanded = collapsedMap[tile.midId] ?: true
+
+        Surface(
+        modifier = modifier.alpha(if (hidMid && eyeReveal) 0.45f else 1f),
+        shape = RoundedCornerShape(10.dp),
+        color = Color.White,
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clickable {
+                            if (tile.expandable) {
+                                val cur = collapsedMap[tile.midId] ?: true
+                                collapsedMap[tile.midId] = !cur
+                            } else if (tile.leafUrl != null) {
+                                openNavAbsolute(tile.leafUrl, tile.titleRaw, onCategoryClick, onExternalUrl, context, dismiss)
+                            }
+                        },
+                ) {
+                    Text(text = tile.emoji, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        text =
+                            if (tile.navTitleKey.isNotBlank()) t(tile.navTitleKey, tile.titleRaw) else tile.titleRaw,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                IconButton(onClick = { persistHidden(hidden.toggledMid(tile.midId)) }) {
+                    Icon(
+                        if (hidMid) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+
+            if (tile.expandable && tile.expandCells.isNotEmpty()) {
+                if (!(collapsedMap[tile.midId] ?: true)) {
+                    TextButton(onClick = { collapsedMap[tile.midId] = true }) {
+                        Text(t("eaz.sidebar.show_subcategories", "Show subcategories"))
+                    }
+                }
+            }
+
+            if (expanded && tile.expandable && tile.expandCells.isNotEmpty()) {
+                Divider(Modifier.padding(vertical = 6.dp))
+                tile.expandCells.forEach { cell ->
+                    SidebarExpandCellRow(
+                        cell = cell,
+                        hidden = hidden,
+                        eyeReveal = eyeReveal,
+                        t = t,
+                        persistHidden = persistHidden,
+                        onExternalUrl = onExternalUrl,
+                        onCategoryClick = onCategoryClick,
+                        dismiss = dismiss,
+                        context = context,
+                    )
+                }
+            }
+        }
+    }
+    }
+}
+
+@Composable
+private fun SidebarExpandCellRow(
+    cell: ExpandCell,
+    hidden: SidebarHiddenState,
+    eyeReveal: Boolean,
+    t: (String, String) -> String,
+    persistHidden: (SidebarHiddenState) -> Unit,
+    onExternalUrl: ((url: String) -> Unit)?,
+    onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
+    dismiss: () -> Unit,
+    context: android.content.Context,
+) {
+    val hid = hidden.categories.contains(cell.hideCatId)
+    if (!(hid && !eyeReveal)) {
+        Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .alpha(if (hid && eyeReveal) 0.45f else 1f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text =
+                if (cell.navTitleKey.isNotBlank()) t(cell.navTitleKey, cell.labelRaw) else cell.labelRaw,
+            style = MaterialTheme.typography.bodySmall,
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .clickable {
+                        openNavAbsolute(cell.url, cell.labelRaw, onCategoryClick, onExternalUrl, context, dismiss)
+                    },
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        IconButton(onClick = { persistHidden(hidden.toggledCategory(cell.hideCatId)) }) {
+            Icon(
+                if (hid) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                modifier = Modifier.size(18.dp),
             )
+        }
+    }
+    }
+}
+
+private fun gutterGiftPurchased(gc: JSONObject): Boolean {
+    val reward = gc.optString("gift_card_origin", "") == "reward"
+    val sent =
+        gc.optBoolean("is_buyer", false) &&
+            gc.optJSONObject("email_template")?.optString("status") == "sent"
+    return !reward && !sent
+}
+
+private fun gutterGiftMoneyLine(gc: JSONObject): String {
+    val inner = gc.optJSONObject("gift_card") ?: gc
+    val bal = inner.optString("balance", "")
+    val cur = inner.optString("currency", "EUR").uppercase()
+    val parts = mutableListOf<String>()
+    if (bal.isNotBlank()) parts += bal
+    if (cur.isNotBlank()) parts += cur
+    return parts.joinToString(" ").ifBlank { inner.optString("last_characters", "••••") }
+}
+
+@Composable
+private fun SidebarGutscheineInline(
+    ownerId: String,
+    api: CreatorApi,
+    t: (String, String) -> String,
+    onOpenFullWallet: () -> Unit,
+) {
+    var tab by remember { mutableStateOf(0) }
+    var loading by remember { mutableStateOf(false) }
+    var giftCards by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var promo by remember { mutableStateOf<JSONObject?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(ownerId) {
+        loading = true
+        err = null
+        giftCards = emptyList()
+        promo = null
+        if (ownerId.isBlank()) {
+            loading = false
+            return@LaunchedEffect
+        }
+        try {
+            val g =
+                withContext(Dispatchers.IO) {
+                    api.getCustomerGiftCards(ownerId, AuthConfig.SHOP_DOMAIN)
+                }
+            val pr = withContext(Dispatchers.IO) { api.getPromoSlots(ownerId) }
+            giftCards =
+                if (g.optBoolean("ok", false)) {
+                    val arr = g.optJSONArray("gift_cards") ?: JSONArray()
+                    buildList(arr.length()) {
+                        for (i in 0 until arr.length()) {
+                            val o = arr.getJSONObject(i)
+                            if (gutterGiftPurchased(o)) add(o)
+                        }
+                    }
+                } else emptyList()
+            promo = if (pr.optBoolean("ok", false)) pr else null
+        } catch (e: Exception) {
+            err = e.message
+        } finally {
+            loading = false
+        }
+    }
+
+    Column(Modifier.padding(vertical = 8.dp)) {
+        TabRow(selectedTabIndex = tab) {
+            Tab(
+                selected = tab == 0,
+                onClick = { tab = 0 },
+                text = { Text(t("eaz.sidebar.my_gift_cards", "My Gift Cards")) },
+            )
+            Tab(
+                selected = tab == 1,
+                onClick = { tab = 1 },
+                text = {
+                    Text(t("eaz.sidebar.coupons", "Coupons"))
+                },
+            )
+        }
+
+        TextButton(onClick = onOpenFullWallet, modifier = Modifier.padding(top = 4.dp)) {
+            Text(t("eaz.wallet.open_vouchers", "Open gift cards"))
+        }
+
+        if (ownerId.isBlank()) {
+            Text(
+                t("eaz.sidebar.wallet_sign_in_hint", "Sign in to see gift cards and coupons here."),
+                Modifier.padding(top = 8.dp),
+                color = EazColors.TextSecondary,
+            )
+        } else {
+            if (loading) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(Modifier.size(28.dp))
+                }
+            } else if (err != null) {
+                Text(err ?: "", modifier = Modifier.padding(8.dp), color = MaterialTheme.colorScheme.error)
+            } else if (tab == 0) {
+                if (giftCards.isEmpty()) {
+                    Text(
+                        t("eaz.sidebar.no_gift_cards_yet", "No gift cards yet"),
+                        Modifier.padding(8.dp),
+                        color = EazColors.TextSecondary,
+                    )
+                } else {
+                    giftCards.take(8).forEach { gc ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                gutterGiftMoneyLine(gc),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            } else {
+                val p = promo
+                if (p == null) {
+                    Text(t("eaz.sidebar.no_coupons_available", "No coupons available"), Modifier.padding(8.dp))
+                } else {
+                    val slotsTotal = p.optInt("slots_total", 5)
+                    val active = p.optJSONArray("active") ?: JSONArray()
+                    val used = active.length()
+                    val available = (slotsTotal - used).coerceAtLeast(0)
+                    Text(
+                        t(
+                            "creator.voucher_page.promo_slots_counter",
+                            "{available} / {total} slots available",
+                        ).replace("{available}", available.toString()).replace("{total}", slotsTotal.toString()),
+                        modifier = Modifier.padding(8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EazColors.TextSecondary,
+                    )
+                }
+            }
+        }
+
+        TextButton(
+            onClick = {
+                if (ownerId.isBlank()) return@TextButton
+                scope.launch {
+                    loading = true
+                    try {
+                        val pr = withContext(Dispatchers.IO) { api.getPromoSlots(ownerId) }
+                        promo = if (pr.optBoolean("ok", false)) pr else promo
+                        val g =
+                            withContext(Dispatchers.IO) {
+                                api.getCustomerGiftCards(ownerId, AuthConfig.SHOP_DOMAIN)
+                            }
+                        giftCards =
+                            if (g.optBoolean("ok", false)) {
+                                val arr = g.optJSONArray("gift_cards") ?: JSONArray()
+                                buildList(arr.length()) {
+                                    for (i in 0 until arr.length()) {
+                                        val o = arr.getJSONObject(i)
+                                        if (gutterGiftPurchased(o)) add(o)
+                                    }
+                                }
+                            } else giftCards
+                    } catch (_: Exception) {
+                    } finally {
+                        loading = false
+                    }
+                }
+            },
+        ) {
+            Text(t("eaz.sidebar.menu_reload", "Reload"))
         }
     }
 }
@@ -566,20 +1736,21 @@ private fun MenuDrawerListView(
 @Composable
 private fun MenuDrawerFooter(
     cartCount: Int,
-    t: (String, String) -> String = { _, d -> d },
+    t: (String, String) -> String,
     onHomeClick: () -> Unit,
     onSearchClick: () -> Unit,
     onFavoritesClick: () -> Unit,
     onCartClick: () -> Unit,
-    onAccountClick: () -> Unit
+    onAccountClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFF2F2F2))
-            .padding(horizontal = 8.dp, vertical = 12.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFF2F2F2))
+                .padding(horizontal = 8.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         FooterNavItem(icon = Icons.Default.Home, label = t("eaz.sidebar.nav_home", "Home"), onClick = onHomeClick)
         FooterNavItem(icon = Icons.Default.Search, label = t("eaz.sidebar.nav_search", "Search"), onClick = onSearchClick)
@@ -591,11 +1762,12 @@ private fun MenuDrawerFooter(
                     text = if (cartCount < 100) "$cartCount" else "99+",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 8.dp, y = (-4).dp)
-                        .background(EazColors.Orange, androidx.compose.foundation.shape.CircleShape)
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 8.dp, y = (-4).dp)
+                            .background(EazColors.Orange, CircleShape)
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
                 )
             }
         }
@@ -607,22 +1779,18 @@ private fun MenuDrawerFooter(
 private fun FooterNavItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier.clickable(onClick = onClick),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
             tint = EazColors.TextPrimary,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(24.dp),
         )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = EazColors.TextPrimary
-        )
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = EazColors.TextPrimary)
     }
 }

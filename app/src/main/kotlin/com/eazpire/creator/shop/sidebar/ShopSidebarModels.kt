@@ -163,3 +163,7 @@ fun hasRealChildSubitems(child: ParsedNavItem): Boolean {
     if (child.links.size == 1 && child.links[0].handle != child.handle) return true
     return false
 }
+
+/** Top-level branch with one child that duplicates the parent title (Liquid list view). */
+fun hasSingleDuplicateParent(link: ParsedNavItem): Boolean =
+    link.links.size == 1 && link.links.first().handle == link.handle
