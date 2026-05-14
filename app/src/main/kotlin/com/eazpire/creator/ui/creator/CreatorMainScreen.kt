@@ -1,10 +1,9 @@
 package com.eazpire.creator.ui.creator
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -14,9 +13,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -36,7 +38,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -45,7 +51,6 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
-import com.eazpire.creator.ui.creator.CreatorDrawer
 import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.header.LanguageModal
 import com.eazpire.creator.ui.header.LocaleModalItem
@@ -450,38 +455,60 @@ fun CreatorMainScreen(
             )
         }
 
-        AnimatedVisibility(
-            visible = drawerVisible,
-            enter = fadeIn() + slideInHorizontally(initialOffsetX = { -it }),
-            exit = fadeOut() + slideOutHorizontally(targetOffsetX = { -it })
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { drawerVisible = false },
-                contentAlignment = Alignment.CenterStart
-            ) {
-                CreatorDrawer(
-                    visible = true,
-                    currentScreen = currentScreen,
-                    screenLabels = listOf(
-                        translationStore.t("creator.mobile.dashboard", "Dashboard"),
-                        translationStore.t("creator.mobile.generator", "Generator"),
-                        translationStore.t("creator.mobile.creations", "Creations"),
-                        translationStore.t("creator.mobile.marketing", "Marketing"),
-                        translationStore.t("creator.mobile.automations", "Automations")
-                    ),
-                    onDismiss = { drawerVisible = false },
-                    onSwitchToShop = onSwitchToShop,
-                    onScreenSelect = { index ->
-                        drawerVisible = false
-                        currentScreen = index
-                    }
-                )
+        val drawerSlide by animateFloatAsState(
+            targetValue = if (drawerVisible) 1f else 0f,
+            animationSpec = tween(350, easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)),
+            label = "creatorDrawerSlide",
+        )
+        val backdropAlpha by animateFloatAsState(
+            targetValue = if (drawerVisible) 1f else 0f,
+            animationSpec = tween(300, easing = FastOutSlowInEasing),
+            label = "creatorDrawerBackdrop",
+        )
+
+        if (backdropAlpha > 0.005f || drawerSlide > 0.005f) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val density = LocalDensity.current
+                val drawerWidthDpFixed = (maxWidth * 0.85f).coerceAtMost(280.dp)
+                val drawerWidthPx = with(density) { drawerWidthDpFixed.toPx() }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.5f * backdropAlpha))
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                            ) { drawerVisible = false },
+                    )
+                    CreatorDrawer(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(drawerWidthDpFixed)
+                            .offset {
+                                IntOffset(
+                                    x = ((-drawerWidthPx) * (1f - drawerSlide)).roundToInt(),
+                                    y = 0,
+                                )
+                            }
+                            .align(Alignment.CenterStart),
+                        currentScreen = currentScreen,
+                        screenLabels = listOf(
+                            translationStore.t("creator.mobile.dashboard", "Dashboard"),
+                            translationStore.t("creator.mobile.generator", "Generator"),
+                            translationStore.t("creator.mobile.creations", "Creations"),
+                            translationStore.t("creator.mobile.marketing", "Marketing"),
+                            translationStore.t("creator.mobile.automations", "Automations"),
+                        ),
+                        translationStore = translationStore,
+                        onDismiss = { drawerVisible = false },
+                        onSwitchToShop = onSwitchToShop,
+                        onScreenSelect = { index ->
+                            drawerVisible = false
+                            currentScreen = index
+                        },
+                    )
+                }
             }
         }
         if (termsModalVisible) {
