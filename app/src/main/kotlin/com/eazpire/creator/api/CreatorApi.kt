@@ -65,6 +65,18 @@ class CreatorApi(
         mapOf("region" to region)
     )
 
+    /** GET ?op=get-shop-navigation — Storefront menus for drawer (main + optional audience). */
+    suspend fun getShopNavigation(
+        mainMenu: String = "main-menu",
+        audienceMenu: String = "audience",
+    ): JSONObject = call(
+        "get-shop-navigation",
+        mapOf(
+            "main_menu" to mainMenu,
+            "audience_menu" to audienceMenu,
+        ),
+    )
+
     /** GET ?op=get-level&owner_id=xxx – Level/XP for Creator dashboard */
     suspend fun getLevel(ownerId: String): JSONObject = call(
         "get-level",
