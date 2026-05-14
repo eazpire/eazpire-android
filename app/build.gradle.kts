@@ -111,6 +111,10 @@ dependencies {
     // Play Store: prompt for update when a newer version is available (Play-installed builds only)
     implementation("com.google.android.play:app-update:2.1.0")
     implementation("com.google.android.play:app-update-ktx:2.1.0")
+
+    testImplementation("junit:junit:4.13.2")
+    /** Same JSON stack as JVM unit tests ([ShopSidebarMenuParser] uses JSONObject) */
+    testImplementation("org.json:json:20240303")
 }
 
 // Play Console rejects debug-signed bundles; require a real upload keystore for bundleRelease.
