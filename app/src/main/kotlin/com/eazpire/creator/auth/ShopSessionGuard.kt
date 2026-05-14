@@ -20,15 +20,18 @@ object ShopSessionGuard {
     private const val LEGACY_VALIDATION_EXTEND_MS = 50L * 60L * 1000L
 
     /**
-     * Synchron: nur ausloggen, wenn OAuth wirklich tot ist (abgelaufen **und** kein refresh_token).
+     * Synchron: Nie ausloggen, solange ein refresh_token existiert ([refreshAccessTokenIfNeeded] soll laufen können).
+     * Nur wenn OAuth ohne Refresh wirkl. abgelaufen ist oder keine Credentials mehr da sind → clear.
      */
     fun shouldLogoutSync(tokenStore: SecureTokenStore): Boolean {
         if (tokenStore.getJwt().isNullOrBlank()) return false
-        if (tokenStore.getAccessToken().isNullOrBlank()) return true
+        if (!tokenStore.getRefreshToken().isNullOrBlank()) return false
+
+        val access = tokenStore.getAccessToken()
+        if (access.isNullOrBlank()) return true
         val exp = tokenStore.getShopifyAccessExpiresAtEpochMs()
         if (exp <= 0L) return false
-        val expired = System.currentTimeMillis() >= exp
-        return expired && tokenStore.getRefreshToken().isNullOrBlank()
+        return System.currentTimeMillis() >= exp
     }
 
     fun performFullLogout(context: Context, tokenStore: SecureTokenStore) {
@@ -45,13 +48,16 @@ object ShopSessionGuard {
     suspend fun refreshAccessTokenIfNeeded(context: Context, tokenStore: SecureTokenStore) =
         withContext(Dispatchers.IO) {
             if (tokenStore.getJwt().isNullOrBlank()) return@withContext
-            val access = tokenStore.getAccessToken() ?: return@withContext
-            if (access.isBlank()) return@withContext
             val refresh = tokenStore.getRefreshToken() ?: return@withContext
+
+            val access = tokenStore.getAccessToken().orEmpty()
             val exp = tokenStore.getShopifyAccessExpiresAtEpochMs()
             val now = System.currentTimeMillis()
+
+            /** Auch ohne access_token weiter, solange refresh da ist (z. B. nach Upgrade / teilweise leere Prefs). */
             val needRefresh =
-                (exp <= 0L) ||
+                access.isBlank() ||
+                    exp <= 0L ||
                     (exp > 0L && now >= exp - REFRESH_BUFFER_MS)
             if (!needRefresh) return@withContext
 

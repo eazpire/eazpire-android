@@ -89,17 +89,22 @@ class SecureTokenStore(context: Context) {
     }
 
     /**
-     * Eingeloggt = JWT + access_token; abgelaufener access_token ist ok, solange ein refresh_token
-     * die Session retten kann (Refresh läuft beim App-Start).
+     * Eingeloggt, wenn JWT da ist und die Session wiederherstellbar ist:
+     * - Mit refresh_token gilt die Session auch bei fehlendem oder abgelaufenem Shopify access_token,
+     *   bis [ShopSessionGuard.refreshAccessTokenIfNeeded] neue Tokens geschrieben hat (wichtig nach App-Updates / Storage-Glitches).
+     * - Legacy ohne expires_at ohne refresh_token: access_token Pflicht wie bisher (validate auf dem Server).
      */
     fun isLoggedIn(): Boolean {
-        if (getJwt().isNullOrBlank()) return false
-        if (getAccessToken().isNullOrBlank()) return false
+        val jwtOk = !getJwt().isNullOrBlank()
+        if (!jwtOk) return false
+        val refresh = getRefreshToken()
+        if (!refresh.isNullOrBlank()) return true
+
+        val access = getAccessToken()
+        if (access.isNullOrBlank()) return false
         val exp = getShopifyAccessExpiresAtEpochMs()
-        if (exp > 0L && System.currentTimeMillis() >= exp) {
-            return getRefreshToken() != null
-        }
-        return true
+        if (exp <= 0L) return true
+        return System.currentTimeMillis() < exp
     }
 
     companion object {
