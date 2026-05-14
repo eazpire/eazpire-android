@@ -6,7 +6,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,8 +24,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
@@ -48,13 +49,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -67,17 +66,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
@@ -117,6 +119,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
@@ -162,10 +165,7 @@ fun MenuDrawer(
 
             BoxWithConstraints(modifier = modifier.fillMaxSize()) {
                 val density = LocalDensity.current
-                val drawerWidthPx =
-                    with(density) {
-                        kotlin.math.min(maxWidth.toPx() * 0.85f, 340.dp.toPx())
-                    }
+                val drawerWidthPx = with(density) { maxWidth.toPx() }
 
                 var isEntered by remember { mutableStateOf(false) }
                 var isExiting by remember { mutableStateOf(false) }
@@ -513,9 +513,6 @@ private fun MenuDrawerInteractiveRoot(
     /** Web parity ([theme/assets/eaz-redesign-sidebar.js]): hidden restore strip when eye is “open” and mid/cat items are hidden */
     val showHiddenRestorePanel = eyeRevealHidden && hidden.hiddenCategoryBadgeCount() > 0
 
-    var audienceSheet by remember { mutableStateOf<AudiencePanelBody?>(null) }
-
-    val audienceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listExpandedMap = remember { mutableStateMapOf<String, Boolean>() }
     val tileExpandMap = remember { mutableStateMapOf<String, Boolean>() }
 
@@ -532,8 +529,7 @@ private fun MenuDrawerInteractiveRoot(
             modifier =
                 Modifier
                     .fillMaxHeight()
-                    .widthIn(max = 340.dp)
-                    .fillMaxWidth(0.85f)
+                    .fillMaxWidth()
                     .align(Alignment.CenterStart)
                     .offset { IntOffset(offsetXPx.roundToInt(), 0) }
                     .background(Color(0xFFFEF5ED))
@@ -653,7 +649,6 @@ private fun MenuDrawerInteractiveRoot(
                                     onExternalUrl = onExternalUrl,
                                     dismiss = dismissDrawer,
                                     context = context,
-                                    onOpenAudienceCategories = { audienceSheet = it },
                                     onVouchersClickFull = onVouchersClick,
                                     collapsedMap = tileExpandMap,
                                 )
@@ -685,29 +680,6 @@ private fun MenuDrawerInteractiveRoot(
                 onFavoritesClick = onFavoritesClick,
                 onCartClick = onCartClick,
                 onAccountClick = onAccountClick
-            )
-        }
-    }
-
-    if (audienceSheet != null) {
-        val body = audienceSheet!!
-        ModalBottomSheet(
-            onDismissRequest = { audienceSheet = null },
-            sheetState = audienceSheetState
-        ) {
-            AudienceCategoriesSheetBody(
-                body = body,
-                hidden = hidden,
-                eyeReveal = eyeRevealHidden,
-                t = t,
-                persistHidden = { persistHidden(it) },
-                onLineClick = { line ->
-                    openNavAbsolute(line.url, line.labelRaw, onCategoryClick, onExternalUrl, context, dismissDrawer)
-                },
-                onTitleClick = { col ->
-                    openNavAbsolute(col.titleUrl, col.title, onCategoryClick, onExternalUrl, context, dismissDrawer)
-                },
-                modifier = Modifier.padding(bottom = 24.dp)
             )
         }
     }
@@ -958,85 +930,410 @@ private fun MenuDrawerRecursiveListItems(
     }
 }
 
+/** Matches `eaz-redesign-sidebar.css` `.sb-ziel-card__header--*` gradients */
+private fun audienceCardHeaderBrush(norm: String): Brush {
+    val (a, b) =
+        when (norm) {
+            "men" -> Color(0xFF4A8FCE) to Color(0xFF2668A8)
+            "kids" -> Color(0xFFA8D8EA) to Color(0xFF62B6CB)
+            "toddler" -> Color(0xFFF8C8DC) to Color(0xFFF4A4C0)
+            else -> Color(0xFFF9A03F) to Color(0xFFF97316) // women + default
+        }
+    return Brush.linearGradient(colors = listOf(a, b))
+}
+
+/** Matches `.sb-aud-panel[data-active-aud]` header gradients on web */
+private fun audiencePanelHeaderBrush(norm: String): Brush {
+    val (a, b) =
+        when (norm) {
+            "men" -> Color(0xFF4A8FCE) to Color(0xFF2668A8)
+            "kids" -> Color(0xFF62B6CB) to Color(0xFF3F9EB7)
+            "toddler" -> Color(0xFFF4A4C0) to Color(0xFFEA89AE)
+            else -> Color(0xFFF9A03F) to Color(0xFFF97316)
+        }
+    return Brush.linearGradient(colors = listOf(a, b))
+}
+
+private fun normalizedAudiencePaletteKey(raw: String): String {
+    val h = raw.lowercase()
+    return when {
+        h in setOf("women", "female", "frauen") -> "women"
+        h in setOf("men", "male", "manner", "männer") -> "men"
+        h in setOf("kids", "kinder") -> "kids"
+        h in setOf("toddler", "baby", "babys") -> "toddler"
+        h == "men" || h == "women" || h == "kids" || h == "toddler" -> h
+        else -> "women"
+    }
+}
+
 @Composable
-private fun AudienceCategoriesSheetBody(
+private fun AudienceZielCard(
+    card: AudienceCard,
+    isExpanded: Boolean,
+    hidden: SidebarHiddenState,
+    eyeReveal: Boolean,
+    t: (String, String) -> String,
+    persistHidden: (SidebarHiddenState) -> Unit,
+    onToggleExpand: () -> Unit,
+    onOpenBrowse: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hidMid = hidden.midcategories.contains(card.midId)
+    if (hidMid && !eyeReveal) {
+        Spacer(Modifier.fillMaxWidth().height(48.dp))
+        return
+    }
+
+    val norm = normalizedAudiencePaletteKey(card.audHandle)
+    val label =
+        if (card.navTitleKey.isNotBlank()) {
+            t(card.navTitleKey, card.title).uppercase()
+        } else {
+            card.title.uppercase()
+        }
+
+    Surface(
+        modifier =
+            modifier
+                .alpha(if (hidMid && eyeReveal) 0.45f else 1f)
+                .fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xD9FFFFFF),
+        shadowElevation = 1.dp,
+        border =
+            if (isExpanded) {
+                BorderStroke(2.dp, Color.White)
+            } else {
+                null
+            },
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(audienceCardHeaderBrush(norm))
+                    .padding(horizontal = 6.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            IconButton(
+                onClick = { persistHidden(hidden.toggledMid(card.midId)) },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector =
+                        if (hidMid) {
+                            Icons.Default.VisibilityOff
+                        } else {
+                            Icons.Default.Visibility
+                        },
+                    contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                    modifier = Modifier.size(14.dp),
+                    tint =
+                        if (hidMid) {
+                            Color(0xFFFCA5A5)
+                        } else {
+                            Color.White.copy(alpha = 0.45f)
+                        },
+                )
+            }
+            Text(
+                text = card.emoji,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+            Text(
+                text = label,
+                style =
+                    MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.35.sp,
+                    ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = Color.White,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clickable(onClick = onOpenBrowse),
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.White.copy(alpha = 0.16f))
+                        .border(
+                            width = 1.dp,
+                            color = Color.White.copy(alpha = 0.24f),
+                            shape = RoundedCornerShape(6.dp),
+                        ).clickable(onClick = onToggleExpand),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription =
+                        if (isExpanded) {
+                            t("eaz.sidebar.accordion_collapse", "Collapse submenu")
+                        } else {
+                            t("eaz.sidebar.accordion_expand", "Expand submenu")
+                        },
+                    tint = Color.White.copy(alpha = 0.95f),
+                    modifier = Modifier.size(16.dp).rotate(if (isExpanded) 180f else 0f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudienceInlinePanel(
     body: AudiencePanelBody,
+    activeCard: AudienceCard,
     hidden: SidebarHiddenState,
     eyeReveal: Boolean,
     t: (String, String) -> String,
     persistHidden: (SidebarHiddenState) -> Unit,
     onLineClick: (AudienceDetailLine) -> Unit,
-    onTitleClick: (AudienceCategoryColumn) -> Unit,
-    modifier: Modifier = Modifier,
+    onCategoryTitleClick: (AudienceCategoryColumn) -> Unit,
 ) {
-    Column(modifier.padding(horizontal = 16.dp)) {
-        Text(
-            text =
-                body.audHandle.replaceFirstChar { ch ->
-                    if (ch.isLowerCase()) ch.titlecaseChar() else ch
-                },
-            fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 12.dp),
-        )
+    val norm = normalizedAudiencePaletteKey(body.audHandle)
+    var expandedCatKey by remember(body.audHandle) { mutableStateOf<String?>(null) }
 
-        body.categories.forEach { col ->
-            val colHidden = hidden.categories.contains(col.catHidePrefix)
-            if (colHidden && !eyeReveal) return@forEach
+    val titleTranslated =
+        if (activeCard.navTitleKey.isNotBlank()) {
+            t(activeCard.navTitleKey, activeCard.title)
+        } else {
+            activeCard.title
+        }
+    val activeWord = t("eaz.sidebar.audience_active", "Active")
+    val bannerText = "${activeCard.emoji} ${titleTranslated.trim()} ${activeWord.trim()}".trim()
 
-            Divider(modifier = Modifier.padding(vertical = 6.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text =
-                        if (col.navTitleKey.isNotBlank()) t(col.navTitleKey, col.title)
-                        else col.title,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .alpha(if (colHidden && eyeReveal) 0.45f else 1f)
-                            .clickable { onTitleClick(col) },
-                )
-                IconButton(onClick = { persistHidden(hidden.toggledCategory(col.catHidePrefix)) }) {
-                    Icon(
-                        imageVector =
-                            if (hidden.categories.contains(col.catHidePrefix)) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
-
-            col.lines.forEach { line ->
-                val hidRow = hidden.categories.contains(line.hideCatId)
-                if (hidRow && !eyeReveal) return@forEach
-                Row(
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xEFFFFFFF),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.06f)),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Box(
+                modifier =
                     Modifier
                         .fillMaxWidth()
-                        .clickable { onLineClick(line) }
-                        .padding(vertical = 8.dp),
-                    Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        if (line.navTitleKey.isNotBlank()) t(line.navTitleKey, line.labelRaw) else line.labelRaw,
-                        style = MaterialTheme.typography.bodyMedium,
+                        .background(audiencePanelHeaderBrush(norm))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    text = bannerText.uppercase(),
+                    style =
+                        MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.4.sp,
+                        ),
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+            ) {
+                body.categories.forEach { col ->
+                    val catHiddenWhole = hidden.categories.contains(col.catHidePrefix)
+                    if (catHiddenWhole && !eyeReveal) return@forEach
+
+                    val catExpanded = expandedCatKey == col.rowKey
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.White.copy(alpha = 0.88f),
+                        border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.04f)),
                         modifier =
                             Modifier
-                                .weight(1f)
-                                .alpha(if (hidRow && eyeReveal) 0.45f else 1f),
-                    )
-                    IconButton(onClick = { persistHidden(hidden.toggledCategory(line.hideCatId)) }) {
-                        Icon(
-                            imageVector =
-                                if (hidRow) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
-                            modifier = Modifier.size(20.dp),
-                        )
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp),
+                    ) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 2.dp, end = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(0.dp),
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        persistHidden(hidden.toggledCategory(col.catHidePrefix))
+                                    },
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        imageVector =
+                                            if (hidden.categories.contains(col.catHidePrefix)) {
+                                                Icons.Default.VisibilityOff
+                                            } else {
+                                                Icons.Default.Visibility
+                                            },
+                                        contentDescription =
+                                            t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                                        tint = Color(0xFFB8956F).copy(alpha = 0.35f),
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                                Text(
+                                    text =
+                                        if (col.navTitleKey.isNotBlank()) {
+                                            t(col.navTitleKey, col.title)
+                                        } else {
+                                            col.title
+                                        },
+                                    modifier =
+                                        Modifier
+                                            .weight(1f)
+                                            .alpha(
+                                                if (catHiddenWhole && eyeReveal) {
+                                                    0.45f
+                                                } else {
+                                                    1f
+                                                },
+                                            ).clickable { onCategoryTitleClick(col) },
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = EazColors.TextPrimary,
+                                )
+                                IconButton(
+                                    onClick = {
+                                        expandedCatKey =
+                                            if (expandedCatKey == col.rowKey) {
+                                                null
+                                            } else {
+                                                col.rowKey
+                                            }
+                                    },
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ExpandMore,
+                                        contentDescription =
+                                            if (catExpanded) {
+                                                t(
+                                                    "eaz.sidebar.accordion_collapse",
+                                                    "Collapse submenu",
+                                                )
+                                            } else {
+                                                t(
+                                                    "eaz.sidebar.accordion_expand",
+                                                    "Expand submenu",
+                                                )
+                                            },
+                                        tint = Color(0xFFC8AE9A),
+                                        modifier =
+                                            Modifier
+                                                .size(18.dp)
+                                                .rotate(if (catExpanded) 180f else 0f),
+                                    )
+                                }
+                            }
+                            AnimatedVisibility(visible = catExpanded && col.lines.isNotEmpty()) {
+                                Column(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                                ) {
+                                    Divider(
+                                        color = Color.Black.copy(alpha = 0.06f),
+                                        modifier = Modifier.padding(bottom = 4.dp),
+                                    )
+                                    col.lines.forEach { line ->
+                                        val lnHidden =
+                                            hidden.categories.contains(line.hideCatId)
+                                        if (lnHidden && !eyeReveal) return@forEach
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            IconButton(
+                                                onClick = {
+                                                    persistHidden(
+                                                        hidden.toggledCategory(line.hideCatId),
+                                                    )
+                                                },
+                                                modifier = Modifier.size(36.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector =
+                                                        if (lnHidden) {
+                                                            Icons.Default.VisibilityOff
+                                                        } else {
+                                                            Icons.Default.Visibility
+                                                        },
+                                                    contentDescription =
+                                                        t(
+                                                            "eaz.sidebar.toggle_row",
+                                                            "Toggle row visibility",
+                                                        ),
+                                                    modifier = Modifier.size(18.dp),
+                                                    tint = Color(0xFFB8956F).copy(alpha = 0.38f),
+                                                )
+                                            }
+                                            Row(
+                                                modifier =
+                                                    Modifier
+                                                        .weight(1f)
+                                                        .alpha(
+                                                            if (lnHidden && eyeReveal) {
+                                                                0.45f
+                                                            } else {
+                                                                1f
+                                                            },
+                                                        ).clickable { onLineClick(line) },
+                                                verticalAlignment =
+                                                    Alignment.CenterVertically,
+                                                horizontalArrangement =
+                                                    Arrangement.SpaceBetween,
+                                            ) {
+                                                Text(
+                                                    text =
+                                                        if (
+                                                            line.navTitleKey.isNotBlank()
+                                                        ) {
+                                                            t(
+                                                                line.navTitleKey,
+                                                                line.labelRaw,
+                                                            )
+                                                        } else {
+                                                            line.labelRaw
+                                                        },
+                                                    style =
+                                                        MaterialTheme.typography.bodyMedium
+                                                            .copy(
+                                                                fontWeight = FontWeight.Medium,
+                                                            ),
+                                                    modifier = Modifier.padding(end = 8.dp),
+                                                )
+                                                Icon(
+                                                    Icons.Default.KeyboardArrowRight,
+                                                    contentDescription = null,
+                                                    tint =
+                                                        Color(0xFFB8956F).copy(alpha = 0.55f),
+                                                    modifier =
+                                                        Modifier.size(
+                                                            16.dp,
+                                                        ),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1061,11 +1358,11 @@ private fun SidebarDrawerGridEngine(
     onExternalUrl: ((url: String) -> Unit)?,
     dismiss: () -> Unit,
     context: android.content.Context,
-    onOpenAudienceCategories: (AudiencePanelBody) -> Unit,
     onVouchersClickFull: () -> Unit,
     collapsedMap: SnapshotStateMap<String, Boolean>,
 ) {
     val movable = remember(sections) { draggableIdsMemo(sections) }
+    var audienceExpandedAudHandle by remember { mutableStateOf<String?>(null) }
 
     fun containerHiddenSkip(cid: String): Pair<Boolean, Float> =
         when {
@@ -1134,31 +1431,100 @@ private fun SidebarDrawerGridEngine(
                         contentAlpha = alphaBg,
                         t = t,
                     )
-                    Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).alpha(alphaBg)) {
-                        Row(
-                            Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Column(
+                        Modifier
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .alpha(alphaBg),
+                    ) {
+                        sec.cards.chunked(2).forEach { rowCards ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                rowCards.forEach { card ->
+                                    Box(Modifier.weight(1f)) {
+                                        AudienceZielCard(
+                                            card = card,
+                                            isExpanded =
+                                                audienceExpandedAudHandle ==
+                                                    card.audHandle,
+                                            hidden = hidden,
+                                            eyeReveal = eyeReveal,
+                                            t = t,
+                                            persistHidden = persistHidden,
+                                            onToggleExpand = {
+                                                audienceExpandedAudHandle =
+                                                    if (
+                                                        audienceExpandedAudHandle ==
+                                                            card.audHandle
+                                                    ) {
+                                                        null
+                                                    } else {
+                                                        card.audHandle
+                                                    }
+                                            },
+                                            onOpenBrowse = {
+                                                openNavAbsolute(
+                                                    card.collectionUrl,
+                                                    card.title,
+                                                    onCategoryClick,
+                                                    onExternalUrl,
+                                                    context,
+                                                    dismiss,
+                                                )
+                                            },
+                                        )
+                                    }
+                                }
+                                if (rowCards.size == 1) {
+                                    Spacer(Modifier.weight(1f))
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        val ah = audienceExpandedAudHandle
+                        AnimatedVisibility(
+                            visible =
+                                ah != null &&
+                                    sec.panelBodies.any { it.audHandle == ah } &&
+                                    sec.cards.any { it.audHandle == ah },
                         ) {
-                            sec.cards.forEach { card ->
-                                AudienceCardCell(
-                                    card = card,
+                            val panel =
+                                ah?.let { h ->
+                                    sec.panelBodies.firstOrNull { it.audHandle == h }
+                                }
+                            val bannerCard =
+                                ah?.let { h ->
+                                    sec.cards.firstOrNull { it.audHandle == h }
+                                }
+                            if (panel != null && bannerCard != null) {
+                                AudienceInlinePanel(
+                                    body = panel,
+                                    activeCard = bannerCard,
                                     hidden = hidden,
                                     eyeReveal = eyeReveal,
                                     t = t,
                                     persistHidden = persistHidden,
-                                    onOpenBrowse = {
+                                    onLineClick = { line ->
                                         openNavAbsolute(
-                                            card.collectionUrl,
-                                            card.title,
+                                            line.url,
+                                            line.labelRaw,
                                             onCategoryClick,
                                             onExternalUrl,
                                             context,
                                             dismiss,
                                         )
                                     },
-                                    onOpenCategories = {
-                                        sec.panelBodies.firstOrNull { it.audHandle == card.audHandle }
-                                            ?.let { body -> onOpenAudienceCategories(body) }
+                                    onCategoryTitleClick = { col ->
+                                        openNavAbsolute(
+                                            col.titleUrl,
+                                            col.title,
+                                            onCategoryClick,
+                                            onExternalUrl,
+                                            context,
+                                            dismiss,
+                                        )
                                     },
                                 )
                             }
@@ -1169,8 +1535,14 @@ private fun SidebarDrawerGridEngine(
                 is GroupedCategorySection -> {
                     val (skip, alphaBg) = containerHiddenSkip(sec.containerId)
                     if (skip) return@forEach
+                    val headingTitle =
+                        if (sec.sectionEmoji.isNotBlank()) {
+                            "${sec.sectionEmoji.trim()} ${t(sec.sectionTitleKey, sec.sectionTitleKey)}".trim()
+                        } else {
+                            t(sec.sectionTitleKey, sec.sectionTitleKey)
+                        }
                     SidebarSectionChrome(
-                        title = t(sec.sectionTitleKey, sec.sectionTitleKey),
+                        title = headingTitle,
                         draggableId = sec.containerId,
                         movableIds = movable,
                         containerEyeId = sec.containerId,
@@ -1331,58 +1703,6 @@ private fun SidebarSectionChrome(
     }
 }
 
-@Composable
-private fun AudienceCardCell(
-    card: AudienceCard,
-    hidden: SidebarHiddenState,
-    eyeReveal: Boolean,
-    t: (String, String) -> String,
-    persistHidden: (SidebarHiddenState) -> Unit,
-    onOpenBrowse: () -> Unit,
-    onOpenCategories: () -> Unit,
-) {
-    val hid = hidden.midcategories.contains(card.midId)
-    if (!(hid && !eyeReveal)) {
-        Surface(
-            color = Color.White,
-            tonalElevation = 1.dp,
-            shadowElevation = 0.dp,
-            shape = RoundedCornerShape(10.dp),
-            modifier =
-                Modifier
-                    .widthIn(min = 118.dp)
-                    .alpha(if (hid && eyeReveal) 0.45f else 1f),
-        ) {
-            Column(Modifier.padding(10.dp)) {
-                Text(text = card.emoji, style = MaterialTheme.typography.headlineMedium)
-                Text(
-                    text =
-                        if (card.navTitleKey.isNotBlank()) t(card.navTitleKey, card.title) else card.title,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = onOpenBrowse) {
-                        Text(t("eaz.sidebar.browse_collections", "Browse"))
-                    }
-                    TextButton(onClick = onOpenCategories) {
-                        Text(t("eaz.sidebar.categories_short", "Categories"))
-                    }
-                }
-                TextButton(onClick = { persistHidden(hidden.toggledMid(card.midId)) }) {
-                    Text(
-                        if (hid) {
-                            t("eaz.sidebar.restore_item", "Show again")
-                        } else {
-                            t("eaz.sidebar.hide", "Hide")
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun SidebarCategoryTiles(
@@ -1442,72 +1762,100 @@ private fun SidebarCategoryTileSingle(
         val expanded = collapsedMap[tile.midId] ?: true
 
         Surface(
-        modifier = modifier.alpha(if (hidMid && eyeReveal) 0.45f else 1f),
-        shape = RoundedCornerShape(10.dp),
-        color = Color.White,
-    ) {
-        Column(Modifier.padding(10.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .clickable {
-                            if (tile.expandable) {
-                                val cur = collapsedMap[tile.midId] ?: true
-                                collapsedMap[tile.midId] = !cur
-                            } else if (tile.leafUrl != null) {
-                                openNavAbsolute(tile.leafUrl, tile.titleRaw, onCategoryClick, onExternalUrl, context, dismiss)
-                            }
-                        },
+            modifier = modifier.alpha(if (hidMid && eyeReveal) 0.45f else 1f),
+            shape = RoundedCornerShape(12.dp),
+            color = Color.White,
+        ) {
+            Box(Modifier.fillMaxWidth()) {
+                IconButton(
+                    onClick = { persistHidden(hidden.toggledMid(tile.midId)) },
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(3.dp)
+                            .size(32.dp),
                 ) {
-                    Text(text = tile.emoji, style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        text =
-                            if (tile.navTitleKey.isNotBlank()) t(tile.navTitleKey, tile.titleRaw) else tile.titleRaw,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                IconButton(onClick = { persistHidden(hidden.toggledMid(tile.midId)) }) {
                     Icon(
                         if (hidMid) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = t("eaz.sidebar.toggle_row", "Toggle row visibility"),
-                        modifier = Modifier.size(22.dp),
+                        contentDescription =
+                            t("eaz.sidebar.toggle_row", "Toggle row visibility"),
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFFB8956F).copy(alpha = 0.28f),
                     )
                 }
-            }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                        .padding(top = 8.dp, bottom = 10.dp),
+                ) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (tile.expandable) {
+                                    val cur = collapsedMap[tile.midId] ?: true
+                                    collapsedMap[tile.midId] = !cur
+                                } else if (tile.leafUrl != null) {
+                                    openNavAbsolute(
+                                        tile.leafUrl,
+                                        tile.titleRaw,
+                                        onCategoryClick,
+                                        onExternalUrl,
+                                        context,
+                                        dismiss,
+                                    )
+                                }
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(text = tile.emoji, style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            text =
+                                (if (tile.navTitleKey.isNotBlank()) {
+                                    t(tile.navTitleKey, tile.titleRaw)
+                                } else {
+                                    tile.titleRaw
+                                }).uppercase(Locale.getDefault()),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            style =
+                                MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.3.sp,
+                                ),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
 
-            if (tile.expandable && tile.expandCells.isNotEmpty()) {
-                if (!(collapsedMap[tile.midId] ?: true)) {
-                    TextButton(onClick = { collapsedMap[tile.midId] = true }) {
-                        Text(t("eaz.sidebar.show_subcategories", "Show subcategories"))
+                    if (tile.expandable && tile.expandCells.isNotEmpty()) {
+                        if (!(collapsedMap[tile.midId] ?: true)) {
+                            TextButton(onClick = { collapsedMap[tile.midId] = true }) {
+                                Text(t("eaz.sidebar.show_subcategories", "Show subcategories"))
+                            }
+                        }
+                    }
+
+                    if (expanded && tile.expandable && tile.expandCells.isNotEmpty()) {
+                        Divider(Modifier.padding(vertical = 6.dp))
+                        tile.expandCells.forEach { cell ->
+                            SidebarExpandCellRow(
+                                cell = cell,
+                                hidden = hidden,
+                                eyeReveal = eyeReveal,
+                                t = t,
+                                persistHidden = persistHidden,
+                                onExternalUrl = onExternalUrl,
+                                onCategoryClick = onCategoryClick,
+                                dismiss = dismiss,
+                                context = context,
+                            )
+                        }
                     }
                 }
             }
-
-            if (expanded && tile.expandable && tile.expandCells.isNotEmpty()) {
-                Divider(Modifier.padding(vertical = 6.dp))
-                tile.expandCells.forEach { cell ->
-                    SidebarExpandCellRow(
-                        cell = cell,
-                        hidden = hidden,
-                        eyeReveal = eyeReveal,
-                        t = t,
-                        persistHidden = persistHidden,
-                        onExternalUrl = onExternalUrl,
-                        onCategoryClick = onCategoryClick,
-                        dismiss = dismiss,
-                        context = context,
-                    )
-                }
-            }
         }
-    }
     }
 }
 
