@@ -415,7 +415,7 @@ fun CreatorHeader(
                         val currentPlaybackId by store.currentPlaybackId.collectAsState()
                         val currentPlaybackItem by store.currentPlaybackItem.collectAsState()
                         val visualizerLevels by store.visualizerLevels.collectAsState()
-                        val hasAudio = currentPlaybackId != null
+                        val hasAudio = currentPlaybackId != null || !(currentPlaybackItem?.url.isNullOrBlank())
                         CreatorAudioWidget(
                             isPlaying = isPlaying,
                             hasAudio = hasAudio,

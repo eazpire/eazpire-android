@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.R
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.audio.CreatorAudioAutoplayPrefs
+import com.eazpire.creator.audio.CreatorAudioStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.footer.TermsModal
@@ -106,7 +109,9 @@ fun CreatorMainScreen(
     var marketingTitleOverride by remember { mutableStateOf<String?>(null) }
     var automationsTitleOverride by remember { mutableStateOf<String?>(null) }
     var marketingSessionKey by remember { mutableIntStateOf(0) }
-    val audioStore = remember { com.eazpire.creator.audio.CreatorAudioStore() }
+    val appContext = LocalContext.current.applicationContext
+    val audioStore = remember { CreatorAudioStore(appContext) }
+    val autoplayPrefs = remember { CreatorAudioAutoplayPrefs(appContext) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
@@ -206,6 +211,7 @@ fun CreatorMainScreen(
 
     LaunchedEffect(ownerId) {
         if (ownerId.isBlank()) return@LaunchedEffect
+        audioStore.bindOwner(ownerId)
         try {
             val res = withContext(Dispatchers.IO) { api.getCreatorAudio(ownerId) }
             if (res.optBoolean("ok", false)) {
@@ -220,7 +226,11 @@ fun CreatorMainScreen(
                         ownerId = ownerId,
                         coverUrl = null
                     )
-                    audioStore.play(item)
+                    if (autoplayPrefs.isAutoplaySuppressed(ownerId)) {
+                        audioStore.armRemoteTrack(item)
+                    } else {
+                        audioStore.play(item, fromSessionBootstrap = true)
+                    }
                 }
             }
         } catch (_: Exception) {}

@@ -1,5 +1,6 @@
 package com.eazpire.creator.audio
 
+import android.content.Context
 import android.media.MediaPlayer
 import android.media.audiofx.Visualizer
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +18,18 @@ data class CreatorAudioItem(
 )
 
 /** State store for Creator Audio – list, playback, volume, selection */
-class CreatorAudioStore {
+class CreatorAudioStore(context: Context) {
+
+    private val autoplayPrefs = CreatorAudioAutoplayPrefs(context.applicationContext)
+
+    @Volatile
+    private var prefsOwnerId: String = ""
+
+    /** For persisted “no autoplay after user pause”; call when owner/session is known. */
+    fun bindOwner(ownerId: String) {
+        prefsOwnerId = ownerId.ifBlank { "" }
+    }
+
     val list = MutableStateFlow<List<CreatorAudioItem>>(emptyList())
     val selectedId = MutableStateFlow<String?>(null)
     val isPlaying = MutableStateFlow(false)
@@ -63,7 +75,20 @@ class CreatorAudioStore {
         }
     }
 
-    fun play(item: CreatorAudioItem) {
+    /** Remote-track selection without opening MediaPlayer (next app launch after user paused). */
+    fun armRemoteTrack(item: CreatorAudioItem) {
+        stop()
+        selectedId.value = item.id
+        currentPlaybackItem.value = item
+        currentPlaybackId.value = null
+        isPlaying.value = false
+        loadError.value = null
+    }
+
+    fun play(item: CreatorAudioItem, fromSessionBootstrap: Boolean = false) {
+        if (!fromSessionBootstrap && prefsOwnerId.isNotBlank()) {
+            autoplayPrefs.setSuppressed(prefsOwnerId, false)
+        }
         if (!appIsActive) return
         stop()
         try {
@@ -95,12 +120,19 @@ class CreatorAudioStore {
     }
 
     fun pause() {
+        val hadPlayer = mediaPlayer != null
         mediaPlayer?.pause()
         isPlaying.value = false
+        if (hadPlayer && prefsOwnerId.isNotBlank()) {
+            autoplayPrefs.setSuppressed(prefsOwnerId, true)
+        }
     }
 
     fun resume() {
         if (!appIsActive) return
+        if (prefsOwnerId.isNotBlank()) {
+            autoplayPrefs.setSuppressed(prefsOwnerId, false)
+        }
         mediaPlayer?.start()
         isPlaying.value = true
     }
