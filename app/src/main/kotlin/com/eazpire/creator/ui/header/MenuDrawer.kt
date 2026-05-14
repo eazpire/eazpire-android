@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,8 +37,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Visibility
@@ -510,7 +509,9 @@ private fun MenuDrawerInteractiveRoot(
         }
     val listRoots = remember(listRootsRaw) { listRootsRaw.map { it.squashDuplicateParents() } }
 
-    var hiddenPanelVisible by remember { mutableStateOf(false) }
+    /** Web parity ([theme/assets/eaz-redesign-sidebar.js]): hidden restore strip when eye is “open” and mid/cat items are hidden */
+    val showHiddenRestorePanel = eyeRevealHidden && hidden.hiddenCategoryBadgeCount() > 0
+
     var audienceSheet by remember { mutableStateOf<AudiencePanelBody?>(null) }
 
     val audienceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -544,25 +545,21 @@ private fun MenuDrawerInteractiveRoot(
                         if (viewMode == SidebarViewMode.Grid) SidebarViewMode.List else SidebarViewMode.Grid
                     onViewModeChange(next)
                 },
-                hiddenPanelVisible = hiddenPanelVisible,
-                onHiddenPanelToggle = {
-                    hiddenPanelVisible = !hiddenPanelVisible
-                },
                 eyeRevealHidden = eyeRevealHidden,
                 onEyeRevealToggle = {
                     eyeRevealHidden = !eyeRevealHidden
                     personalStore.setEyeRevealHiddenItems(eyeRevealHidden)
                 },
-                badgeCount = hidden.totalHiddenBadge(),
+                eyeBadgeCount = hidden.hiddenCategoryBadgeCount(),
                 t = t,
                 onClose = onCloseClick
             )
 
-            AnimatedVisibility(visible = hiddenPanelVisible) {
+            AnimatedVisibility(visible = showHiddenRestorePanel) {
                 SidebarHiddenRestorePanel(
                     hidden = hidden,
                     t = t,
-                    onDismiss = { hiddenPanelVisible = false },
+                    onDismiss = null,
                     onRestoreContainer = { persistHidden(hidden.removeContainer(it)) },
                     onRestoreMid = { persistHidden(hidden.removeMid(it)) },
                     onRestoreCat = { persistHidden(hidden.removeCategory(it)) }
@@ -587,7 +584,7 @@ private fun MenuDrawerInteractiveRoot(
                             CircularProgressIndicator(Modifier.size(32.dp), color = EazColors.Orange)
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                t("eaz.sidebar.menu_loading", "Loading shop menuâ€¦"),
+                                t("eaz.sidebar.menu_loading", "Loading navigation…"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = EazColors.TextSecondary
                             )
@@ -720,43 +717,54 @@ private fun MenuDrawerHeaderShell(
     greetingName: String?,
     viewMode: SidebarViewMode,
     onViewModeToggle: () -> Unit,
-    hiddenPanelVisible: Boolean,
-    onHiddenPanelToggle: () -> Unit,
     eyeRevealHidden: Boolean,
     onEyeRevealToggle: () -> Unit,
-    badgeCount: Int,
+    eyeBadgeCount: Int,
     t: (String, String) -> String,
     onClose: () -> Unit,
 ) {
-    val greet =
+    val greetingText =
         greetingName?.let { n ->
-            "${t("eaz.sidebar.drawer_hello", "Hello,")} $n".trimEnd()
-        } ?: t("eaz.sidebar.drawer_guest", "Guest")
+            "${t("eaz.sidebar.drawer_hello", "Hello,")} $n".trim()
+        }
+            ?: t("eaz.sidebar.greeting_guest", "Hello!")
 
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(EazColors.Orange)
-                .padding(10.dp),
+                .padding(horizontal = 10.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = greet,
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White,
+        Row(
             modifier = Modifier.weight(1f),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start,
+        ) {
+            Icon(
+                Icons.Default.Person,
+                contentDescription = t("eaz.topbar.profile", "Profile"),
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = greetingText,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Surface(color = Color.White.copy(alpha = 0.22f), shape = RoundedCornerShape(8.dp)) {
                 Row {
                     IconButton(onClick = { if (viewMode != SidebarViewMode.Grid) onViewModeToggle() }) {
                         Icon(
                             Icons.Default.GridView,
-                            contentDescription = t("eaz.sidebar.view_grid", "Grid view"),
+                            contentDescription = t("eaz.sidebar.grid_view", "Grid view"),
                             tint =
                                 if (viewMode == SidebarViewMode.Grid) {
                                     Color.White
@@ -769,7 +777,7 @@ private fun MenuDrawerHeaderShell(
                     IconButton(onClick = { if (viewMode != SidebarViewMode.List) onViewModeToggle() }) {
                         Icon(
                             Icons.Default.List,
-                            contentDescription = t("eaz.sidebar.view_list", "List view"),
+                            contentDescription = t("eaz.sidebar.list_view", "List view"),
                             tint =
                                 if (viewMode == SidebarViewMode.List) {
                                     Color.White
@@ -781,28 +789,19 @@ private fun MenuDrawerHeaderShell(
                     }
                 }
             }
-            IconButton(onClick = onEyeRevealToggle) {
-                Icon(
-                    imageVector =
-                        if (eyeRevealHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                    contentDescription = t("eaz.sidebar.eye_toggle", "Toggle hidden items"),
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
             Box {
-                IconButton(onClick = onHiddenPanelToggle) {
+                IconButton(onClick = onEyeRevealToggle) {
                     Icon(
-                        Icons.Default.Menu,
-                        contentDescription = t("eaz.sidebar.hidden_items_title", "Hidden items"),
-                        tint =
-                            if (hiddenPanelVisible) Color(0xFFFFE08A) else Color.White,
+                        imageVector =
+                            if (eyeRevealHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = t("eaz.sidebar.eye_toggle", "Toggle hidden items"),
+                        tint = Color.White,
                         modifier = Modifier.size(22.dp),
                     )
                 }
-                if (badgeCount > 0) {
+                if (eyeBadgeCount > 0) {
                     Text(
-                        text = if (badgeCount < 99) "$badgeCount" else "99+",
+                        text = if (eyeBadgeCount < 99) "$eyeBadgeCount" else "99+",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         modifier =
@@ -831,7 +830,7 @@ private fun MenuDrawerHeaderShell(
 private fun SidebarHiddenRestorePanel(
     hidden: SidebarHiddenState,
     t: (String, String) -> String,
-    onDismiss: () -> Unit,
+    onDismiss: (() -> Unit)?,
     onRestoreContainer: (String) -> Unit,
     onRestoreMid: (String) -> Unit,
     onRestoreCat: (String) -> Unit,
@@ -848,9 +847,15 @@ private fun SidebarHiddenRestorePanel(
             Arrangement.SpaceBetween,
             Alignment.CenterVertically
         ) {
-            Text(text = t("eaz.sidebar.hidden_items_title", "Hidden items"), fontWeight = FontWeight.SemiBold)
-            TextButton(onClick = onDismiss) {
-                Text(t("accessibility.close_dialog", "Close dialog"))
+            Text(
+                text =
+                    "${t("eaz.sidebar.hidden", "Hidden")} (${hidden.hiddenCategoryBadgeCount()})",
+                fontWeight = FontWeight.SemiBold
+            )
+            if (onDismiss != null) {
+                TextButton(onClick = onDismiss) {
+                    Text(t("accessibility.close_dialog", "Close dialog"))
+                }
             }
         }
         if (hidden.containers.isEmpty() && hidden.midcategories.isEmpty() && hidden.categories.isEmpty()) {
@@ -1747,16 +1752,17 @@ private fun MenuDrawerFooter(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFF2F2F2))
-                .padding(horizontal = 8.dp, vertical = 12.dp),
+                .navigationBarsPadding()
+                .background(Color.White)
+                .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FooterNavItem(icon = Icons.Default.Home, label = t("eaz.sidebar.nav_home", "Home"), onClick = onHomeClick)
         FooterNavItem(icon = Icons.Default.Search, label = t("eaz.sidebar.nav_search", "Search"), onClick = onSearchClick)
-        FooterNavItem(icon = Icons.Default.Favorite, label = t("topbar.favorites", "Favorites"), onClick = onFavoritesClick)
+        FooterNavItem(icon = Icons.Default.Favorite, label = t("eaz.sidebar.nav_favorites", "Favorites"), onClick = onFavoritesClick)
         Box(contentAlignment = Alignment.Center) {
-            FooterNavItem(icon = Icons.Default.ShoppingCart, label = t("topbar.cart", "Cart"), onClick = onCartClick)
+            FooterNavItem(icon = Icons.Default.ShoppingCart, label = t("eaz.sidebar.nav_cart", "Cart"), onClick = onCartClick)
             if (cartCount > 0) {
                 Text(
                     text = if (cartCount < 100) "$cartCount" else "99+",
@@ -1771,7 +1777,7 @@ private fun MenuDrawerFooter(
                 )
             }
         }
-        FooterNavItem(icon = Icons.Default.Person, label = t("eaz.topbar.account", "Account"), onClick = onAccountClick)
+        FooterNavItem(icon = Icons.Default.Person, label = t("eaz.sidebar.nav_account", "Account"), onClick = onAccountClick)
     }
 }
 

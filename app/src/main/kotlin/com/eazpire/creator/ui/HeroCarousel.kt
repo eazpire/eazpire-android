@@ -31,7 +31,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,12 +47,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.input.pointer.pointerInteropFilter
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import android.view.MotionEvent
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
@@ -135,7 +130,6 @@ private fun parseHotspots(obj: JSONObject): List<HeroHotspot> {
     return result
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HeroCarousel(
     onProductClick: ((String) -> Unit)? = null,
@@ -515,39 +509,7 @@ private fun imageCoordsToContainer(
     return (px / containerW) to (py / containerH)
 }
 
-private fun findHotspotAt(
-    x: Float, y: Float, widthPx: Float, heightPx: Float,
-    hotspots: List<HeroHotspot>, imageSize: Pair<Int, Int>?,
-    touchRadiusPx: Float
-): HeroHotspot? {
-    if (widthPx <= 0f || heightPx <= 0f) return null
-    val hit = hotspots.minByOrNull { hotspot ->
-        val (cx, cy) = when (val sz = imageSize) {
-            null -> hotspot.x to hotspot.y
-            else -> imageCoordsToContainer(
-                widthPx, heightPx, sz.first, sz.second,
-                hotspot.x, hotspot.y
-            ) ?: (hotspot.x to hotspot.y)
-        }
-        val hx = cx * widthPx
-        val hy = cy * heightPx
-        kotlin.math.sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy))
-    } ?: return null
-    val (cx, cy) = when (val sz = imageSize) {
-        null -> hit.x to hit.y
-        else -> imageCoordsToContainer(
-            widthPx, heightPx, sz.first, sz.second,
-            hit.x, hit.y
-        ) ?: (hit.x to hit.y)
-    }
-    val hx = cx * widthPx
-    val hy = cy * heightPx
-    val dist = kotlin.math.sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy))
-    return if (dist <= touchRadiusPx) hit else null
-}
-
 @Composable
-@OptIn(ExperimentalComposeUiApi::class)
 private fun HeroHotspotsOverlay(
     hotspots: List<HeroHotspot>,
     imageSize: Pair<Int, Int>?,
@@ -555,44 +517,10 @@ private fun HeroHotspotsOverlay(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    val touchRadiusPx = with(density) { (HERO_HOTSPOT_TOUCH_TARGET / 2).toPx() }
-    var clickedHotspot by remember { mutableStateOf<HeroHotspot?>(null) }
-    var consumedDownOnHotspot by remember { mutableStateOf<HeroHotspot?>(null) }
-    var sizePx by remember { mutableStateOf(0f to 0f) }
+    var clickedHotspot by remember(hotspots) { mutableStateOf<HeroHotspot?>(null) }
     BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .onSizeChanged { sizePx = it.width.toFloat() to it.height.toFloat() }
-            .pointerInteropFilter { event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        val (w, h) = sizePx
-                        val hit = findHotspotAt(event.x, event.y, w, h, hotspots, imageSize, touchRadiusPx)
-                        if (hit != null) {
-                            consumedDownOnHotspot = hit
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        val was = consumedDownOnHotspot
-                        consumedDownOnHotspot = null
-                        if (was != null && event.action == MotionEvent.ACTION_UP) {
-                            clickedHotspot = was
-                            onHotspotClick(was)
-                        }
-                        was != null
-                    }
-                    else -> consumedDownOnHotspot != null
-                }
-            }
+        modifier = modifier.fillMaxSize()
     ) {
-        SideEffect {
-            val w = with(density) { maxWidth.toPx() }
-            val h = with(density) { maxHeight.toPx() }
-            if (w > 0f && h > 0f) sizePx = w to h
-        }
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
         val maxW = maxWidth
@@ -608,16 +536,31 @@ private fun HeroHotspotsOverlay(
             }
             val xDp = (cx * maxW.value - halfTouch).dp
             val yDp = (cy * maxH.value - halfTouch).dp
+            val clickInteraction = remember(hotspot.x, hotspot.y, hotspot.productHandle, hotspot.url) {
+                MutableInteractionSource()
+            }
 
-            HeroHotspotDot(
-                contentDescription = hotspot.title,
-                isJustClicked = clickedHotspot == hotspot,
-                onClickAnimationDone = { clickedHotspot = null },
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .offset(x = xDp, y = yDp)
                     .size(HERO_HOTSPOT_TOUCH_TARGET)
-            )
+                    .clickable(
+                        interactionSource = clickInteraction,
+                        indication = null,
+                    ) {
+                        clickedHotspot = hotspot
+                        onHotspotClick(hotspot)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                HeroHotspotDot(
+                    contentDescription = hotspot.title,
+                    isJustClicked = clickedHotspot == hotspot,
+                    onClickAnimationDone = { if (clickedHotspot == hotspot) clickedHotspot = null },
+                    modifier = Modifier,
+                )
+            }
         }
     }
 }
