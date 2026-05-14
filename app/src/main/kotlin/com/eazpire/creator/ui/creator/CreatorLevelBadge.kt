@@ -80,6 +80,16 @@ fun CreatorLevelBadge(
 
                         else -> null
                     }
+                    fun maxLevelFromThresholds(arr: JSONArray?): Int {
+                        if (arr == null || arr.length() == 0) return 1
+                        var m = 1
+                        for (j in 0 until arr.length()) {
+                            val lv = arr.getJSONObject(j).optInt("level", 0)
+                            if (lv > m) m = lv
+                        }
+                        return kotlin.math.max(1, m)
+                    }
+                    val maxLevel = maxLevelFromThresholds(thresholds)
                     fun xpAt(L: Int): Int {
                         if (thresholds == null) return 0
                         for (j in 0 until thresholds.length()) {
@@ -89,7 +99,8 @@ fun CreatorLevelBadge(
                         return 0
                     }
                     val totalXp = r.optInt("total_xp", 0)
-                    val displayLevel = r.optInt("current_level", r.optInt("level", 1)).coerceIn(1, 10)
+                    val rawLevel = r.optInt("current_level", r.optInt("level", 1))
+                    val displayLevel = rawLevel.coerceIn(1, maxLevel)
                     val trialMode = r.optBoolean("trial_mode", false)
                     val trialNeedsCreatorCode = r.optBoolean("trial_needs_creator_code", false)
 
@@ -130,7 +141,8 @@ fun CreatorLevelBadge(
                     } else {
                         val curXpReq = xpAt(displayLevel)
                         val nextXpAbs = xpAt(displayLevel + 1)
-                        val hasNext = displayLevel < 10 && nextXpAbs > curXpReq
+                        val hasNext =
+                            displayLevel < maxLevel && nextXpAbs > curXpReq
                         val xpInLevel = kotlin.math.max(0, totalXp - curXpReq)
                         val xpNeeded = if (hasNext) kotlin.math.max(1, nextXpAbs - curXpReq) else 1
                         xpFillPercent =
@@ -140,7 +152,7 @@ fun CreatorLevelBadge(
                         xpValue =
                             if (hasNext) "$xpInLevel / $xpNeeded XP" else "$totalXp XP"
                         xpHint =
-                            if (!hasNext || displayLevel >= 10) {
+                            if (!hasNext) {
                                 translationStore.t(
                                     "creator.overview.max_level_reached",
                                     translationStore.t("creator.mobile.max_level_reached", "")
