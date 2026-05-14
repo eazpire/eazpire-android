@@ -30,8 +30,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -83,6 +85,7 @@ private val COLLECTION_HANDLE_TO_TITLE = mapOf(
     "toddler" to "Toddler", "home-living" to "Home & Living"
 )
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ShopScreen(
     tokenStore: SecureTokenStore,
@@ -115,6 +118,8 @@ fun ShopScreen(
     }
 
     CompositionLocalProvider(LocalTranslationStore provides translationStore) {
+        /** Outside [key(sessionEpoch)] so hotspots / modal survive translation-driven re-key. */
+        val productModalHandleState = remember { mutableStateOf<String?>(null) }
     key(sessionEpoch) {
     // Recomposition trigger: when translations load, UI must update
     val translations by translationStore.translations.collectAsState(initial = emptyMap())
@@ -233,7 +238,6 @@ fun ShopScreen(
     var shopSearchQuery by remember { mutableStateOf<String?>(null) }
     var shopCreateProductVisible by remember { mutableStateOf(false) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
-    val productModalHandleState = remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value) {
@@ -640,6 +644,8 @@ fun ShopScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(100f)
+                /** Let taps reach hero / carousel; mascot + bubble are real touch targets underneath. */
+                .pointerInteropFilter { false }
                 .onGloballyPositioned { contentBoundsState.value = it.boundsInRoot() }
         ) {
             val density = LocalDensity.current
@@ -728,6 +734,8 @@ fun ShopScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .navigationBarsPadding()
+                    /** Same pass-through: empty overlay must not steal hero hotspot taps when Eazy floats. */
+                    .pointerInteropFilter { false }
                     .onGloballyPositioned { mascotLayerBoundsState.value = it.boundsInRoot() }
             ) {
                 if (!eazyDocked || showGenOverlay) {
