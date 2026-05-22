@@ -39,8 +39,11 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.ui.graphics.asImageBitmap
 import coil.request.ImageRequest
 import android.graphics.BitmapFactory
@@ -86,6 +89,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
@@ -1592,6 +1596,7 @@ private fun StudioSourcesDrawer(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StudioDesignPickerDialog(
     mode: String,
@@ -1602,58 +1607,109 @@ private fun StudioDesignPickerDialog(
     onPick: (String) -> Unit,
     t: (String, String) -> String
 ) {
-    val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }
     var items by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var totalCount by remember { mutableStateOf(0) }
+    var searchQuery by remember { mutableStateOf("") }
+    var filterParams by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var showFilterSheet by remember { mutableStateOf(false) }
+    val filterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isPublic = mode == "public"
     val oid = ownerId?.trim().orEmpty()
 
-    LaunchedEffect(mode, oid) {
+    fun pickDesignUrl(it: JSONObject): String? {
+        val url = it.optString("preview_url", "")
+            .ifBlank { it.optString("original_url", "") }
+            .ifBlank { it.optString("image_url", "") }
+        return url.takeIf { it.startsWith("http") || it.startsWith("data:") }
+    }
+
+    LaunchedEffect(mode, oid, searchQuery, filterParams) {
         loading = true
         items = emptyList()
-        if (oid.isEmpty()) {
+        totalCount = 0
+        if (oid.isEmpty() && mode != "public") {
             loading = false
             return@LaunchedEffect
         }
         try {
-            val data = withContext(Dispatchers.IO) {
-                when (mode) {
-                    "public" -> api.listPublic(80, null)
-                    "mine" -> api.listDesigns(oid, 80)
-                    "drafts" -> api.printifyStudioTestListDrafts(oid, productKey)
-                    else -> JSONObject().put("ok", false)
+            when (mode) {
+                "public" -> {
+                    val (rows, total) = withContext(Dispatchers.IO) {
+                        api.listPublicAll(
+                            search = searchQuery.trim().ifBlank { null },
+                            filterParams = filterParams
+                        )
+                    }
+                    totalCount = total
+                    items = rows.mapNotNull { row ->
+                        val url = pickDesignUrl(row) ?: return@mapNotNull null
+                        "${row.optString("id", "")}" to url
+                    }
+                }
+                "mine" -> {
+                    val data = withContext(Dispatchers.IO) { api.listDesigns(oid, 100) }
+                    if (data.optBoolean("ok", false)) {
+                        val arr = data.optJSONArray("items") ?: JSONArray()
+                        val list = mutableListOf<Pair<String, String>>()
+                        for (i in 0 until arr.length()) {
+                            val it = arr.optJSONObject(i) ?: continue
+                            val url = pickDesignUrl(it) ?: continue
+                            list.add("${it.optString("id", "$i")}" to url)
+                        }
+                        items = list
+                        totalCount = list.size
+                    }
+                }
+                "drafts" -> {
+                    val data = withContext(Dispatchers.IO) {
+                        api.printifyStudioTestListDrafts(oid, productKey)
+                    }
+                    val list = mutableListOf<Pair<String, String>>()
+                    val drafts = data.optJSONArray("drafts") ?: JSONArray()
+                    for (i in 0 until drafts.length()) {
+                        val d = drafts.optJSONObject(i) ?: continue
+                        val url = d.optString("design_image_url", "").trim()
+                        if (url.isNotEmpty()) list.add(d.optString("id", "$i") to url)
+                    }
+                    items = list
+                    totalCount = list.size
                 }
             }
-            val list = mutableListOf<Pair<String, String>>()
-            if (mode == "drafts") {
-                val drafts = data.optJSONArray("drafts") ?: JSONArray()
-                for (i in 0 until drafts.length()) {
-                    val d = drafts.optJSONObject(i) ?: continue
-                    val url = d.optString("design_image_url", "").trim()
-                    if (url.isNotEmpty()) list.add(d.optString("id", "$i") to url)
-                }
-            } else if (data.optBoolean("ok", false)) {
-                val arr = data.optJSONArray("items") ?: JSONArray()
-                for (i in 0 until arr.length()) {
-                    val it = arr.optJSONObject(i) ?: continue
-                    val url = it.optString("preview_url", "")
-                        .ifBlank { it.optString("original_url", "") }
-                        .ifBlank { it.optString("image_url", "") }
-                    if (url.startsWith("http")) list.add("${it.optString("id", "$i")}" to url)
-                }
-            }
-            items = list
         } catch (_: Exception) {
             items = emptyList()
+            totalCount = 0
         } finally {
             loading = false
+        }
+    }
+
+    if (showFilterSheet && isPublic) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilterSheet = false },
+            sheetState = filterSheetState,
+            containerColor = Color(0xFF0F172A)
+        ) {
+            StudioPublicDesignFilterSheet(
+                current = filterParams,
+                onApply = {
+                    filterParams = it
+                    showFilterSheet = false
+                },
+                onReset = {
+                    filterParams = emptyMap()
+                    showFilterSheet = false
+                },
+                t = t
+            )
         }
     }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .fillMaxHeight(0.7f)
+                .fillMaxWidth(0.96f)
+                .fillMaxHeight(0.82f)
                 .background(Color(0xFF0F172A), RoundedCornerShape(14.dp))
                 .padding(12.dp)
         ) {
@@ -1666,10 +1722,58 @@ private fun StudioDesignPickerDialog(
                     },
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Default.Close, null, tint = Color.White)
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = {
+                        Text(
+                            t("creator.shop_printify_studio_test.design_picker_search_placeholder", "Search designs…"),
+                            color = Color.White.copy(0.45f)
+                        )
+                    },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, null, tint = Color.White.copy(0.7f))
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFFF97316),
+                        unfocusedBorderColor = Color.White.copy(0.25f),
+                        cursorColor = Color(0xFFF97316)
+                    )
+                )
+                if (isPublic) {
+                    Text(
+                        "$totalCount Designs",
+                        color = Color.White.copy(0.55f),
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1
+                    )
+                    IconButton(
+                        onClick = { showFilterSheet = true },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .border(2.dp, Color(0xFFF97316), RoundedCornerShape(999.dp))
+                    ) {
+                        Text("☰", color = Color(0xFFF97316), style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
             if (loading) {
@@ -1678,11 +1782,15 @@ private fun StudioDesignPickerDialog(
                 }
             } else if (items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(t("creator.shop_printify_studio_test.variant_none", "No options available."), color = Color.White.copy(0.6f))
+                    Text(
+                        t("creator.shop_printify_studio_test.design_picker_empty", "No public designs found."),
+                        color = Color.White.copy(0.6f),
+                        textAlign = TextAlign.Center
+                    )
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
+                    columns = GridCells.Adaptive(minSize = 100.dp),
                     modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1699,6 +1807,73 @@ private fun StudioDesignPickerDialog(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioPublicDesignFilterSheet(
+    current: Map<String, String>,
+    onApply: (Map<String, String>) -> Unit,
+    onReset: () -> Unit,
+    t: (String, String) -> String
+) {
+    var draft by remember(current) { mutableStateOf(current.toMutableMap()) }
+
+    fun toggleParam(key: String, value: String) {
+        draft = draft.toMutableMap().apply {
+            if (this[key] == value) remove(key) else put(key, value)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .navigationBarsPadding()
+    ) {
+        Text(
+            t("creator.filter_modal.title", "Filter"),
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(t("creator.shop_printify_studio_test.pick_color_title", "Source"), color = Color(0xFFF97316), fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 6.dp)) {
+            listOf("generated" to "Generated", "uploaded" to "Uploaded", "personalized" to "Personalized").forEach { (v, label) ->
+                StudioDarkBtn(onClick = { toggleParam("filter_design_art", v) }) {
+                    Text(label, fontWeight = if (draft["filter_design_art"] == v) FontWeight.Bold else FontWeight.Normal)
+                }
+            }
+        }
+        Text(t("creator.shop_printify_studio_test.pick_size_title", "Ratio"), color = Color(0xFFF97316), fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 6.dp)) {
+            listOf("portrait" to "Portrait", "landscape" to "Landscape", "square" to "Square").forEach { (v, label) ->
+                StudioDarkBtn(onClick = { toggleParam("filter_ratio", v) }) {
+                    Text(label, fontWeight = if (draft["filter_ratio"] == v) FontWeight.Bold else FontWeight.Normal)
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onReset,
+                modifier = Modifier.weight(1f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(0.3f))
+            ) {
+                Text(t("creator.filter_modal.reset", "Reset"), color = Color.White)
+            }
+            OutlinedButton(
+                onClick = { onApply(draft.toMap()) },
+                modifier = Modifier.weight(1f),
+                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFF0F172A)
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF97316))
+            ) {
+                Text(t("creator.common.close", "Close"), color = Color(0xFFF97316))
             }
         }
     }

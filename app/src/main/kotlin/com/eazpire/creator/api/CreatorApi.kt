@@ -945,11 +945,41 @@ class CreatorApi(
         )
     )
 
-    /** GET ?op=list-public&limit=100&search=... → { ok, items: [{ preview_url, original_url }] } Public designs */
-    suspend fun listPublic(limit: Int = 100, search: String? = null): JSONObject {
-        val params = mutableMapOf("limit" to limit.toString())
+    /** GET ?op=list-public&limit=200&search=...&cursor=...&filter_*=... */
+    suspend fun listPublic(
+        limit: Int = 200,
+        search: String? = null,
+        cursor: String? = null,
+        filterParams: Map<String, String> = emptyMap()
+    ): JSONObject {
+        val params = mutableMapOf("limit" to limit.coerceIn(1, 200).toString())
         search?.takeIf { it.isNotBlank() }?.let { params["search"] = it }
+        cursor?.takeIf { it.isNotBlank() }?.let { params["cursor"] = it }
+        filterParams.forEach { (k, v) -> if (v.isNotBlank()) params[k] = v }
         return call("list-public", params)
+    }
+
+    /** Paginate list-public until no next_cursor (cap pages for safety). */
+    suspend fun listPublicAll(
+        search: String? = null,
+        filterParams: Map<String, String> = emptyMap()
+    ): Pair<List<JSONObject>, Int> {
+        val all = mutableListOf<JSONObject>()
+        var cursor: String? = null
+        var total = 0
+        var pages = 0
+        do {
+            val data = listPublic(limit = 200, search = search, cursor = cursor, filterParams = filterParams)
+            if (!data.optBoolean("ok", false)) break
+            if (data.has("total_count")) total = data.optInt("total_count", total)
+            val items = data.optJSONArray("items") ?: JSONArray()
+            for (i in 0 until items.length()) {
+                items.optJSONObject(i)?.let { all.add(it) }
+            }
+            cursor = data.optString("next_cursor", "").trim().ifBlank { null }
+            pages += 1
+        } while (cursor != null && pages < 40)
+        return all to (if (total > 0) total else all.size)
     }
 
     /** GET ?op=list&owner_id=xxx&limit=100 → { ok, items: [...] } Creator designs */
