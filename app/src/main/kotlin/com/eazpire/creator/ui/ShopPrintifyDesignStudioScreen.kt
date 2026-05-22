@@ -31,7 +31,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingCart
+import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -149,7 +153,8 @@ internal fun ShopPrintifyDesignStudioScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
-    val isCompact = configuration.screenWidthDp < 720
+    val isCompact = configuration.screenWidthDp < 1100
+    var isFavorite by remember { mutableStateOf(false) }
 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -360,6 +365,15 @@ internal fun ShopPrintifyDesignStudioScreen(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (isCompact) {
+                        IconButton(onClick = { sourcesDrawerOpen = true }) {
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = translation("design_studio.shop.open_studio_menu", "Studio menu"),
+                                tint = Color.White
+                            )
+                        }
+                    }
                     IconButton(onClick = onDismiss) {
                         Icon(
                             Icons.Default.Close,
@@ -378,19 +392,15 @@ internal fun ShopPrintifyDesignStudioScreen(
                         Text(error ?: "", color = Color.White.copy(alpha = 0.8f))
                     }
                 } else {
-                    val mainModifier = if (isCompact) {
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                    } else {
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    }
+                    val mainModifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
 
                     if (isCompact) {
-                        Column(modifier = mainModifier.padding(horizontal = 8.dp)) {
+                        Column(
+                            modifier = mainModifier.padding(horizontal = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(0.dp)
+                        ) {
                             StudioMockEditor(
                                 modifier = Modifier
                                     .weight(1f)
@@ -446,6 +456,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                                 },
                                 onDesignDragEnd = { scheduleSync() },
                                 onSelectDesign = { designSelected = true },
+                                showOrbitTools = !designUrl.isNullOrBlank(),
                                 orbitTop = {
                                     StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_fit", "Fit")) {
                                         pushUndo()
@@ -459,50 +470,15 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_align", "Align")) {
                                         optionsTab = "design"
                                         designSub = "align"
-                                        if (isCompact) optionsSheetOpen = true
+                                        optionsSheetOpen = true
                                     }
                                     StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_pattern", "Pattern")) {
                                         optionsTab = "design"
                                         designSub = "pattern"
-                                        if (isCompact) optionsSheetOpen = true
+                                        optionsSheetOpen = true
                                     }
                                 }
                             )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp, bottom = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                StudioDarkBtn(onClick = { sourcesDrawerOpen = true }) {
-                                    Text(
-                                        t("design_studio.shop.open_design_sources", "Sources"),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                StudioDarkBtn(onClick = {
-                                    optionsTab = "product"
-                                    optionsSheetOpen = true
-                                }) {
-                                    Text(
-                                        t("design_studio.shop.tab_product_options", "Product options"),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                StudioDarkBtn(onClick = {
-                                    optionsTab = "design"
-                                    designSub = "transform"
-                                    optionsSheetOpen = true
-                                }) {
-                                    Text(
-                                        t("design_studio.shop.tab_design_settings", "Design settings"),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
                         }
                     } else {
                         Row(
@@ -560,6 +536,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     },
                                     onDesignDragEnd = { scheduleSync() },
                                     onSelectDesign = { designSelected = true },
+                                    showOrbitTools = !designUrl.isNullOrBlank(),
                                     orbitTop = {
                                         StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_fit", "Fit")) {
                                             pushUndo()
@@ -646,6 +623,41 @@ internal fun ShopPrintifyDesignStudioScreen(
                             )
                         }
                     }
+
+                    if (isCompact) {
+                        StudioCompactFooter(
+                            isFavorite = isFavorite,
+                            onFavorite = {
+                                val oid = ownerId
+                                if (oid.isNullOrBlank()) {
+                                    onRequireLogin()
+                                    return@StudioCompactFooter
+                                }
+                                scope.launch {
+                                    runCatching {
+                                        val favId = "shop-create:${product.productKey}"
+                                        if (isFavorite) {
+                                            api.removeFavorite(oid, favId, null)
+                                        } else {
+                                            api.addFavorite(
+                                                customerId = oid,
+                                                productId = favId,
+                                                variantId = null,
+                                                productTitle = product.title,
+                                                productImage = mockUrl
+                                            )
+                                        }
+                                    }.onSuccess {
+                                        isFavorite = !isFavorite
+                                        FavoritesRefreshTrigger.trigger()
+                                    }
+                                }
+                            },
+                            onAddToCart = { /* Printify create flow — Shopify variant when published */ },
+                            onOpenCart = { /* checkout drawer handled by host */ },
+                            t = ::t
+                        )
+                    }
                 }
             }
 
@@ -689,6 +701,30 @@ internal fun ShopPrintifyDesignStudioScreen(
                             onUpload = { imagePicker.launch("image/*") },
                             t = ::t
                         )
+                        Spacer(Modifier.height(8.dp))
+                        StudioDarkBtn(onClick = {
+                            sourcesDrawerOpen = false
+                            optionsTab = "product"
+                            optionsSheetOpen = true
+                        }) {
+                            Text(
+                                t("design_studio.shop.tab_product_options", "Product options"),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        StudioDarkBtn(onClick = {
+                            sourcesDrawerOpen = false
+                            optionsTab = "design"
+                            designSub = "transform"
+                            optionsSheetOpen = true
+                        }) {
+                            Text(
+                                t("design_studio.shop.tab_design_settings", "Design settings"),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -789,6 +825,7 @@ private fun StudioMockEditor(
     onDesignDrag: (Float, Float) -> Unit,
     onDesignDragEnd: () -> Unit,
     onSelectDesign: () -> Unit,
+    showOrbitTools: Boolean = false,
     orbitTop: @Composable () -> Unit = {},
     orbitLeft: @Composable () -> Unit = {},
     orbitRight: @Composable () -> Unit = {},
@@ -879,51 +916,58 @@ private fun StudioMockEditor(
                 }
             }
 
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                orbitTop()
+            if (showOrbitTools) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    orbitTop()
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    orbitLeft()
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    orbitRight()
+                }
+
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    orbitBottom()
+                }
             }
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                orbitLeft()
-            }
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                orbitRight()
-            }
-
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                orbitBottom()
-            }
-
-            Box(
-                modifier = Modifier
+            designUrl?.let { dUrl ->
+                val zoneModifier = Modifier
                     .offset(x = zoneLeft, y = zoneTop)
                     .size(zoneW, zoneH)
-                    .border(3.dp, Color(0xFFEF4444), RoundedCornerShape(4.dp))
                     .clip(RoundedCornerShape(4.dp))
                     .clipToBounds()
-            ) {
-                designUrl?.let { dUrl ->
+                    .then(
+                        if (designSelected) {
+                            Modifier.border(3.dp, Color(0xFFEF4444), RoundedCornerShape(4.dp))
+                        } else {
+                            Modifier
+                        }
+                    )
+                Box(modifier = zoneModifier) {
                     AsyncImage(
                         model = dUrl,
                         contentDescription = null,
@@ -963,6 +1007,52 @@ private fun StudioMockEditor(
                     .size(22.dp),
                 color = Color(0xFFF97316),
                 strokeWidth = 2.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun StudioCompactFooter(
+    isFavorite: Boolean,
+    onFavorite: () -> Unit,
+    onAddToCart: () -> Unit,
+    onOpenCart: () -> Unit,
+    t: (String, String) -> String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0F172A))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        IconButton(onClick = onFavorite) {
+            Icon(
+                Icons.Default.Favorite,
+                contentDescription = t("eaz.pdp.favorite", "Favorite"),
+                tint = if (isFavorite) Color(0xFFF97316) else Color.White.copy(alpha = 0.85f)
+            )
+        }
+        OutlinedButton(
+            onClick = onAddToCart,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(10.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF97316).copy(alpha = 0.55f))
+        ) {
+            Text(
+                t("eaz.pdp.add_to_cart", "Add to cart"),
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onOpenCart) {
+            Icon(
+                Icons.Default.ShoppingCart,
+                contentDescription = t("eaz.pdp.add_to_cart", "Add to cart"),
+                tint = Color(0xFFF97316)
             )
         }
     }
