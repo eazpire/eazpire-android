@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -500,7 +501,9 @@ internal fun ShopPrintifyDesignStudioScreen(
                                 },
                                 onDesignDragEnd = { scheduleSync() },
                                 onSelectDesign = { designSelected = true },
-                                showOrbitTools = !designUrl.isNullOrBlank(),
+                                onDeselectDesign = { designSelected = false },
+                                showSettingsInViewer = isCompact && designSelected && !designUrl.isNullOrBlank(),
+                                showOrbitTools = designSelected && !designUrl.isNullOrBlank(),
                                 orbitTop = {
                                     StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_fit", "Fit")) {
                                         pushUndo()
@@ -587,7 +590,9 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     },
                                     onDesignDragEnd = { scheduleSync() },
                                     onSelectDesign = { designSelected = true },
-                                    showOrbitTools = !designUrl.isNullOrBlank(),
+                                    onDeselectDesign = { designSelected = false },
+                                    showSettingsInViewer = isCompact && designSelected && !designUrl.isNullOrBlank(),
+                                    showOrbitTools = designSelected && !designUrl.isNullOrBlank(),
                                     orbitTop = {
                                         StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_fit", "Fit")) {
                                             pushUndo()
@@ -919,6 +924,8 @@ private fun StudioMockEditor(
     onDesignDrag: (Float, Float) -> Unit,
     onDesignDragEnd: () -> Unit,
     onSelectDesign: () -> Unit,
+    onDeselectDesign: () -> Unit = {},
+    showSettingsInViewer: Boolean = false,
     showOrbitTools: Boolean = false,
     orbitTop: @Composable () -> Unit = {},
     orbitLeft: @Composable () -> Unit = {},
@@ -984,16 +991,24 @@ private fun StudioMockEditor(
             val zoneLeft = stageW * printAreaFrac.l
             val zoneTop = stageH * printAreaFrac.t
 
-            mockUrl?.let { url ->
-                AsyncImage(
-                    model = url,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures { onDeselectDesign() }
+                    }
+            ) {
+                mockUrl?.let { url ->
+                    AsyncImage(
+                        model = url,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
             }
 
-            if (!designUrl.isNullOrBlank()) {
+            if (showSettingsInViewer) {
                 IconButton(
                     onClick = onOpenSettings,
                     modifier = Modifier
