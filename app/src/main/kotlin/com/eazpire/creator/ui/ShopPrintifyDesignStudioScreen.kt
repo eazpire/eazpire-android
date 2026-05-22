@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -30,9 +32,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -159,8 +166,12 @@ internal fun ShopPrintifyDesignStudioScreen(
     var defaultSnap by remember { mutableStateOf<StudioPlacementSnap?>(null) }
     val undoStack = remember { mutableStateListOf<StudioPlacementSnap>() }
     val redoStack = remember { mutableStateListOf<StudioPlacementSnap>() }
-    var rightPanel by remember { mutableStateOf("product") }
+    var optionsTab by remember { mutableStateOf("product") }
+    var designSub by remember { mutableStateOf("transform") }
+    var optionsSheetOpen by remember { mutableStateOf(false) }
+    var sourcesDrawerOpen by remember { mutableStateOf(false) }
     var syncing by remember { mutableStateOf(false) }
+    val optionsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     fun t(key: String, def: String) = translationStore.t(key, def)
 
@@ -310,7 +321,11 @@ internal fun ShopPrintifyDesignStudioScreen(
         }
     }
 
-    BackHandler(onBack = onDismiss)
+    BackHandler(enabled = sourcesDrawerOpen || optionsSheetOpen) {
+        if (optionsSheetOpen) optionsSheetOpen = false
+        else if (sourcesDrawerOpen) sourcesDrawerOpen = false
+    }
+    BackHandler(enabled = !sourcesDrawerOpen && !optionsSheetOpen, onBack = onDismiss)
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -377,6 +392,10 @@ internal fun ShopPrintifyDesignStudioScreen(
                     if (isCompact) {
                         Column(modifier = mainModifier.padding(horizontal = 8.dp)) {
                             StudioMockEditor(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                useFlexHeight = true,
                                 mockUrl = mockUrl,
                                 designUrl = designUrl,
                                 designSelected = designSelected,
@@ -415,7 +434,11 @@ internal fun ShopPrintifyDesignStudioScreen(
                                         }
                                     scheduleSync()
                                 },
-                                onOpenSettings = { rightPanel = "transform" },
+                                onOpenSettings = {
+                                    optionsTab = "design"
+                                    designSub = "transform"
+                                    if (isCompact) optionsSheetOpen = true
+                                },
                                 onDesignDragStart = { pushUndo() },
                                 onDesignDrag = { dx, dy ->
                                     designDx += dx
@@ -434,45 +457,52 @@ internal fun ShopPrintifyDesignStudioScreen(
                                 },
                                 orbitBottom = {
                                     StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_align", "Align")) {
-                                        rightPanel = "align"
+                                        optionsTab = "design"
+                                        designSub = "align"
+                                        if (isCompact) optionsSheetOpen = true
                                     }
                                     StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_pattern", "Pattern")) {
-                                        rightPanel = "pattern"
+                                        optionsTab = "design"
+                                        designSub = "pattern"
+                                        if (isCompact) optionsSheetOpen = true
                                     }
                                 }
                             )
-                            StudioToolRow(
-                                onUpload = { imagePicker.launch("image/*") },
-                                t = ::t
-                            )
-                            StudioRightPanel(
-                                rightPanel = rightPanel,
-                                designScale = designScale,
-                                designRotate = designRotate,
-                                patternEnabled = patternEnabled,
-                                printAreaFrac = printAreaFrac,
-                                onBackToProduct = { rightPanel = "product" },
-                                onScaleChange = {
-                                    if (undoStack.isEmpty()) pushUndo()
-                                    designScale = it
-                                },
-                                onScaleFinished = { scheduleSync() },
-                                onRotateChange = {
-                                    if (undoStack.isEmpty()) pushUndo()
-                                    designRotate = it
-                                },
-                                onRotateFinished = { scheduleSync() },
-                                onPatternToggle = { enabled ->
-                                    pushUndo()
-                                    patternEnabled = enabled
-                                    scheduleSync()
-                                },
-                                onAlign = { kind, zw, zh ->
-                                    pushUndo()
-                                    applyAlign(kind, zw, zh)
-                                },
-                                t = ::t
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp, bottom = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                StudioDarkBtn(onClick = { sourcesDrawerOpen = true }) {
+                                    Text(
+                                        t("design_studio.shop.open_design_sources", "Sources"),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                StudioDarkBtn(onClick = {
+                                    optionsTab = "product"
+                                    optionsSheetOpen = true
+                                }) {
+                                    Text(
+                                        t("design_studio.shop.tab_product_options", "Product options"),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                StudioDarkBtn(onClick = {
+                                    optionsTab = "design"
+                                    designSub = "transform"
+                                    optionsSheetOpen = true
+                                }) {
+                                    Text(
+                                        t("design_studio.shop.tab_design_settings", "Design settings"),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
                     } else {
                         Row(
@@ -518,7 +548,11 @@ internal fun ShopPrintifyDesignStudioScreen(
                                             }
                                         scheduleSync()
                                     },
-                                    onOpenSettings = { rightPanel = "transform" },
+                                    onOpenSettings = {
+                                    optionsTab = "design"
+                                    designSub = "transform"
+                                    if (isCompact) optionsSheetOpen = true
+                                },
                                     onDesignDragStart = { pushUndo() },
                                     onDesignDrag = { dx, dy ->
                                         designDx += dx
@@ -559,10 +593,14 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     },
                                     orbitBottom = {
                                         StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_align", "Align")) {
-                                            rightPanel = "align"
+                                            optionsTab = "design"
+                                            designSub = "align"
+                                            if (isCompact) optionsSheetOpen = true
                                         }
                                         StudioOrbitBtn(t("creator.shop_printify_studio_test.tool_pattern", "Pattern")) {
-                                            rightPanel = "pattern"
+                                            optionsTab = "design"
+                                            designSub = "pattern"
+                                            if (isCompact) optionsSheetOpen = true
                                         }
                                     }
                                 )
@@ -575,12 +613,16 @@ internal fun ShopPrintifyDesignStudioScreen(
                                 modifier = Modifier
                                     .widthIn(min = 140.dp, max = 220.dp)
                                     .fillMaxHeight(),
-                                rightPanel = rightPanel,
+                                optionsTab = optionsTab,
+                                designSub = designSub,
                                 designScale = designScale,
                                 designRotate = designRotate,
                                 patternEnabled = patternEnabled,
                                 printAreaFrac = printAreaFrac,
-                                onBackToProduct = { rightPanel = "product" },
+                                onTabChange = { tab, sub ->
+                                    optionsTab = tab
+                                    if (sub != null) designSub = sub
+                                },
                                 onScaleChange = {
                                     if (undoStack.isEmpty()) pushUndo()
                                     designScale = it
@@ -606,6 +648,112 @@ internal fun ShopPrintifyDesignStudioScreen(
                     }
                 }
             }
+
+            if (isCompact && sourcesDrawerOpen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { sourcesDrawerOpen = false }
+                )
+                AnimatedVisibility(
+                    visible = sourcesDrawerOpen,
+                    enter = slideInHorizontally(initialOffsetX = { -it }),
+                    exit = slideOutHorizontally(targetOffsetX = { -it }),
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(280.dp)
+                            .background(Color(0xFF0F172A))
+                            .padding(12.dp)
+                            .clickable(enabled = false) {}
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                t("design_studio.shop.design_source", "Design source"),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { sourcesDrawerOpen = false }) {
+                                Icon(Icons.Default.Close, null, tint = Color.White)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        StudioToolRow(
+                            onUpload = { imagePicker.launch("image/*") },
+                            t = ::t
+                        )
+                    }
+                }
+            }
+
+            if (isCompact && optionsSheetOpen) {
+                ModalBottomSheet(
+                    onDismissRequest = { optionsSheetOpen = false },
+                    sheetState = optionsSheetState,
+                    containerColor = Color(0xFF0F172A),
+                    dragHandle = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 40.dp, height = 4.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Color.White.copy(alpha = 0.28f))
+                            )
+                        }
+                    }
+                ) {
+                    val sheetMaxH = (configuration.screenHeightDp * 0.3f).dp
+                    StudioRightPanel(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = sheetMaxH)
+                            .padding(horizontal = 8.dp)
+                            .navigationBarsPadding(),
+                        optionsTab = optionsTab,
+                        designSub = designSub,
+                        designScale = designScale,
+                        designRotate = designRotate,
+                        patternEnabled = patternEnabled,
+                        printAreaFrac = printAreaFrac,
+                        onTabChange = { tab, sub ->
+                            optionsTab = tab
+                            if (sub != null) designSub = sub
+                        },
+                        onScaleChange = {
+                            if (undoStack.isEmpty()) pushUndo()
+                            designScale = it
+                        },
+                        onScaleFinished = { scheduleSync() },
+                        onRotateChange = {
+                            if (undoStack.isEmpty()) pushUndo()
+                            designRotate = it
+                        },
+                        onRotateFinished = { scheduleSync() },
+                        onPatternToggle = { enabled ->
+                            pushUndo()
+                            patternEnabled = enabled
+                            scheduleSync()
+                        },
+                        onAlign = { kind, zw, zh ->
+                            pushUndo()
+                            applyAlign(kind, zw, zh)
+                        },
+                        t = ::t
+                    )
+                }
+            }
         }
     }
 
@@ -619,6 +767,8 @@ internal fun ShopPrintifyDesignStudioScreen(
 
 @Composable
 private fun StudioMockEditor(
+    modifier: Modifier = Modifier,
+    useFlexHeight: Boolean = false,
     mockUrl: String?,
     designUrl: String?,
     designSelected: Boolean,
@@ -645,10 +795,14 @@ private fun StudioMockEditor(
     orbitBottom: @Composable () -> Unit = {}
 ) {
     val density = LocalDensity.current
+    val stageSizeModifier = if (useFlexHeight) {
+        Modifier.fillMaxWidth().fillMaxHeight().heightIn(min = 240.dp)
+    } else {
+        Modifier.fillMaxWidth().heightIn(min = 280.dp, max = 520.dp)
+    }
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 280.dp, max = 520.dp)
+        modifier = modifier
+            .then(stageSizeModifier)
             .clip(RoundedCornerShape(12.dp))
             .background(Color.White.copy(alpha = 0.06f))
     ) {
@@ -893,12 +1047,13 @@ private fun StudioToolRow(
 @Composable
 private fun StudioRightPanel(
     modifier: Modifier = Modifier,
-    rightPanel: String,
+    optionsTab: String,
+    designSub: String,
     designScale: Float,
     designRotate: Float,
     patternEnabled: Boolean,
     printAreaFrac: PrintAreaFrac,
-    onBackToProduct: () -> Unit,
+    onTabChange: (String, String?) -> Unit,
     onScaleChange: (Float) -> Unit,
     onScaleFinished: () -> Unit,
     onRotateChange: (Float) -> Unit,
@@ -912,71 +1067,86 @@ private fun StudioRightPanel(
 
     Column(
         modifier = modifier
-            .verticalScroll(rememberScrollState())
             .padding(start = 8.dp, top = 4.dp, bottom = 8.dp)
     ) {
-        if (rightPanel != "product") {
-            TextButton(onClick = onBackToProduct) {
-                Text("←", color = Color.White)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            StudioDarkBtn(onClick = { onTabChange("product", null) }) {
+                Text(
+                    t("design_studio.shop.tab_product_options", "Product options"),
+                    fontWeight = if (optionsTab == "product") FontWeight.Bold else FontWeight.Normal
+                )
+            }
+            StudioDarkBtn(onClick = { onTabChange("design", "transform") }) {
+                Text(
+                    t("design_studio.shop.tab_design_settings", "Design settings"),
+                    fontWeight = if (optionsTab == "design") FontWeight.Bold else FontWeight.Normal
+                )
             }
         }
-        when (rightPanel) {
-            "align" -> {
-                Text(t("creator.shop_printify_studio_test.align_title", "Align"), color = Color.White, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                listOf(
-                    "left" to t("creator.shop_printify_studio_test.align_left", "Align left"),
-                    "center-h" to t("creator.shop_printify_studio_test.align_center_h", "Center horizontal"),
-                    "right" to t("creator.shop_printify_studio_test.align_right", "Align right"),
-                    "top" to t("creator.shop_printify_studio_test.align_top", "Align top"),
-                    "middle-v" to t("creator.shop_printify_studio_test.align_middle", "Center vertical"),
-                    "bottom" to t("creator.shop_printify_studio_test.align_bottom", "Align bottom")
-                ).forEach { (kind, label) ->
-                    StudioDarkBtn(onClick = { onAlign(kind, zoneW, zoneH) }) {
-                        Text(label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(8.dp))
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
+        ) {
+            when {
+                optionsTab == "design" && designSub == "align" -> {
+                    Text(t("creator.shop_printify_studio_test.align_title", "Align"), color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    listOf(
+                        "left" to t("creator.shop_printify_studio_test.align_left", "Align left"),
+                        "center-h" to t("creator.shop_printify_studio_test.align_center_h", "Center horizontal"),
+                        "right" to t("creator.shop_printify_studio_test.align_right", "Align right"),
+                        "top" to t("creator.shop_printify_studio_test.align_top", "Align top"),
+                        "middle-v" to t("creator.shop_printify_studio_test.align_middle", "Center vertical"),
+                        "bottom" to t("creator.shop_printify_studio_test.align_bottom", "Align bottom")
+                    ).forEach { (kind, label) ->
+                        StudioDarkBtn(onClick = { onAlign(kind, zoneW, zoneH) }) {
+                            Text(label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
-            }
-            "pattern" -> {
-                Text(t("creator.shop_printify_studio_test.pattern_title", "Pattern"), color = Color.White, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        t("creator.shop_printify_studio_test.pattern_active_label", "Pattern active"),
-                        color = Color.White.copy(0.85f),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(checked = patternEnabled, onCheckedChange = onPatternToggle)
+                optionsTab == "design" && designSub == "pattern" -> {
+                    Text(t("creator.shop_printify_studio_test.pattern_title", "Pattern"), color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            t("creator.shop_printify_studio_test.pattern_active_label", "Pattern active"),
+                            color = Color.White.copy(0.85f),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(checked = patternEnabled, onCheckedChange = onPatternToggle)
+                    }
                 }
-            }
-            "transform" -> {
-                Text(t("design_studio.shop.settings", "Design settings"), color = Color.White, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                Text(t("creator.shop_printify_studio_test.scale_label", "Scale"), color = Color.White.copy(0.8f))
-                Slider(
-                    value = designScale,
-                    onValueChange = onScaleChange,
-                    onValueChangeFinished = onScaleFinished,
-                    valueRange = 0.08f..2.5f
-                )
-                Text(t("creator.shop_printify_studio_test.rotate_label", "Rotation"), color = Color.White.copy(0.8f))
-                Slider(
-                    value = designRotate,
-                    onValueChange = onRotateChange,
-                    onValueChangeFinished = onRotateFinished,
-                    valueRange = -180f..180f
-                )
-            }
-            else -> {
-                Text(t("design_studio.shop.product_options", "Product options"), color = Color.White, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                Text(t("creator.shop_printify_studio_test.pick_color_title", "Color"), color = Color.White.copy(0.75f))
-                Text(t("creator.shop_printify_studio_test.pick_size_title", "Size"), color = Color.White.copy(0.75f), modifier = Modifier.padding(top = 12.dp))
-                Text(
-                    t("creator.shop_printify_studio_test.variant_loading", "Loading options…"),
-                    color = Color.White.copy(0.5f),
-                    style = MaterialTheme.typography.bodySmall
-                )
+                optionsTab == "design" -> {
+                    Text(t("design_studio.shop.settings", "Design settings"), color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(t("creator.shop_printify_studio_test.scale_label", "Scale"), color = Color.White.copy(0.8f))
+                    Slider(
+                        value = designScale,
+                        onValueChange = onScaleChange,
+                        onValueChangeFinished = onScaleFinished,
+                        valueRange = 0.08f..2.5f
+                    )
+                    Text(t("creator.shop_printify_studio_test.rotate_label", "Rotation"), color = Color.White.copy(0.8f))
+                    Slider(
+                        value = designRotate,
+                        onValueChange = onRotateChange,
+                        onValueChangeFinished = onRotateFinished,
+                        valueRange = -180f..180f
+                    )
+                }
+                else -> {
+                    Text(t("design_studio.shop.product_options", "Product options"), color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(t("creator.shop_printify_studio_test.pick_color_title", "Color"), color = Color.White.copy(0.75f))
+                    Text(t("creator.shop_printify_studio_test.pick_size_title", "Size"), color = Color.White.copy(0.75f), modifier = Modifier.padding(top = 12.dp))
+                    Text(
+                        t("creator.shop_printify_studio_test.variant_loading", "Loading options…"),
+                        color = Color.White.copy(0.5f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
     }
