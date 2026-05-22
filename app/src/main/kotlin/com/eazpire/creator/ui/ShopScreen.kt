@@ -363,7 +363,7 @@ fun ShopScreen(
                     selectedCollection = Triple(title, handle, null)
                 }
             }
-            path.startsWith("/pages/creator-dashboard") || path == "/pages/creator" -> isCreatorMode = true
+            path.startsWith("/pages/creator-dashboard") -> isCreatorMode = true
             path.startsWith("/pages/design-generator") -> isCreatorMode = true
             path.startsWith("/search") -> {
                 val q = uri.getQueryParameter("q")?.trim().orEmpty()
