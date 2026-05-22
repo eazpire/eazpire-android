@@ -119,6 +119,32 @@ class CreatorApi(
             .apply { if (!imageUrl.isNullOrBlank()) put("image_url", imageUrl) }
     )
 
+    /** GET ?op=printify-studio-test-product-meta — Printify options/variants for studio footer */
+    suspend fun printifyStudioTestProductMeta(
+        ownerId: String,
+        printifyProductId: String
+    ): JSONObject = call(
+        "printify-studio-test-product-meta",
+        mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
+            "printify_product_id" to printifyProductId
+        )
+    )
+
+    /** GET ?op=printify-studio-test-list-drafts — saved drafts for product_key */
+    suspend fun printifyStudioTestListDrafts(
+        ownerId: String,
+        productKey: String
+    ): JSONObject = call(
+        "printify-studio-test-list-drafts",
+        mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
+            "product_key" to productKey
+        )
+    )
+
     /** POST ?op=printify-studio-test-abandon — discard ephemeral Printify product */
     suspend fun printifyStudioTestAbandon(
         ownerId: String,
