@@ -28,6 +28,7 @@ import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.push.PushTokenRegistrar
 import com.eazpire.creator.ui.ShopScreen
 import com.eazpire.creator.update.PlayInAppUpdateHelper
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
 
@@ -68,6 +69,10 @@ class MainActivity : ComponentActivity() {
         initDebugLog(this)
         initLangSwitchDebug(this)
         val tokenStore = SecureTokenStore(this)
+        // Refresh zuerst (z. B. leerer access_token nach Update), dann nur ohne refresh_token ausloggen.
+        runBlocking {
+            ShopSessionGuard.refreshAccessTokenIfNeeded(this@MainActivity, tokenStore)
+        }
         if (ShopSessionGuard.shouldLogoutSync(tokenStore)) {
             ShopSessionGuard.performFullLogout(this, tokenStore)
         }

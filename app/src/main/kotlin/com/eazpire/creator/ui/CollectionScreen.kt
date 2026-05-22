@@ -85,8 +85,6 @@ private const val PRODUCTS_PER_PAGE = 24
 /** Special [collectionHandle] — load products from worker `list-active-shop-promotion-products`, not a Shopify collection. */
 const val EAZ_PROMOTIONS_COLLECTION_HANDLE = "eaz-promotions"
 
-private data class SortOption(val value: String, val label: String)
-
 // Design filter (creator-mobile-filter-modal): Price, Content Type, …, Product Type (Shopify), PAT display name (custom.product_name)
 private data class ProductFilters(
     val priceMin: String = "",
@@ -252,16 +250,6 @@ private fun applyWithinSearchFilter(
     return products.filter { productMatchesWithinSearch(it, query) }
 }
 
-private val SORT_OPTIONS = listOf(
-    SortOption("manual", "Featured"),
-    SortOption("created-descending", "Newest"),
-    SortOption("created-ascending", "Oldest"),
-    SortOption("price-ascending", "Price: Low to High"),
-    SortOption("price-descending", "Price: High to Low"),
-    SortOption("title-ascending", "A–Z"),
-    SortOption("title-descending", "Z–A"),
-)
-
 private fun sortProducts(
     products: List<ShopifyProductsApi.ProductItem>,
     sortBy: String
@@ -402,7 +390,7 @@ fun CollectionScreen(
     val displayProducts = remember(filteredProducts, withinSearchQuery) {
         applyWithinSearchFilter(filteredProducts, withinSearchQuery)
     }
-    val currentSortLabel = SORT_OPTIONS.find { it.value == sortBy }?.label?.let { t("collection.sort_$sortBy", it) } ?: t("collection.sort_by", "Sort by")
+    val currentSortLabel = COLLECTION_SORT_OPTIONS.find { it.value == sortBy }?.label?.let { t("collection.sort_$sortBy", it) } ?: t("collection.sort_by", "Sort by")
 
     Column(modifier = modifier.fillMaxSize()) {
         if (isLoading && products.isEmpty()) {
@@ -417,7 +405,7 @@ fun CollectionScreen(
         } else if (products.isEmpty()) {
             CollectionComingSoon(title = title, onBrowseAll = onBack)
         } else {
-            ResultsBar(
+            CollectionResultsBar(
                 filteredCount = displayProducts.size,
                 totalCount = if (filterCountProducts.isNotEmpty()) filterCountProducts.size else productsToFilter.size,
                 sortBy = sortBy,
@@ -491,117 +479,13 @@ fun CollectionScreen(
         )
     }
 
-    if (sortSheetVisible) {
-        ModalBottomSheet(
-            onDismissRequest = { sortSheetVisible = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    t("collection.sort_by", "Sort by"),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = EazColors.TextPrimary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                SORT_OPTIONS.forEach { opt ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                sortBy = opt.value
-                                sortSheetVisible = false
-                            }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            t("collection.sort_${opt.value}", opt.label),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (sortBy == opt.value) EazColors.Orange else EazColors.TextPrimary
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ResultsBar(
-    filteredCount: Int,
-    totalCount: Int,
-    sortBy: String,
-    sortLabel: String,
-    t: (String, String) -> String = { _, d -> d },
-    onFilterClick: () -> Unit,
-    onSortClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isFeatured = sortBy == "manual"
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color(0xFFF5F5F5))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            IconButton(
-                onClick = onFilterClick,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    Icons.Default.FilterList,
-                    contentDescription = t("collection.filter", "Filter"),
-                    tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Text(
-                text = "$filteredCount/$totalCount ${t("collection.products", "products")}",
-                style = MaterialTheme.typography.bodySmall,
-                color = EazColors.TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(EazColors.Orange)
-                .clickable(onClick = onSortClick)
-                .padding(
-                    horizontal = if (isFeatured) 10.dp else 14.dp,
-                    vertical = 7.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                Icons.Default.SwapVert,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp)
-            )
-            if (!isFeatured) {
-                Text(
-                    sortLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White
-                )
-            }
-            Icon(
-                Icons.Default.ExpandMore,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
+    CollectionSortBottomSheet(
+        visible = sortSheetVisible,
+        sortBy = sortBy,
+        t = t,
+        onDismiss = { sortSheetVisible = false },
+        onSortSelected = { sortBy = it }
+    )
 }
 
 // Design filter (creator-mobile-filter-modal, saveDesign.js, custom-fields-metadata.md)

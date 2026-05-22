@@ -35,10 +35,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,9 +62,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -75,7 +79,7 @@ import org.json.JSONArray
 private const val CATALOG_ROTATION_MS = 1500L
 private const val CATALOG_CROSSFADE_MS = 450
 
-internal data class CatalogProduct(
+data class CatalogProduct(
     val productKey: String,
     val title: String,
     val mockUrls: List<String>,
@@ -150,52 +154,46 @@ private fun parseJsonStringList(arr: JSONArray?): List<String> {
     }
 }
 
-private sealed interface ShopCreateProductPhase {
-    data object Closed : ShopCreateProductPhase
-    data object Catalog : ShopCreateProductPhase
+sealed interface ShopCreateProductPhase {
     data class Mode(val product: CatalogProduct) : ShopCreateProductPhase
     data class StudioGenerate(val product: CatalogProduct, val catalogProducts: List<CatalogProduct>) : ShopCreateProductPhase
     data class StudioUpload(val product: CatalogProduct, val imageUri: Uri) : ShopCreateProductPhase
     data class StudioCustomize(val product: CatalogProduct, val designUrl: String? = null) : ShopCreateProductPhase
 }
 
+private val SHOP_CREATE_SORT_OPTIONS = listOf(
+    CollectionSortOption("manual", "Featured"),
+    CollectionSortOption("title-ascending", "A–Z"),
+    CollectionSortOption("title-descending", "Z–A"),
+)
+
+private fun sortCatalogProducts(products: List<CatalogProduct>, sortBy: String): List<CatalogProduct> = when (sortBy) {
+    "title-ascending" -> products.sortedBy { it.title.lowercase() }
+    "title-descending" -> products.sortedByDescending { it.title.lowercase() }
+    else -> products
+}
+
 /**
- * Shop Create Product: catalog → mode → native generate/upload (customer-design API, no WebView).
+ * Inline Create catalog PLP — same chrome as [CollectionScreen] (filter bar, sort, 2-col grid).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShopCreateProductFlow(
-    visible: Boolean,
-    onDismiss: () -> Unit,
+fun ShopCreateCollectionScreen(
     api: CreatorApi,
-    tokenStore: SecureTokenStore,
     region: String,
-    translationStore: TranslationStore,
-    translation: (String, String) -> String,
-    onRequireLogin: () -> Unit = {}
+    modifier: Modifier = Modifier,
+    onProductClick: (CatalogProduct) -> Unit,
+    onProductsLoaded: (List<CatalogProduct>) -> Unit = {}
 ) {
-    var phase by remember(visible) {
-        mutableStateOf(
-            if (visible) ShopCreateProductPhase.Catalog else ShopCreateProductPhase.Closed
-        )
-    }
-    var pendingUploadProduct by remember { mutableStateOf<CatalogProduct?>(null) }
-    val uploadPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        val p = pendingUploadProduct
-        pendingUploadProduct = null
-        if (p != null && uri != null) {
-            phase = ShopCreateProductPhase.StudioUpload(p, uri)
-        } else if (p != null) {
-            phase = ShopCreateProductPhase.Mode(p)
-        }
-    }
-    var loading by remember { mutableStateOf(false) }
+    val store = LocalTranslationStore.current
+    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
+    val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
+
+    var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var products by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
-    val ownerId = remember(tokenStore) { tokenStore.getOwnerId() }
 
-    LaunchedEffect(visible, region) {
-        if (!visible) return@LaunchedEffect
+    LaunchedEffect(region) {
         loading = true
         error = null
         try {
@@ -244,39 +242,65 @@ fun ShopCreateProductFlow(
             products = emptyList()
         } finally {
             loading = false
+            onProductsLoaded(products)
         }
     }
 
-    if (!visible) return
+    ShopCreateCatalogGrid(
+        loading = loading,
+        error = error,
+        products = products,
+        t = t,
+        modifier = modifier,
+        onProductClick = onProductClick
+    )
+}
 
-    when (val current = phase) {
-        ShopCreateProductPhase.Closed -> {}
-        ShopCreateProductPhase.Catalog -> {
-            ShopCreateCatalogScreen(
-                loading = loading,
-                error = error,
-                products = products,
-                translation = translation,
-                translationStore = translationStore,
-                onDismiss = onDismiss,
-                onProductClick = { p -> phase = ShopCreateProductPhase.StudioCustomize(p) }
-            )
+/**
+ * Studio overlays after a product is chosen from [ShopCreateCollectionScreen].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ShopCreateProductFlow(
+    phase: ShopCreateProductPhase?,
+    catalogProducts: List<CatalogProduct>,
+    onCloseStudio: () -> Unit,
+    onPhaseChange: (ShopCreateProductPhase?) -> Unit,
+    api: CreatorApi,
+    tokenStore: SecureTokenStore,
+    translationStore: TranslationStore,
+    translation: (String, String) -> String,
+    onRequireLogin: () -> Unit = {}
+) {
+    val current = phase ?: return
+    var pendingUploadProduct by remember { mutableStateOf<CatalogProduct?>(null) }
+    val uploadPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val p = pendingUploadProduct
+        pendingUploadProduct = null
+        if (p != null && uri != null) {
+            onPhaseChange(ShopCreateProductPhase.StudioUpload(p, uri))
+        } else if (p != null) {
+            onPhaseChange(ShopCreateProductPhase.Mode(p))
         }
+    }
+    val ownerId = remember(tokenStore) { tokenStore.getOwnerId() }
+
+    when (current) {
         is ShopCreateProductPhase.Mode -> {
             val p = current.product
             ShopModeBottomSheet(
                 productTitle = p.title,
                 translation = translation,
-                onDismissRequest = { phase = ShopCreateProductPhase.Catalog },
+                onDismissRequest = onCloseStudio,
                 onGenerate = {
-                    phase = ShopCreateProductPhase.StudioGenerate(p, products)
+                    onPhaseChange(ShopCreateProductPhase.StudioGenerate(p, catalogProducts))
                 },
                 onUpload = {
                     pendingUploadProduct = p
                     uploadPicker.launch("image/*")
                 },
                 onCustomize = {
-                    phase = ShopCreateProductPhase.StudioCustomize(p)
+                    onPhaseChange(ShopCreateProductPhase.StudioCustomize(p))
                 }
             )
         }
@@ -289,7 +313,7 @@ fun ShopCreateProductFlow(
                 ownerId = ownerId,
                 translationStore = translationStore,
                 translation = translation,
-                onDismiss = { phase = ShopCreateProductPhase.Mode(p) },
+                onDismiss = { onPhaseChange(ShopCreateProductPhase.Mode(p)) },
                 onRequireLogin = onRequireLogin
             )
         }
@@ -302,7 +326,7 @@ fun ShopCreateProductFlow(
                 ownerId = ownerId,
                 translationStore = translationStore,
                 translation = translation,
-                onDismiss = { phase = ShopCreateProductPhase.Catalog },
+                onDismiss = onCloseStudio,
                 onRequireLogin = onRequireLogin
             )
         }
@@ -315,75 +339,9 @@ fun ShopCreateProductFlow(
                 ownerId = ownerId,
                 translationStore = translationStore,
                 translation = translation,
-                onDismiss = { phase = ShopCreateProductPhase.Mode(p) },
+                onDismiss = { onPhaseChange(ShopCreateProductPhase.Mode(p)) },
                 onRequireLogin = onRequireLogin
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ShopCreateCatalogScreen(
-    loading: Boolean,
-    error: String?,
-    products: List<CatalogProduct>,
-    translation: (String, String) -> String,
-    translationStore: TranslationStore,
-    onDismiss: () -> Unit,
-    onProductClick: (CatalogProduct) -> Unit
-) {
-    BackHandler(onBack = onDismiss)
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        ShopLightSheetTheme {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.White)
-                    .navigationBarsPadding()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = translation("creator.common.close", "Close"))
-                    }
-                    Text(
-                        text = translationStore.t(
-                            "creator.shop_create_product.catalog_page_title",
-                            "Create a product"
-                        ),
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.width(48.dp))
-                }
-                Text(
-                    text = translationStore.t(
-                        "creator.shop_create_product.catalog_page_subtitle",
-                        "Pick a product to customize in the design studio."
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-                CatalogStep(
-                    loading = loading,
-                    error = error,
-                    products = products,
-                    translation = translation,
-                    translationStore = translationStore,
-                    onProductClick = onProductClick,
-                    modifier = Modifier.weight(1f)
-                )
-            }
         }
     }
 }
@@ -505,170 +463,204 @@ private fun ModeSheetHeader(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CatalogStep(
+private fun ShopCreateCatalogGrid(
     loading: Boolean,
     error: String?,
     products: List<CatalogProduct>,
-    translation: (String, String) -> String,
-    translationStore: TranslationStore,
+    t: (String, String) -> String,
     onProductClick: (CatalogProduct) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var facetSel by remember { mutableStateOf(CatalogFacetSelection()) }
-    var filterSheetOpen by remember { mutableStateOf(false) }
-    val filterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var filterDrawerVisible by remember { mutableStateOf(false) }
+    var sortBy by remember { mutableStateOf("manual") }
+    var sortSheetVisible by remember { mutableStateOf(false) }
     val filtered = remember(products, facetSel) { filterCatalogProducts(products, facetSel) }
-    val groupOptions = listOf(
-        "clothing" to translationStore.t("creator.shop_create_product.group_clothing", "Clothing"),
-        "accessories" to translationStore.t("creator.shop_create_product.group_accessories", "Accessories"),
-        "home_living" to translationStore.t("creator.shop_create_product.group_home_living", "Home & Living"),
-        "other" to translationStore.t("creator.shop_create_product.group_other", "Other")
-    )
-    val audienceOptions = listOf(
-        "women" to translationStore.t("creator.shop_create_product.audience_women", "Women"),
-        "men" to translationStore.t("creator.shop_create_product.audience_men", "Men"),
-        "kids" to translationStore.t("creator.shop_create_product.audience_kids", "Kids"),
-        "toddler" to translationStore.t("creator.shop_create_product.audience_toddler", "Toddler")
-    )
+    val sorted = remember(filtered, sortBy) { sortCatalogProducts(filtered, sortBy) }
+    val currentSortLabel = SHOP_CREATE_SORT_OPTIONS.find { it.value == sortBy }?.label?.let {
+        t("collection.sort_$sortBy", it)
+    } ?: t("collection.sort_by", "Sort by")
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-    ) {
-        Text(
-            translation("creator.shop_create_product.private_hint", "Shop designs stay private."),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "${filtered.size} / ${products.size}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            ShopSheetPrimaryButton(onClick = { filterSheetOpen = true }) {
-                Text(translationStore.t("creator.product_filters.filters", "Filters"))
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            groupOptions.forEach { (value, label) ->
-                val selected = value in facetSel.groups
-                FilterChip(
-                    selected = selected,
-                    onClick = {
-                        facetSel = facetSel.copy(
-                            groups = if (selected) facetSel.groups - value else facetSel.groups + value
-                        )
-                    },
-                    label = { Text(label, maxLines = 1) }
-                )
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            audienceOptions.forEach { (value, label) ->
-                val selected = value in facetSel.audiences
-                FilterChip(
-                    selected = selected,
-                    onClick = {
-                        facetSel = facetSel.copy(
-                            audiences = if (selected) facetSel.audiences - value else facetSel.audiences + value
-                        )
-                    },
-                    label = { Text(label, maxLines = 1) }
-                )
-            }
-        }
+    Column(modifier = modifier.fillMaxSize()) {
         when {
-            loading -> Box(
+            loading && products.isEmpty() -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 160.dp),
+                    .padding(48.dp),
                 contentAlignment = Alignment.Center
-            ) { CircularProgressIndicator() }
-            error != null -> Text(error, color = MaterialTheme.colorScheme.error)
-            filtered.isEmpty() -> Text(translation("creator.shop_create_product.empty", "No products"))
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(120.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = true),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(4.dp),
-                userScrollEnabled = true
             ) {
-                items(filtered, key = { it.productKey }) { p ->
-                    CatalogProductCard(product = p) { onProductClick(p) }
+                CircularProgressIndicator(color = EazColors.Orange)
+            }
+            error != null && products.isEmpty() -> Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(16.dp)
+            )
+            sorted.isEmpty() -> Text(
+                t("creator.shop_create_product.empty", "No products"),
+                modifier = Modifier.padding(16.dp)
+            )
+            else -> {
+                CollectionResultsBar(
+                    filteredCount = sorted.size,
+                    totalCount = products.size,
+                    sortBy = sortBy,
+                    sortLabel = currentSortLabel,
+                    t = t,
+                    onFilterClick = { filterDrawerVisible = true },
+                    onSortClick = { sortSheetVisible = true }
+                )
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(sorted, key = { it.productKey }) { p ->
+                        CatalogProductCard(product = p, onClick = { onProductClick(p) })
+                    }
                 }
             }
         }
     }
 
-    if (filterSheetOpen) {
-        ModalBottomSheet(
-            onDismissRequest = { filterSheetOpen = false },
-            sheetState = filterSheetState,
-            containerColor = Color.White
+    if (filterDrawerVisible) {
+        ShopCreateFilterDrawer(
+            facetSel = facetSel,
+            onFacetChange = { facetSel = it },
+            t = t,
+            onDismiss = { filterDrawerVisible = false }
+        )
+    }
+
+    CollectionSortBottomSheet(
+        visible = sortSheetVisible,
+        sortBy = sortBy,
+        sortOptions = SHOP_CREATE_SORT_OPTIONS,
+        t = t,
+        onDismiss = { sortSheetVisible = false },
+        onSortSelected = { sortBy = it }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShopCreateFilterDrawer(
+    facetSel: CatalogFacetSelection,
+    onFacetChange: (CatalogFacetSelection) -> Unit,
+    t: (String, String) -> String,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+                .heightIn(min = 450.dp)
         ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    translationStore.t("creator.product_filters.filters", "Filters"),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        Icons.Default.FilterList,
+                        contentDescription = null,
+                        tint = EazColors.Orange,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        t("collection.filter", "Filters"),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = EazColors.TextPrimary
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = t("creator.common.close", "Close"))
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+            ) {
                 CatalogFacetCheckboxGroup(
-                    title = translationStore.t("creator.shop_create_product.catalog_filter_design_type", "Design type"),
+                    title = t("creator.shop_create_product.catalog_filter_audience", "Audience"),
                     options = listOf(
-                        "classic" to translationStore.t("creator.shop_create_product.dt_classic", "Classic"),
-                        "pattern" to translationStore.t("creator.shop_create_product.dt_pattern", "Pattern"),
-                        "all-over" to translationStore.t("creator.shop_create_product.dt_all_over", "All-Over"),
-                        "full-coverage" to translationStore.t("creator.shop_create_product.dt_full_coverage", "Full-Coverage"),
-                        "panorama" to translationStore.t("creator.shop_create_product.dt_panorama", "Panorama")
+                        "women" to t("creator.shop_create_product.audience_women", "Women"),
+                        "men" to t("creator.shop_create_product.audience_men", "Men"),
+                        "kids" to t("creator.shop_create_product.audience_kids", "Kids"),
+                        "toddler" to t("creator.shop_create_product.audience_toddler", "Toddler")
                     ),
-                    selected = facetSel.designTypes,
+                    selected = facetSel.audiences,
                     onToggle = { v, on ->
-                        facetSel = facetSel.copy(
-                            designTypes = if (on) facetSel.designTypes + v else facetSel.designTypes - v
+                        onFacetChange(
+                            facetSel.copy(
+                                audiences = if (on) facetSel.audiences + v else facetSel.audiences - v
+                            )
                         )
                     }
                 )
                 CatalogFacetCheckboxGroup(
-                    title = translationStore.t("creator.shop_create_product.catalog_filter_production", "Production"),
+                    title = t("creator.shop_create_product.group_clothing", "Category"),
                     options = listOf(
-                        "print" to translationStore.t("creator.shop_create_product.production_print", "Print"),
-                        "embroidery" to translationStore.t("creator.shop_create_product.production_embroidery", "Embroidery"),
-                        "3d_print" to translationStore.t("creator.shop_create_product.production_3d", "3D print")
+                        "clothing" to t("creator.shop_create_product.group_clothing", "Clothing"),
+                        "accessories" to t("creator.shop_create_product.group_accessories", "Accessories"),
+                        "home_living" to t("creator.shop_create_product.group_home_living", "Home & Living"),
+                        "other" to t("creator.shop_create_product.group_other", "Other")
+                    ),
+                    selected = facetSel.groups,
+                    onToggle = { v, on ->
+                        onFacetChange(
+                            facetSel.copy(
+                                groups = if (on) facetSel.groups + v else facetSel.groups - v
+                            )
+                        )
+                    }
+                )
+                CatalogFacetCheckboxGroup(
+                    title = t("creator.shop_create_product.catalog_filter_design_type", "Design type"),
+                    options = listOf(
+                        "classic" to t("creator.shop_create_product.dt_classic", "Classic"),
+                        "pattern" to t("creator.shop_create_product.dt_pattern", "Pattern"),
+                        "all-over" to t("creator.shop_create_product.dt_all_over", "All-Over"),
+                        "full-coverage" to t("creator.shop_create_product.dt_full_coverage", "Full-Coverage"),
+                        "panorama" to t("creator.shop_create_product.dt_panorama", "Panorama")
+                    ),
+                    selected = facetSel.designTypes,
+                    onToggle = { v, on ->
+                        onFacetChange(
+                            facetSel.copy(
+                                designTypes = if (on) facetSel.designTypes + v else facetSel.designTypes - v
+                            )
+                        )
+                    }
+                )
+                CatalogFacetCheckboxGroup(
+                    title = t("creator.shop_create_product.catalog_filter_production", "Production"),
+                    options = listOf(
+                        "print" to t("creator.shop_create_product.production_print", "Print"),
+                        "embroidery" to t("creator.shop_create_product.production_embroidery", "Embroidery"),
+                        "3d_print" to t("creator.shop_create_product.production_3d", "3D print")
                     ),
                     selected = facetSel.production,
                     onToggle = { v, on ->
-                        facetSel = facetSel.copy(
-                            production = if (on) facetSel.production + v else facetSel.production - v
+                        onFacetChange(
+                            facetSel.copy(
+                                production = if (on) facetSel.production + v else facetSel.production - v
+                            )
                         )
                     }
                 )
@@ -822,6 +814,7 @@ private fun CatalogProductCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
+                .clip(RoundedCornerShape(8.dp))
         ) {
             Crossfade(
                 targetState = urlIndex,

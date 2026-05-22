@@ -236,7 +236,9 @@ fun ShopScreen(
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
     var shopSearchQuery by remember { mutableStateOf<String?>(null) }
-    var shopCreateProductVisible by remember { mutableStateOf(false) }
+    var shopCreateActive by remember { mutableStateOf(false) }
+    var shopCreateStudioPhase by remember { mutableStateOf<ShopCreateProductPhase?>(null) }
+    var shopCreateCatalogProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
 
@@ -512,13 +514,21 @@ fun ShopScreen(
                         when {
                             selectedProductHandle != null -> menuDrawerVisible = true
                             shopSearchQuery != null -> shopSearchQuery = null
+                            shopCreateActive -> {
+                                shopCreateActive = false
+                                shopCreateStudioPhase = null
+                            }
                             selectedCollection != null -> selectedCollection = null
                             else -> menuDrawerVisible = true
                         }
                     },
                     onCategoryClick = { title, handle ->
                         if (handle == SHOP_MENU_CREATE_HANDLE) {
-                            shopCreateProductVisible = true
+                            shopSearchQuery = null
+                            selectedProductHandle = null
+                            selectedCollection = null
+                            shopCreateStudioPhase = null
+                            shopCreateActive = true
                         } else {
                             shopSearchQuery = null
                             selectedProductHandle = null
@@ -527,10 +537,15 @@ fun ShopScreen(
                     },
                     selectedHandle = selectedCollection?.second
                 )
-                if (selectedCollection != null || selectedProductHandle != null) {
+                if (shopCreateActive || selectedCollection != null || selectedProductHandle != null) {
                     CollectionBreadcrumb(
-                        categoryTitle = selectedCollection?.first ?: "",
+                        categoryTitle = when {
+                            shopCreateActive -> translationStore.t("creator.shop_create_product.entry", "Create")
+                            else -> selectedCollection?.first ?: ""
+                        },
                         onHomeClick = {
+                            shopCreateActive = false
+                            shopCreateStudioPhase = null
                             selectedCollection = null
                             selectedProductHandle = null
                         },
@@ -566,6 +581,15 @@ fun ShopScreen(
                 .padding(padding)
         ) {
             when {
+                shopCreateActive && shopCreateStudioPhase == null -> ShopCreateCollectionScreen(
+                    api = creatorPollApi,
+                    region = catalogRegion,
+                    modifier = Modifier.fillMaxSize(),
+                    onProductsLoaded = { shopCreateCatalogProducts = it },
+                    onProductClick = { p ->
+                        shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(p)
+                    }
+                )
                 selectedProductHandle != null -> ProductDetailScreen(
                     productHandle = selectedProductHandle!!,
                     onBack = { selectedProductHandle = null },
@@ -609,17 +633,19 @@ fun ShopScreen(
         }
     }
     }
-    if (!isCreatorMode) {
+    if (!isCreatorMode && shopCreateStudioPhase != null) {
         ShopCreateProductFlow(
-            visible = shopCreateProductVisible,
-            onDismiss = { shopCreateProductVisible = false },
+            phase = shopCreateStudioPhase,
+            catalogProducts = shopCreateCatalogProducts,
+            onCloseStudio = { shopCreateStudioPhase = null },
+            onPhaseChange = { shopCreateStudioPhase = it },
             api = creatorPollApi,
             tokenStore = tokenStore,
-            region = catalogRegion,
             translationStore = translationStore,
             translation = { k, d -> translationStore.t(k, d) },
             onRequireLogin = {
-                shopCreateProductVisible = false
+                shopCreateStudioPhase = null
+                shopCreateActive = false
                 showLoginOptions = true
             }
         )
@@ -812,7 +838,13 @@ fun ShopScreen(
         onCategoryClick = { title, handle, productType ->
             menuDrawerVisible = false
             if (handle == SHOP_MENU_CREATE_HANDLE) {
-                shopCreateProductVisible = true
+            selectedCollection = null
+            selectedProductHandle = null
+            shopSearchQuery = null
+            shopCreateActive = false
+            shopCreateStudioPhase = null
+                shopCreateStudioPhase = null
+                shopCreateActive = true
             } else {
                 selectedProductHandle = null
                 selectedCollection = Triple(title, handle, productType)
