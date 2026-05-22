@@ -65,6 +65,74 @@ class CreatorApi(
         mapOf("region" to region)
     )
 
+    /** GET ?op=design-studio-config — mock URLs + print area for shop design studio */
+    suspend fun getDesignStudioShopConfig(
+        ownerId: String,
+        productKey: String,
+        colorKey: String? = null
+    ): JSONObject = call(
+        "design-studio-config",
+        buildMap {
+            put("owner_id", ownerId)
+            put("product_key", productKey)
+            if (!colorKey.isNullOrBlank()) put("color_key", colorKey)
+        }
+    )
+
+    /** POST ?op=printify-studio-test-open — duplicate Printify template for editing session */
+    suspend fun printifyStudioTestOpen(
+        ownerId: String,
+        productKey: String
+    ): JSONObject = postDispatchJson(
+        op = "printify-studio-test-open",
+        queryParams = mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId
+        ),
+        body = JSONObject()
+            .put("op", "printify-studio-test-open")
+            .put("path_prefix", "/apps/creator-dispatch")
+            .put("owner_id", ownerId)
+            .put("product_key", productKey)
+    )
+
+    /** POST ?op=printify-studio-test-sync — placement + preview sync */
+    suspend fun printifyStudioTestSync(
+        ownerId: String,
+        productKey: String,
+        printifyProductId: String,
+        placement: JSONObject,
+        imageUrl: String? = null
+    ): JSONObject = postDispatchJson(
+        op = "printify-studio-test-sync",
+        queryParams = mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId
+        ),
+        body = JSONObject()
+            .put("op", "printify-studio-test-sync")
+            .put("path_prefix", "/apps/creator-dispatch")
+            .put("owner_id", ownerId)
+            .put("product_key", productKey)
+            .put("printify_product_id", printifyProductId)
+            .put("placement", placement)
+            .apply { if (!imageUrl.isNullOrBlank()) put("image_url", imageUrl) }
+    )
+
+    /** POST ?op=printify-studio-test-abandon — discard ephemeral Printify product */
+    suspend fun printifyStudioTestAbandon(
+        ownerId: String,
+        printifyProductId: String
+    ): JSONObject = postDispatchJson(
+        op = "printify-studio-test-abandon",
+        queryParams = mapOf("owner_id" to ownerId),
+        body = JSONObject()
+            .put("op", "printify-studio-test-abandon")
+            .put("path_prefix", "/apps/creator-dispatch")
+            .put("owner_id", ownerId)
+            .put("printify_product_id", printifyProductId)
+    )
+
     /** GET ?op=get-shop-navigation — Storefront menus for drawer (main + optional audience). */
     suspend fun getShopNavigation(
         mainMenu: String = "main-menu",

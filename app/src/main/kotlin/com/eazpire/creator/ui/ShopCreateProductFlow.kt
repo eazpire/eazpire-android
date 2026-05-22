@@ -78,6 +78,7 @@ private sealed interface ShopCreateProductPhase {
     data class Mode(val product: CatalogProduct) : ShopCreateProductPhase
     data class StudioGenerate(val product: CatalogProduct, val catalogProducts: List<CatalogProduct>) : ShopCreateProductPhase
     data class StudioUpload(val product: CatalogProduct, val imageUri: Uri) : ShopCreateProductPhase
+    data class StudioCustomize(val product: CatalogProduct, val designUrl: String? = null) : ShopCreateProductPhase
 }
 
 /**
@@ -188,6 +189,9 @@ fun ShopCreateProductFlow(
                 onUpload = {
                     pendingUploadProduct = p
                     uploadPicker.launch("image/*")
+                },
+                onCustomize = {
+                    phase = ShopCreateProductPhase.StudioCustomize(p)
                 }
             )
         }
@@ -196,6 +200,19 @@ fun ShopCreateProductFlow(
             ShopDesignStudioGenerateSheet(
                 product = p,
                 catalogProducts = current.catalogProducts,
+                api = api,
+                ownerId = ownerId,
+                translationStore = translationStore,
+                translation = translation,
+                onDismiss = { phase = ShopCreateProductPhase.Mode(p) },
+                onRequireLogin = onRequireLogin
+            )
+        }
+        is ShopCreateProductPhase.StudioCustomize -> {
+            val p = current.product
+            ShopPrintifyDesignStudioScreen(
+                product = p,
+                initialDesignUrl = current.designUrl,
                 api = api,
                 ownerId = ownerId,
                 translationStore = translationStore,
@@ -284,7 +301,8 @@ private fun ShopModeBottomSheet(
     translation: (String, String) -> String,
     onDismissRequest: () -> Unit,
     onGenerate: () -> Unit,
-    onUpload: () -> Unit
+    onUpload: () -> Unit,
+    onCustomize: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     BackHandler(onBack = onDismissRequest)
@@ -325,7 +343,8 @@ private fun ShopModeBottomSheet(
                     productTitle = productTitle,
                     translation = translation,
                     onGenerate = onGenerate,
-                    onUpload = onUpload
+                    onUpload = onUpload,
+                    onCustomize = onCustomize
                 )
             }
         }
@@ -439,7 +458,8 @@ private fun ModeStep(
     productTitle: String,
     translation: (String, String) -> String,
     onGenerate: () -> Unit,
-    onUpload: () -> Unit
+    onUpload: () -> Unit,
+    onCustomize: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -495,6 +515,30 @@ private fun ModeStep(
                 text = translation(
                     "creator.shop_create_product.upload_desc",
                     "Upload a finished design or image as it will appear on the product."
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(0.92f)
+            )
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ShopSheetPrimaryButton(
+                onClick = onCustomize,
+                modifier = Modifier.fillMaxWidth(0.92f)
+            ) {
+                Text(
+                    translation("design_studio.shop.customize_product", "Customize on product"),
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            Text(
+                text = translation(
+                    "creator.shop_create_product.customize_desc",
+                    "Place and adjust your design on the product mockup."
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
