@@ -85,6 +85,7 @@ object EazCollectionProductTypeQuery {
             "accessories" -> add(ezAccessories)
             else -> return ""
         }
-        return pts.joinToString("&")
+        val segment = "eaz_segment=${URLEncoder.encode(navKey, Charsets.UTF_8.name())}"
+        return "$segment&${pts.joinToString("&")}"
     }
 }
