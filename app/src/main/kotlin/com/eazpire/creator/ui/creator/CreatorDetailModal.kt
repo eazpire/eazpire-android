@@ -75,6 +75,9 @@ import org.json.JSONObject
 private const val TAB_AVATAR = 0
 private const val TAB_COVER = 1
 
+/** Same as web/shop cover hero and worker export (2400×900). */
+private const val COVER_ASPECT_RATIO = 8f / 3f
+
 /** Full-screen dialog: per-creator avatar + cover / hero (aligned with web creator-detail-modal). */
 @Composable
 fun CreatorDetailModal(
@@ -790,7 +793,7 @@ private fun ImageSection(
             .fillMaxWidth()
             .then(
                 if (tallPreview) {
-                    Modifier.aspectRatio(21f / 9f)
+                    Modifier.aspectRatio(COVER_ASPECT_RATIO)
                 } else {
                     Modifier
                         .aspectRatio(1f)
@@ -805,10 +808,8 @@ private fun ImageSection(
             AsyncImage(
                 model = imageUrl,
                 contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(6.dp),
-                contentScale = ContentScale.Fit
+                modifier = Modifier.fillMaxSize(),
+                contentScale = if (tallPreview) ContentScale.Crop else ContentScale.Fit
             )
             IconButton(
                 onClick = onRemove,
