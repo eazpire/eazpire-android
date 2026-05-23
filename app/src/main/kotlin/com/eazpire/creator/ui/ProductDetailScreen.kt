@@ -1400,6 +1400,47 @@ fun ProductDetailScreen(
         }
     }
 
+    if (reviewsSheetVisible) {
+        ModalBottomSheet(
+            onDismissRequest = { reviewsSheetVisible = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 360.dp, max = 680.dp)
+                    .navigationBarsPadding()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        t("eaz.common.rating_reviews_section", "Customer reviews"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = EazColors.TextPrimary
+                    )
+                    IconButton(onClick = { reviewsSheetVisible = false }) {
+                        Icon(Icons.Default.Close, contentDescription = t("common.close", "Close"), tint = EazColors.TextPrimary)
+                    }
+                }
+                Box(modifier = Modifier.height(1.dp).fillMaxWidth().background(Color(0xFFE8E8E8)))
+                JudgeMeReviewsWebView(
+                    productId = p.id,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                )
+            }
+        }
+    }
+
     // Checkout as right-side drawer (like Cart)
     val url = checkoutUrl
     if (url != null) {
@@ -1441,6 +1482,102 @@ private fun parseDescriptionSections(bodyHtml: String): List<Pair<String, String
             ?: if (i == 0 && fallback != null) fallback else "Not available"
         title to content
     }
+}
+
+/** Orange star rating row under PDP title (opens reviews sheet). */
+@Composable
+private fun ProductPdpRatingRow(
+    rating: Double,
+    reviewsLabel: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            repeat(5) { index ->
+                val starValue = index + 1
+                val filled = rating >= starValue - 0.25
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = null,
+                    tint = if (filled) EazColors.Orange else Color(0xFFD8D8D8),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+        }
+        Text(
+            String.format("%.1f", rating),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = EazColors.TextPrimary
+        )
+        Text(
+            reviewsLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = EazColors.TextSecondary
+        )
+    }
+}
+
+private fun buildJudgeMeReviewsHtml(productId: Long): String = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdn.judge.me/widget_v3/base.css">
+<style>
+:root { --jdgm-star-color: #EA7618; --jdgm-palette-color: #EA7618; }
+body { margin: 0; padding: 8px 4px 24px; font-family: sans-serif; background: #fff; }
+.jdgm-rev-widg__title { display: none; }
+.jdgm-histogram__row {
+  display: grid !important;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.jdgm-histogram__frequency { margin: 0; text-align: right; white-space: nowrap; }
+.jdgm-histogram__bar { margin: 0; min-width: 0; }
+.jdgm-histogram__bar-content { background: #EA7618 !important; }
+.jdgm-star.jdgm--on { color: #EA7618 !important; }
+</style>
+</head>
+<body>
+<div class="jdgm-widget jdgm-review-widget" data-id="$productId"></div>
+<script>window.jdgm=window.jdgm||{};jdgm.SHOP_DOMAIN='eazpire.myshopify.com';jdgm.PLATFORM='shopify';</script>
+<script async data-cfasync="false" src="https://cdn.judge.me/widget_preloader.js"></script>
+</body>
+</html>
+""".trimIndent()
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun JudgeMeReviewsWebView(productId: Long, modifier: Modifier = Modifier) {
+    val html = remember(productId) { buildJudgeMeReviewsHtml(productId) }
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                setBackgroundColor(android.graphics.Color.WHITE)
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                webViewClient = WebViewClient()
+            }
+        },
+        update = { webView ->
+            webView.loadDataWithBaseURL("https://www.eazpire.com/", html, "text/html", "UTF-8", null)
+        },
+        modifier = modifier
+    )
 }
 
 @SuppressLint("SetJavaScriptEnabled")
