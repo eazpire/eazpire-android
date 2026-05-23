@@ -5,7 +5,7 @@ package com.eazpire.creator.shop.sidebar
  */
 object EazCollectionProductTypeQuery {
     fun buildQueryFragment(navKey: String): String {
-        return when (navKey) {
+        val slug = when (navKey) {
             "tshirt" -> "t-shirt"
             "tank_top" -> "tank-top"
             "long_sleeve" -> "long-sleeve"
@@ -17,5 +17,6 @@ object EazCollectionProductTypeQuery {
             "bags", "jewelry", "hats", "scarves", "shoes", "accessories" -> navKey.replace('_', '-')
             else -> ""
         }
+        return if (slug.isEmpty()) "" else "type=$slug"
     }
 }
