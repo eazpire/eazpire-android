@@ -148,7 +148,9 @@ class ShopifyProductsApi(
         val creator: String = "",
         val productKey: String = "",
         val designId: String = "",
-        val productName: String = ""
+        val productName: String = "",
+        val ratingAvg: Double = 0.0,
+        val ratingCount: Int = 0
     )
 
     private fun fetchMetafieldsFromWorker(handles: List<String>): Map<String, ProductMetafields> {
@@ -180,7 +182,9 @@ class ShopifyProductsApi(
                     creator = obj.optString("creator", ""),
                     productKey = obj.optString("productKey", ""),
                     designId = obj.optString("designId", ""),
-                    productName = obj.optString("productName", "")
+                    productName = obj.optString("productName", ""),
+                    ratingAvg = obj.optDouble("ratingAvg", 0.0),
+                    ratingCount = obj.optInt("ratingCount", 0)
                 )
             }
             result
@@ -449,7 +453,9 @@ class ShopifyProductsApi(
         val productKey: String? = null,
         val tags: List<String> = emptyList(),
         val creatorDisplay: String = "",
-        val designIdMeta: String? = null
+        val designIdMeta: String? = null,
+        val ratingAvg: Double? = null,
+        val ratingCount: Int? = null
     ) {
         data class ProductVariant(
             val id: Long,
@@ -483,7 +489,9 @@ class ShopifyProductsApi(
             base.copy(
                 productKey = mf.productKey.takeIf { it.isNotBlank() } ?: base.productKey,
                 creatorDisplay = mf.creator.ifBlank { base.creatorDisplay },
-                designIdMeta = mf.designId.takeIf { it.isNotBlank() } ?: base.designIdMeta
+                designIdMeta = mf.designId.takeIf { it.isNotBlank() } ?: base.designIdMeta,
+                ratingAvg = mf.ratingAvg.takeIf { it > 0.0 } ?: base.ratingAvg,
+                ratingCount = mf.ratingCount.takeIf { it > 0 } ?: base.ratingCount
             )
         } catch (_: Exception) {
             null

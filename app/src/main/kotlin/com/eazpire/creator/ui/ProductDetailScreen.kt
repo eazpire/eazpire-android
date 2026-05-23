@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -349,6 +350,7 @@ fun ProductDetailScreen(
     var catalogProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var detailsSheetVisible by remember { mutableStateOf(false) }
+    var reviewsSheetVisible by remember { mutableStateOf(false) }
     var selectedImageIndex by remember { mutableIntStateOf(0) }
     var quantity by remember { mutableIntStateOf(1) }
     var showCartToast by remember { mutableStateOf(false) }
@@ -563,6 +565,19 @@ fun ProductDetailScreen(
                         Icon(Icons.Default.Info, contentDescription = null, tint = EazColors.TextPrimary, modifier = Modifier.size(14.dp))
                         Text(t("product.details", "Product Details"), style = MaterialTheme.typography.labelMedium, color = EazColors.TextPrimary)
                     }
+                }
+
+                val ratingAvg = p.ratingAvg
+                val ratingCount = p.ratingCount ?: 0
+                if (ratingAvg != null && ratingCount > 0) {
+                    val reviewsLabel = t("eaz.common.rating_reviews", "{{ count }} reviews")
+                        .replace("{{ count }}", ratingCount.toString())
+                    ProductPdpRatingRow(
+                        rating = ratingAvg,
+                        reviewsLabel = reviewsLabel,
+                        onClick = { reviewsSheetVisible = true },
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
                 }
 
             }
