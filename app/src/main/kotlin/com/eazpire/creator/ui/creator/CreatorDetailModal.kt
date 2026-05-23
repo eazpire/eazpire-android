@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +56,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
@@ -770,6 +775,70 @@ private fun HeroToggleRow(
     }
 }
 
+/** Cover crop preview: pinch to zoom, drag to pan (matches web creator-detail-modal). */
+@Composable
+private fun CoverImageCropPreview(
+    imageUrl: String,
+    modifier: Modifier = Modifier,
+    onRemove: () -> Unit,
+    generating: Boolean,
+    genProgress: Float,
+    tr: (String, String) -> String
+) {
+    var scale by remember(imageUrl) { mutableFloatStateOf(1f) }
+    var offset by remember(imageUrl) { mutableStateOf(Offset.Zero) }
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        scale = (scale * zoomChange).coerceIn(1f, 3f)
+        offset += panChange
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.06f)),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                }
+                .transformable(state = transformState),
+            contentScale = ContentScale.Crop
+        )
+        IconButton(
+            onClick = onRemove,
+            enabled = !generating,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(32.dp)
+                .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+        ) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = tr("creator.detail_modal.remove_image", "Remove"),
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        if (generating) {
+            LinearProgressIndicator(
+                progress = { genProgress },
+                modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
+                color = EazColors.Orange,
+                trackColor = Color.White.copy(alpha = 0.2f)
+            )
+        }
+    }
+}
+
 @Composable
 private fun ImageSection(
     label: String,
@@ -787,56 +856,69 @@ private fun ImageSection(
     tr: (String, String) -> String
 ) {
     Text(label, color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.labelMedium)
-    Box(
-        modifier = Modifier
-            .padding(top = 8.dp)
-            .fillMaxWidth()
-            .then(
-                if (tallPreview) {
-                    Modifier.aspectRatio(COVER_ASPECT_RATIO)
-                } else {
-                    Modifier
-                        .aspectRatio(1f)
-                        .fillMaxWidth(0.42f)
+    val previewModifier = Modifier
+        .padding(top = 8.dp)
+        .fillMaxWidth()
+        .then(
+            if (tallPreview) {
+                Modifier.aspectRatio(COVER_ASPECT_RATIO)
+            } else {
+                Modifier
+                    .aspectRatio(1f)
+                    .fillMaxWidth(0.42f)
+            }
+        )
+
+    if (tallPreview && !imageUrl.isNullOrBlank()) {
+        CoverImageCropPreview(
+            imageUrl = imageUrl,
+            modifier = previewModifier,
+            onRemove = onRemove,
+            generating = generating,
+            genProgress = genProgress,
+            tr = tr
+        )
+    } else {
+        Box(
+            modifier = previewModifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.06f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = if (tallPreview) ContentScale.Crop else ContentScale.Fit
+                )
+                IconButton(
+                    onClick = onRemove,
+                    enabled = !generating,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(32.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = tr("creator.detail_modal.remove_image", "Remove"),
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
-            )
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.06f)),
-        contentAlignment = Alignment.Center
-    ) {
-        if (!imageUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = if (tallPreview) ContentScale.Crop else ContentScale.Fit
-            )
-            IconButton(
-                onClick = onRemove,
-                enabled = !generating,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(32.dp)
-                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-            ) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = tr("creator.detail_modal.remove_image", "Remove"),
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
+            } else {
+                Text(tr("creator.detail_modal.no_image", "No image"), color = Color.White.copy(alpha = 0.45f))
+            }
+            if (generating) {
+                LinearProgressIndicator(
+                    progress = { genProgress },
+                    modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
+                    color = EazColors.Orange,
+                    trackColor = Color.White.copy(alpha = 0.2f)
                 )
             }
-        } else {
-            Text(tr("creator.detail_modal.no_image", "No image"), color = Color.White.copy(alpha = 0.45f))
-        }
-        if (generating) {
-            LinearProgressIndicator(
-                progress = genProgress,
-                modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
-                color = EazColors.Orange,
-                trackColor = Color.White.copy(alpha = 0.2f)
-            )
         }
     }
     Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

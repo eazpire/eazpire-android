@@ -2053,50 +2053,72 @@ private fun StudioConfirmDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF0F172A), RoundedCornerShape(16.dp))
-                .padding(horizontal = 24.dp, vertical = 22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF0F172A))
+                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
         ) {
-            Text(
-                title,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                message,
-                color = Color.White.copy(alpha = 0.72f),
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                lineHeight = 20.sp
-            )
-            Spacer(Modifier.height(22.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF020617))
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    title,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0F172A))
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    message,
+                    color = Color.White.copy(alpha = 0.78f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+            }
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF020617))
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedButton(
                     onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(999.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.22f))
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                 ) {
-                    Text(cancelLabel, color = Color.White, maxLines = 2, textAlign = TextAlign.Center)
+                    Text(cancelLabel, maxLines = 2, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
                 }
                 Button(
                     onClick = onConfirm,
                     enabled = confirmEnabled,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (confirmPrimary) Color(0xFFF97316) else Color(0xFFB91C1C),
                         contentColor = Color.White,
                         disabledContainerColor = Color(0xFFF97316).copy(alpha = 0.45f)
                     )
                 ) {
-                    Text(confirmLabel, maxLines = 2, textAlign = TextAlign.Center)
+                    Text(confirmLabel, maxLines = 2, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
                 }
             }
         }
