@@ -36,6 +36,10 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -75,13 +79,16 @@ fun CreatorDetailModal(
     ownerId: String,
     api: CreatorApi,
     translationStore: TranslationStore,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    initialTab: Int = TAB_AVATAR
 ) {
     val tr = { k: String, d: String -> translationStore.t(k, d) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var mainTab by remember { mutableIntStateOf(TAB_AVATAR) }
+    var mainTab by remember(initialTab) {
+        mutableIntStateOf(if (initialTab == TAB_COVER) TAB_COVER else TAB_AVATAR)
+    }
     var displayMode by remember { mutableStateOf("cover") }
     var originalDisplayMode by remember { mutableStateOf("cover") }
 
@@ -156,19 +163,25 @@ fun CreatorDetailModal(
                 val av = withContext(Dispatchers.IO) { api.getCreatorImage(ownerId, creatorName, "avatar") }
                 val imgA = av.optJSONObject("image")
                 val uA = imgA?.optString("image_url")?.takeIf { it.isNotBlank() }
-                avatarUrl = uA
-                avatarHasExisting = uA != null
-                avatarPending = null
+                if (avatarPending == null) {
+                    avatarUrl = uA
+                    avatarHasExisting = uA != null
+                } else if (uA != null) {
+                    avatarHasExisting = true
+                }
 
                 val cv = withContext(Dispatchers.IO) { api.getCreatorImage(ownerId, creatorName, "cover") }
                 val imgC = cv.optJSONObject("image")
                 val uC = imgC?.optString("image_url")?.takeIf { it.isNotBlank() }
-                coverUrl = uC
-                coverHasExisting = uC != null
-                coverPending = null
-                val dm = cv.optString("display_mode", "").ifBlank { "cover" }
-                displayMode = dm
-                originalDisplayMode = dm
+                if (coverPending == null) {
+                    coverUrl = uC
+                    coverHasExisting = uC != null
+                    val dm = cv.optString("display_mode", "").ifBlank { "cover" }
+                    displayMode = dm
+                    originalDisplayMode = dm
+                } else if (uC != null) {
+                    coverHasExisting = true
+                }
             } catch (_: Exception) {
             }
             loading = false
@@ -405,73 +418,71 @@ fun CreatorDetailModal(
             modifier = Modifier.fillMaxSize(),
             color = Color(0xFF070B14)
         ) {
-            Row(Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .width(56.dp)
-                        .fillMaxHeight()
-                        .background(Color(0xFF070B14))
-                        .padding(vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.Person,
-                        contentDescription = tr("creator.detail_modal.tab_avatar", "Profile photo"),
-                        tint = if (mainTab == TAB_AVATAR) EazColors.Orange else Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (mainTab == TAB_AVATAR) EazColors.Orange.copy(alpha = 0.2f) else Color.Transparent
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, null, tint = Color.White)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            tr("creator.detail_modal.title", "Creator profile"),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White
+                        )
+                        Text(creatorName, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f))
+                    }
+                    Button(
+                        onClick = { saveAll() },
+                        enabled = hasUnsaved() && !saving,
+                        colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange, contentColor = Color.Black)
+                    ) {
+                        Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                        Text(tr("creator.common.save", "Save"), modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
+
+                TabRow(
+                    selectedTabIndex = mainTab,
+                    containerColor = Color(0xFF0B1220),
+                    contentColor = Color.White,
+                    indicator = { tabPositions ->
+                        if (mainTab < tabPositions.size) {
+                            TabRowDefaults.SecondaryIndicator(
+                                modifier = Modifier.tabIndicatorOffset(tabPositions[mainTab]),
+                                color = EazColors.Orange
                             )
-                            .clickable { mainTab = TAB_AVATAR }
-                            .padding(8.dp)
+                        }
+                    },
+                    divider = {}
+                ) {
+                    Tab(
+                        selected = mainTab == TAB_AVATAR,
+                        onClick = { mainTab = TAB_AVATAR },
+                        text = {
+                            Text(
+                                tr("creator.detail_modal.tab_avatar", "Profile photo"),
+                                color = if (mainTab == TAB_AVATAR) EazColors.Orange else Color.White.copy(alpha = 0.7f)
+                            )
+                        }
                     )
-                    Icon(
-                        Icons.Default.Image,
-                        contentDescription = tr("creator.detail_modal.tab_cover", "Cover"),
-                        tint = if (mainTab == TAB_COVER) EazColors.Orange else Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (mainTab == TAB_COVER) EazColors.Orange.copy(alpha = 0.2f) else Color.Transparent
+                    Tab(
+                        selected = mainTab == TAB_COVER,
+                        onClick = { mainTab = TAB_COVER },
+                        text = {
+                            Text(
+                                tr("creator.detail_modal.tab_cover", "Cover"),
+                                color = if (mainTab == TAB_COVER) EazColors.Orange else Color.White.copy(alpha = 0.7f)
                             )
-                            .clickable { mainTab = TAB_COVER }
-                            .padding(8.dp)
+                        }
                     )
                 }
 
-                Column(Modifier.weight(1f)) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, null, tint = Color.White)
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                tr("creator.detail_modal.title", "Creator profile"),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White
-                            )
-                            Text(creatorName, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f))
-                        }
-                        Button(
-                            onClick = { saveAll() },
-                            enabled = hasUnsaved() && !saving,
-                            colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange, contentColor = Color.Black)
-                        ) {
-                            Icon(Icons.Default.Save, null, Modifier.size(18.dp))
-                            Text(tr("creator.common.save", "Save"), modifier = Modifier.padding(start = 6.dp))
-                        }
-                    }
-
-                    if (loading) {
+                if (loading) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = EazColors.Orange)
                         }
@@ -608,7 +619,6 @@ fun CreatorDetailModal(
                             }
                         }
                     }
-                }
             }
         }
     }
