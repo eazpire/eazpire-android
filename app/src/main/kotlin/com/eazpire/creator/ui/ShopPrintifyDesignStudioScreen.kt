@@ -244,9 +244,8 @@ internal fun ShopPrintifyDesignStudioScreen(
 
     fun scheduleSync() {
         val oid = ownerId?.trim().orEmpty()
-        val pid = printifyProductId.trim()
         val img = designUrl?.trim().orEmpty()
-        if (oid.isEmpty() || pid.isEmpty() || img.isEmpty()) return
+        if (oid.isEmpty() || img.isEmpty()) return
         scope.launch {
             syncing = true
             try {
@@ -268,14 +267,31 @@ internal fun ShopPrintifyDesignStudioScreen(
                     .put("angle", designRotate.toDouble())
                     .put("pattern", pattern)
                     .put("printify_position", "front")
-                withContext(Dispatchers.IO) {
+                val pid = printifyProductId.trim().ifEmpty { null }
+                val inlineB64: String?
+                val inlineMime: String?
+                if (img.startsWith("data:")) {
+                    val comma = img.indexOf(',')
+                    inlineMime = if (comma > 5) img.substring(5, comma).substringBefore(';') else "image/png"
+                    inlineB64 = if (comma >= 0) img.substring(comma + 1) else img
+                } else {
+                    inlineMime = null
+                    inlineB64 = null
+                }
+                val res = withContext(Dispatchers.IO) {
                     api.printifyStudioTestSync(
                         ownerId = oid,
                         productKey = product.productKey,
                         printifyProductId = pid,
                         placement = placement,
-                        imageUrl = img
+                        imageUrl = if (inlineB64 != null) null else img,
+                        designImageBase64 = inlineB64,
+                        designImageContentType = inlineMime
                     )
+                }
+                if (res.optBoolean("ok", false)) {
+                    val newPid = res.optString("printify_product_id", "").trim()
+                    if (newPid.isNotEmpty()) printifyProductId = newPid
                 }
             } catch (_: Exception) {
             } finally {
@@ -347,14 +363,6 @@ internal fun ShopPrintifyDesignStudioScreen(
                 val (url, frac) = resolveMockFromConfig(cfg)
                 if (!url.isNullOrEmpty()) mockUrl = url
                 printAreaFrac = frac
-            }
-            val open = withContext(Dispatchers.IO) {
-                api.printifyStudioTestOpen(oid, product.productKey)
-            }
-            if (!open.optBoolean("ok", false)) {
-                error = open.optString("error", "open_failed")
-            } else {
-                printifyProductId = open.optString("printify_product_id", "")
             }
         } catch (e: Exception) {
             error = e.message ?: "error"

@@ -96,13 +96,15 @@ class CreatorApi(
             .put("product_key", productKey)
     )
 
-    /** POST ?op=printify-studio-test-sync — placement + preview sync */
+    /** POST ?op=printify-studio-test-sync — placement + preview sync (creates product when printify_product_id omitted) */
     suspend fun printifyStudioTestSync(
         ownerId: String,
         productKey: String,
-        printifyProductId: String,
+        printifyProductId: String? = null,
         placement: JSONObject,
-        imageUrl: String? = null
+        imageUrl: String? = null,
+        designImageBase64: String? = null,
+        designImageContentType: String? = null
     ): JSONObject = postDispatchJson(
         op = "printify-studio-test-sync",
         queryParams = mapOf(
@@ -114,9 +116,15 @@ class CreatorApi(
             .put("path_prefix", "/apps/creator-dispatch")
             .put("owner_id", ownerId)
             .put("product_key", productKey)
-            .put("printify_product_id", printifyProductId)
             .put("placement", placement)
-            .apply { if (!imageUrl.isNullOrBlank()) put("image_url", imageUrl) }
+            .apply {
+                if (!printifyProductId.isNullOrBlank()) put("printify_product_id", printifyProductId)
+                if (!imageUrl.isNullOrBlank()) put("image_url", imageUrl)
+                if (!designImageBase64.isNullOrBlank()) put("design_image_base64", designImageBase64)
+                if (!designImageContentType.isNullOrBlank()) {
+                    put("design_image_content_type", designImageContentType)
+                }
+            }
     )
 
     /** GET ?op=printify-studio-test-product-meta — Printify options/variants for studio footer */
