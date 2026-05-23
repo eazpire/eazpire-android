@@ -371,6 +371,42 @@ private fun CreatorSettingsCommunityContent(tokenStore: SecureTokenStore, transl
     )
 }
 
+private val CREATOR_NAME_CHARS = Regex("^[\\p{L}\\p{N}-]+$")
+
+private fun validateCreatorNameInput(name: String): String? {
+    val trimmed = name.trim()
+    if (trimmed.isBlank()) return "missing_name"
+    if (trimmed.length < 3) return "too_short"
+    if (!CREATOR_NAME_CHARS.matches(trimmed)) return "invalid_chars"
+    if (trimmed.startsWith("-") || trimmed.endsWith("-")) return "invalid_chars"
+    return null
+}
+
+private fun creatorNameErrorMessage(error: String, translationStore: TranslationStore): String =
+    when (error) {
+        "invalid_chars" -> translationStore.t(
+            "creator.settings_names.invalid_chars",
+            "Only letters, numbers, and hyphens (-) are allowed."
+        )
+        "name_taken" -> translationStore.t(
+            "creator.settings_names.name_taken",
+            "This name is already taken. Try another one!"
+        )
+        "too_short" -> translationStore.t(
+            "creator.settings_names.too_short",
+            "Name must be at least 3 characters."
+        )
+        "limit_reached" -> translationStore.t(
+            "creator.settings_names.limit_reached",
+            "You can register up to 5 creator names."
+        )
+        "already_added" -> translationStore.t(
+            "creator.settings_names.already_added",
+            "You already added this name."
+        )
+        else -> translationStore.t("creator.settings_names.add_error", "Could not add name.")
+    }
+
 @Composable
 private fun CreatorSettingsNamesContent(
     ownerId: String,
@@ -439,6 +475,11 @@ private fun CreatorSettingsNamesContent(
             val name = newName.trim()
             if (name.isBlank()) return@Button
             if (names.size >= 5) return@Button
+            validateCreatorNameInput(name)?.let { code ->
+                statusMessage = creatorNameErrorMessage(code, translationStore)
+                statusError = true
+                return@Button
+            }
             scope.launch {
                 try {
                     val resp = withContext(Dispatchers.IO) { api.addCreatorName(ownerId, name) }
@@ -448,7 +489,10 @@ private fun CreatorSettingsNamesContent(
                         statusMessage = translationStore.t("creator.settings_names.added_ok", "Creator name added.")
                         statusError = false
                     } else {
-                        statusMessage = resp.optString("message", resp.optString("error", "Failed"))
+                        statusMessage = creatorNameErrorMessage(
+                            resp.optString("error", "add_error"),
+                            translationStore
+                        )
                         statusError = true
                     }
                 } catch (_: Exception) {
