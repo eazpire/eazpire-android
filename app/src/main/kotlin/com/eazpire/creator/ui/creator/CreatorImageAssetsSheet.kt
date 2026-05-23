@@ -76,8 +76,10 @@ fun CreatorImageAssetsSheet(
             val list = mutableListOf<CreatorImageAssetRow>()
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
-                val id = o.optString("id", "").ifBlank { continue }
-                val url = o.optString("image_url", "").ifBlank { continue }
+                val id = o.optString("id", "")
+                if (id.isBlank()) continue
+                val url = o.optString("image_url", "")
+                if (url.isBlank()) continue
                 list.add(
                     CreatorImageAssetRow(
                         id = id,

@@ -483,7 +483,7 @@ fun CreatorDetailModal(
                     contentColor = Color.White,
                     indicator = { tabPositions ->
                         if (mainTab < tabPositions.size) {
-                            TabRowDefaults.SecondaryIndicator(
+                            TabRowDefaults.Indicator(
                                 modifier = Modifier.tabIndicatorOffset(tabPositions[mainTab]),
                                 color = EazColors.Orange
                             )
@@ -830,7 +830,7 @@ private fun CoverImageCropPreview(
         }
         if (generating) {
             LinearProgressIndicator(
-                progress = { genProgress },
+                progress = genProgress,
                 modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                 color = EazColors.Orange,
                 trackColor = Color.White.copy(alpha = 0.2f)
@@ -913,7 +913,7 @@ private fun ImageSection(
             }
             if (generating) {
                 LinearProgressIndicator(
-                    progress = { genProgress },
+                    progress = genProgress,
                     modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                     color = EazColors.Orange,
                     trackColor = Color.White.copy(alpha = 0.2f)
