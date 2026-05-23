@@ -1,5 +1,6 @@
 package com.eazpire.creator.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,7 +30,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.Image
@@ -119,6 +123,19 @@ private data class PrintAreaFrac(
     val h: Float = 0.48f
 )
 
+private data class StudioPickResult(
+    val url: String,
+    val designId: String? = null,
+    val fromPublicInspiration: Boolean = false
+)
+
+private data class StudioPickerRow(
+    val id: String,
+    val url: String,
+    val designId: String? = null,
+    val fromPublicInspiration: Boolean = false
+)
+
 private fun parsePrintAreaFrac(obj: JSONObject?): PrintAreaFrac {
     if (obj == null) return PrintAreaFrac()
     val l = obj.optDouble("l", obj.optDouble("left", 0.28)).toFloat()
@@ -197,6 +214,8 @@ internal fun ShopPrintifyDesignStudioScreen(
     var selectedColorId by remember { mutableStateOf<Long?>(null) }
     var selectedSizeId by remember { mutableStateOf<Long?>(null) }
     var showDesignPicker by remember { mutableStateOf<String?>(null) }
+    var existingShopHandle by remember { mutableStateOf<String?>(null) }
+    var existingShopProductName by remember { mutableStateOf<String?>(null) }
     val optionsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     fun t(key: String, def: String) = translationStore.t(key, def)
@@ -883,6 +902,25 @@ internal fun ShopPrintifyDesignStudioScreen(
         }
     }
 
+    fun checkExistingShopProduct(designId: String) {
+        val id = designId.trim()
+        if (id.isEmpty()) return
+        scope.launch {
+            try {
+                val data = withContext(Dispatchers.IO) {
+                    api.printifyStudioExistingProduct(id, product.productKey)
+                }
+                if (!data.optBoolean("found", false)) return@launch
+                val row = data.optJSONObject("product") ?: return@launch
+                val handle = row.optString("shopify_handle", "").trim()
+                if (handle.isEmpty()) return@launch
+                existingShopProductName = row.optString("product_name", "").trim().ifBlank { null }
+                existingShopHandle = handle
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     showDesignPicker?.let { mode ->
         StudioDesignPickerDialog(
             mode = mode,
@@ -890,16 +928,47 @@ internal fun ShopPrintifyDesignStudioScreen(
             ownerId = ownerId,
             productKey = product.productKey,
             onDismiss = { showDesignPicker = null },
-            onPick = { url ->
-                designUrl = url
+            onPick = { pick ->
+                val wasFirstDesign = designUrl.isNullOrBlank()
+                designUrl = pick.url
                 designSelected = true
                 showDesignPicker = null
                 designDx = 0f
                 designDy = 0f
                 rememberDefaultPlacement()
                 scheduleSync()
+                if (pick.fromPublicInspiration && wasFirstDesign && !pick.designId.isNullOrBlank()) {
+                    checkExistingShopProduct(pick.designId)
+                }
             },
             t = ::t
+        )
+    }
+
+    existingShopHandle?.let { handle ->
+        StudioConfirmDialog(
+            title = t(
+                "creator.shop_printify_studio_test.existing_product_title",
+                "This product is already available in the shop"
+            ),
+            message = existingShopProductName
+                ?: t(
+                    "creator.shop_printify_studio_test.existing_product_title",
+                    "This product is already available in the shop"
+                ),
+            confirmLabel = t("creator.shop_printify_studio_test.existing_product_view", "View product"),
+            cancelLabel = t("creator.shop_printify_studio_test.existing_product_configure", "Configure yourself"),
+            onConfirm = {
+                existingShopHandle = null
+                existingShopProductName = null
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://www.eazpire.com/products/$handle"))
+                )
+            },
+            onDismiss = {
+                existingShopHandle = null
+                existingShopProductName = null
+            }
         )
     }
 }
@@ -1604,27 +1673,33 @@ private fun StudioDesignPickerDialog(
     ownerId: String?,
     productKey: String,
     onDismiss: () -> Unit,
-    onPick: (String) -> Unit,
+    onPick: (StudioPickResult) -> Unit,
     t: (String, String) -> String
 ) {
     var loading by remember { mutableStateOf(true) }
-    var items by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var items by remember { mutableStateOf<List<StudioPickerRow>>(emptyList()) }
     var totalCount by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var filterParams by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var showFilterSheet by remember { mutableStateOf(false) }
+    var reloadKey by remember { mutableStateOf(0) }
+    var pendingDeleteDraftId by remember { mutableStateOf<String?>(null) }
+    var deleteInProgress by remember { mutableStateOf(false) }
     val filterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
     val isPublic = mode == "public"
+    val isDrafts = mode == "drafts"
     val oid = ownerId?.trim().orEmpty()
 
     fun pickDesignUrl(it: JSONObject): String? {
         val url = it.optString("preview_url", "")
             .ifBlank { it.optString("original_url", "") }
             .ifBlank { it.optString("image_url", "") }
+            .ifBlank { it.optString("design_image_url", "") }
         return url.takeIf { it.startsWith("http") || it.startsWith("data:") }
     }
 
-    LaunchedEffect(mode, oid, searchQuery, filterParams) {
+    LaunchedEffect(mode, oid, searchQuery, filterParams, reloadKey) {
         loading = true
         items = emptyList()
         totalCount = 0
@@ -1644,18 +1719,19 @@ private fun StudioDesignPickerDialog(
                     totalCount = total
                     items = rows.mapNotNull { row ->
                         val url = pickDesignUrl(row) ?: return@mapNotNull null
-                        "${row.optString("id", "")}" to url
+                        val id = row.optString("id", "")
+                        StudioPickerRow(id, url, designId = id, fromPublicInspiration = true)
                     }
                 }
                 "mine" -> {
                     val data = withContext(Dispatchers.IO) { api.listDesigns(oid, 100) }
                     if (data.optBoolean("ok", false)) {
                         val arr = data.optJSONArray("items") ?: JSONArray()
-                        val list = mutableListOf<Pair<String, String>>()
+                        val list = mutableListOf<StudioPickerRow>()
                         for (i in 0 until arr.length()) {
                             val it = arr.optJSONObject(i) ?: continue
                             val url = pickDesignUrl(it) ?: continue
-                            list.add("${it.optString("id", "$i")}" to url)
+                            list.add(StudioPickerRow("${it.optString("id", "$i")}", url))
                         }
                         items = list
                         totalCount = list.size
@@ -1665,12 +1741,12 @@ private fun StudioDesignPickerDialog(
                     val data = withContext(Dispatchers.IO) {
                         api.printifyStudioTestListDrafts(oid, productKey)
                     }
-                    val list = mutableListOf<Pair<String, String>>()
-                    val drafts = data.optJSONArray("drafts") ?: JSONArray()
+                    val list = mutableListOf<StudioPickerRow>()
+                    val drafts = data.optJSONArray("items") ?: data.optJSONArray("drafts") ?: JSONArray()
                     for (i in 0 until drafts.length()) {
                         val d = drafts.optJSONObject(i) ?: continue
-                        val url = d.optString("design_image_url", "").trim()
-                        if (url.isNotEmpty()) list.add(d.optString("id", "$i") to url)
+                        val url = pickDesignUrl(d) ?: continue
+                        list.add(StudioPickerRow(d.optString("id", "$i"), url))
                     }
                     items = list
                     totalCount = list.size
@@ -1682,6 +1758,45 @@ private fun StudioDesignPickerDialog(
         } finally {
             loading = false
         }
+    }
+
+    pendingDeleteDraftId?.let { draftId ->
+        StudioConfirmDialog(
+            title = t("creator.shop_printify_studio_test.drafts_delete_yes", "Delete"),
+            message = t(
+                "creator.shop_printify_studio_test.drafts_delete_confirm",
+                "Delete this draft? This cannot be undone."
+            ),
+            confirmLabel = t("creator.shop_printify_studio_test.drafts_delete_yes", "Delete"),
+            cancelLabel = t("creator.common.cancel", "Cancel"),
+            confirmPrimary = true,
+            confirmEnabled = !deleteInProgress,
+            onConfirm = {
+                val idNum = draftId.toLongOrNull() ?: return@StudioConfirmDialog
+                if (oid.isEmpty()) {
+                    pendingDeleteDraftId = null
+                    return@StudioConfirmDialog
+                }
+                deleteInProgress = true
+                scope.launch {
+                    try {
+                        val res = withContext(Dispatchers.IO) {
+                            api.printifyStudioTestDeleteDraft(oid, idNum)
+                        }
+                        if (res.optBoolean("ok", false)) {
+                            pendingDeleteDraftId = null
+                            reloadKey += 1
+                        }
+                    } catch (_: Exception) {
+                    } finally {
+                        deleteInProgress = false
+                    }
+                }
+            },
+            onDismiss = {
+                if (!deleteInProgress) pendingDeleteDraftId = null
+            }
+        )
     }
 
     if (showFilterSheet && isPublic) {
@@ -1737,28 +1852,30 @@ private fun StudioDesignPickerDialog(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            t("creator.shop_printify_studio_test.design_picker_search_placeholder", "Search designs…"),
-                            color = Color.White.copy(0.45f)
+                if (!isDrafts) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = {
+                            Text(
+                                t("creator.shop_printify_studio_test.design_picker_search_placeholder", "Search designs…"),
+                                color = Color.White.copy(0.45f)
+                            )
+                        },
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, null, tint = Color.White.copy(0.7f))
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFFF97316),
+                            unfocusedBorderColor = Color.White.copy(0.25f),
+                            cursorColor = Color(0xFFF97316)
                         )
-                    },
-                    singleLine = true,
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, null, tint = Color.White.copy(0.7f))
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFFF97316),
-                        unfocusedBorderColor = Color.White.copy(0.25f),
-                        cursorColor = Color(0xFFF97316)
                     )
-                )
+                }
                 if (isPublic) {
                     Text(
                         "$totalCount Designs",
@@ -1783,7 +1900,14 @@ private fun StudioDesignPickerDialog(
             } else if (items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        t("creator.shop_printify_studio_test.design_picker_empty", "No public designs found."),
+                        when (mode) {
+                            "drafts" -> t(
+                                "creator.shop_printify_studio_test.drafts_empty",
+                                "No saved drafts yet."
+                            )
+                            "mine" -> t("design_studio.shop.my_designs_empty", "No designs in your library yet.")
+                            else -> t("creator.shop_printify_studio_test.design_picker_empty", "No public designs found.")
+                        },
                         color = Color.White.copy(0.6f),
                         textAlign = TextAlign.Center
                     )
@@ -1795,16 +1919,51 @@ private fun StudioDesignPickerDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(items, key = { it.first }) { (_, url) ->
-                        AsyncImage(
-                            model = url,
-                            contentDescription = null,
+                    items(items, key = { it.id }) { row ->
+                        Box(
                             modifier = Modifier
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { onPick(url) },
-                            contentScale = ContentScale.Crop
-                        )
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White)
+                                .clickable {
+                                    onPick(
+                                        StudioPickResult(
+                                            url = row.url,
+                                            designId = row.designId,
+                                            fromPublicInspiration = row.fromPublicInspiration
+                                        )
+                                    )
+                                }
+                        ) {
+                            AsyncImage(
+                                model = row.url,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(4.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                            if (isDrafts) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(6.dp)
+                                        .size(22.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                        .border(1.dp, Color(0xFFCBD5E1), CircleShape)
+                                        .clickable { pendingDeleteDraftId = row.id },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "×",
+                                        color = Color(0xFF334155),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1874,6 +2033,71 @@ private fun StudioPublicDesignFilterSheet(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF97316))
             ) {
                 Text(t("creator.common.close", "Close"), color = Color(0xFFF97316))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioConfirmDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    cancelLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    confirmPrimary: Boolean = true,
+    confirmEnabled: Boolean = true
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF0F172A), RoundedCornerShape(16.dp))
+                .padding(horizontal = 24.dp, vertical = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                title,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                message,
+                color = Color.White.copy(alpha = 0.72f),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp
+            )
+            Spacer(Modifier.height(22.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(999.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.22f))
+                ) {
+                    Text(cancelLabel, color = Color.White, maxLines = 2, textAlign = TextAlign.Center)
+                }
+                Button(
+                    onClick = onConfirm,
+                    enabled = confirmEnabled,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(999.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (confirmPrimary) Color(0xFFF97316) else Color(0xFFB91C1C),
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(0xFFF97316).copy(alpha = 0.45f)
+                    )
+                ) {
+                    Text(confirmLabel, maxLines = 2, textAlign = TextAlign.Center)
+                }
             }
         }
     }

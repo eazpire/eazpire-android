@@ -145,6 +145,35 @@ class CreatorApi(
         )
     )
 
+    /** POST ?op=printify-studio-test-delete-draft — remove saved studio draft */
+    suspend fun printifyStudioTestDeleteDraft(
+        ownerId: String,
+        draftId: Long
+    ): JSONObject = postDispatchJson(
+        op = "printify-studio-test-delete-draft",
+        queryParams = mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId
+        ),
+        body = JSONObject()
+            .put("op", "printify-studio-test-delete-draft")
+            .put("path_prefix", "/apps/creator-dispatch")
+            .put("owner_id", ownerId)
+            .put("draft_id", draftId)
+    )
+
+    /** GET ?op=printify-studio-existing-product — shop product for inspiration design + product type */
+    suspend fun printifyStudioExistingProduct(
+        designId: String,
+        productKey: String
+    ): JSONObject = call(
+        "printify-studio-existing-product",
+        mapOf(
+            "design_id" to designId,
+            "product_key" to productKey
+        )
+    )
+
     /** POST ?op=printify-studio-test-abandon — discard ephemeral Printify product */
     suspend fun printifyStudioTestAbandon(
         ownerId: String,
