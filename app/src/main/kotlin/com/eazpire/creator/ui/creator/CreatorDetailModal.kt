@@ -9,13 +9,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -24,9 +23,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -52,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -116,6 +119,33 @@ fun CreatorDetailModal(
     var loading by remember { mutableStateOf(true) }
 
     var pickCategory by remember { mutableStateOf<String?>(null) }
+    var showUploadSource by remember { mutableStateOf(false) }
+    var uploadSourceCategory by remember { mutableStateOf<String?>(null) }
+    var showAssetsSheet by remember { mutableStateOf(false) }
+    var assetsCategory by remember { mutableStateOf("avatar") }
+
+    fun applyAsset(category: String, row: CreatorImageAssetRow) {
+        val pending = JSONObject()
+            .put("type", "asset")
+            .put("asset_id", row.id)
+            .put("r2_key", row.r2Key)
+            .put("image_url", row.imageUrl)
+            .put("image_type", row.imageType)
+        if (category == "avatar") {
+            avatarPending = pending
+            avatarUrl = row.imageUrl
+        } else {
+            coverPending = pending
+            coverUrl = row.imageUrl
+        }
+        statusMsg = tr("creator.detail_modal.asset_selected", "Image selected. Tap Save to confirm.")
+        statusErr = false
+    }
+
+    fun openUploadSource(category: String) {
+        uploadSourceCategory = category
+        showUploadSource = true
+    }
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         val cat = pickCategory ?: return@rememberLauncherForActivityResult
         if (uri == null) return@rememberLauncherForActivityResult
@@ -422,7 +452,8 @@ fun CreatorDetailModal(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .background(Color(0xFF0F172A))
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onDismiss) {
@@ -434,21 +465,13 @@ fun CreatorDetailModal(
                             style = MaterialTheme.typography.titleMedium,
                             color = Color.White
                         )
-                        Text(creatorName, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f))
-                    }
-                    Button(
-                        onClick = { saveAll() },
-                        enabled = hasUnsaved() && !saving,
-                        colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange, contentColor = Color.Black)
-                    ) {
-                        Icon(Icons.Default.Save, null, Modifier.size(18.dp))
-                        Text(tr("creator.common.save", "Save"), modifier = Modifier.padding(start = 6.dp))
+                        Text(creatorName, style = MaterialTheme.typography.bodySmall, color = EazColors.Orange)
                     }
                 }
 
                 TabRow(
                     selectedTabIndex = mainTab,
-                    containerColor = Color(0xFF0B1220),
+                    containerColor = Color(0xFF111827),
                     contentColor = Color.White,
                     indicator = { tabPositions ->
                         if (mainTab < tabPositions.size) {
@@ -463,44 +486,47 @@ fun CreatorDetailModal(
                     Tab(
                         selected = mainTab == TAB_AVATAR,
                         onClick = { mainTab = TAB_AVATAR },
-                        text = {
-                            Text(
-                                tr("creator.detail_modal.tab_avatar", "Profile photo"),
-                                color = if (mainTab == TAB_AVATAR) EazColors.Orange else Color.White.copy(alpha = 0.7f)
+                        icon = {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = tr("creator.detail_modal.tab_avatar", "Profile photo"),
+                                tint = if (mainTab == TAB_AVATAR) EazColors.Orange else Color.White.copy(alpha = 0.65f)
                             )
-                        }
+                        },
+                        text = {}
                     )
                     Tab(
                         selected = mainTab == TAB_COVER,
                         onClick = { mainTab = TAB_COVER },
-                        text = {
-                            Text(
-                                tr("creator.detail_modal.tab_cover", "Cover"),
-                                color = if (mainTab == TAB_COVER) EazColors.Orange else Color.White.copy(alpha = 0.7f)
+                        icon = {
+                            Icon(
+                                Icons.Default.Image,
+                                contentDescription = tr("creator.detail_modal.tab_cover", "Cover"),
+                                tint = if (mainTab == TAB_COVER) EazColors.Orange else Color.White.copy(alpha = 0.65f)
                             )
-                        }
+                        },
+                        text = {}
                     )
                 }
 
                 if (loading) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = EazColors.Orange)
-                        }
-                    } else {
-                        Column(
-                            Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(16.dp)
-                        ) {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = EazColors.Orange)
+                    }
+                } else {
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .background(Color(0xFF0B1220))
+                            .padding(16.dp)
+                    ) {
                             if (mainTab == TAB_AVATAR) {
                                 ImageSection(
                                     label = tr("creator.detail_modal.tab_avatar", "Profile photo"),
                                     imageUrl = avatarUrl,
-                                    onUpload = {
-                                        pickCategory = "avatar"
-                                        pickLauncher.launch("image/*")
-                                    },
+                                    onUpload = { openUploadSource("avatar") },
                                     onRemove = {
                                         if (!avatarHasExisting && avatarPending == null) return@ImageSection
                                         if (!avatarHasExisting) {
@@ -556,10 +582,7 @@ fun CreatorDetailModal(
                                     ImageSection(
                                         label = tr("creator.detail_modal.tab_cover", "Cover"),
                                         imageUrl = coverUrl,
-                                        onUpload = {
-                                            pickCategory = "cover"
-                                            pickLauncher.launch("image/*")
-                                        },
+                                        onUpload = { openUploadSource("cover") },
                                         onRemove = {
                                             if (!coverHasExisting && coverPending == null) return@ImageSection
                                             if (!coverHasExisting) {
@@ -617,10 +640,84 @@ fun CreatorDetailModal(
                                     modifier = Modifier.padding(top = 12.dp)
                                 )
                             }
+                    }
+                }
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF070B14))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        enabled = !saving
+                    ) {
+                        Text(tr("creator.common.cancel", "Cancel"), color = Color.White)
+                    }
+                    Button(
+                        onClick = { saveAll() },
+                        modifier = Modifier.weight(1f),
+                        enabled = hasUnsaved() && !saving,
+                        colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange, contentColor = Color.Black)
+                    ) {
+                        if (saving) {
+                            CircularProgressIndicator(Modifier.size(18.dp), color = Color.Black, strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                            Text(tr("creator.common.save", "Save"), modifier = Modifier.padding(start = 6.dp))
                         }
                     }
+                }
             }
         }
+    }
+
+    if (showUploadSource) {
+        AlertDialog(
+            onDismissRequest = { showUploadSource = false },
+            containerColor = Color(0xFF1E293B),
+            title = {
+                Text(tr("creator.detail_modal.upload_source_title", "Add image"), color = Color.White)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        showUploadSource = false
+                        val cat = uploadSourceCategory ?: "avatar"
+                        pickCategory = cat
+                        pickLauncher.launch("image/*")
+                    }) {
+                        Text(tr("creator.detail_modal.upload_source_device", "Device"), color = Color.White)
+                    }
+                    TextButton(onClick = {
+                        showUploadSource = false
+                        assetsCategory = uploadSourceCategory ?: "avatar"
+                        showAssetsSheet = true
+                    }) {
+                        Text(tr("creator.detail_modal.upload_source_assets", "Assets"), color = Color.White)
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    if (showAssetsSheet) {
+        CreatorImageAssetsSheet(
+            ownerId = ownerId,
+            creatorName = creatorName,
+            imageCategory = assetsCategory,
+            api = api,
+            translationStore = translationStore,
+            onDismiss = { showAssetsSheet = false },
+            onSelect = { row ->
+                applyAsset(assetsCategory, row)
+                showAssetsSheet = false
+            }
+        )
     }
 }
 
@@ -691,7 +788,15 @@ private fun ImageSection(
         modifier = Modifier
             .padding(top = 8.dp)
             .fillMaxWidth()
-            .height(if (tallPreview) 160.dp else 140.dp)
+            .then(
+                if (tallPreview) {
+                    Modifier.aspectRatio(21f / 9f)
+                } else {
+                    Modifier
+                        .aspectRatio(1f)
+                        .fillMaxWidth(0.42f)
+                }
+            )
             .clip(RoundedCornerShape(12.dp))
             .background(Color.White.copy(alpha = 0.06f)),
         contentAlignment = Alignment.Center
@@ -700,9 +805,27 @@ private fun ImageSection(
             AsyncImage(
                 model = imageUrl,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = if (tallPreview) ContentScale.Crop else ContentScale.Fit
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(6.dp),
+                contentScale = ContentScale.Fit
             )
+            IconButton(
+                onClick = onRemove,
+                enabled = !generating,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(32.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = tr("creator.detail_modal.remove_image", "Remove"),
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         } else {
             Text(tr("creator.detail_modal.no_image", "No image"), color = Color.White.copy(alpha = 0.45f))
         }
@@ -719,6 +842,7 @@ private fun ImageSection(
         Button(
             onClick = onUpload,
             enabled = !generating,
+            modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange, contentColor = Color.Black)
         ) {
             Text(tr("creator.detail_modal.upload_image", "Upload"))
@@ -726,16 +850,10 @@ private fun ImageSection(
         Button(
             onClick = onToggleGenerate,
             enabled = !generating,
+            modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A3142), contentColor = Color.White)
         ) {
             Text(tr("creator.detail_modal.generate_ai", "AI generate"))
-        }
-        Button(
-            onClick = onRemove,
-            enabled = !generating,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F2A2A), contentColor = Color(0xFFFCA5A5))
-        ) {
-            Text(tr("creator.detail_modal.remove_image", "Remove"))
         }
     }
     if (showGenerate) {

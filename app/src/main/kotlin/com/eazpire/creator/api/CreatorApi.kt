@@ -1424,6 +1424,20 @@ class CreatorApi(
             JSONObject(response.body?.string() ?: "{}")
         }
 
+    /** GET ?op=list-creator-image-assets */
+    suspend fun listCreatorImageAssets(
+        ownerId: String,
+        creatorName: String,
+        imageCategory: String
+    ): JSONObject = call(
+        "list-creator-image-assets",
+        mapOf(
+            "owner_id" to ownerId,
+            "creator_name" to creatorName,
+            "image_category" to imageCategory
+        )
+    )
+
     /** GET ?op=get-creator-image */
     suspend fun getCreatorImage(ownerId: String, creatorName: String, imageCategory: String): JSONObject =
         call(
