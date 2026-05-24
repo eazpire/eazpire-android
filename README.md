@@ -53,6 +53,10 @@ Voraussetzung: Shopify Customer Account API mit Mobile Client (Callback-URL) kon
 Änderungen an `android/` werden bei Push auf `main` automatisch zu
 `eazpire/eazpire-android` synchronisiert (GitHub Action: `sync-android.yml`).
 
+Google Play CI (`bundleRelease` in `eazpire-android`) baut nur den gespiegelten Stand —
+nach Android-Fixes in diesem Repo muss `sync-android` erfolgreich gelaufen sein
+(Secret `ANDROID_REPO_PUSH_TOKEN` in `eazpire`).
+
 **Manuell:** `node scripts/android/sync-to-android-repo.js`
 
 Voraussetzung: `eazpire-android` Repo existiert, `ANDROID_REPO_PUSH_TOKEN` gesetzt.
