@@ -367,6 +367,7 @@ fun ProductDetailScreen(
 
     var promoOverlay by remember(productHandle) { mutableStateOf<ShopifyProductsApi.ProductItem?>(null) }
     var mockupTryOnInfo by remember(productHandle) { mutableStateOf<MockupTryOnInfo?>(null) }
+    var productColorHexMap by remember(productHandle) { mutableStateOf<Map<String, String>>(emptyMap()) }
     var tryOnActive by remember(productHandle) { mutableStateOf(false) }
     var tryOnImageUrl by remember(productHandle) { mutableStateOf<String?>(null) }
     var tryOnLoading by remember(productHandle) { mutableStateOf(false) }
@@ -380,6 +381,7 @@ fun ProductDetailScreen(
 
     LaunchedEffect(productHandle, product?.productKey, product?.designIdMeta) {
         mockupTryOnInfo = null
+        productColorHexMap = emptyMap()
         tryOnActive = false
         tryOnImageUrl = null
         tryOnLoading = false
@@ -387,6 +389,15 @@ fun ProductDetailScreen(
         val prod = product ?: return@LaunchedEffect
         if (!isTryOnApparelProduct(prod.productKey)) return@LaunchedEffect
         try {
+            val pk = prod.productKey?.takeIf { it.isNotBlank() }
+            if (pk != null) {
+                val colorsResp = withContext(Dispatchers.IO) {
+                    creatorApi.getColorVariants(pk)
+                }
+                if (colorsResp.optBoolean("ok", false)) {
+                    productColorHexMap = parseProductColorHexMap(colorsResp)
+                }
+            }
             val map = withContext(Dispatchers.IO) {
                 creatorApi.getCustomerMockupMap(ownerId, productHandle)
             }
@@ -494,7 +505,7 @@ fun ProductDetailScreen(
         selectedImageIndex = 0
     }
 
-    LaunchedEffect(tryOnActive, selectedColor, mockupTryOnInfo) {
+    LaunchedEffect(tryOnActive, selectedColor, mockupTryOnInfo, productColorHexMap) {
         if (!tryOnActive) {
             tryOnImageUrl = null
             tryOnLoading = false
@@ -509,7 +520,7 @@ fun ProductDetailScreen(
             return@LaunchedEffect
         }
         tryOnLoading = true
-        val url = resolveMockupImageUrl(info, selectedColor, ownerId)
+        val url = resolveMockupImageUrl(info, selectedColor, ownerId, productColorHexMap)
         tryOnLoading = false
         if (url.isNullOrBlank()) {
             tryOnActive = false

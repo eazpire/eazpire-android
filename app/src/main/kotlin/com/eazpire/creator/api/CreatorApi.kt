@@ -553,6 +553,12 @@ class CreatorApi(
         }
     )
 
+    /** GET ?op=get-color-variants&product_key=... — catalog color hex map for overlay */
+    suspend fun getColorVariants(productKey: String, printAreaKey: String = "front"): JSONObject = call(
+        "get-color-variants",
+        mapOf("product_key" to productKey, "print_area_key" to printAreaKey)
+    )
+
     /** POST ?op=generate-customer-mockups – multipart: photo + person_type */
     suspend fun generateCustomerMockups(
         ownerId: String,

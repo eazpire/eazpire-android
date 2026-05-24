@@ -27,12 +27,18 @@ data class MockupTryOnInfo(
 
 private val COLOR_NAME_TO_HEX = mapOf(
     "white" to "FFFFFF",
+    "weiß" to "FFFFFF",
+    "weiss" to "FFFFFF",
     "black" to "111111",
+    "schwarz" to "111111",
     "navy" to "0B1F3A",
     "red" to "D11A2A",
+    "rot" to "D11A2A",
     "purple" to "6B21A8",
+    "lila" to "6B21A8",
     "sport grey" to "9CA3AF",
     "sport-grey" to "9CA3AF",
+    "sport grau" to "9CA3AF",
     "dark heather" to "4B5563",
     "dark-heather" to "4B5563",
     "military green" to "4B5D3A",
@@ -40,7 +46,9 @@ private val COLOR_NAME_TO_HEX = mapOf(
     "sand" to "D8C7A0",
     "daisy" to "F4D000",
     "light blue" to "7FB7FF",
+    "hellblau" to "7FB7FF",
     "tropical blue" to "00A3D7",
+    "tropisches blau" to "00A3D7",
     "dark chocolate" to "3A2618",
     "heather navy" to "2B3A55",
     "indigo" to "4F46E5",
@@ -48,21 +56,80 @@ private val COLOR_NAME_TO_HEX = mapOf(
     "teal" to "14B8A6",
     "burgundy" to "800020",
     "yellow" to "FACC15",
+    "gelb" to "FACC15",
     "orange" to "EA580C",
     "pink" to "EC4899",
     "green" to "16A34A",
+    "grün" to "16A34A",
+    "gruen" to "16A34A",
     "blue" to "2563EB",
+    "blau" to "2563EB",
+    "royal" to "1F4FE0",
     "grey" to "9CA3AF",
     "gray" to "9CA3AF",
-    "brown" to "78350F"
+    "grau" to "9CA3AF",
+    "brown" to "78350F",
+    "braun" to "78350F"
+)
+
+/** German/English handle aliases → canonical English handle for catalog lookup. */
+private val COLOR_HANDLE_ALIASES = mapOf(
+    "tropisches-blau" to "tropical-blue",
+    "hellblau" to "light-blue",
+    "sport-grau" to "sport-grey",
+    "dunkel-grau" to "dark-heather",
+    "dunkelgrau" to "dark-heather",
+    "militaergruen" to "military-green",
+    "militärgrün" to "military-green",
+    "dunkel-navy" to "heather-navy",
+    "koenigsblau" to "royal",
+    "königsblau" to "royal"
 )
 
 fun normalizeColorNameKey(value: String): String =
     value.lowercase().replace(Regex("[_-]+"), " ").replace(Regex("\\s+"), " ").trim()
 
+fun colorHandle(value: String): String =
+    normalizeColorNameKey(value).replace(" ", "-")
+
+fun parseProductColorHexMap(json: JSONObject): Map<String, String> {
+    val map = linkedMapOf<String, String>()
+    val arr = json.optJSONArray("variants") ?: return map
+    for (i in 0 until arr.length()) {
+        val row = arr.optJSONObject(i) ?: continue
+        val hex = row.optString("color_hex").replace("#", "").uppercase()
+        val name = row.optString("color_name").trim()
+        if (hex.length != 6 || name.isBlank()) continue
+        map[normalizeColorNameKey(name)] = hex
+        map[colorHandle(name)] = hex
+    }
+    return map
+}
+
+fun resolveProductColorHex(colorName: String, productColorMap: Map<String, String>): String {
+    if (colorName.isBlank()) return "FFFFFF"
+    val normalized = normalizeColorNameKey(colorName)
+    productColorMap[normalized]?.let { return it }
+    val handle = colorHandle(colorName)
+    productColorMap[handle]?.let { return it }
+    COLOR_HANDLE_ALIASES[handle]?.let { alias ->
+        productColorMap[alias]?.let { return it }
+        productColorMap[normalizeColorNameKey(alias.replace("-", " "))]?.let { return it }
+    }
+    for ((key, hex) in productColorMap) {
+        if (colorHandle(key) == handle) return hex
+    }
+    return colorNameToHex(colorName)
+}
+
 fun colorNameToHex(colorName: String): String {
     val key = normalizeColorNameKey(colorName)
-    return COLOR_NAME_TO_HEX[key] ?: "FFFFFF"
+    COLOR_NAME_TO_HEX[key]?.let { return it }
+    val handle = colorHandle(colorName)
+    COLOR_HANDLE_ALIASES[handle]?.let { alias ->
+        COLOR_NAME_TO_HEX[normalizeColorNameKey(alias.replace("-", " "))]?.let { return it }
+    }
+    return "FFFFFF"
 }
 
 fun isTryOnApparelProduct(productKey: String?): Boolean {
@@ -165,9 +232,10 @@ private val RENDER_RETRY_DELAYS_MS = longArrayOf(0L, 8000L, 12000L, 18000L)
 suspend fun resolveMockupImageUrl(
     info: MockupTryOnInfo,
     colorName: String,
-    ownerId: String
+    ownerId: String,
+    productColorMap: Map<String, String> = emptyMap()
 ): String? {
-    val colorHex = colorNameToHex(colorName)
+    val colorHex = resolveProductColorHex(colorName, productColorMap)
     info.cachedByColor[colorHex]?.let { return it }
 
     val renderUrl = buildMockupRenderUrl(info.mockupId, colorHex, ownerId, info.designId)
