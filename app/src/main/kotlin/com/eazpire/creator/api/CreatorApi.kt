@@ -244,6 +244,22 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=get-product-catalog-preferences&owner_id=xxx */
+    suspend fun getProductCatalogPreferences(ownerId: String): JSONObject = call(
+        "get-product-catalog-preferences",
+        mapOf("owner_id" to ownerId),
+    )
+
+    /** POST ?op=save-product-catalog-preferences&owner_id=xxx */
+    suspend fun saveProductCatalogPreferences(
+        ownerId: String,
+        preferences: JSONObject,
+    ): JSONObject = postDispatchJson(
+        op = "save-product-catalog-preferences",
+        queryParams = mapOf("owner_id" to ownerId),
+        body = JSONObject().put("preferences", preferences),
+    )
+
     /** GET ?op=eazy-memory&user_id=xxx – user memory / preferences (EAZY_DB) */
     suspend fun getEazyMemory(userId: String): JSONObject = call(
         "eazy-memory",

@@ -107,6 +107,7 @@ import com.eazpire.creator.shop.sidebar.ShopSidebarLayoutEngine
 import com.eazpire.creator.shop.sidebar.ShopSidebarMenuParser
 import com.eazpire.creator.shop.sidebar.ShopSidebarPersonalizationStore
 import com.eazpire.creator.shop.sidebar.SidebarGridSection
+import com.eazpire.creator.shop.sidebar.ProductCatalogPreferences
 import com.eazpire.creator.shop.sidebar.SidebarHiddenState
 import com.eazpire.creator.sidebar.SidebarViewMode
 import com.eazpire.creator.sidebar.SidebarViewStore
@@ -426,6 +427,7 @@ private fun MenuDrawerInteractiveRoot(
     var navError by remember { mutableStateOf<String?>(null) }
 
     var hidden by remember { mutableStateOf(personalStore.loadHidden()) }
+    var catalogPrefs by remember { mutableStateOf<ProductCatalogPreferences?>(null) }
     var eyeRevealHidden by remember { mutableStateOf(personalStore.getEyeRevealHiddenItems()) }
     var sectionOrder by remember { mutableStateOf(personalStore.loadSectionOrder()) }
 
@@ -485,6 +487,17 @@ private fun MenuDrawerInteractiveRoot(
             }
             hidden = local
             personalStore.saveHidden(local)
+
+            if (ownerId.isNotBlank()) {
+                try {
+                    val catResp =
+                        withContext(Dispatchers.IO) { api.getProductCatalogPreferences(ownerId) }
+                    if (catResp.optBoolean("ok", false)) {
+                        catalogPrefs =
+                            ProductCatalogPreferences.fromJson(catResp.optJSONObject("preferences"))
+                    }
+                } catch (_: Exception) {}
+            }
 
             val navResp = withContext(Dispatchers.IO) { api.getShopNavigation() }
             if (!navResp.optBoolean("ok", false)) {
@@ -1086,11 +1099,23 @@ private fun AudienceZielCard(
     }
 }
 
+private fun isMenuPathHidden(
+    pathId: String,
+    hidden: SidebarHiddenState,
+    catalog: ProductCatalogPreferences?,
+): Boolean {
+    if (catalog != null) return !catalog.isPathVisible(pathId)
+    return hidden.categories.contains(pathId) ||
+        hidden.midcategories.contains(pathId) ||
+        hidden.containers.contains(pathId)
+}
+
 @Composable
 private fun AudienceInlinePanel(
     body: AudiencePanelBody,
     activeCard: AudienceCard,
     hidden: SidebarHiddenState,
+    catalog: ProductCatalogPreferences?,
     eyeReveal: Boolean,
     t: (String, String) -> String,
     persistHidden: (SidebarHiddenState) -> Unit,
@@ -1147,7 +1172,7 @@ private fun AudienceInlinePanel(
                         .padding(horizontal = 8.dp, vertical = 8.dp),
             ) {
                 body.categories.forEach { col ->
-                    val catHiddenWhole = hidden.categories.contains(col.catHidePrefix)
+                    val catHiddenWhole = isMenuPathHidden(col.catHidePrefix, hidden, catalog)
                     if (catHiddenWhole && !eyeReveal) return@forEach
 
                     val catExpanded = expandedCatKey == col.rowKey
@@ -1176,7 +1201,7 @@ private fun AudienceInlinePanel(
                                 ) {
                                     Icon(
                                         imageVector =
-                                            if (hidden.categories.contains(col.catHidePrefix)) {
+                                            if (isMenuPathHidden(col.catHidePrefix, hidden, catalog)) {
                                                 Icons.Default.VisibilityOff
                                             } else {
                                                 Icons.Default.Visibility
@@ -1253,7 +1278,7 @@ private fun AudienceInlinePanel(
                                     )
                                     col.lines.forEach { line ->
                                         val lnHidden =
-                                            hidden.categories.contains(line.hideCatId)
+                                            isMenuPathHidden(line.hideCatId, hidden, catalog)
                                         if (lnHidden && !eyeReveal) return@forEach
                                         Row(
                                             Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -1503,6 +1528,7 @@ private fun SidebarDrawerGridEngine(
                                     body = panel,
                                     activeCard = bannerCard,
                                     hidden = hidden,
+                                    catalog = catalogPrefs,
                                     eyeReveal = eyeReveal,
                                     t = t,
                                     persistHidden = persistHidden,
