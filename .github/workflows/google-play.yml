@@ -4,7 +4,7 @@
 #   Settings → Secrets and variables → Actions → Variables → New repository variable
 #     Name: ENABLE_GOOGLE_PLAY   Value: true
 #   Optional: PLAY_DEFAULT_TRACK = internal | alpha | beta | production
-#     (bei Push auf main; manueller workflow_dispatch kann den Track weiter überschreiben)
+#     (bei Push auf main; Standard in diesem Workflow: production)
 #
 # Secrets (Settings → Secrets and variables → Actions):
 #   PLAY_SERVICE_ACCOUNT_JSON   — JSON-Key des Google-Cloud-Dienstkontos (Play Console → API-Zugriff)
@@ -28,7 +28,7 @@ on:
       track:
         description: "Play-Track"
         required: true
-        default: internal
+        default: production
         type: choice
         options:
           - internal
@@ -106,5 +106,5 @@ jobs:
           packageName: com.eazpire.creator
           releaseFiles: app/build/outputs/bundle/release/app-release.aab
           # inputs nur bei workflow_dispatch — bei push sonst Syntaxfehler bei event.inputs
-          track: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.track || vars.PLAY_DEFAULT_TRACK || 'internal' }}
+          track: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.track || vars.PLAY_DEFAULT_TRACK || 'production' }}
           status: completed
