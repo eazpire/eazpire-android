@@ -44,7 +44,7 @@ Die App nutzt die creator-engine API:
 - **Base URL:** `https://creator-engine.eazpire.workers.dev`
 - **Auth:** JWT via `Authorization: Bearer <token>`
 
-**OAuth-Flow:** App öffnet Shopify-Login in WebView → Callback `shop.allyoucanpink.eazpire://callback` → Token-Exchange gegen JWT → JWT in EncryptedSharedPreferences.
+**OAuth-Flow:** App öffnet Shopify-Login in Chrome Custom Tabs → Callback `shop.{shop_id}.eazpire://callback` → Token-Exchange gegen JWT → JWT in EncryptedSharedPreferences.
 
 Voraussetzung: Shopify Customer Account API mit Mobile Client (Callback-URL) konfiguriert.
 

@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Shopify Customer Account API OAuth 2.0 mit PKCE.
  * 1. Discovery (OpenID config)
- * 2. Auth-URL bauen, in WebView öffnen
+ * 2. Auth-URL bauen, in Chrome Custom Tab öffnen
  * 3. Callback: code extrahieren
  * 4. Code gegen access_token tauschen (Shopify)
  * 5. access_token gegen JWT tauschen (creator-engine)

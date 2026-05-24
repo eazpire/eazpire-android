@@ -649,6 +649,7 @@ private fun MenuDrawerInteractiveRoot(
                                 SidebarDrawerGridEngine(
                                     sections = sections,
                                     hidden = hidden,
+                                    catalog = catalogPrefs,
                                     eyeReveal = eyeRevealHidden,
                                     t = t,
                                     ownerId = ownerId,
@@ -1373,6 +1374,7 @@ private fun draggableIdsMemo(sections: List<SidebarGridSection>): List<String> =
 private fun SidebarDrawerGridEngine(
     sections: List<SidebarGridSection>,
     hidden: SidebarHiddenState,
+    catalog: ProductCatalogPreferences?,
     eyeReveal: Boolean,
     t: (String, String) -> String,
     ownerId: String,
@@ -1528,7 +1530,7 @@ private fun SidebarDrawerGridEngine(
                                     body = panel,
                                     activeCard = bannerCard,
                                     hidden = hidden,
-                                    catalog = catalogPrefs,
+                                    catalog = catalog,
                                     eyeReveal = eyeReveal,
                                     t = t,
                                     persistHidden = persistHidden,

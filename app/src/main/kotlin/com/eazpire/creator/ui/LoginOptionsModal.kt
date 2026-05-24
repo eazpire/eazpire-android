@@ -31,7 +31,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.R
 
 /**
- * Same choices as web login modal: Shop app, Google, Email — each starts the in-app OAuth WebView
+ * Same choices as web login modal: Shop app, Google, Email — each starts OAuth in Chrome Custom Tabs
  * (PKCE); the hosted Shopify page lets the user pick Shop / Google / email.
  */
 @Composable
