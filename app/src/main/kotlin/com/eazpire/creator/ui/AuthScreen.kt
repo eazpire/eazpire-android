@@ -38,6 +38,7 @@ import com.eazpire.creator.auth.ShopifyAuthService
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.notifications.NotificationPreferencesRepository
 import com.eazpire.creator.push.PushTokenRegistrar
+import com.eazpire.creator.wear.sync.WearAuthSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -142,6 +143,7 @@ fun AuthScreen(
                     )
                 }
                 PushTokenRegistrar.syncIfLoggedIn(context)
+                WearAuthSync.push(context, tokenStore)
                 val cartId = storefrontCartStore.cartId
                 if (cartId != null && tokens.accessToken.isNotBlank()) {
                     withContext(Dispatchers.IO) {

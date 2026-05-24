@@ -48,6 +48,12 @@ Die App nutzt die creator-engine API:
 
 Voraussetzung: Shopify Customer Account API mit Mobile Client (Callback-URL) konfiguriert.
 
+## Wear OS Companion
+
+Creator-only Wear app lives in `../wear/` (package `com.eazpire.creator.wear`). After login on this phone app, session syncs to the watch via Wearable Data Layer.
+
+Setup & Play: [docs/setup/WEAR_REPO_SETUP.md](../docs/setup/WEAR_REPO_SETUP.md) — `npm run wear:build` / `wear:install`.
+
 ## Sync zu eazpire-android
 
 Änderungen an `android/` werden bei Push auf `main` automatisch zu

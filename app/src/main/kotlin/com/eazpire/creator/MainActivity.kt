@@ -28,6 +28,7 @@ import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.push.PushTokenRegistrar
 import com.eazpire.creator.ui.ShopScreen
 import com.eazpire.creator.update.PlayInAppUpdateHelper
+import com.eazpire.creator.wear.sync.WearAuthSync
 import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
@@ -75,6 +76,8 @@ class MainActivity : ComponentActivity() {
         }
         if (ShopSessionGuard.shouldLogoutSync(tokenStore)) {
             ShopSessionGuard.performFullLogout(this, tokenStore)
+        } else if (tokenStore.isLoggedIn()) {
+            WearAuthSync.push(this, tokenStore)
         }
         pendingDeepLink.value = intent?.data
         consumeIntentExtras(intent)

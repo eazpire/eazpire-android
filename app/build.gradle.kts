@@ -112,6 +112,9 @@ dependencies {
     implementation("com.google.android.play:app-update:2.1.0")
     implementation("com.google.android.play:app-update-ktx:2.1.0")
 
+    // Wear OS: sync JWT to companion watch app
+    implementation("com.google.android.gms:play-services-wearable:18.2.0")
+
     testImplementation("junit:junit:4.13.2")
     /** Same JSON stack as JVM unit tests ([ShopSidebarMenuParser] uses JSONObject) */
     testImplementation("org.json:json:20240303")

@@ -3,6 +3,7 @@ package com.eazpire.creator.auth
 import android.content.Context
 import com.eazpire.creator.api.ShopifyCustomerAccountApi
 import com.eazpire.creator.push.PushTokenRegistrar
+import com.eazpire.creator.wear.sync.WearAuthSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -38,6 +39,7 @@ object ShopSessionGuard {
         PushTokenRegistrar.unregisterBeforeLogout(context, tokenStore)
         tokenStore.clear()
         SecureTokenStore.clearAuthCookies()
+        WearAuthSync.clear(context)
     }
 
     /**
@@ -78,6 +80,7 @@ object ShopSessionGuard {
                     refreshToken = rt,
                     clearRefreshTokenIfNull = false
                 )
+                WearAuthSync.push(context, tokenStore)
             } catch (_: IOException) {
                 // Transient – nächster App-Start oder später erneut
             } catch (_: AuthException) {
