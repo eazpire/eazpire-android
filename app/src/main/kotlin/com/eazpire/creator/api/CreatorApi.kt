@@ -544,6 +544,15 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=get-customer-mockup-map&owner_id=xxx&handle=... — activated preview mockups only */
+    suspend fun getCustomerMockupMap(ownerId: String, handle: String? = null): JSONObject = call(
+        "get-customer-mockup-map",
+        buildMap {
+            put("owner_id", ownerId)
+            if (!handle.isNullOrBlank()) put("handle", handle)
+        }
+    )
+
     /** POST ?op=generate-customer-mockups – multipart: photo + person_type */
     suspend fun generateCustomerMockups(
         ownerId: String,

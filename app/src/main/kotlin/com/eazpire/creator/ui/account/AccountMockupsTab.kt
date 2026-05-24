@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import com.eazpire.creator.ui.components.HangerIcon
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -407,7 +408,7 @@ fun AccountMockupsTab(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
@@ -417,13 +418,39 @@ fun AccountMockupsTab(
                                             maxLines = 2,
                                             modifier = Modifier.weight(1f)
                                         )
-                                        OutlinedButton(
-                                            onClick = { onTogglePreview(mockup) },
-                                            modifier = Modifier.padding(0.dp)
+                                        IconButton(
+                                            onClick = { deleteConfirmMockup = mockup },
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color.White)
+                                                .border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(8.dp))
                                         ) {
-                                            Text(
-                                                if (mockup.useAsPreview) "Try-on ✓" else "Try-on",
-                                                style = MaterialTheme.typography.labelSmall
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "Delete",
+                                                tint = EazColors.TextSecondary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onTogglePreview(mockup) },
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    if (mockup.useAsPreview) Color(0xFF111827)
+                                                    else Color(0xFFF9FAFB)
+                                                )
+                                                .border(
+                                                    1.dp,
+                                                    if (mockup.useAsPreview) Color(0xFF111827) else Color(0xFFE5E7EB),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                        ) {
+                                            HangerIcon(
+                                                color = if (mockup.useAsPreview) Color.White else Color(0xFF374151),
+                                                size = 18.dp
                                             )
                                         }
                                     }

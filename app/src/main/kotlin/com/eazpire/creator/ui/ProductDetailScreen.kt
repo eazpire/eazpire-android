@@ -100,6 +100,7 @@ import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
+import com.eazpire.creator.ui.components.HangerIcon
 import com.eazpire.creator.util.SizeAiProductTypeMapper
 import com.eazpire.creator.util.matchShopifySizeOption
 import kotlinx.coroutines.Dispatchers
@@ -365,12 +366,39 @@ fun ProductDetailScreen(
     val accessToken = tokenStore.getAccessToken()
 
     var promoOverlay by remember(productHandle) { mutableStateOf<ShopifyProductsApi.ProductItem?>(null) }
+    var mockupTryOnInfo by remember(productHandle) { mutableStateOf<MockupTryOnInfo?>(null) }
+    var tryOnActive by remember(productHandle) { mutableStateOf(false) }
+    var tryOnImageUrl by remember(productHandle) { mutableStateOf<String?>(null) }
+    var tryOnLoading by remember(productHandle) { mutableStateOf(false) }
 
     LaunchedEffect(productHandle) {
         isLoading = true
         product = withContext(Dispatchers.IO) { api.getProductByHandle(productHandle) }
         catalogProducts = withContext(Dispatchers.IO) { api.getProductsWithFullMetafields(100).products }
         isLoading = false
+    }
+
+    LaunchedEffect(productHandle, product?.productKey, product?.designIdMeta) {
+        mockupTryOnInfo = null
+        tryOnActive = false
+        tryOnImageUrl = null
+        tryOnLoading = false
+        val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val prod = product ?: return@LaunchedEffect
+        if (!isTryOnApparelProduct(prod.productKey)) return@LaunchedEffect
+        try {
+            val map = withContext(Dispatchers.IO) {
+                creatorApi.getCustomerMockupMap(ownerId, productHandle)
+            }
+            mockupTryOnInfo = parseMockupTryOnInfo(
+                data = map,
+                handle = productHandle,
+                productKeyMeta = prod.productKey,
+                designIdMeta = prod.designIdMeta
+            )
+        } catch (_: Exception) {
+            mockupTryOnInfo = null
+        }
     }
 
     LaunchedEffect(productHandle, countryCode) {
@@ -462,7 +490,34 @@ fun ProductDetailScreen(
     val images = remember(selectedColor, selectedVariant, p.images, p.variants) {
         getMediaForColor(selectedColor, selectedVariant, p.images, p.variants)
     }
-    LaunchedEffect(selectedVariant?.id) { selectedImageIndex = 0 }
+    LaunchedEffect(selectedVariant?.id) {
+        selectedImageIndex = 0
+    }
+
+    LaunchedEffect(tryOnActive, selectedColor, mockupTryOnInfo) {
+        if (!tryOnActive) {
+            tryOnImageUrl = null
+            tryOnLoading = false
+            return@LaunchedEffect
+        }
+        val info = mockupTryOnInfo ?: run {
+            tryOnActive = false
+            return@LaunchedEffect
+        }
+        val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: run {
+            tryOnActive = false
+            return@LaunchedEffect
+        }
+        tryOnLoading = true
+        val url = resolveMockupImageUrl(info, selectedColor, ownerId)
+        tryOnLoading = false
+        if (url.isNullOrBlank()) {
+            tryOnActive = false
+            tryOnImageUrl = null
+        } else {
+            tryOnImageUrl = url
+        }
+    }
     LaunchedEffect(showCartToast) { if (showCartToast) { kotlinx.coroutines.delay(1500); showCartToast = false } }
     LaunchedEffect(showFavoriteToast) { if (showFavoriteToast) { kotlinx.coroutines.delay(1500); showFavoriteToast = false } }
     LaunchedEffect(showCartPlusOne) {
@@ -631,12 +686,43 @@ fun ProductDetailScreen(
                 ) {
                     if (images.isNotEmpty()) {
                         val imgIdx = selectedImageIndex.coerceIn(0, (imageCount - 1).coerceAtLeast(0))
+                        val displayUrl = if (tryOnActive && !tryOnImageUrl.isNullOrBlank()) tryOnImageUrl else images[imgIdx]
                         AsyncImage(
-                            model = ImageRequest.Builder(context).data(images[imgIdx]).build(),
+                            model = ImageRequest.Builder(context).data(displayUrl).build(),
                             contentDescription = p.title,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit
                         )
+                    }
+                    mockupTryOnInfo?.let {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 48.dp)
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (tryOnActive) Color(0xFF111827)
+                                    else Color.White.copy(alpha = 0.92f)
+                                )
+                                .clickable(enabled = !tryOnLoading) {
+                                    tryOnActive = !tryOnActive
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (tryOnLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = if (tryOnActive) Color.White else EazColors.TextPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                HangerIcon(
+                                    color = if (tryOnActive) Color.White else EazColors.TextPrimary,
+                                    size = 20.dp
+                                )
+                            }
+                        }
                     }
                     // Dots
                     if (imageCount > 1) {
