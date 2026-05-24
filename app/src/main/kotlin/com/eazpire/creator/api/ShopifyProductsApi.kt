@@ -482,7 +482,8 @@ class ShopifyProductsApi(
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: "{}"
             val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
-            val productObj = json.optJSONObject("product") ?: json
+            if (json.has("ok") && !json.optBoolean("ok", true)) return@withContext null
+            val productObj = json.optJSONObject("product") ?: return@withContext null
             val base = parseProductDetail(productObj, handle) ?: return@withContext null
             val mf = fetchMetafieldsFromWorker(listOf(base.handle))[base.handle]
             if (mf == null) return@withContext base
@@ -518,6 +519,19 @@ class ShopifyProductsApi(
             )
         }
         result.copy(products = merged)
+    }
+
+    /** Storefront JSON uses dollar strings; worker Admin fallback uses integer cents (see productJsonByGid.js). */
+    private fun parseJsonPrice(value: Any?): Double? {
+        if (value == null || value == JSONObject.NULL) return null
+        if (value is Number) {
+            val d = value.toDouble()
+            return if (d >= 100 && d == kotlin.math.floor(d)) d / 100.0 else d
+        }
+        val str = value.toString().trim()
+        if (str.isBlank()) return null
+        val d = str.toDoubleOrNull() ?: return null
+        return if (!str.contains('.') && d >= 100) d / 100.0 else d
     }
 
     private fun parseProductDetail(obj: JSONObject?, handle: String): ProductDetail? {
@@ -587,8 +601,8 @@ class ShopifyProductsApi(
                         option1 = v.optString("option1").takeIf { it.isNotBlank() },
                         option2 = v.optString("option2").takeIf { it.isNotBlank() },
                         option3 = v.optString("option3").takeIf { it.isNotBlank() },
-                        price = v.optString("price", "0").toDoubleOrNull() ?: 0.0,
-                        compareAtPrice = v.optString("compare_at_price").takeIf { it.isNotBlank() }?.toDoubleOrNull(),
+                        price = parseJsonPrice(v.opt("price")) ?: 0.0,
+                        compareAtPrice = parseJsonPrice(v.opt("compare_at_price")),
                         available = v.optBoolean("available", true),
                         featuredImageSrc = feat?.optString("src")?.takeIf { it.isNotBlank() }
                     )
