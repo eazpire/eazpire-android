@@ -1107,12 +1107,16 @@ class CreatorApi(
     suspend fun getCreatorShopProducts(
         creatorName: String? = null,
         creatorSlug: String? = null,
-        ownerId: String? = null
+        ownerId: String? = null,
+        country: String? = null,
+        region: String? = null
     ): JSONObject {
         val params = mutableMapOf<String, String>()
         creatorName?.takeIf { it.isNotBlank() }?.let { params["creator_name"] = it }
         creatorSlug?.takeIf { it.isNotBlank() }?.let { params["creator_slug"] = it }
         ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
+        country?.takeIf { it.isNotBlank() }?.let { params["country"] = it.uppercase().take(2) }
+        region?.takeIf { it.isNotBlank() }?.let { params["region"] = it.uppercase() }
         return call("get-shopify-products", params)
     }
 

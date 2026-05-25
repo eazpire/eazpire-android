@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,7 @@ import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -78,17 +80,26 @@ fun CreatorProfileScreen(
     val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
 
+    val context = LocalContext.current
+    val localeStore = remember { LocaleStore(context) }
+    val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
+    val catalogRegion by localeStore.regionCode.collectAsState(initial = localeStore.getRegionCodeSync())
+
     var loading by remember(creatorName) { mutableStateOf(true) }
     var error by remember(creatorName) { mutableStateOf<String?>(null) }
     var profile by remember(creatorName) { mutableStateOf<CreatorProfilePreview?>(null) }
     var products by remember(creatorName) { mutableStateOf<List<CreatorShopProduct>>(emptyList()) }
 
-    LaunchedEffect(creatorName) {
+    LaunchedEffect(creatorName, countryCode, catalogRegion) {
         loading = true
         error = null
         try {
             val profileJson = withContext(Dispatchers.IO) {
-                api.getCreatorProfile(creatorName = creatorName, creatorSlug = creatorName)
+                api.getCreatorProfile(
+                    creatorName = creatorName,
+                    creatorSlug = creatorName,
+                    region = catalogRegion
+                )
             }
             if (!profileJson.optBoolean("ok", false)) {
                 error = profileJson.optString("error", "profile_error")
@@ -104,7 +115,9 @@ fun CreatorProfileScreen(
                 api.getCreatorShopProducts(
                     creatorName = resolvedName,
                     creatorSlug = creatorName,
-                    ownerId = ownerId
+                    ownerId = ownerId,
+                    country = countryCode,
+                    region = catalogRegion
                 )
             }
             val list = mutableListOf<CreatorShopProduct>()
