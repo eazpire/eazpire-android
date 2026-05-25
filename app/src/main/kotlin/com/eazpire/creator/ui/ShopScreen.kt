@@ -548,10 +548,11 @@ fun ShopScreen(
                     },
                     selectedHandle = selectedCollection?.second
                 )
-                if (shopCreateActive || selectedCollection != null || selectedProductHandle != null) {
+                if (shopCreateActive || selectedCollection != null || selectedProductHandle != null || selectedCreatorName != null) {
                     CollectionBreadcrumb(
                         categoryTitle = when {
                             shopCreateActive -> translationStore.t("creator.shop_create_product.entry", "Create")
+                            selectedCreatorName != null -> selectedCreatorName!!
                             else -> selectedCollection?.first ?: ""
                         },
                         onHomeClick = {
@@ -559,11 +560,18 @@ fun ShopScreen(
                             shopCreateStudioPhase = null
                             selectedCollection = null
                             selectedProductHandle = null
+                            selectedCreatorName = null
                         },
                         productTitle = null,
-                        onCollectionClick = if (selectedProductHandle != null && selectedCollection != null) {
-                            { selectedProductHandle = null }
-                        } else null
+                        onCollectionClick = when {
+                            selectedProductHandle != null && selectedCreatorName != null -> {
+                                { selectedProductHandle = null }
+                            }
+                            selectedProductHandle != null && selectedCollection != null -> {
+                                { selectedProductHandle = null }
+                            }
+                            else -> null
+                        }
                     )
                 }
             }
@@ -606,14 +614,15 @@ fun ShopScreen(
                     api = creatorPollApi,
                     onBack = { selectedCreatorName = null },
                     onProductClick = { handle ->
-                        selectedCreatorName = null
                         selectedProductHandle = handle
                     },
                     modifier = Modifier.fillMaxSize()
                 )
                 selectedProductHandle != null -> ProductDetailScreen(
                     productHandle = selectedProductHandle!!,
-                    onBack = { selectedProductHandle = null },
+                    onBack = {
+                        selectedProductHandle = null
+                    },
                     tokenStore = tokenStore,
                     onTermsClick = { termsModalVisible = true },
                     onNavigateToProduct = { selectedProductHandle = it },
@@ -985,7 +994,12 @@ fun ShopScreen(
                 productHandle = modalHandle,
                 onDismiss = { productModalHandleState.value = null },
                 tokenStore = tokenStore,
-                onTermsClick = { termsModalVisible = true }
+                onTermsClick = { termsModalVisible = true },
+                onNavigateToCreator = { name ->
+                    productModalHandleState.value = null
+                    selectedProductHandle = null
+                    selectedCreatorName = name
+                }
             )
         }
     }

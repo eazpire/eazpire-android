@@ -545,6 +545,49 @@ fun ProductDetailScreen(
         }
     }
 
+    val creatorLabel = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "Creator" }
+    var creatorPreview by remember(p.creatorDisplay, p.vendor) { mutableStateOf<CreatorProfilePreview?>(null) }
+    LaunchedEffect(creatorLabel) {
+        if (creatorLabel.isBlank() || creatorLabel == "Creator") {
+            creatorPreview = null
+            return@LaunchedEffect
+        }
+        try {
+            val data = withContext(Dispatchers.IO) {
+                creatorApi.getCreatorProfile(creatorName = creatorLabel, creatorSlug = creatorLabel)
+            }
+            if (data.optBoolean("ok", false)) {
+                val ratingObj = data.optJSONObject("rating")
+                val avatarObj = data.optJSONObject("avatar")
+                creatorPreview = CreatorProfilePreview(
+                    name = data.optString("creator_name", creatorLabel).ifBlank { creatorLabel },
+                    avatarUrl = avatarObj?.optString("image_url", "")?.trim()?.ifBlank { null },
+                    ratingAvg = ratingObj?.optDouble("avg")?.takeIf { it > 0.0 }
+                        ?: ratingObj?.optDouble("rating")?.takeIf { it > 0.0 },
+                    ratingCount = ratingObj?.optInt("count")?.takeIf { it > 0 }
+                        ?: ratingObj?.optInt("rating_count")?.takeIf { it > 0 }
+                )
+            }
+        } catch (_: Exception) {
+            creatorPreview = null
+        }
+    }
+    val openCreatorProfile: () -> Unit = {
+        if (onNavigateToCreator != null) {
+            onNavigateToCreator.invoke(creatorPreview?.name ?: creatorLabel)
+        } else {
+            try {
+                context.startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://www.eazpire.com/creator/${creatorLabel.lowercase().replace(' ', '-')}")
+                    )
+                )
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         if (showCloseButton) {
             IconButton(
@@ -566,35 +609,35 @@ fun ProductDetailScreen(
         ) {
             // pdp-info (order 1) – Brand, Title, Product Details btn, Subtitle
             Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                // Brand / Creator
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.padding(bottom = 2.dp)
-                ) {
-                    val brandLabel = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "?" }
-                    Box(
+                // Brand / Creator — logo + name, links to creator shop page
+                val brandLabel = creatorPreview?.name ?: creatorLabel
+                if (brandLabel.isNotBlank() && brandLabel != "Creator" && brandLabel != "?") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFF0F0F0)),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .clickable(onClick = openCreatorProfile)
+                            .padding(bottom = 4.dp)
                     ) {
+                        CreatorAvatarLogo(
+                            name = brandLabel,
+                            avatarUrl = creatorPreview?.avatarUrl,
+                            size = 36.dp,
+                            cornerRadius = 9.dp,
+                            onClick = openCreatorProfile
+                        )
                         Text(
-                            brandLabel.take(1).uppercase(),
+                            brandLabel,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = EazColors.TextSecondary
+                            fontWeight = FontWeight.SemiBold,
+                            color = EazColors.TextPrimary,
+                            modifier = Modifier.clickable(onClick = openCreatorProfile)
                         )
                     }
-                    Text(
-                        brandLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                        color = EazColors.TextPrimary
-                    )
                 }
 
-                // Title row: Design Title + Product Details btn (like web pdp-title-row)
+                // Title row: design title + Product Details btn (like web pdp-title-row)
                 val (designTitle, productTypeTitle) = remember(p.title, p.productType, p.productKey) {
                     splitProductTitle(p.title, p.productType, p.productKey)
                 }
@@ -603,24 +646,15 @@ fun ProductDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
                     Text(
                         designTitle,
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            color = EazColors.TextPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (productTypeTitle.isNotBlank()) {
-                            Text(
-                                productTypeTitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = EazColors.TextSecondary,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-                    }
+                        fontWeight = FontWeight.Bold,
+                        color = EazColors.TextPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(100.dp))
@@ -633,6 +667,14 @@ fun ProductDetailScreen(
                         Text(t("product.details", "Product Details"), style = MaterialTheme.typography.labelMedium, color = EazColors.TextPrimary)
                     }
                 }
+                if (productTypeTitle.isNotBlank()) {
+                    Text(
+                        productTypeTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EazColors.TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
 
                 val ratingAvg = p.ratingAvg
                 val ratingCount = p.ratingCount ?: 0
@@ -643,7 +685,7 @@ fun ProductDetailScreen(
                         rating = ratingAvg,
                         reviewsLabel = reviewsLabel,
                         onClick = { reviewsSheetVisible = true },
-                        modifier = Modifier.padding(top = 6.dp)
+                        modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
                     )
                 }
 
@@ -877,48 +919,6 @@ fun ProductDetailScreen(
                 else try {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.eazpire.com/products/$h")))
                 } catch (_: Exception) {
-                }
-            }
-            val creatorLabel = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "Creator" }
-            var creatorPreview by remember(p.creatorDisplay, p.vendor) { mutableStateOf<CreatorProfilePreview?>(null) }
-            LaunchedEffect(creatorLabel) {
-                if (creatorLabel.isBlank() || creatorLabel == "Creator") {
-                    creatorPreview = null
-                    return@LaunchedEffect
-                }
-                try {
-                    val data = withContext(Dispatchers.IO) {
-                        creatorApi.getCreatorProfile(creatorName = creatorLabel, creatorSlug = creatorLabel)
-                    }
-                    if (data.optBoolean("ok", false)) {
-                        val ratingObj = data.optJSONObject("rating")
-                        val avatarObj = data.optJSONObject("avatar")
-                        creatorPreview = CreatorProfilePreview(
-                            name = data.optString("creator_name", creatorLabel).ifBlank { creatorLabel },
-                            avatarUrl = avatarObj?.optString("image_url", "")?.trim()?.ifBlank { null },
-                            ratingAvg = ratingObj?.optDouble("avg")?.takeIf { it > 0.0 }
-                                ?: ratingObj?.optDouble("rating")?.takeIf { it > 0.0 },
-                            ratingCount = ratingObj?.optInt("count")?.takeIf { it > 0 }
-                                ?: ratingObj?.optInt("rating_count")?.takeIf { it > 0 }
-                        )
-                    }
-                } catch (_: Exception) {
-                    creatorPreview = null
-                }
-            }
-            val openCreatorProfile: () -> Unit = {
-                if (onNavigateToCreator != null) {
-                    onNavigateToCreator.invoke(creatorPreview?.name ?: creatorLabel)
-                } else {
-                    try {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://www.eazpire.com/creator/${creatorLabel.lowercase().replace(' ', '-')}")
-                            )
-                        )
-                    } catch (_: Exception) {
-                    }
                 }
             }
             val showCreatorSection =
