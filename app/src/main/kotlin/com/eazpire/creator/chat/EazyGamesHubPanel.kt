@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,6 +26,7 @@ import org.json.JSONArray
 
 private enum class GamesHubSection { Play, Collection, Exchange }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EazyGamesHubPanel(
     api: CreatorApi,
