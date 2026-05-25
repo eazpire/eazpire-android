@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.api.ShopifyProductsApi
+import android.util.Log
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
@@ -83,11 +85,17 @@ data class CreatorShopProduct(
     val handle: String,
     val title: String,
     val productName: String? = null,
+    val shopifyProductId: String? = null,
     val imageUrl: String?,
     val price: String?,
     val priceAmount: Double? = null,
     val createdAtMs: Long? = null,
-    val productType: String? = null
+    val productType: String? = null,
+    val contentType: String = "",
+    val designType: String = "",
+    val designStyle: List<String> = emptyList(),
+    val ratio: String = "",
+    val designLanguage: String = "",
 )
 
 data class CreatorReviewItem(
@@ -97,6 +105,7 @@ data class CreatorReviewItem(
     val body: String,
     val reviewerName: String,
     val createdAtMs: Long?,
+    val shopifyProductId: String? = null,
     val productHandle: String?,
     val productTitle: String?,
     val productImage: String?
@@ -135,7 +144,8 @@ fun CreatorProfileScreen(
     var profile by remember(creatorName) { mutableStateOf<CreatorProfilePreview?>(null) }
     var products by remember(creatorName) { mutableStateOf<List<CreatorShopProduct>>(emptyList()) }
     var sortBy by remember(creatorName) { mutableStateOf("date-desc") }
-    var filterQuery by remember(creatorName) { mutableStateOf("") }
+    var withinSearchQuery by remember(creatorName) { mutableStateOf("") }
+    var productFilters by remember(creatorName) { mutableStateOf(ProductFilters()) }
     var showSortSheet by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showReviewsModal by remember { mutableStateOf(false) }
@@ -204,12 +214,16 @@ fun CreatorProfileScreen(
         }
     }
 
-    val filteredSortedProducts by remember(products, sortBy, filterQuery) {
+    val filteredSortedProducts by remember(products, sortBy, productFilters, withinSearchQuery) {
         derivedStateOf {
-            val q = filterQuery.trim().lowercase(Locale.ROOT)
-            val filtered = if (q.isBlank()) products
-            else products.filter { it.title.lowercase(Locale.ROOT).contains(q) || it.handle.contains(q) }
-            sortCreatorProducts(filtered, sortBy)
+            val items = products.map { it.toFilterProductItem() }
+            val filtered = applyCollectionProductFilters(items, productFilters)
+            val searched = applyCollectionWithinSearchFilter(filtered, withinSearchQuery)
+            val byHandle = products.associateBy { it.handle }
+            sortCreatorProducts(
+                searched.mapNotNull { byHandle[it.handle] },
+                sortBy
+            )
         }
     }
 
@@ -256,31 +270,6 @@ fun CreatorProfileScreen(
                                 .fillMaxWidth()
                                 .background(Color.White)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = t("eaz.sidebar.nav_home", "Home"),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = EazColors.Orange,
-                                    modifier = Modifier.clickable(onClick = onBack)
-                                )
-                                Text(
-                                    text = " > ",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = EazColors.TextSecondary
-                                )
-                                Text(
-                                    text = p?.name ?: creatorName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = EazColors.TextPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
                             CollectionResultsBar(
                                 filteredCount = filteredSortedProducts.size,
                                 totalCount = products.size,
@@ -344,6 +333,7 @@ fun CreatorProfileScreen(
         ownerId = ownerId,
         ratingAvg = profile?.ratingAvg,
         ratingCount = profile?.ratingCount,
+        shopProducts = products,
         t = t,
         onDismiss = { showReviewsModal = false },
         onProductClick = { handle ->
@@ -353,98 +343,15 @@ fun CreatorProfileScreen(
     )
 
     if (showFilterSheet) {
-        val filterScrollState = rememberScrollState()
-        ModalBottomSheet(
-            onDismissRequest = { showFilterSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.8f)
-                    .heightIn(min = 320.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.FilterList,
-                            contentDescription = null,
-                            tint = EazColors.Orange,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            t("collection.filter", "Filters"),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = EazColors.TextPrimary
-                        )
-                    }
-                    IconButton(onClick = { showFilterSheet = false }) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = t("common.close", "Close"),
-                            tint = EazColors.TextSecondary
-                        )
-                    }
-                }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(filterScrollState)
-                        .padding(horizontal = 20.dp)
-                ) {
-                    Text(
-                        t("collection.within_search_label", "Search in results"),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = EazColors.TextPrimary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                    TextField(
-                        value = filterQuery,
-                        onValueChange = { filterQuery = it },
-                        placeholder = {
-                            Text(
-                                t("collection.within_search_placeholder", "Search titles, creator, type…"),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 14.dp)
-                            .heightIn(min = 44.dp),
-                        singleLine = true
-                    )
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    TextButton(
-                        onClick = { filterQuery = "" },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(t("collection.reset", "Reset"))
-                    }
-                    TextButton(
-                        onClick = { showFilterSheet = false },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(t("collection.apply", "Apply"), color = EazColors.Orange)
-                    }
-                }
-            }
-        }
+        CollectionFilterDrawer(
+            filters = productFilters,
+            products = products.map { it.toFilterProductItem() },
+            withinSearchQuery = withinSearchQuery,
+            onWithinSearchChange = { withinSearchQuery = it },
+            onFiltersChange = { productFilters = it },
+            onDismiss = { showFilterSheet = false },
+            t = t
+        )
     }
 }
 
@@ -724,10 +631,20 @@ private fun parseCreatorShopProduct(o: JSONObject): CreatorShopProduct {
         else -> priceRaw.replace(",", ".").replace(Regex("[^0-9.]"), "").toDoubleOrNull()
     }
     val createdAtMs = parseCreatedAtMs(o.optString("created_at", ""))
+    val designStyleRaw = o.optString("design_style", "").ifBlank { o.optString("designStyle", "") }
+    val designStyles = when {
+        o.has("design_style") && o.opt("design_style") is JSONArray -> {
+            val arr = o.optJSONArray("design_style") ?: JSONArray()
+            (0 until arr.length()).mapNotNull { arr.optString(it).trim().ifBlank { null } }
+        }
+        designStyleRaw.isNotBlank() -> designStyleRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        else -> emptyList()
+    }
     return CreatorShopProduct(
         handle = handle,
         title = title,
         productName = o.optString("product_name", "").trim().ifBlank { null },
+        shopifyProductId = o.optString("id", "").trim().ifBlank { null },
         imageUrl = run {
             val preview = o.optString("preview_image_url", "").trim()
             if (preview.isNotBlank()) preview
@@ -737,7 +654,33 @@ private fun parseCreatorShopProduct(o: JSONObject): CreatorShopProduct {
         price = priceRaw.ifBlank { null },
         priceAmount = priceAmount,
         createdAtMs = createdAtMs,
-        productType = o.optString("product_type", "").trim().ifBlank { null }
+        productType = o.optString("product_type", "").trim().ifBlank { null },
+        contentType = o.optString("content_type", "").ifBlank { o.optString("contentType", "") },
+        designType = o.optString("design_type", "").ifBlank { o.optString("designType", "") },
+        designStyle = designStyles,
+        ratio = o.optString("design_ratio", "").ifBlank { o.optString("ratio", "") },
+        designLanguage = o.optString("design_language", "").ifBlank { o.optString("designLanguage", "") },
+    )
+}
+
+private fun CreatorShopProduct.toFilterProductItem(): ShopifyProductsApi.ProductItem {
+    val idNum = shopifyProductId?.filter { it.isDigit() }?.toLongOrNull()
+        ?: handle.hashCode().toLong().let { if (it < 0) -it else it }
+    return ShopifyProductsApi.ProductItem(
+        id = idNum,
+        title = title,
+        handle = handle,
+        images = listOfNotNull(imageUrl),
+        url = "https://www.eazpire.com/products/$handle",
+        price = priceAmount ?: 0.0,
+        createdAt = createdAtMs?.toString().orEmpty(),
+        productType = productType.orEmpty(),
+        contentType = contentType,
+        designType = designType,
+        designStyle = designStyle,
+        ratio = ratio,
+        designLanguage = designLanguage,
+        patProductName = productName.orEmpty(),
     )
 }
 
@@ -766,6 +709,36 @@ private fun splitCreatorProductTitle(title: String, productName: String?): Pair<
     return design to label
 }
 
+private fun parseReviewCreatedAtMs(raw: Long): Long? {
+    if (raw <= 0L) return null
+    return if (raw < 1_000_000_000_000L) raw * 1000L else raw
+}
+
+private fun enrichCreatorReview(
+    review: CreatorReviewItem,
+    products: List<CreatorShopProduct>
+): CreatorReviewItem {
+    var handle = review.productHandle
+    var title = review.productTitle
+    var image = review.productImage
+    val pid = review.shopifyProductId?.filter { it.isDigit() }.orEmpty()
+    if (pid.isNotBlank()) {
+        val match = products.firstOrNull { p ->
+            p.shopifyProductId?.filter { it.isDigit() } == pid
+        }
+        if (match != null) {
+            if (handle.isNullOrBlank()) handle = match.handle
+            if (title.isNullOrBlank()) title = match.title
+            if (image.isNullOrBlank()) image = match.imageUrl
+        }
+    }
+    return review.copy(
+        productHandle = handle,
+        productTitle = title,
+        productImage = image
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreatorReviewsModal(
@@ -776,19 +749,25 @@ private fun CreatorReviewsModal(
     ownerId: String?,
     ratingAvg: Double?,
     ratingCount: Int?,
+    shopProducts: List<CreatorShopProduct>,
     t: (String, String) -> String,
     onDismiss: () -> Unit,
     onProductClick: (String) -> Unit
 ) {
     if (!visible) return
 
-    var loading by remember(visible, creatorName) { mutableStateOf(true) }
+    val modalTitle = remember(creatorName) {
+        t("eaz.creator_profile.reviews_modal_title_creator", "{{ name }} reviews")
+            .replace("{{ name }}", creatorName.ifBlank { "Creator" })
+    }
+
+    var loading by remember(visible, creatorName, ownerId) { mutableStateOf(true) }
     var reviews by remember(visible, creatorName) { mutableStateOf<List<CreatorReviewItem>>(emptyList()) }
     var summaryAvg by remember(visible, creatorName) { mutableStateOf(ratingAvg) }
     var summaryCount by remember(visible, creatorName) { mutableStateOf(ratingCount) }
     var emptyMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(visible, creatorName, ownerId) {
+    LaunchedEffect(visible, creatorName, creatorSlug, ownerId) {
         if (!visible) return@LaunchedEffect
         loading = true
         emptyMessage = null
@@ -796,13 +775,19 @@ private fun CreatorReviewsModal(
         try {
             val data = withContext(Dispatchers.IO) {
                 api.getCreatorReviews(
-                    creatorName = creatorName,
-                    creatorSlug = creatorSlug,
+                    creatorName = creatorName.takeIf { it.isNotBlank() },
+                    creatorSlug = creatorSlug.takeIf { it.isNotBlank() },
                     ownerId = ownerId
                 )
             }
+            Log.d(
+                "CreatorReviews",
+                "get-creator-reviews ok=${data.optBoolean("ok")} source=${data.optString("reviews_source")} count=${data.optJSONArray("reviews")?.length() ?: 0}"
+            )
             if (!data.optBoolean("ok", false)) {
-                emptyMessage = t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+                emptyMessage = data.optString("error", "").ifBlank {
+                    t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+                }
                 return@LaunchedEffect
             }
             val ratingObj = data.optJSONObject("rating")
@@ -816,25 +801,29 @@ private fun CreatorReviewsModal(
             val list = mutableListOf<CreatorReviewItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
-                list.add(
+                val raw = enrichCreatorReview(
                     CreatorReviewItem(
                         id = o.optString("id", i.toString()),
                         rating = o.optDouble("rating", 0.0),
                         title = o.optString("title", "").trim(),
                         body = o.optString("body", "").trim(),
                         reviewerName = o.optString("reviewer_name", "").trim(),
-                        createdAtMs = o.optLong("created_at", 0L).takeIf { it > 0L },
+                        createdAtMs = parseReviewCreatedAtMs(o.optLong("created_at", 0L)),
+                        shopifyProductId = o.optString("shopify_product_id", "").trim().ifBlank { null },
                         productHandle = o.optString("product_handle", "").trim().ifBlank { null },
                         productTitle = o.optString("product_title", "").trim().ifBlank { null },
                         productImage = o.optString("product_image", "").trim().ifBlank { null }
-                    )
+                    ),
+                    shopProducts
                 )
+                list.add(raw)
             }
             reviews = list
             if (list.isEmpty()) {
                 emptyMessage = t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w("CreatorReviews", "get-creator-reviews failed", e)
             emptyMessage = t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
         } finally {
             loading = false
@@ -859,7 +848,7 @@ private fun CreatorReviewsModal(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    t("eaz.creator_profile.reviews_modal_title", "Creator reviews"),
+                    modalTitle,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )

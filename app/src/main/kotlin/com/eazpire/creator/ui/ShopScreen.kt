@@ -541,7 +541,7 @@ fun ShopScreen(
                             else -> menuDrawerVisible = true
                         }
                     },
-                    onCategoryClick = { title, handle ->
+                    onCategoryClick = { title, handle, productType ->
                         if (handle == SHOP_MENU_CREATE_HANDLE) {
                             shopSearchQuery = null
                             selectedProductHandle = null
@@ -553,7 +553,7 @@ fun ShopScreen(
                             shopSearchQuery = null
                             selectedProductHandle = null
                             selectedCreatorName = null
-                            selectedCollection = Triple(title, handle, null)
+                            selectedCollection = Triple(title, handle, productType)
                         }
                     },
                     selectedHandle = selectedCollection?.second

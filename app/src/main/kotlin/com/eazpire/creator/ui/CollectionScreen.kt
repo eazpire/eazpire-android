@@ -86,7 +86,7 @@ private const val PRODUCTS_PER_PAGE = 24
 const val EAZ_PROMOTIONS_COLLECTION_HANDLE = "eaz-promotions"
 
 // Design filter (creator-mobile-filter-modal): Price, Content Type, …, Product Type (Shopify), PAT display name (custom.product_name)
-private data class ProductFilters(
+internal data class ProductFilters(
     val priceMin: String = "",
     val priceMax: String = "",
     val contentTypes: Set<String> = emptySet(),
@@ -152,7 +152,7 @@ private fun productTypeToCategory(productType: String, title: String): String {
     }
 }
 
-private fun applyFilters(
+internal fun applyCollectionProductFilters(
     products: List<ShopifyProductsApi.ProductItem>,
     filters: ProductFilters
 ): List<ShopifyProductsApi.ProductItem> {
@@ -198,13 +198,13 @@ private fun applyFilters(
     }
 }
 
-private fun poolForFacetCounts(
+internal fun poolForCollectionFacetCounts(
     products: List<ShopifyProductsApi.ProductItem>,
     filters: ProductFilters,
     withinSearchQuery: String,
     adjust: (ProductFilters) -> ProductFilters
 ): List<ShopifyProductsApi.ProductItem> =
-    applyWithinSearchFilter(applyFilters(products, adjust(filters)), withinSearchQuery)
+    applyCollectionWithinSearchFilter(applyCollectionProductFilters(products, adjust(filters)), withinSearchQuery)
 
 private fun ProductFilters.clearContentTypes() = copy(contentTypes = emptySet())
 private fun ProductFilters.clearDesignTypes() = copy(designTypes = emptySet())
@@ -242,7 +242,7 @@ private fun productMatchesWithinSearch(p: ShopifyProductsApi.ProductItem, queryR
     return normalizeWithinSearch(productSearchHaystack(p)).contains(normalizeWithinSearch(q))
 }
 
-private fun applyWithinSearchFilter(
+internal fun applyCollectionWithinSearchFilter(
     products: List<ShopifyProductsApi.ProductItem>,
     query: String
 ): List<ShopifyProductsApi.ProductItem> {
@@ -385,10 +385,10 @@ fun CollectionScreen(
     }
     val sortedProducts = remember(productsToFilter, sortBy) { sortProducts(productsToFilter, sortBy) }
     val filteredProducts = remember(sortedProducts, productFilters) {
-        applyFilters(sortedProducts, productFilters)
+        applyCollectionProductFilters(sortedProducts, productFilters)
     }
     val displayProducts = remember(filteredProducts, withinSearchQuery) {
-        applyWithinSearchFilter(filteredProducts, withinSearchQuery)
+        applyCollectionWithinSearchFilter(filteredProducts, withinSearchQuery)
     }
     val currentSortLabel = COLLECTION_SORT_OPTIONS.find { it.value == sortBy }?.label?.let { t("collection.sort_$sortBy", it) } ?: t("collection.sort_by", "Sort by")
 
@@ -468,7 +468,7 @@ fun CollectionScreen(
             productsByPage.values.flatten()
         }
         val productsForCounts = if (filterCountProducts.isNotEmpty()) filterCountProducts else allLoadedProducts
-        FilterDrawer(
+        CollectionFilterDrawer(
             filters = productFilters,
             products = productsForCounts,
             withinSearchQuery = withinSearchQuery,
@@ -574,7 +574,7 @@ private fun FilterOptionRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FilterDrawer(
+internal fun CollectionFilterDrawer(
     filters: ProductFilters,
     products: List<ShopifyProductsApi.ProductItem>,
     withinSearchQuery: String,
@@ -586,7 +586,7 @@ private fun FilterDrawer(
 ) {
     val scrollState = rememberScrollState()
     val productTypesWithCounts = remember(products, filters, withinSearchQuery) {
-        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearProductTypes() }
+        val pool = poolForCollectionFacetCounts(products, filters, withinSearchQuery) { it.clearProductTypes() }
         pool
             .map { it.productType.ifBlank { "Other" } }
             .groupingBy { it }
@@ -595,7 +595,7 @@ private fun FilterDrawer(
             .sortedByDescending { it.second }
     }
     val patProductNamesWithCounts = remember(products, filters, withinSearchQuery) {
-        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearPatProductNames() }
+        val pool = poolForCollectionFacetCounts(products, filters, withinSearchQuery) { it.clearPatProductNames() }
         pool
             .map { it.patProductName.trim() }
             .filter { it.isNotBlank() }
@@ -605,7 +605,7 @@ private fun FilterDrawer(
     }
     // Counts: other facets + search applied; this group’s selection cleared (matches web tri-toggle recount)
     val contentTypesCount = remember(products, filters, withinSearchQuery) {
-        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearContentTypes() }
+        val pool = poolForCollectionFacetCounts(products, filters, withinSearchQuery) { it.clearContentTypes() }
         CONTENT_TYPE_OPTIONS.associate { (value, _) ->
             val filterKey = when (value) {
                 "Design + Text" -> "design_text"
@@ -617,13 +617,13 @@ private fun FilterDrawer(
         }
     }
     val designTypesCount = remember(products, filters, withinSearchQuery) {
-        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearDesignTypes() }
+        val pool = poolForCollectionFacetCounts(products, filters, withinSearchQuery) { it.clearDesignTypes() }
         DESIGN_TYPE_OPTIONS.associate { (value, _) ->
             value to pool.count { normalizeValue(designTypeToFilterValue(it.designType)) == normalizeValue(value) }
         }
     }
     val designStylesCount = remember(products, filters, withinSearchQuery) {
-        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearDesignStyles() }
+        val pool = poolForCollectionFacetCounts(products, filters, withinSearchQuery) { it.clearDesignStyles() }
         DESIGN_STYLE_OPTIONS.associate { (value, _) ->
             value to pool.count { p ->
                 p.designStyle.any { normalizeValue(it) == normalizeValue(value) }
@@ -631,25 +631,25 @@ private fun FilterDrawer(
         }
     }
     val ratiosCount = remember(products, filters, withinSearchQuery) {
-        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearRatios() }
+        val pool = poolForCollectionFacetCounts(products, filters, withinSearchQuery) { it.clearRatios() }
         RATIO_OPTIONS.associate { (value, _) ->
             value to pool.count { normalizeValue(ratioToFilterValue(it.ratio)) == normalizeValue(value) }
         }
     }
     val designLanguagesCount = remember(products, filters, withinSearchQuery) {
-        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearDesignLanguages() }
+        val pool = poolForCollectionFacetCounts(products, filters, withinSearchQuery) { it.clearDesignLanguages() }
         DESIGN_LANGUAGE_OPTIONS.associate { (value, _) ->
             value to pool.count { normalizeValue(it.designLanguage) == normalizeValue(value) }
         }
     }
     val categoriesCount = remember(products, filters, withinSearchQuery) {
-        val pool = poolForFacetCounts(products, filters, withinSearchQuery) { it.clearCategories() }
+        val pool = poolForCollectionFacetCounts(products, filters, withinSearchQuery) { it.clearCategories() }
         CATEGORY_OPTIONS.associate { (value, _) ->
             value to pool.count { productTypeToCategory(it.productType, it.title) == value }
         }
     }
     val filteredCount = remember(products, filters, withinSearchQuery) {
-        applyWithinSearchFilter(applyFilters(products, filters), withinSearchQuery).size
+        applyCollectionWithinSearchFilter(applyCollectionProductFilters(products, filters), withinSearchQuery).size
     }
 
     ModalBottomSheet(
