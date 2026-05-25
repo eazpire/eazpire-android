@@ -148,7 +148,10 @@ private data class EazyKvJobRow(
     val progress: Int,
     val done: Boolean,
     val saving: Boolean,
-    val status: String?
+    val saved: Boolean,
+    val isWear: Boolean,
+    val status: String?,
+    val message: String?,
 )
 
 private data class EazySystemJobRow(
@@ -274,15 +277,29 @@ private fun parseKvJobs(arr: JSONArray): List<EazyKvJobRow> {
     return (0 until arr.length()).mapNotNull { i ->
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val id = o.optString("job_id", o.optString("id", "")).ifBlank { return@mapNotNull null }
+        val saving = o.optBoolean("saving", false)
+        val done = o.optBoolean("done", false)
+        val saved = o.optBoolean("saved", false)
+        var progress = o.optInt("progress", 0).coerceIn(0, 100)
+        if (saving) progress = maxOf(progress, 90).coerceIn(0, 99)
+        else if (done && !saved && progress < 100) progress = maxOf(progress, 90)
+        val clientDevice = o.optString("client_device", "")
+            .ifBlank { o.optString("source", "") }
+        val type = o.optString("type", o.optString("action", ""))
+        val isWear = clientDevice.equals("wear", ignoreCase = true) ||
+            type.contains("wear", ignoreCase = true)
         EazyKvJobRow(
             id = id,
             title = o.optString("prompt", o.optString("title", "")).ifBlank { id },
-            progress = o.optInt("progress", 0).coerceIn(0, 100),
-            done = o.optBoolean("done", false),
-            saving = o.optBoolean("saving", false),
-            status = o.optString("status", "").takeIf { it.isNotBlank() }
+            progress = progress,
+            done = done,
+            saving = saving,
+            saved = saved,
+            isWear = isWear,
+            status = o.optString("status", "").takeIf { it.isNotBlank() },
+            message = o.optString("message", "").takeIf { it.isNotBlank() },
         )
-    }.filter { !it.done || it.saving }
+    }.filter { !it.done || it.saving || (it.done && !it.saved) }
 }
 
 private fun parseSystemJobs(arr: JSONArray): List<EazySystemJobRow> {
@@ -1912,7 +1929,7 @@ private fun EazyJobsCombinedPanel(
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    EazyHeroJobsPanel(hero, video, t)
+                    EazyHeroJobsPanel(hero, video, hasKvJobs = userKvJobs.isNotEmpty(), t = t)
                     if (userKvJobs.isNotEmpty()) {
                         Text(
                             t("creator.notifications.active_jobs", "Active Jobs"),
@@ -1929,14 +1946,38 @@ private fun EazyJobsCombinedPanel(
                                     .background(LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
                                     .padding(12.dp)
                             ) {
-                                Text(j.title, style = MaterialTheme.typography.bodyMedium, color = LocalEazyModalPalette.current.text)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        j.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = LocalEazyModalPalette.current.text,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (j.isWear) {
+                                        Text(
+                                            t("eazy_chat.chat_job_device_wear", "Wear"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = LocalEazyModalPalette.current.accent,
+                                        )
+                                    }
+                                }
                                 LinearProgressIndicator(
-                                    progress = (if (j.done) 100 else j.progress).coerceIn(0, 100) / 100f,
+                                    progress = j.progress.coerceIn(0, 100) / 100f,
                                     modifier = Modifier.fillMaxWidth(),
                                     color = LocalEazyModalPalette.current.accent,
                                     trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
                                 )
-                                j.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted) }
+                                val statusLine = when {
+                                    j.saving -> j.message?.ifBlank { null } ?: "Saving…"
+                                    else -> j.message ?: j.status
+                                }
+                                statusLine?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
+                                }
                             }
                         }
                     }
@@ -2002,7 +2043,7 @@ private fun EazyHeroJobsPanel(
                 Text(text = msg, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
             }
         }
-        if (activeHero == null && activeVideo == null) {
+        if (activeHero == null && activeVideo == null && !hasKvJobs) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
