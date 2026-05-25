@@ -89,7 +89,7 @@ fun CreatorSettingsWearContent(
                             context,
                             res.optString("device_id", "").ifBlank { "watch" },
                             name,
-                            wearConnectedAt,
+                            wearConnectedAt ?: System.currentTimeMillis(),
                         )
                     }
                 } else {
