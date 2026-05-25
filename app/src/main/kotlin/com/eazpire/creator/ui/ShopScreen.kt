@@ -94,6 +94,7 @@ fun ShopScreen(
     pendingEazyTab: MutableState<EazySidebarTab?>? = null,
     pendingOpenCart: MutableState<Boolean>? = null,
     pendingOpenShop: MutableState<Boolean>? = null,
+    pendingWearPairToken: MutableState<String?>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -244,6 +245,10 @@ fun ShopScreen(
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     var selectedCreatorName by remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
+    val pendingWearPair = pendingWearPairToken?.value
+    LaunchedEffect(pendingWearPair) {
+        if (!pendingWearPair.isNullOrBlank()) isCreatorMode = true
+    }
 
     LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value) {
         val pt = pendingEazyTab
@@ -430,7 +435,9 @@ fun ShopScreen(
             },
             shopGenerationOverlayActive = eazyGenerationOverlay,
             overlayComposeStartKey = overlayComposeStartKey,
-            generationBubbleFaceLeft = generationBubbleFaceLeft
+            generationBubbleFaceLeft = generationBubbleFaceLeft,
+            pendingWearPairToken = pendingWearPair,
+            onWearPairTokenConsumed = { pendingWearPairToken?.value = null },
         )
         }
     } else {
@@ -1006,17 +1013,19 @@ fun ShopScreen(
                 .fillMaxSize()
                 .zIndex(Float.MAX_VALUE)
         ) {
-            ProductModal(
-                productHandle = modalHandle,
-                onDismiss = { productModalHandleState.value = null },
-                tokenStore = tokenStore,
-                onTermsClick = { termsModalVisible = true },
-                onNavigateToCreator = { name ->
-                    productModalHandleState.value = null
-                    selectedProductHandle = null
-                    selectedCreatorName = name
-                }
-            )
+            key(modalHandle) {
+                ProductModal(
+                    productHandle = modalHandle,
+                    onDismiss = { productModalHandleState.value = null },
+                    tokenStore = tokenStore,
+                    onTermsClick = { termsModalVisible = true },
+                    onNavigateToCreator = { name ->
+                        productModalHandleState.value = null
+                        selectedProductHandle = null
+                        selectedCreatorName = name
+                    }
+                )
+            }
         }
     }
 

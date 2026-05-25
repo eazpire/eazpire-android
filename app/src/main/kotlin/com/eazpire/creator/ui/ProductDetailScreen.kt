@@ -76,6 +76,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
 import android.annotation.SuppressLint
 import android.widget.Toast
@@ -348,9 +349,9 @@ fun ProductDetailScreen(
     val creatorApi = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var product by remember { mutableStateOf<ShopifyProductsApi.ProductDetail?>(null) }
+    var product by remember(productHandle) { mutableStateOf<ShopifyProductsApi.ProductDetail?>(null) }
     var catalogProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember(productHandle) { mutableStateOf(true) }
     var detailsSheetVisible by remember { mutableStateOf(false) }
     var reviewsSheetVisible by remember { mutableStateOf(false) }
     var selectedImageIndex by remember { mutableIntStateOf(0) }
@@ -589,17 +590,7 @@ fun ProductDetailScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (showCloseButton) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-            ) {
-                Icon(Icons.Default.Close, contentDescription = t("common.close", "Close"), tint = EazColors.TextPrimary)
-            }
-        }
-    Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
         // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
 
         Column(
@@ -1364,6 +1355,18 @@ fun ProductDetailScreen(
         // Main Footer – ganz unten (wie Web)
         GlobalFooter(onTermsClick = onTermsClick)
     }
+
+        if (showCloseButton) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .zIndex(2f)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = t("common.close", "Close"), tint = EazColors.TextPrimary)
+            }
+        }
 
         // Toast overlays – mittig
         AnimatedVisibility(

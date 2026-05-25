@@ -115,6 +115,12 @@ dependencies {
     // Wear OS: sync JWT to companion watch app
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
 
+    // Wear QR pairing scanner
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     testImplementation("junit:junit:4.13.2")
     /** Same JSON stack as JVM unit tests ([ShopSidebarMenuParser] uses JSONObject) */
     testImplementation("org.json:json:20240303")

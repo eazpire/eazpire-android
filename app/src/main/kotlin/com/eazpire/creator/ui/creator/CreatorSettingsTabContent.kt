@@ -56,12 +56,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** Tab indices: 0 Profile, 1 Notifications, 2 Creator Codes, 3 Community, 4 Creator Names, 5 Level, 6 EAZ, 7 Payout, 8 Interests, 9 NFT */
+/** Tab indices: 0 Profile … 9 NFT, 10 Creator Wear */
 @Composable
 fun CreatorSettingsTabContent(
     currentTab: Int,
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
+    pendingWearPairToken: String? = null,
     modifier: Modifier = Modifier
 ) {
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
@@ -89,6 +90,11 @@ fun CreatorSettingsTabContent(
             7 -> CreatorSettingsPayoutContent(ownerId, api, translationStore)
             8 -> CreatorSettingsInterestsContent(ownerId, api, translationStore)
             9 -> CreatorSettingsNftContent(translationStore)
+            10 -> CreatorSettingsWearContent(
+                tokenStore = tokenStore,
+                translationStore = translationStore,
+                pendingPairToken = pendingWearPairToken,
+            )
         }
     }
 }

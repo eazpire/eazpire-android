@@ -28,6 +28,7 @@ import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.push.PushTokenRegistrar
 import com.eazpire.creator.ui.ShopScreen
 import com.eazpire.creator.update.PlayInAppUpdateHelper
+import com.eazpire.creator.api.WearPairApi
 import com.eazpire.creator.wear.sync.WearAuthSync
 import kotlinx.coroutines.runBlocking
 
@@ -47,6 +48,8 @@ class MainActivity : ComponentActivity() {
     val pendingOpenCart = mutableStateOf(false)
     /** From FCM open_target=shop — opens main shop (no Eazy overlay). */
     val pendingOpenShop = mutableStateOf(false)
+    /** From eazpire://wear-pair or /wear-pair deep link — opens Creator Settings → Wear + claim. */
+    val pendingWearPairToken = mutableStateOf<String?>(null)
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -79,6 +82,7 @@ class MainActivity : ComponentActivity() {
             WearAuthSync.push(this, tokenStore)
         }
         pendingDeepLink.value = intent?.data
+        consumeWearPairDeepLink(intent)
         consumeIntentExtras(intent)
         requestNotificationPermissionAndSyncPush()
         playInAppUpdateHelper = PlayInAppUpdateHelper(this, playInAppUpdateLauncher)
@@ -96,7 +100,8 @@ class MainActivity : ComponentActivity() {
                         pendingDeepLink = pendingDeepLink,
                         pendingEazyTab = pendingEazyTab,
                         pendingOpenCart = pendingOpenCart,
-                        pendingOpenShop = pendingOpenShop
+                        pendingOpenShop = pendingOpenShop,
+                        pendingWearPairToken = pendingWearPairToken,
                     )
                 }
             }
@@ -127,8 +132,16 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.data?.let { pendingDeepLink.value = it }
+        consumeWearPairDeepLink(intent)
         consumeIntentExtras(intent)
         handleOAuthCallback(intent)
+    }
+
+    private fun consumeWearPairDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        val token = WearPairApi.parseTokenFromQrPayload(data.toString())
+            ?: data.getQueryParameter("t")?.trim()?.takeIf { it.isNotBlank() }
+        if (token != null) pendingWearPairToken.value = token
     }
 
     private fun consumeIntentExtras(intent: Intent?) {

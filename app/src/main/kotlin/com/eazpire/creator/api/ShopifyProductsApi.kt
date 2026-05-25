@@ -471,6 +471,29 @@ class ShopifyProductsApi(
     }
 
     /**
+     * Resolves a Shopify product handle from handle and/or Product GID.
+     * Worker: op=product-json&handle=... or op=product-json&gid=...
+     */
+    suspend fun resolveProductHandle(handle: String? = null, gid: String? = null): String? = withContext(Dispatchers.IO) {
+        handle?.trim()?.takeIf { it.isNotBlank() }?.let { return@withContext it }
+        val cleanGid = gid?.trim()?.takeIf { it.isNotBlank() } ?: return@withContext null
+        val url = "$workerUrl/apps/creator-dispatch?op=product-json&gid=${java.net.URLEncoder.encode(cleanGid, "UTF-8")}"
+        try {
+            val request = Request.Builder().url(url).build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: "{}"
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+            if (json.has("ok") && !json.optBoolean("ok", true)) return@withContext null
+            json.optJSONObject("product")
+                ?.optString("handle", "")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
      * Lädt ein einzelnes Produkt per Handle (für PDP).
      * Worker: op=product-json&handle=...
      */

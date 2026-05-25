@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,9 +58,11 @@ fun CreatorSettingsModal(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onDismiss: () -> Unit,
+    initialTab: Int = 0,
+    pendingWearPairToken: String? = null,
     modifier: Modifier = Modifier
 ) {
-    var currentTab by remember { mutableIntStateOf(0) }
+    var currentTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 10)) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val tabs = listOf(
@@ -72,7 +75,8 @@ fun CreatorSettingsModal(
         SettingsTabItem(translationStore.t("creator.settings.nav_eaz", "EAZ"), Icons.Default.Star),
         SettingsTabItem(translationStore.t("creator.settings.nav_payout", "Payout"), Icons.Default.Payments),
         SettingsTabItem(translationStore.t("creator.settings.nav_interests", "Interests"), Icons.Default.Favorite),
-        SettingsTabItem(translationStore.t("creator.settings.nav_nft", "NFT"), Icons.Default.Collections)
+        SettingsTabItem(translationStore.t("creator.settings.nav_nft", "NFT"), Icons.Default.Collections),
+        SettingsTabItem(translationStore.t("creator.settings.nav_wear", "Creator Wear"), Icons.Default.Watch),
     )
 
     ModalBottomSheet(
@@ -142,6 +146,7 @@ fun CreatorSettingsModal(
                     currentTab = currentTab,
                     tokenStore = tokenStore,
                     translationStore = translationStore,
+                    pendingWearPairToken = pendingWearPairToken,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)

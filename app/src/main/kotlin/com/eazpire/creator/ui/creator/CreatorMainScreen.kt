@@ -98,11 +98,23 @@ fun CreatorMainScreen(
     generationBubbleFaceLeft: Boolean? = null,
     /** Bumped from compose overlay "Start" tap (ShopScreen); mirrors header start nonces. */
     overlayComposeStartKey: Int = 0,
+    pendingWearPairToken: String? = null,
+    onWearPairTokenConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var drawerVisible by remember { mutableStateOf(false) }
     var salesModalVisible by remember { mutableStateOf(false) }
     var creatorSettingsVisible by remember { mutableStateOf(false) }
+    var wearPairTokenForSettings by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(pendingWearPairToken) {
+        val t = pendingWearPairToken?.trim().orEmpty()
+        if (t.isNotBlank()) {
+            wearPairTokenForSettings = t
+            creatorSettingsVisible = true
+            onWearPairTokenConsumed()
+        }
+    }
     var audioModalVisible by remember { mutableStateOf(false) }
     var languageModalVisible by remember { mutableStateOf(false) }
     var termsModalVisible by remember { mutableStateOf(false) }
@@ -541,7 +553,12 @@ fun CreatorMainScreen(
             CreatorSettingsModal(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
-                onDismiss = { creatorSettingsVisible = false }
+                initialTab = if (wearPairTokenForSettings != null) 10 else 0,
+                pendingWearPairToken = wearPairTokenForSettings,
+                onDismiss = {
+                    creatorSettingsVisible = false
+                    wearPairTokenForSettings = null
+                },
             )
         }
         if (audioModalVisible) {
