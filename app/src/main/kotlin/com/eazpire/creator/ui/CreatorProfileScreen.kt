@@ -118,9 +118,15 @@ fun CreatorProfileScreen(
                         CreatorShopProduct(
                             handle = handle,
                             title = o.optString("title", handle),
-                            imageUrl = o.optString("preview_image_url", "").trim().ifBlank {
-                                o.optJSONArray("images")?.optJSONObject(0)?.optString("src", "")?.trim()
-                            }.ifBlank { null },
+                            imageUrl = run {
+                                val preview = o.optString("preview_image_url", "").trim()
+                                if (preview.isNotBlank()) preview
+                                else o.optJSONArray("images")
+                                    ?.optJSONObject(0)
+                                    ?.optString("src", "")
+                                    ?.trim()
+                                    ?.takeIf { it.isNotBlank() }
+                            },
                             price = o.optString("price", "").trim().ifBlank { null }
                         )
                     )
