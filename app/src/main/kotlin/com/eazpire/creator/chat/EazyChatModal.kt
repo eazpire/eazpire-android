@@ -299,7 +299,7 @@ private fun parseKvJobs(arr: JSONArray): List<EazyKvJobRow> {
             status = o.optString("status", "").takeIf { it.isNotBlank() },
             message = o.optString("message", "").takeIf { it.isNotBlank() },
         )
-    }.filter { !it.done || it.saving || (it.done && !it.saved) }
+    }.filter { !it.done || (it.saving && !it.saved) }
 }
 
 private fun parseSystemJobs(arr: JSONArray): List<EazySystemJobRow> {
