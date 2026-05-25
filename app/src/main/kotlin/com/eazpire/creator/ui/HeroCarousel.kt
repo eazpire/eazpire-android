@@ -96,7 +96,7 @@ private fun JSONObject.optNonBlank(vararg keys: String): String? {
 }
 
 private fun productHandleFromUrl(rawUrl: String?): String? {
-    val url = rawUrl?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val url = rawUrl?.trim()?.takeIf { it.isNotBlank() && it != "#" } ?: return null
 
     val marker = "/products/"
     val path = when {
@@ -115,83 +115,198 @@ private fun productHandleFromUrl(rawUrl: String?): String? {
 
 private fun parseHotspots(obj: JSONObject): List<HeroHotspot> {
     val result = mutableListOf<HeroHotspot>()
-    try {
-        val hotspotsArr = obj.optJSONArray("hotspots")
-        if (hotspotsArr != null) {
-            for (j in 0 until hotspotsArr.length()) {
-                val h = hotspotsArr.getJSONObject(j)
-                val x = h.optDouble("x", 0.5).toFloat().coerceIn(0f, 1f)
-                val y = h.optDouble("y", 0.5).toFloat().coerceIn(0f, 1f)
-                val url = h.optNonBlank("url", "link", "href", "product_url", "productUrl")
-                val title = h.optNonBlank(
-                    "title",
-                    "product_name",
-                    "productName",
-                    "product_title",
-                    "productTitle"
-                )
-                val handle = h.optNonBlank(
-                    "product_handle",
-                    "productHandle",
-                    "handle",
-                    "product_slug",
-                    "productSlug"
-                ) ?: productHandleFromUrl(url)
-                result.add(
-                    HeroHotspot(
-                        x = x,
-                        y = y,
-                        url = url,
-                        title = title,
-                        productHandle = handle
-                    )
-                )
-            }
+
+    fun addHotspot(
+        x: Float,
+        y: Float,
+        url: String?,
+        title: String?,
+        productHandle: String?
+    ) {
+        val cleanUrl = url?.trim()?.takeIf { it.isNotBlank() && it != "#" }
+        val cleanHandle = productHandle?.trim()?.takeIf { it.isNotBlank() }
+            ?: productHandleFromUrl(cleanUrl)
+
+        if (cleanHandle.isNullOrBlank() && cleanUrl.isNullOrBlank()) {
+            Log.w(
+                TAG_PRODUCT_MODAL,
+                "[parseHotspots] Ignoring hotspot without handle/url: x=$x y=$y title=$title"
+            )
+            return
         }
+
+        result.add(
+            HeroHotspot(
+                x = x.coerceIn(0f, 1f),
+                y = y.coerceIn(0f, 1f),
+                url = cleanUrl ?: cleanHandle?.let { "/products/$it" },
+                title = title,
+                productHandle = cleanHandle
+            )
+        )
+    }
+
+    try {
         val hotspotsJson = obj.optString("hotspots_json", "").takeIf { it.isNotBlank() }
-        if (result.isEmpty() && hotspotsJson != null) {
-            val parsed = JSONObject(hotspotsJson)
-            val items = parsed.optJSONArray("items")
-            if (items != null) {
-                for (k in 0 until items.length()) {
-                    val item = items.getJSONObject(k)
-                    val itemUrl = item.optNonBlank("url", "link", "href", "product_url", "productUrl")
-                    val productHandle = item.optNonBlank(
-                        "product_handle",
-                        "productHandle",
-                        "handle",
-                        "product_slug",
-                        "productSlug"
-                    ) ?: productHandleFromUrl(itemUrl)
-                    val productTitle = item.optNonBlank(
-                        "product_name",
-                        "productName",
-                        "product_title",
-                        "productTitle",
-                        "title"
-                    ) ?: "Produkt"
-                    val itemHotspots = item.optJSONArray("hotspots")
-                    if (itemHotspots != null) {
-                        for (m in 0 until itemHotspots.length()) {
-                            val h = itemHotspots.getJSONObject(m)
-                            val x = h.optDouble("x", 0.5).toFloat().coerceIn(0f, 1f)
-                            val y = h.optDouble("y", 0.5).toFloat().coerceIn(0f, 1f)
-                            val url = productHandle?.let { "/products/$it" } ?: itemUrl
-                            result.add(
-                                HeroHotspot(
-                                    x = x,
-                                    y = y,
-                                    url = url,
-                                    title = productTitle,
-                                    productHandle = productHandle
-                                )
+        if (hotspotsJson != null) {
+            val parsedAny = org.json.JSONTokener(hotspotsJson).nextValue()
+
+            when (parsedAny) {
+                is org.json.JSONArray -> {
+                    for (i in 0 until parsedAny.length()) {
+                        val h = parsedAny.optJSONObject(i) ?: continue
+                        val x = h.optDouble("x", 0.5).toFloat()
+                        val y = h.optDouble("y", 0.5).toFloat()
+                        val url = h.optNonBlank("product_url", "productUrl", "url", "link", "href")
+                        val title = h.optNonBlank(
+                            "product_title",
+                            "productTitle",
+                            "product_name",
+                            "productName",
+                            "title"
+                        )
+                        val handle = h.optNonBlank(
+                            "product_handle",
+                            "productHandle",
+                            "handle",
+                            "product_slug",
+                            "productSlug"
+                        ) ?: productHandleFromUrl(url)
+
+                        addHotspot(x, y, url, title, handle)
+                    }
+                }
+
+                is JSONObject -> {
+                    val items = parsedAny.optJSONArray("items")
+                    val directHotspots = parsedAny.optJSONArray("hotspots")
+
+                    if (items != null) {
+                        for (itemIndex in 0 until items.length()) {
+                            val item = items.optJSONObject(itemIndex) ?: continue
+
+                            val itemUrl = item.optNonBlank(
+                                "product_url",
+                                "productUrl",
+                                "url",
+                                "link",
+                                "href"
                             )
+                            val itemHandle = item.optNonBlank(
+                                "product_handle",
+                                "productHandle",
+                                "handle",
+                                "product_slug",
+                                "productSlug"
+                            ) ?: productHandleFromUrl(itemUrl)
+
+                            val itemTitle = item.optNonBlank(
+                                "product_title",
+                                "productTitle",
+                                "product_name",
+                                "productName",
+                                "title"
+                            ) ?: "Produkt"
+
+                            val itemHotspots = item.optJSONArray("hotspots")
+                            if (itemHotspots != null) {
+                                for (hIndex in 0 until itemHotspots.length()) {
+                                    val h = itemHotspots.optJSONObject(hIndex) ?: continue
+                                    val x = h.optDouble("x", 0.5).toFloat()
+                                    val y = h.optDouble("y", 0.5).toFloat()
+
+                                    val hUrl = h.optNonBlank(
+                                        "product_url",
+                                        "productUrl",
+                                        "url",
+                                        "link",
+                                        "href"
+                                    )
+                                    val hHandle = h.optNonBlank(
+                                        "product_handle",
+                                        "productHandle",
+                                        "handle",
+                                        "product_slug",
+                                        "productSlug"
+                                    ) ?: productHandleFromUrl(hUrl)
+
+                                    val finalHandle = hHandle ?: itemHandle
+                                    val finalUrl = hUrl
+                                        ?: itemUrl
+                                        ?: finalHandle?.let { "/products/$it" }
+
+                                    addHotspot(
+                                        x = x,
+                                        y = y,
+                                        url = finalUrl,
+                                        title = itemTitle,
+                                        productHandle = finalHandle
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (result.isEmpty() && directHotspots != null) {
+                        for (i in 0 until directHotspots.length()) {
+                            val h = directHotspots.optJSONObject(i) ?: continue
+                            val x = h.optDouble("x", 0.5).toFloat()
+                            val y = h.optDouble("y", 0.5).toFloat()
+                            val url = h.optNonBlank("product_url", "productUrl", "url", "link", "href")
+                            val title = h.optNonBlank(
+                                "product_title",
+                                "productTitle",
+                                "product_name",
+                                "productName",
+                                "title"
+                            )
+                            val handle = h.optNonBlank(
+                                "product_handle",
+                                "productHandle",
+                                "handle",
+                                "product_slug",
+                                "productSlug"
+                            ) ?: productHandleFromUrl(url)
+
+                            addHotspot(x, y, url, title, handle)
                         }
                     }
                 }
             }
         }
-    } catch (_: Exception) { }
+
+        if (result.isEmpty()) {
+            val hotspotsArr = obj.optJSONArray("hotspots")
+            if (hotspotsArr != null) {
+                for (j in 0 until hotspotsArr.length()) {
+                    val h = hotspotsArr.optJSONObject(j) ?: continue
+                    val x = h.optDouble("x", 0.5).toFloat()
+                    val y = h.optDouble("y", 0.5).toFloat()
+                    val url = h.optNonBlank("product_url", "productUrl", "url", "link", "href")
+                    val title = h.optNonBlank(
+                        "product_title",
+                        "productTitle",
+                        "product_name",
+                        "productName",
+                        "title"
+                    )
+                    val handle = h.optNonBlank(
+                        "product_handle",
+                        "productHandle",
+                        "handle",
+                        "product_slug",
+                        "productSlug"
+                    ) ?: productHandleFromUrl(url)
+
+                    addHotspot(x, y, url, title, handle)
+                }
+            }
+        }
+    } catch (e: Exception) {
+        Log.w(TAG_PRODUCT_MODAL, "[parseHotspots] Failed to parse hotspots", e)
+    }
+
+    Log.d(TAG_PRODUCT_MODAL, "[parseHotspots] Parsed ${result.size} usable hotspots")
     return result
 }
 

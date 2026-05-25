@@ -6,7 +6,10 @@ import android.os.Bundle
 import android.provider.Browser
 import android.util.Log
 import android.webkit.CookieManager
+import android.net.http.SslError
+import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -223,7 +226,9 @@ fun AuthScreen(
             awaitingOAuthCallback = false
             showEmailStep = false
             try {
-                clearCookiesForLogin()
+                if (loginMethod == AuthLoginMethod.GOOGLE) {
+                    clearCookiesForLogin()
+                }
                 val endpoints = authService.discoverEndpoints()
                 val verifier = PkceUtils.generateCodeVerifier()
                 val state = PkceUtils.generateState()
@@ -327,43 +332,44 @@ fun AuthScreen(
                                             return true
                                         }
                                         if (loginMethod == AuthLoginMethod.SHOP && isShopAppUri(u)) {
-                                            Log.d("AuthDebug", "[SHOP LOGIN] Intercepted Shop app uri inside WebView: $u")
+                                            Log.d("AuthDebug", "[SHOP LOGIN] Intercepted Shop uri inside WebView: $u")
 
-                                            // Requirement: Shop login must stay in-app.
-                                            // Do not open external Shop app / external intent.
                                             if (u.scheme == "intent") {
                                                 try {
                                                     val parsed = Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
                                                     val fallback = parsed.getStringExtra("browser_fallback_url")
 
                                                     if (!fallback.isNullOrBlank()) {
+                                                        val normalizedFallback = AuthConfig.normalizeOAuthEndpoint(fallback)
                                                         Log.d(
                                                             "AuthDebug",
-                                                            "[SHOP LOGIN] Loading browser_fallback_url in WebView: $fallback"
+                                                            "[SHOP LOGIN] Loading browser_fallback_url in WebView: $normalizedFallback"
                                                         )
-                                                        view?.loadUrl(
-                                                            AuthConfig.normalizeOAuthEndpoint(fallback),
-                                                            oauthRequestHeaders()
-                                                        )
-                                                    } else {
-                                                        Log.w(
-                                                            "AuthDebug",
-                                                            "[SHOP LOGIN] intent:// had no browser_fallback_url; staying in WebView"
-                                                        )
+                                                        view?.loadUrl(normalizedFallback, oauthRequestHeaders())
+                                                        return true
                                                     }
-                                                } catch (e: Exception) {
+
                                                     Log.w(
                                                         "AuthDebug",
-                                                        "[SHOP LOGIN] Failed to parse intent uri; staying in WebView",
-                                                        e
+                                                        "[SHOP LOGIN] intent:// had no browser_fallback_url"
                                                     )
+                                                    error = "Shop login kann in-app nicht fortgesetzt werden, weil Shopify keinen Browser-Fallback geliefert hat."
+                                                    return true
+                                                } catch (e: Exception) {
+                                                    Log.w("AuthDebug", "[SHOP LOGIN] Failed to parse intent uri", e)
+                                                    error = "Shop login konnte nicht geöffnet werden."
+                                                    return true
                                                 }
+                                            }
 
+                                            if (u.scheme == "https") {
+                                                Log.d("AuthDebug", "[SHOP LOGIN] Loading https Shop URL in WebView: $u")
+                                                view?.loadUrl(u.toString(), oauthRequestHeaders())
                                                 return true
                                             }
 
-                                            // Block direct shop.app navigation so the app does not leave the in-app login flow.
-                                            // If Shopify provides a normal https fallback later, WebView will handle it.
+                                            Log.w("AuthDebug", "[SHOP LOGIN] Unsupported Shop URI scheme: $u")
+                                            error = "Shop login wird von dieser URL nicht unterstützt."
                                             return true
                                         }
                                         return false
@@ -397,6 +403,59 @@ fun AuthScreen(
                                             }
                                         } catch (_: Exception) {
                                         }
+                                    }
+
+                                    override fun onReceivedError(
+                                        view: WebView?,
+                                        request: WebResourceRequest?,
+                                        errorResource: android.webkit.WebResourceError?
+                                    ) {
+                                        super.onReceivedError(view, request, errorResource)
+
+                                        if (request?.isForMainFrame == true) {
+                                            val description = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                                errorResource?.description?.toString()
+                                            } else {
+                                                null
+                                            } ?: "Unknown WebView error"
+
+                                            Log.e(
+                                                "AuthDebug",
+                                                "[WEBVIEW ERROR] mainFrame url=${request.url} description=$description"
+                                            )
+
+                                            error = "Login-Seite konnte nicht geladen werden: $description"
+                                        }
+                                    }
+
+                                    override fun onReceivedHttpError(
+                                        view: WebView?,
+                                        request: WebResourceRequest?,
+                                        errorResponse: WebResourceResponse?
+                                    ) {
+                                        super.onReceivedHttpError(view, request, errorResponse)
+
+                                        if (request?.isForMainFrame == true) {
+                                            val status = errorResponse?.statusCode ?: 0
+                                            val reason = errorResponse?.reasonPhrase ?: "HTTP error"
+
+                                            Log.e(
+                                                "AuthDebug",
+                                                "[WEBVIEW HTTP ERROR] mainFrame url=${request.url} status=$status reason=$reason"
+                                            )
+
+                                            error = "Login-Seite konnte nicht geladen werden: HTTP $status $reason"
+                                        }
+                                    }
+
+                                    override fun onReceivedSslError(
+                                        view: WebView?,
+                                        handler: SslErrorHandler?,
+                                        sslError: SslError?
+                                    ) {
+                                        Log.e("AuthDebug", "[WEBVIEW SSL ERROR] url=${sslError?.url} error=$sslError")
+                                        error = "SSL-Fehler beim Laden der Login-Seite."
+                                        handler?.cancel()
                                     }
                                 }
                             }
