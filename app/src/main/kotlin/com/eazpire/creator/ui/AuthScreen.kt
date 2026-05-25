@@ -2,6 +2,8 @@ package com.eazpire.creator.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
+import android.provider.Browser
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -65,7 +67,7 @@ import kotlin.coroutines.resume
  * Shopify Customer Account OAuth (PKCE).
  * - **Google** → Chrome Custom Tab (Google blocks embedded WebView).
  * - **Shop / Email** → in-app WebView.
- * OAuth uses shopify.com endpoints (not account.eazpire.com — Cloudflare blank page).
+ * OAuth on account.eazpire.com — Custom Tabs must send Accept: text/html (not */*).
  */
 @Composable
 fun AuthScreen(
@@ -122,11 +124,18 @@ fun AuthScreen(
         }
     }
 
+    fun oauthRequestHeaders(): Map<String, String> =
+        mapOf("Accept" to AuthConfig.SHOPIFY_HTML_ACCEPT)
+
     fun launchOAuthCustomTab(url: String) {
         val tabsIntent = CustomTabsIntent.Builder()
             .setShowTitle(true)
             .build()
-        tabsIntent.launchUrl(context, Uri.parse(AuthConfig.normalizeOAuthEndpoint(url)))
+        tabsIntent.intent.putExtra(
+            Browser.EXTRA_HEADERS,
+            Bundle().apply { putString("Accept", AuthConfig.SHOPIFY_HTML_ACCEPT) }
+        )
+        tabsIntent.launchUrl(context, Uri.parse(url))
         awaitingOAuthCallback = true
     }
 
@@ -218,13 +227,11 @@ fun AuthScreen(
                 OAuthPkceStore.save(appCtx, state, verifier)
                 val hint = emailHint?.trim()?.takeIf { it.isNotBlank() }
                     ?: emailInput.trim().takeIf { it.isNotBlank() }
-                val url = AuthConfig.normalizeOAuthEndpoint(
-                    authService.buildAuthorizationUrl(
-                        endpoints.authorizationEndpoint,
-                        verifier,
-                        state,
-                        loginHint = if (loginMethod == AuthLoginMethod.EMAIL) hint else null
-                    )
+                val url = authService.buildAuthorizationUrl(
+                    endpoints.authorizationEndpoint,
+                    verifier,
+                    state,
+                    loginHint = if (loginMethod == AuthLoginMethod.EMAIL) hint else null
                 )
                 when (loginMethod) {
                     AuthLoginMethod.GOOGLE -> launchOAuthCustomTab(url)
@@ -295,10 +302,6 @@ fun AuthScreen(
                                 }
                                 webViewClient = object : WebViewClient() {
                                     private fun handleNavigation(view: WebView?, u: Uri): Boolean {
-                                        AuthConfig.rewriteAccountHostUri(u)?.let { rewritten ->
-                                            view?.loadUrl(rewritten.toString())
-                                            return true
-                                        }
                                         if (isShopCallbackUri(u)) {
                                             view?.stopLoading()
                                             handleCallback(u.toString())
@@ -360,7 +363,7 @@ fun AuthScreen(
                         update = { wv ->
                             val target = oauthWebViewUrl
                             if (target != null && !oauthWebViewLoadDone && !callbackHandled) {
-                                wv.loadUrl(AuthConfig.normalizeOAuthEndpoint(target))
+                                wv.loadUrl(target, oauthRequestHeaders())
                                 oauthWebViewLoadDone = true
                             }
                         }
