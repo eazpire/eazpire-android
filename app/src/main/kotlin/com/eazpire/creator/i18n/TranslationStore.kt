@@ -63,6 +63,13 @@ class TranslationStore(
         }
     }
 
+    private fun looksLikeMissingTranslation(value: String): Boolean {
+        val tl = value.lowercase(Locale.ROOT)
+        return tl.contains("translation missing") ||
+            tl.contains("übersetzung fehlt") ||
+            tl.contains("traduction manquante")
+    }
+
     fun t(key: String, default: String? = null): String {
         if (isFixedActiveJobsKey(key)) {
             return fixedActiveJobsLabel(loadedUiLang)
@@ -73,9 +80,10 @@ class TranslationStore(
         val map = _translations.value
         val enMap = _enFallback.value
         for (k in resolveKey(key)) {
-            map[k]?.let { return it }
-            enMap[k]?.let { return it }
+            map[k]?.let { if (!looksLikeMissingTranslation(it)) return it }
+            enMap[k]?.let { if (!looksLikeMissingTranslation(it)) return it }
         }
+        WearSettingsUiFallback.get(key, loadedUiLang)?.let { return it }
         val logical =
             when {
                 key.startsWith("ui:creator.gift_cards.") -> key.removePrefix("ui:")

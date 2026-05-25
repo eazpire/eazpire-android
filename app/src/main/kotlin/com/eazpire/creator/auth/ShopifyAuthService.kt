@@ -28,47 +28,28 @@ class ShopifyAuthService {
     data class AuthEndpoints(val authorizationEndpoint: String, val tokenEndpoint: String)
 
     suspend fun discoverEndpoints(): AuthEndpoints = withContext(Dispatchers.IO) {
-        val discoveryUrls = listOf(
-            AuthConfig.OIDC_DISCOVERY_URL,
-            "https://${AuthConfig.SHOP_DOMAIN}/.well-known/openid-configuration"
-        )
-        var lastError: AuthException? = null
-        for (url in discoveryUrls) {
-            try {
-                val request = Request.Builder().url(url).build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    lastError = AuthException("Discovery failed: ${response.code} ($url)")
-                    continue
-                }
-                val body = response.body?.string() ?: throw AuthException("Empty discovery response")
-                val json = JSONObject(body)
-                val auth = json.optString("authorization_endpoint")
-                val token = json.optString("token_endpoint")
-                if (auth.isBlank() || token.isBlank()) {
-                    lastError = AuthException("Missing authorization_endpoint or token_endpoint")
-                    continue
-                }
-                return@withContext AuthEndpoints(
-                    AuthConfig.normalizeOAuthEndpoint(auth),
-                    token
-                )
-            } catch (e: AuthException) {
-                lastError = e
-            }
+        val url = "https://${AuthConfig.SHOP_DOMAIN}/.well-known/openid-configuration"
+        val request = Request.Builder().url(url).build()
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw AuthException("Discovery failed: ${response.code}")
         }
-        throw lastError ?: AuthException("Discovery failed")
+        val body = response.body?.string() ?: throw AuthException("Empty discovery response")
+        val json = JSONObject(body)
+        val auth = json.optString("authorization_endpoint")
+        val token = json.optString("token_endpoint")
+        if (auth.isBlank() || token.isBlank()) {
+            throw AuthException("Missing authorization_endpoint or token_endpoint")
+        }
+        AuthEndpoints(auth, token)
     }
 
     fun buildAuthorizationUrl(
         authorizationEndpoint: String,
         codeVerifier: String,
-        state: String,
-        loginHint: String? = null,
-        uiLocales: String = "en"
+        state: String
     ): String {
         val codeChallenge = PkceUtils.generateCodeChallenge(codeVerifier)
-        val nonce = PkceUtils.generateState()
         return buildString {
             append(authorizationEndpoint)
             append("?client_id=").append(java.net.URLEncoder.encode(AuthConfig.CLIENT_ID, "UTF-8"))
@@ -76,14 +57,8 @@ class ShopifyAuthService {
             append("&redirect_uri=").append(java.net.URLEncoder.encode(AuthConfig.REDIRECT_URI, "UTF-8"))
             append("&scope=").append(java.net.URLEncoder.encode(AuthConfig.SCOPE, "UTF-8"))
             append("&state=").append(java.net.URLEncoder.encode(state, "UTF-8"))
-            append("&nonce=").append(java.net.URLEncoder.encode(nonce, "UTF-8"))
-            append("&ui_locales=").append(java.net.URLEncoder.encode(uiLocales, "UTF-8"))
             append("&code_challenge=").append(java.net.URLEncoder.encode(codeChallenge, "UTF-8"))
             append("&code_challenge_method=S256")
-            val hint = loginHint?.trim().orEmpty()
-            if (hint.isNotBlank()) {
-                append("&login_hint=").append(java.net.URLEncoder.encode(hint, "UTF-8"))
-            }
         }
     }
 
