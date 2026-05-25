@@ -642,12 +642,41 @@ fun ShopScreen(
                 else -> ProductCarouselSection(
                     modifier = Modifier.fillMaxSize(),
                     onCurrentPageChange = { currentPagePath = it },
-                    onCategoryClick = { title, h -> selectedCollection = Triple(title, h, null) },
+                    onCategoryClick = { title, h ->
+                        productModalHandleState.value = null
+                        selectedProductHandle = null
+                        selectedCreatorName = null
+                        shopSearchQuery = null
+                        selectedCollection = Triple(title, h, null)
+                    },
                     onProductClick = { params ->
+                        productModalHandleState.value = null
                         shopSearchQuery = null
                         selectedProductHandle = params.handle
+                        selectedCreatorName = null
+
                         if (params.collectionTitle != null && params.collectionHandle != null) {
                             selectedCollection = Triple(params.collectionTitle, params.collectionHandle, null)
+                        }
+                    },
+                    onHotspotProductClick = { handle ->
+                        val cleanHandle = handle.trim()
+                        if (cleanHandle.isNotBlank()) {
+                            shopSearchQuery = null
+                            selectedProductHandle = null
+                            selectedCreatorName = null
+                            selectedCollection = null
+                            productModalHandleState.value = cleanHandle
+
+                            Log.d(
+                                "ProductModalDebug",
+                                "[SHOPSCREEN HOTSPOT] Opening ProductModal from hotspot: handle=$cleanHandle"
+                            )
+                        } else {
+                            Log.w(
+                                "ProductModalDebug",
+                                "[SHOPSCREEN HOTSPOT] Empty handle received from hotspot"
+                            )
                         }
                     },
                     productModalHandleState = productModalHandleState,

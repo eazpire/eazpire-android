@@ -74,9 +74,8 @@ class MainActivity : ComponentActivity() {
         runBlocking {
             ShopSessionGuard.refreshAccessTokenIfNeeded(this@MainActivity, tokenStore)
         }
-        if (ShopSessionGuard.shouldLogoutSync(tokenStore)) {
-            ShopSessionGuard.performFullLogout(this, tokenStore)
-        } else if (tokenStore.isLoggedIn()) {
+
+        if (!tokenStore.getJwt().isNullOrBlank()) {
             WearAuthSync.push(this, tokenStore)
         }
         pendingDeepLink.value = intent?.data
@@ -102,7 +101,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        handleOAuthCallback(intent, tokenStore)
+        handleOAuthCallback(intent)
     }
 
     override fun onResume() {
@@ -129,7 +128,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         intent.data?.let { pendingDeepLink.value = it }
         consumeIntentExtras(intent)
-        handleOAuthCallback(intent, SecureTokenStore(this))
+        handleOAuthCallback(intent)
     }
 
     private fun consumeIntentExtras(intent: Intent?) {
@@ -166,15 +165,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun handleOAuthCallback(intent: Intent?, tokenStore: SecureTokenStore) {
+    private fun handleOAuthCallback(intent: Intent?) {
         val data = intent?.data ?: return
         if (data.scheme?.startsWith("shop.") == true && data.host == "callback") {
-            // OAuth-Callback via Deep Link (falls CustomTabs statt WebView genutzt wird)
-            val code = data.getQueryParameter("code")
-            val state = data.getQueryParameter("state")
-            if (code != null && state != null) {
-                // State/Verifier müssten hier aus einem temporären Store kommen
-            }
+            android.util.Log.d(
+                "AuthDebug",
+                "[MAIN CALLBACK] Forwarding OAuth callback to ShopScreen via pendingDeepLink: $data"
+            )
+            // Actual handling happens in ShopScreen -> oauthCallbackForAuth -> AuthScreen.
+            // Do not exchange tokens here, otherwise state/verifier ownership becomes split.
         }
     }
 }

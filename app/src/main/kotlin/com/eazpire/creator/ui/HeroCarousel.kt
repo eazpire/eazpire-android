@@ -324,19 +324,33 @@ fun HeroCarousel(
         )
 
         if (!handle.isNullOrBlank()) {
+            val cleanHandle = handle.trim()
+
+            Log.d(
+                TAG_PRODUCT_MODAL,
+                "[4] Hotspot resolved product handle=$cleanHandle; callback=${onHotspotProductClick != null}; state=${productModalHandleState != null}"
+            )
+
+            // Always notify parent first. ShopScreen is the single source of truth for opening the modal.
+            onHotspotProductClick?.invoke(cleanHandle)
+
+            // Keep legacy state path as fallback, but do not rely on it as the only modal trigger.
             if (productModalHandleState != null) {
-                debugLog("HeroCarousel.kt", "Setting productModalHandleState", mapOf("handle" to handle), "H1")
-                productModalHandleState.value = handle
-                onHotspotProductClick?.invoke(handle)
+                debugLog(
+                    "HeroCarousel.kt",
+                    "Setting productModalHandleState",
+                    mapOf("handle" to cleanHandle),
+                    "H1"
+                )
+                productModalHandleState.value = cleanHandle
                 return
             }
 
-            if (onHotspotProductClick != null) {
-                onHotspotProductClick.invoke(handle)
-                return
+            // Final fallback: navigate to product page if no modal callback/state was provided.
+            if (onHotspotProductClick == null) {
+                onProductClick?.invoke(cleanHandle)
             }
 
-            onProductClick?.invoke(handle)
             return
         }
 

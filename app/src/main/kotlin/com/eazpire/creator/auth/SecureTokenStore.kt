@@ -64,7 +64,7 @@ class SecureTokenStore(context: Context) {
     private fun mirrorToBackup() {
         val jwt = prefs.getString(KEY_JWT, null) ?: return
         if (jwt.isBlank()) {
-            backupPrefs.edit().clear().apply()
+            backupPrefs.edit().clear().commit()
             return
         }
         val ed = backupPrefs.edit()
@@ -80,7 +80,7 @@ class SecureTokenStore(context: Context) {
         val exp = prefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L)
         if (exp > 0L) ed.putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, exp)
         else ed.remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
-        ed.apply()
+        ed.commit()
     }
 
     fun getJwt(): String? = prefs.getString(KEY_JWT, null)
@@ -100,7 +100,7 @@ class SecureTokenStore(context: Context) {
         prefs.edit()
             .putString(KEY_JWT, jwt)
             .putString(KEY_OWNER_ID, ownerId)
-            .apply()
+            .commit()
         mirrorToBackup()
     }
 
@@ -136,26 +136,19 @@ class SecureTokenStore(context: Context) {
     }
 
     fun setShopifyAccessExpiresAtEpochMs(epochMs: Long) {
-        prefs.edit().putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, epochMs).apply()
+        prefs.edit().putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, epochMs).commit()
         mirrorToBackup()
     }
 
     fun clear() {
         prefs.edit().clear().commit()
-        backupPrefs.edit().clear().apply()
+        backupPrefs.edit().clear().commit()
     }
 
     fun isLoggedIn(): Boolean {
-        val jwtOk = !getJwt().isNullOrBlank()
-        if (!jwtOk) return false
-        val refresh = getRefreshToken()
-        if (!refresh.isNullOrBlank()) return true
-
-        val access = getAccessToken()
-        if (access.isNullOrBlank()) return false
-        val exp = getShopifyAccessExpiresAtEpochMs()
-        if (exp <= 0L) return true
-        return System.currentTimeMillis() < exp
+        // App login state is based on the app JWT.
+        // Shopify access token may expire independently and can be refreshed or re-authenticated when needed.
+        return !getJwt().isNullOrBlank()
     }
 
     companion object {

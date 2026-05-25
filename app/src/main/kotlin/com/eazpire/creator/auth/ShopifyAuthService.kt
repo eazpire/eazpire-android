@@ -51,7 +51,7 @@ class ShopifyAuthService {
                 }
                 return@withContext AuthEndpoints(
                     AuthConfig.normalizeOAuthEndpoint(auth),
-                    AuthConfig.normalizeOAuthEndpoint(token)
+                    token
                 )
             } catch (e: AuthException) {
                 lastError = e

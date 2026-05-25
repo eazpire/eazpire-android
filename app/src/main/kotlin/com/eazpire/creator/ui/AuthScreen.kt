@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Browser
+import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -141,6 +142,7 @@ fun AuthScreen(
 
     fun handleCallback(url: String) {
         if (callbackHandled) return
+        Log.d("AuthDebug", "[CALLBACK] Received callback url=$url")
         val uri = Uri.parse(url)
         val code = uri.getQueryParameter("code")
         val state = uri.getQueryParameter("state")
@@ -178,9 +180,10 @@ fun AuthScreen(
                     at,
                     shopifyExpiresAt,
                     refreshToken = rt,
-                    clearRefreshTokenIfNull = rt == null,
+                    clearRefreshTokenIfNull = false,
                     sync = true
                 )
+                Log.d("AuthDebug", "[CALLBACK] Login success; saved jwt ownerId=${result.ownerId}")
                 withContext(Dispatchers.IO) {
                     NotificationPreferencesRepository(context).syncFromServer(
                         CreatorApi(jwt = tokenStore.getJwt())
@@ -201,9 +204,11 @@ fun AuthScreen(
             } catch (e: AuthException) {
                 callbackHandled = false
                 error = e.message
+                Log.e("AuthDebug", "[CALLBACK] AuthException: ${e.message}", e)
             } catch (e: Exception) {
                 callbackHandled = false
                 error = e.message ?: "Token exchange failed"
+                Log.e("AuthDebug", "[CALLBACK] Exception: ${e.message}", e)
             } finally {
                 isLoading = false
             }
@@ -234,6 +239,10 @@ fun AuthScreen(
                         state,
                         loginHint = if (loginMethod == AuthLoginMethod.EMAIL) hint else null
                     )
+                )
+                Log.d(
+                    "AuthDebug",
+                    "[START LOGIN] method=$loginMethod url=$url emailHint=${emailHint?.takeIf { it.isNotBlank() } != null}"
                 )
                 when (loginMethod) {
                     AuthLoginMethod.GOOGLE -> launchOAuthCustomTab(url)
@@ -318,17 +327,43 @@ fun AuthScreen(
                                             return true
                                         }
                                         if (loginMethod == AuthLoginMethod.SHOP && isShopAppUri(u)) {
-                                            try {
-                                                val intent = if (u.scheme == "intent") {
-                                                    Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
-                                                } else {
-                                                    Intent(Intent.ACTION_VIEW, u)
+                                            Log.d("AuthDebug", "[SHOP LOGIN] Intercepted Shop app uri inside WebView: $u")
+
+                                            // Requirement: Shop login must stay in-app.
+                                            // Do not open external Shop app / external intent.
+                                            if (u.scheme == "intent") {
+                                                try {
+                                                    val parsed = Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
+                                                    val fallback = parsed.getStringExtra("browser_fallback_url")
+
+                                                    if (!fallback.isNullOrBlank()) {
+                                                        Log.d(
+                                                            "AuthDebug",
+                                                            "[SHOP LOGIN] Loading browser_fallback_url in WebView: $fallback"
+                                                        )
+                                                        view?.loadUrl(
+                                                            AuthConfig.normalizeOAuthEndpoint(fallback),
+                                                            oauthRequestHeaders()
+                                                        )
+                                                    } else {
+                                                        Log.w(
+                                                            "AuthDebug",
+                                                            "[SHOP LOGIN] intent:// had no browser_fallback_url; staying in WebView"
+                                                        )
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.w(
+                                                        "AuthDebug",
+                                                        "[SHOP LOGIN] Failed to parse intent uri; staying in WebView",
+                                                        e
+                                                    )
                                                 }
-                                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                ctx.startActivity(intent)
-                                            } catch (_: Exception) {
-                                                return false
+
+                                                return true
                                             }
+
+                                            // Block direct shop.app navigation so the app does not leave the in-app login flow.
+                                            // If Shopify provides a normal https fallback later, WebView will handle it.
                                             return true
                                         }
                                         return false

@@ -25,14 +25,11 @@ object ShopSessionGuard {
      * Nur wenn OAuth ohne Refresh wirkl. abgelaufen ist oder keine Credentials mehr da sind → clear.
      */
     fun shouldLogoutSync(tokenStore: SecureTokenStore): Boolean {
-        if (tokenStore.getJwt().isNullOrBlank()) return false
-        if (!tokenStore.getRefreshToken().isNullOrBlank()) return false
-
-        val access = tokenStore.getAccessToken()
-        if (access.isNullOrBlank()) return true
-        val exp = tokenStore.getShopifyAccessExpiresAtEpochMs()
-        if (exp <= 0L) return false
-        return System.currentTimeMillis() >= exp
+        // Do not automatically log out users on app start.
+        // A stored app JWT means the app session should survive updates.
+        // Shopify access-token problems should trigger refresh or re-auth only when needed,
+        // not a full app logout during startup.
+        return false
     }
 
     fun performFullLogout(context: Context, tokenStore: SecureTokenStore) {
