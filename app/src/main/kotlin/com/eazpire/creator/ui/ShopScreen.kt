@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.push.PushTokenRegistrar
@@ -133,6 +134,7 @@ fun ShopScreen(
     var showAuthScreen by remember { mutableStateOf(false) }
     /** Nach „Mit Shopify fortfahren“: OAuth-Tab sofort öffnen (ohne zweiten Tap). */
     var authAutoStartOAuth by remember { mutableStateOf(false) }
+    var authLoginMethod by remember { mutableStateOf(AuthLoginMethod.EMAIL) }
     /** OAuth redirect shop.*://callback?code=… (Chrome Custom Tab) → MainActivity / pendingDeepLink → AuthScreen */
     val oauthCallbackForAuth = remember { mutableStateOf<String?>(null) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
@@ -902,9 +904,10 @@ fun ShopScreen(
     if (showLoginOptions) {
         LoginOptionsModal(
             onDismiss = { showLoginOptions = false },
-            onLoginClick = {
+            onLoginClick = { method ->
                 showLoginOptions = false
                 productModalHandleState.value = null
+                authLoginMethod = method
                 authAutoStartOAuth = true
                 showAuthScreen = true
             }
@@ -952,6 +955,7 @@ fun ShopScreen(
                     showAuthScreen = false
                     authAutoStartOAuth = false
                 },
+                loginMethod = authLoginMethod,
                 autoStartOAuth = authAutoStartOAuth,
                 onAutoStartConsumed = { authAutoStartOAuth = false },
                 oauthCallbackUri = oauthCallbackForAuth

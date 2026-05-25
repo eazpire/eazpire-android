@@ -27,18 +27,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.R
 
 /**
- * Same choices as web login modal: Shop app, Google, Email — each starts OAuth in Chrome Custom Tabs
- * (PKCE); the hosted Shopify page lets the user pick Shop / Google / email.
+ * Same choices as web login modal: Shop app, Google, Email.
+ * Google uses Chrome Custom Tab; Shop and Email use in-app WebView (OAuth PKCE).
  */
 @Composable
 fun LoginOptionsModal(
     onDismiss: () -> Unit,
-    /** Called for Shop, Google, and Email — same OAuth entry (matches storefront login UX). */
-    onLoginClick: () -> Unit,
+    onLoginClick: (AuthLoginMethod) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -72,7 +72,7 @@ fun LoginOptionsModal(
                 ) {
                     LoginOptionRow(
                         label = "Shop app",
-                        onClick = onLoginClick,
+                        onClick = { onLoginClick(AuthLoginMethod.SHOP) },
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.ic_login_shopify),
@@ -84,7 +84,7 @@ fun LoginOptionsModal(
                     )
                     LoginOptionRow(
                         label = "Google",
-                        onClick = onLoginClick,
+                        onClick = { onLoginClick(AuthLoginMethod.GOOGLE) },
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.ic_login_google),
@@ -96,7 +96,7 @@ fun LoginOptionsModal(
                     )
                     LoginOptionRow(
                         label = "Email",
-                        onClick = onLoginClick,
+                        onClick = { onLoginClick(AuthLoginMethod.EMAIL) },
                         icon = {
                             Icon(
                                 imageVector = Icons.Default.Email,
@@ -109,7 +109,7 @@ fun LoginOptionsModal(
                 }
 
                 Text(
-                    text = "You will sign in with Shopify on the next screen (Shop, Google, or email).",
+                    text = "Shop and email sign in inside the app. Google opens in your browser.",
                     style = MaterialTheme.typography.labelSmall,
                     color = EazColors.TextSecondary,
                     modifier = Modifier.padding(top = 14.dp)

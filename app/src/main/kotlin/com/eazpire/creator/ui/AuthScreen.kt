@@ -1,17 +1,27 @@
 package com.eazpire.creator.ui
 
+import android.content.Intent
 import android.net.Uri
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,11 +36,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.AuthException
+import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.OAuthPkceStore
 import com.eazpire.creator.auth.PkceUtils
 import com.eazpire.creator.auth.SecureTokenStore
@@ -46,16 +61,16 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
- * Shopify Customer Account OAuth (PKCE) via **Chrome Custom Tabs** (required for Google sign-in;
- * embedded WebView triggers Google `403 disallowed_useragent`).
- * Redirect: [shop.*://callback] → MainActivity → [oauthCallbackUri].
+ * Shopify Customer Account OAuth (PKCE).
+ * - **Google** → Chrome Custom Tab (Google blocks embedded WebView).
+ * - **Shop / Email** → in-app WebView (account.eazpire.com renders blank in Custom Tabs).
  */
 @Composable
 fun AuthScreen(
     tokenStore: SecureTokenStore,
     onAuthSuccess: () -> Unit,
     onDismiss: () -> Unit = {},
-    /** True after user picked Shop / Google / Email — opens OAuth tab immediately. */
+    loginMethod: AuthLoginMethod = AuthLoginMethod.EMAIL,
     autoStartOAuth: Boolean = false,
     onAutoStartConsumed: () -> Unit = {},
     onCheckUpdate: (() -> Unit)? = null,
@@ -71,13 +86,30 @@ fun AuthScreen(
     var savedState by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
-    /** Custom Tab opened; waiting for deep-link callback. */
+    var oauthWebViewUrl by remember { mutableStateOf<String?>(null) }
+    var webViewProgress by remember { mutableStateOf(0) }
     var awaitingOAuthCallback by remember { mutableStateOf(false) }
     var callbackHandled by remember { mutableStateOf(false) }
+    var oauthWebViewLoadDone by remember(oauthWebViewUrl) { mutableStateOf(false) }
+    var emailInput by remember(loginMethod) { mutableStateOf("") }
+    var showEmailStep by remember(loginMethod) {
+        mutableStateOf(loginMethod == AuthLoginMethod.EMAIL)
+    }
 
     fun isShopCallbackUri(uri: Uri?): Boolean {
         val sch = uri?.scheme ?: return false
         return sch.startsWith("shop.") && uri.host == "callback"
+    }
+
+    fun isGoogleOAuthUri(uri: Uri): Boolean {
+        val host = uri.host?.lowercase().orEmpty()
+        return host.contains("accounts.google.com") ||
+            (host.contains("google.com") && uri.path?.contains("oauth", ignoreCase = true) == true)
+    }
+
+    fun isShopAppUri(uri: Uri): Boolean {
+        val host = uri.host?.lowercase().orEmpty()
+        return host == "shop.app" || host.endsWith(".shop.app") || uri.scheme == "intent"
     }
 
     suspend fun clearCookiesForLogin() = suspendCancellableCoroutine { cont ->
@@ -103,6 +135,7 @@ fun AuthScreen(
         val state = uri.getQueryParameter("state")
         if (code == null || state == null) return
         callbackHandled = true
+        oauthWebViewUrl = null
         awaitingOAuthCallback = false
         val verifier = when {
             state == savedState && codeVerifier != null -> {
@@ -166,12 +199,13 @@ fun AuthScreen(
         }
     }
 
-    fun startLogin() {
+    fun startLogin(emailHint: String? = null) {
         scope.launch {
             isLoading = true
             error = null
             callbackHandled = false
             awaitingOAuthCallback = false
+            showEmailStep = false
             try {
                 clearCookiesForLogin()
                 val endpoints = authService.discoverEndpoints()
@@ -180,12 +214,21 @@ fun AuthScreen(
                 codeVerifier = verifier
                 savedState = state
                 OAuthPkceStore.save(appCtx, state, verifier)
+                val hint = emailHint?.trim()?.takeIf { it.isNotBlank() }
+                    ?: emailInput.trim().takeIf { it.isNotBlank() }
                 val url = authService.buildAuthorizationUrl(
                     endpoints.authorizationEndpoint,
                     verifier,
-                    state
+                    state,
+                    loginHint = if (loginMethod == AuthLoginMethod.EMAIL) hint else null
                 )
-                launchOAuthCustomTab(url)
+                when (loginMethod) {
+                    AuthLoginMethod.GOOGLE -> launchOAuthCustomTab(url)
+                    AuthLoginMethod.SHOP, AuthLoginMethod.EMAIL -> {
+                        oauthWebViewUrl = url
+                        webViewProgress = 0
+                    }
+                }
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
             } finally {
@@ -201,76 +244,218 @@ fun AuthScreen(
         handleCallback(url)
     }
 
-    LaunchedEffect(autoStartOAuth) {
-        if (autoStartOAuth) {
-            onAutoStartConsumed()
-            startLogin()
+    LaunchedEffect(autoStartOAuth, loginMethod) {
+        if (!autoStartOAuth) return@LaunchedEffect
+        onAutoStartConsumed()
+        when (loginMethod) {
+            AuthLoginMethod.EMAIL -> showEmailStep = true
+            AuthLoginMethod.GOOGLE, AuthLoginMethod.SHOP -> startLogin()
         }
     }
 
-    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+    if (oauthWebViewUrl != null) {
+        Dialog(
+            onDismissRequest = {
+                oauthWebViewUrl = null
+                callbackHandled = false
+            },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Text(
-                text = "eazpire",
-                style = MaterialTheme.typography.headlineMedium
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Sign in with your Shopify account",
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            when {
-                isLoading -> CircularProgressIndicator()
-                awaitingOAuthCallback -> {
-                    CircularProgressIndicator()
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Complete sign-in in the browser tab, then return to the app.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = EazColors.TextSecondary
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (webViewProgress in 1..99) {
+                    LinearProgressIndicator(
+                        progress = webViewProgress / 100f,
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { startLogin() }) {
-                        Text("Open sign-in again")
-                    }
                 }
-                else -> {
-                    Button(onClick = { startLogin() }) {
-                        Text(if (error != null) "Try again" else "Sign in")
-                    }
+                Box(modifier = Modifier.weight(1f)) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                setBackgroundColor(android.graphics.Color.WHITE)
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                                val def = WebSettings.getDefaultUserAgent(ctx)
+                                settings.userAgentString =
+                                    def.replace("; wv", "") + " Chrome/120.0.0.0 Mobile Safari/537.36"
+                                webChromeClient = object : android.webkit.WebChromeClient() {
+                                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                        view?.post { webViewProgress = newProgress }
+                                    }
+                                }
+                                webViewClient = object : WebViewClient() {
+                                    private fun handleNavigation(view: WebView?, u: Uri): Boolean {
+                                        if (isShopCallbackUri(u)) {
+                                            view?.stopLoading()
+                                            handleCallback(u.toString())
+                                            return true
+                                        }
+                                        if (loginMethod != AuthLoginMethod.GOOGLE && isGoogleOAuthUri(u)) {
+                                            launchOAuthCustomTab(u.toString())
+                                            return true
+                                        }
+                                        if (loginMethod == AuthLoginMethod.SHOP && isShopAppUri(u)) {
+                                            try {
+                                                val intent = if (u.scheme == "intent") {
+                                                    Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
+                                                } else {
+                                                    Intent(Intent.ACTION_VIEW, u)
+                                                }
+                                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                ctx.startActivity(intent)
+                                            } catch (_: Exception) {
+                                                return false
+                                            }
+                                            return true
+                                        }
+                                        return false
+                                    }
+
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView?,
+                                        request: WebResourceRequest?
+                                    ): Boolean {
+                                        val u = request?.url ?: return false
+                                        return handleNavigation(view, u)
+                                    }
+
+                                    @Deprecated("Deprecated in Java")
+                                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                                        val u = url?.let { Uri.parse(it) } ?: return false
+                                        return handleNavigation(view, u)
+                                    }
+
+                                    override fun onPageStarted(
+                                        view: WebView?,
+                                        url: String?,
+                                        favicon: android.graphics.Bitmap?
+                                    ) {
+                                        url ?: return
+                                        try {
+                                            val u = Uri.parse(url)
+                                            if (isShopCallbackUri(u)) {
+                                                view?.stopLoading()
+                                                handleCallback(url)
+                                            }
+                                        } catch (_: Exception) {
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        update = { wv ->
+                            val target = oauthWebViewUrl
+                            if (target != null && !oauthWebViewLoadDone && !callbackHandled) {
+                                wv.loadUrl(target)
+                                oauthWebViewLoadDone = true
+                            }
+                        }
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        oauthWebViewUrl = null
+                        callbackHandled = false
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    Text("Cancel")
                 }
             }
-            error?.let { msg ->
+        }
+    } else {
+        Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "eazpire",
+                    style = MaterialTheme.typography.headlineMedium
+                )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = msg,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
+                    text = when (loginMethod) {
+                        AuthLoginMethod.SHOP -> "Sign in with the Shop app"
+                        AuthLoginMethod.GOOGLE -> "Sign in with Google"
+                        AuthLoginMethod.EMAIL -> "Sign in with email"
+                    },
+                    style = MaterialTheme.typography.bodyLarge
                 )
-            }
-            onCheckUpdate?.let { check ->
                 Spacer(modifier = Modifier.height(24.dp))
-                TextButton(onClick = check) {
-                    Text("Check for updates")
+                when {
+                    isLoading -> CircularProgressIndicator()
+                    showEmailStep && loginMethod == AuthLoginMethod.EMAIL -> {
+                        OutlinedTextField(
+                            value = emailInput,
+                            onValueChange = { emailInput = it },
+                            label = { Text("Email") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { startLogin(emailInput.trim()) },
+                            enabled = emailInput.trim().contains("@"),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Continue")
+                        }
+                    }
+                    awaitingOAuthCallback -> {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Complete sign-in in the browser tab, then return to the app.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = EazColors.TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { startLogin() }) {
+                            Text("Open sign-in again")
+                        }
+                    }
+                    else -> {
+                        Button(onClick = { startLogin() }) {
+                            Text(if (error != null) "Try again" else "Sign in")
+                        }
+                    }
                 }
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            TextButton(
-                onClick = {
-                    awaitingOAuthCallback = false
-                    OAuthPkceStore.clear(appCtx)
-                    onDismiss()
+                error?.let { msg ->
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = msg,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
-            ) {
-                Text("Cancel")
+                onCheckUpdate?.let { check ->
+                    Spacer(modifier = Modifier.height(24.dp))
+                    TextButton(onClick = check) {
+                        Text("Check for updates")
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                TextButton(
+                    onClick = {
+                        awaitingOAuthCallback = false
+                        oauthWebViewUrl = null
+                        OAuthPkceStore.clear(appCtx)
+                        onDismiss()
+                    }
+                ) {
+                    Text("Cancel")
+                }
             }
         }
     }
