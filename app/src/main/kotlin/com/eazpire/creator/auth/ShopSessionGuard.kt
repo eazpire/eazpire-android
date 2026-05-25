@@ -88,6 +88,7 @@ object ShopSessionGuard {
 
     /**
      * Nur noch nötig, wenn weder expires_at noch refresh_token (ältere Installs): Customer API ping.
+     * App-JWT wird nie gelöscht — höchstens abgelaufene Shopify-OAuth-Tokens entfernt.
      */
     suspend fun validateLegacyShopifySessionIfNeeded(context: Context, tokenStore: SecureTokenStore) =
         withContext(Dispatchers.IO) {
@@ -100,15 +101,15 @@ object ShopSessionGuard {
             try {
                 val api = ShopifyCustomerAccountApi(access)
                 val customer = api.getCustomer()
-                if (customer == null && tokenStore.getRefreshToken().isNullOrBlank()) {
-                    performFullLogout(context, tokenStore)
-                } else if (customer != null) {
+                if (customer == null) {
+                    tokenStore.clearShopifyOAuthTokens()
+                } else {
                     tokenStore.setShopifyAccessExpiresAtEpochMs(
                         System.currentTimeMillis() + LEGACY_VALIDATION_EXTEND_MS
                     )
                 }
             } catch (_: Exception) {
-                // Offline – nicht ausloggen
+                // Offline – Session behalten
             }
         }
 }

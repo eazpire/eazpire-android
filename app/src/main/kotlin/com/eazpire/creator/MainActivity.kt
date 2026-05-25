@@ -74,10 +74,13 @@ class MainActivity : ComponentActivity() {
         initDebugLog(this)
         initLangSwitchDebug(this)
         val tokenStore = SecureTokenStore(this)
-        // Refresh zuerst (z. B. leerer access_token nach Update), dann nur ohne refresh_token ausloggen.
+        AuthDebugLog.d("[TOKEN] App start ${tokenStore.sessionDebugSummary()}")
+        // Refresh zuerst (z. B. leerer access_token nach Update), JWT-Session nie beim Start löschen.
         runBlocking {
             ShopSessionGuard.refreshAccessTokenIfNeeded(this@MainActivity, tokenStore)
+            ShopSessionGuard.validateLegacyShopifySessionIfNeeded(this@MainActivity, tokenStore)
         }
+        AuthDebugLog.d("[TOKEN] After session guard ${tokenStore.sessionDebugSummary()}")
 
         if (!tokenStore.getJwt().isNullOrBlank()) {
             WearAuthSync.push(this, tokenStore)

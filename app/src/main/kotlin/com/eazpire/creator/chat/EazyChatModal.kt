@@ -1991,6 +1991,7 @@ private fun EazyJobsCombinedPanel(
 private fun EazyHeroJobsPanel(
     hero: HeroJobState?,
     video: VideoJobState?,
+    hasKvJobs: Boolean = false,
     t: (String, String) -> String
 ) {
     Column(

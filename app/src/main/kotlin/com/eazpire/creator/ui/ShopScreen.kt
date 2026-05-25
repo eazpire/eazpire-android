@@ -46,6 +46,7 @@ import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.push.PushTokenRegistrar
+import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
@@ -109,9 +110,11 @@ fun ShopScreen(
 
     var sessionEpoch by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
+        AuthDebugLog.d("[TOKEN] ShopScreen start ${tokenStore.sessionDebugSummary()}")
         ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
         ShopSessionGuard.validateLegacyShopifySessionIfNeeded(context, tokenStore)
         PushTokenRegistrar.syncIfLoggedIn(context)
+        AuthDebugLog.d("[TOKEN] ShopScreen ready ${tokenStore.sessionDebugSummary()}")
         sessionEpoch++
     }
 

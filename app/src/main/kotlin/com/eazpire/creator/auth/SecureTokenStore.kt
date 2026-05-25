@@ -6,6 +6,7 @@ import android.webkit.CookieManager
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.eazpire.creator.debug.AuthDebugLog
 
 /**
  * Speichert JWT und Shopify access_token sicher via EncryptedSharedPreferences.
@@ -17,15 +18,14 @@ class SecureTokenStore(context: Context) {
     private val backupPrefs: SharedPreferences =
         appContext.getSharedPreferences(BACKUP_PREFS_NAME, Context.MODE_PRIVATE)
     private val prefs: SharedPreferences = openEncryptedPrefs(appContext).also { p ->
-        if (p.getString(KEY_JWT, null).isNullOrBlank() && !backupPrefs.getString(KEY_JWT, null).isNullOrBlank()) {
-            restoreFromBackup(p)
-        }
+        ensureSessionHydrated(p)
     }
 
     private fun openEncryptedPrefs(context: Context): SharedPreferences {
         return try {
             createEncryptedPrefs(context)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            AuthDebugLog.w("[TOKEN] Encrypted prefs open failed; recreating and restoring backup", e)
             context.deleteSharedPreferences(ENCRYPTED_PREFS_NAME)
             val restored = createEncryptedPrefs(context)
             restoreFromBackup(restored)
@@ -46,6 +46,22 @@ class SecureTokenStore(context: Context) {
         )
     }
 
+    /** After updates, encrypted prefs may be empty while the plain backup still holds the session. */
+    private fun ensureSessionHydrated(encrypted: SharedPreferences) {
+        val backupJwt = readNonBlank(backupPrefs, KEY_JWT)
+        val encryptedJwt = readNonBlank(encrypted, KEY_JWT)
+        when {
+            backupJwt != null && encryptedJwt == null -> {
+                AuthDebugLog.d("[TOKEN] Restoring session from backup mirror into encrypted prefs")
+                restoreFromBackup(encrypted)
+            }
+            encryptedJwt != null && backupJwt == null -> {
+                AuthDebugLog.d("[TOKEN] Backfilling backup mirror from encrypted prefs")
+                mirrorToBackup()
+            }
+        }
+    }
+
     private fun restoreFromBackup(target: SharedPreferences) {
         val jwt = backupPrefs.getString(KEY_JWT, null)?.takeIf { it.isNotBlank() } ?: return
         val ownerId = backupPrefs.getString(KEY_OWNER_ID, null).orEmpty()
@@ -62,17 +78,20 @@ class SecureTokenStore(context: Context) {
     }
 
     private fun mirrorToBackup() {
-        val jwt = prefs.getString(KEY_JWT, null) ?: return
-        if (jwt.isBlank()) {
-            backupPrefs.edit().clear().commit()
+        val jwt = readNonBlank(prefs, KEY_JWT)
+        if (jwt == null) {
+            // Never wipe a valid backup session because encrypted prefs are temporarily empty.
+            if (readNonBlank(backupPrefs, KEY_JWT) == null) {
+                backupPrefs.edit().clear().commit()
+            }
             return
         }
         val ed = backupPrefs.edit()
             .putString(KEY_JWT, jwt)
             .putString(KEY_OWNER_ID, prefs.getString(KEY_OWNER_ID, null).orEmpty())
             .putString(KEY_ACCESS_TOKEN, prefs.getString(KEY_ACCESS_TOKEN, null).orEmpty())
-        val refresh = prefs.getString(KEY_REFRESH_TOKEN, null)
-        if (!refresh.isNullOrBlank()) {
+        val refresh = readNonBlank(prefs, KEY_REFRESH_TOKEN)
+        if (refresh != null) {
             ed.putString(KEY_REFRESH_TOKEN, refresh)
         } else {
             ed.remove(KEY_REFRESH_TOKEN)
@@ -83,25 +102,58 @@ class SecureTokenStore(context: Context) {
         ed.commit()
     }
 
-    fun getJwt(): String? = prefs.getString(KEY_JWT, null)
-        ?: backupPrefs.getString(KEY_JWT, null)
+    private fun mirrorToBackup(
+        jwt: String,
+        ownerId: String,
+        accessToken: String?,
+        shopifyAccessExpiresAtEpochMs: Long?,
+        refreshToken: String?,
+    ) {
+        if (jwt.isBlank()) return
+        val ed = backupPrefs.edit()
+            .putString(KEY_JWT, jwt)
+            .putString(KEY_OWNER_ID, ownerId)
+            .putString(KEY_ACCESS_TOKEN, accessToken ?: "")
+        if (!refreshToken.isNullOrBlank()) {
+            ed.putString(KEY_REFRESH_TOKEN, refreshToken)
+        } else {
+            ed.remove(KEY_REFRESH_TOKEN)
+        }
+        if (shopifyAccessExpiresAtEpochMs != null && shopifyAccessExpiresAtEpochMs > 0L) {
+            ed.putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, shopifyAccessExpiresAtEpochMs)
+        } else {
+            ed.remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
+        }
+        ed.commit()
+    }
 
-    fun getOwnerId(): String? = prefs.getString(KEY_OWNER_ID, null)
-        ?: backupPrefs.getString(KEY_OWNER_ID, null)
+    private fun readNonBlank(store: SharedPreferences, key: String): String? =
+        store.getString(key, null)?.takeIf { it.isNotBlank() }
 
-    fun getAccessToken(): String? = prefs.getString(KEY_ACCESS_TOKEN, null)
-        ?: backupPrefs.getString(KEY_ACCESS_TOKEN, null)
+    fun getJwt(): String? =
+        readNonBlank(prefs, KEY_JWT) ?: readNonBlank(backupPrefs, KEY_JWT)
+
+    fun getOwnerId(): String? =
+        readNonBlank(prefs, KEY_OWNER_ID) ?: readNonBlank(backupPrefs, KEY_OWNER_ID)
+
+    fun getAccessToken(): String? =
+        readNonBlank(prefs, KEY_ACCESS_TOKEN) ?: readNonBlank(backupPrefs, KEY_ACCESS_TOKEN)
 
     fun getRefreshToken(): String? =
-        prefs.getString(KEY_REFRESH_TOKEN, null)?.takeIf { it.isNotBlank() }
-            ?: backupPrefs.getString(KEY_REFRESH_TOKEN, null)?.takeIf { it.isNotBlank() }
+        readNonBlank(prefs, KEY_REFRESH_TOKEN) ?: readNonBlank(backupPrefs, KEY_REFRESH_TOKEN)
 
     fun saveJwt(jwt: String, ownerId: String) {
         prefs.edit()
             .putString(KEY_JWT, jwt)
             .putString(KEY_OWNER_ID, ownerId)
             .commit()
-        mirrorToBackup()
+        mirrorToBackup(
+            jwt = jwt,
+            ownerId = ownerId,
+            accessToken = readNonBlank(prefs, KEY_ACCESS_TOKEN),
+            shopifyAccessExpiresAtEpochMs = prefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L).takeIf { it > 0L },
+            refreshToken = readNonBlank(prefs, KEY_REFRESH_TOKEN),
+        )
     }
 
     fun saveTokens(
@@ -111,7 +163,7 @@ class SecureTokenStore(context: Context) {
         shopifyAccessExpiresAtEpochMs: Long? = null,
         refreshToken: String? = null,
         clearRefreshTokenIfNull: Boolean = false,
-        sync: Boolean = false
+        sync: Boolean = false,
     ) {
         val ed = prefs.edit()
             .putString(KEY_JWT, jwt)
@@ -127,7 +179,12 @@ class SecureTokenStore(context: Context) {
             clearRefreshTokenIfNull -> ed.remove(KEY_REFRESH_TOKEN)
         }
         ed.commit()
-        mirrorToBackup()
+        val rt = when {
+            refreshToken != null -> refreshToken
+            clearRefreshTokenIfNull -> null
+            else -> readNonBlank(prefs, KEY_REFRESH_TOKEN)
+        }
+        mirrorToBackup(jwt, ownerId, accessToken, shopifyAccessExpiresAtEpochMs, rt)
     }
 
     fun getShopifyAccessExpiresAtEpochMs(): Long {
@@ -140,15 +197,36 @@ class SecureTokenStore(context: Context) {
         mirrorToBackup()
     }
 
+    /** Clears Shopify OAuth tokens only; keeps app JWT / owner id for creator API session. */
+    fun clearShopifyOAuthTokens() {
+        prefs.edit()
+            .remove(KEY_ACCESS_TOKEN)
+            .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
+            .putString(KEY_ACCESS_TOKEN, "")
+            .commit()
+        backupPrefs.edit()
+            .remove(KEY_ACCESS_TOKEN)
+            .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
+            .putString(KEY_ACCESS_TOKEN, "")
+            .commit()
+    }
+
     fun clear() {
         prefs.edit().clear().commit()
         backupPrefs.edit().clear().commit()
     }
 
-    fun isLoggedIn(): Boolean {
-        // App login state is based on the app JWT.
-        // Shopify access token may expire independently and can be refreshed or re-authenticated when needed.
-        return !getJwt().isNullOrBlank()
+    fun isLoggedIn(): Boolean = !getJwt().isNullOrBlank()
+
+    /** Debug helper after app start / update — no secrets logged. */
+    fun sessionDebugSummary(): String {
+        val encJwt = readNonBlank(prefs, KEY_JWT) != null
+        val bakJwt = readNonBlank(backupPrefs, KEY_JWT) != null
+        val hasRefresh = getRefreshToken() != null
+        val hasAccess = !getAccessToken().isNullOrBlank()
+        return "loggedIn=${isLoggedIn()} encJwt=$encJwt bakJwt=$bakJwt hasRefresh=$hasRefresh hasAccess=$hasAccess ownerId=${!getOwnerId().isNullOrBlank()}"
     }
 
     companion object {
