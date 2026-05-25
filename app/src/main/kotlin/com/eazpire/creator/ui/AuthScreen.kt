@@ -3,6 +3,8 @@ package com.eazpire.creator.ui
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Bundle
+import android.provider.Browser
 import android.webkit.CookieManager
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -10,6 +12,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +45,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
+import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.AuthException
 import com.eazpire.creator.auth.OAuthPkceStore
@@ -60,8 +64,9 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
- * Shopify Customer Account OAuth (PKCE) — unified in-app WebView flow (stable 2026-05-18 behavior).
- * [loginMethod] is UI-only; Shop / Google / Email all use the same OAuth navigation.
+ * Shopify Customer Account OAuth (PKCE).
+ * - **Google** → Chrome Custom Tab (Google blocks OAuth inside WebView).
+ * - **Shop / Email** → in-app WebView.
  */
 @Composable
 fun AuthScreen(
@@ -90,9 +95,33 @@ fun AuthScreen(
     var oauthWebViewLoadDone by remember(oauthWebViewUrl) { mutableStateOf(false) }
     var loginAttemptId by remember { mutableStateOf(0) }
     var lastAuthUrl by remember { mutableStateOf<String?>(null) }
+    var awaitingOAuthCallback by remember { mutableStateOf(false) }
 
     LaunchedEffect(loginMethod) {
-        AuthDebugLog.d("[AUTHSCREEN] loginMethod=$loginMethod uses unified WebView OAuth flow")
+        AuthDebugLog.d(
+            "[AUTHSCREEN] loginMethod=$loginMethod " +
+                if (loginMethod == AuthLoginMethod.GOOGLE) "usesCustomTab=true" else "usesWebView=true"
+        )
+    }
+
+    fun isGoogleOAuthUri(uri: Uri): Boolean {
+        val host = uri.host?.lowercase().orEmpty()
+        return host.contains("accounts.google.com") ||
+            (host.contains("google.com") && uri.path?.contains("oauth", ignoreCase = true) == true)
+    }
+
+    fun launchOAuthCustomTab(url: String) {
+        AuthDebugLog.d("[CUSTOM TAB] launch url=$url attempt=$loginAttemptId")
+        oauthWebViewUrl = null
+        val tabsIntent = CustomTabsIntent.Builder()
+            .setShowTitle(true)
+            .build()
+        tabsIntent.intent.putExtra(
+            Browser.EXTRA_HEADERS,
+            Bundle().apply { putString("Accept", AuthConfig.SHOPIFY_HTML_ACCEPT) }
+        )
+        tabsIntent.launchUrl(context, Uri.parse(url))
+        awaitingOAuthCallback = true
     }
 
     fun isShopCallbackUri(uri: Uri?): Boolean {
@@ -117,6 +146,7 @@ fun AuthScreen(
         if (code == null || state == null) return
         callbackHandled = true
         oauthWebViewUrl = null
+        awaitingOAuthCallback = false
         val verifier = when {
             state == savedState && codeVerifier != null -> {
                 OAuthPkceStore.clear(appCtx)
@@ -187,9 +217,10 @@ fun AuthScreen(
             isLoading = true
             error = null
             callbackHandled = false
+            awaitingOAuthCallback = false
             loginAttemptId += 1
             val attempt = loginAttemptId
-            AuthDebugLog.d("[LOGIN#$attempt] START method=$loginMethod unifiedWebView=true")
+            AuthDebugLog.d("[LOGIN#$attempt] START method=$loginMethod customTab=${loginMethod == AuthLoginMethod.GOOGLE}")
             try {
                 clearCookiesForLogin()
                 val endpoints = authService.discoverEndpoints()
@@ -206,9 +237,14 @@ fun AuthScreen(
                 )
                 lastAuthUrl = url
                 AuthDebugLog.d("[LOGIN#$attempt] AUTH_URL $url")
-                oauthWebViewUrl = url
-                webViewProgress = 0
-                oauthWebViewLoadDone = false
+                when (loginMethod) {
+                    AuthLoginMethod.GOOGLE -> launchOAuthCustomTab(url)
+                    AuthLoginMethod.SHOP, AuthLoginMethod.EMAIL -> {
+                        oauthWebViewUrl = url
+                        webViewProgress = 0
+                        oauthWebViewLoadDone = false
+                    }
+                }
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
                 AuthDebugLog.e("[LOGIN#$attempt] Failed: ${e.message}", e)
@@ -274,6 +310,11 @@ fun AuthScreen(
                                             AuthDebugLog.d("[WEBVIEW CALLBACK DETECTED handleNavigation] attempt=$loginAttemptId url=$u")
                                             view?.stopLoading()
                                             handleCallback(u.toString())
+                                            return true
+                                        }
+                                        if (isGoogleOAuthUri(u)) {
+                                            AuthDebugLog.d("[WEBVIEW GOOGLE REDIRECT] opening Custom Tab attempt=$loginAttemptId url=$u")
+                                            launchOAuthCustomTab(u.toString())
                                             return true
                                         }
                                         return false
@@ -434,22 +475,41 @@ fun AuthScreen(
                 Text(
                     text = when (loginMethod) {
                         AuthLoginMethod.SHOP -> "Shop app Login"
-                        AuthLoginMethod.GOOGLE -> "Google Login"
+                        AuthLoginMethod.GOOGLE -> "Google Login (Browser)"
                         AuthLoginMethod.EMAIL -> "Email Login"
                     },
                     style = MaterialTheme.typography.labelSmall
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Mit deinem Shopify-Konto anmelden",
+                    text = when (loginMethod) {
+                        AuthLoginMethod.GOOGLE ->
+                            "Google sign-in opens in your browser (required by Google)."
+                        else -> "Mit deinem Shopify-Konto anmelden"
+                    },
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Spacer(modifier = Modifier.height(32.dp))
-                if (isLoading && oauthWebViewUrl == null) {
-                    CircularProgressIndicator()
-                } else {
-                    Button(onClick = { startLogin() }) {
-                        Text(if (error != null) "Erneut versuchen" else "Anmelden")
+                when {
+                    isLoading && oauthWebViewUrl == null && !awaitingOAuthCallback -> {
+                        CircularProgressIndicator()
+                    }
+                    awaitingOAuthCallback -> {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Sign-in läuft im Browser-Tab. Bitte dort abschließen und zur App zurückkehren.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { startLogin() }) {
+                            Text("Sign-in erneut öffnen")
+                        }
+                    }
+                    else -> {
+                        Button(onClick = { startLogin() }) {
+                            Text(if (error != null) "Erneut versuchen" else "Anmelden")
+                        }
                     }
                 }
                 error?.let { msg ->
@@ -486,6 +546,7 @@ fun AuthScreen(
                 TextButton(
                     onClick = {
                         oauthWebViewUrl = null
+                        awaitingOAuthCallback = false
                         OAuthPkceStore.clear(appCtx)
                         onDismiss()
                     }

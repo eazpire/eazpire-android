@@ -109,7 +109,7 @@ fun LoginOptionsModal(
                 }
 
                 Text(
-                    text = "Sign in securely with your Shopify customer account.",
+                    text = "Shop and email sign in inside the app. Google opens in your browser.",
                     style = MaterialTheme.typography.labelSmall,
                     color = EazColors.TextSecondary,
                     modifier = Modifier.padding(top = 14.dp)
