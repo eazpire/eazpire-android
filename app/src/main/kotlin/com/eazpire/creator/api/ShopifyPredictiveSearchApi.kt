@@ -184,27 +184,32 @@ class ShopifyPredictiveSearchApi(
         sectionRows: List<SectionProductRow>?,
         suggest: Result?
     ): List<PredictiveProductRow> {
+        val suggestByHandle = suggest?.products?.associateBy { productHandleFromUrl(it.url) } ?: emptyMap()
         val map = LinkedHashMap<String, PredictiveProductRow>()
         sectionRows?.forEach { r ->
             val h = r.handle.trim()
-            if (h.isEmpty()) return@forEach
-            if (map.containsKey(h)) return@forEach
+            if (h.isEmpty() || map.containsKey(h)) return@forEach
+            val sectionImages = r.images.map { resolveUrl(it) }.filter { it.isNotBlank() }
+            val sug = suggestByHandle[h]
+            val images = sectionImages.ifEmpty {
+                listOfNotNull(sug?.image?.let { resolveUrl(it) })
+            }
             map[h] = PredictiveProductRow(
                 handle = h,
                 url = resolveUrl(r.url),
-                images = r.images.map { resolveUrl(it) },
-                title = null,
-                priceCents = null,
-                vendor = null
+                images = images,
+                title = sug?.title,
+                priceCents = sug?.priceCents,
+                vendor = sug?.vendor
             )
         }
         suggest?.products?.forEach { p ->
             val h = productHandleFromUrl(p.url)
             if (h.isBlank() || map.containsKey(h)) return@forEach
-            val imgs = listOfNotNull(p.image?.let { resolveUrl(it) }).ifEmpty { emptyList() }
+            val imgs = listOfNotNull(p.image?.let { resolveUrl(it) })
             map[h] = PredictiveProductRow(
                 handle = h,
-                url = p.url,
+                url = resolveUrl(p.url),
                 images = imgs,
                 title = p.title,
                 priceCents = p.priceCents,
@@ -358,13 +363,16 @@ class ShopifyPredictiveSearchApi(
     }
 
     private fun resolveUrl(pathOrUrl: String): String {
-        if (pathOrUrl.startsWith("http://", ignoreCase = true) ||
-            pathOrUrl.startsWith("https://", ignoreCase = true)
+        val trimmed = pathOrUrl.trim()
+        if (trimmed.isEmpty()) return ""
+        if (trimmed.startsWith("//")) return "https:$trimmed"
+        if (trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true)
         ) {
-            return pathOrUrl
+            return trimmed
         }
         val base = storeBaseUrl.trimEnd('/')
-        val p = if (pathOrUrl.startsWith("/")) pathOrUrl else "/$pathOrUrl"
+        val p = if (trimmed.startsWith("/")) trimmed else "/$trimmed"
         return base + p
     }
 
