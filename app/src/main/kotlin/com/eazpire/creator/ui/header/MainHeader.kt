@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.chat.EazyMascotIcon
+import com.eazpire.creator.chat.EazyGuideModeStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -76,6 +77,7 @@ fun MainHeader(
     onFavoritesModalChange: ((Boolean) -> Unit)? = null,
     eazyDocked: Boolean = false,
     eazySnapModeActive: Boolean = false,
+    eazyChatVisible: Boolean = false,
     onEazyClick: () -> Unit = {},
     onEazyLongPress: () -> Unit = {},
     slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
@@ -209,8 +211,19 @@ fun MainHeader(
                                 if (eazyDocked) Modifier
                                     .pointerInput(Unit) {
                                         detectTapGestures(
-                                            onTap = { onEazyClick() },
+                                            onDoubleTap = { EazyGuideModeStore.enter(chatUiOnlyScope = eazyChatVisible) },
+                                            onTap = {
+                                                if (EazyGuideModeStore.active.value) {
+                                                    EazyGuideModeStore.exit()
+                                                } else {
+                                                    onEazyClick()
+                                                }
+                                            },
                                             onPress = {
+                                                if (EazyGuideModeStore.active.value) {
+                                                    tryAwaitRelease()
+                                                    return@detectTapGestures
+                                                }
                                                 var job: Job? = null
                                                 job = coroutineScope.launch {
                                                     delay(300)

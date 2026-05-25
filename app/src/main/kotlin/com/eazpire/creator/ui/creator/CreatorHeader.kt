@@ -67,6 +67,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.chat.EazyMascotIcon
+import com.eazpire.creator.chat.EazyGuideModeStore
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -469,8 +470,19 @@ fun CreatorHeader(
                                 .then(
                                     if (eazyDocked && !hideSlotForOverlay) Modifier.pointerInput(Unit) {
                                         detectTapGestures(
-                                            onTap = { onEazyClick() },
+                                            onDoubleTap = { EazyGuideModeStore.enter(chatUiOnlyScope = false) },
+                                            onTap = {
+                                                if (EazyGuideModeStore.active.value) {
+                                                    EazyGuideModeStore.exit()
+                                                } else {
+                                                    onEazyClick()
+                                                }
+                                            },
                                             onPress = {
+                                                if (EazyGuideModeStore.active.value) {
+                                                    tryAwaitRelease()
+                                                    return@detectTapGestures
+                                                }
                                                 var job: Job? = null
                                                 job = scope.launch {
                                                     delay(300)

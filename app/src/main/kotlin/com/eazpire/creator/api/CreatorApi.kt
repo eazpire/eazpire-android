@@ -2025,6 +2025,20 @@ class CreatorApi(
         JSONObject(response.body?.string() ?: "{}")
     }
 
+    /** POST ?op=guide-explain – Eazy Guide Mode hybrid explain */
+    suspend fun guideExplain(body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/apps/creator-dispatch?op=guide-explain&_t=${System.currentTimeMillis()}"
+        val request = Request.Builder()
+            .url(url)
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
+
     // ── Mascot ─────────────────────────────────────────
     /** GET ?op=mascot-inventory&owner_id=xxx → { ok, mascots, mood, next_levels, locked_mascots } */
     suspend fun mascotInventory(ownerId: String?): JSONObject {

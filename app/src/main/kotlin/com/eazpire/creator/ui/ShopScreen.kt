@@ -54,6 +54,8 @@ import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.chat.EazyChatContext
 import com.eazpire.creator.chat.EazyChatModal
+import com.eazpire.creator.chat.EazyGuideOverlay
+import com.eazpire.creator.chat.EazyGuideModeStore
 import com.eazpire.creator.chat.EazyChatStore
 import com.eazpire.creator.chat.EazySettingsStore
 import com.eazpire.creator.chat.EazyMascot
@@ -463,6 +465,7 @@ fun ShopScreen(
                     onFavoritesModalChange = { favoritesModalVisible = it },
                     eazyDocked = eazyDocked,
                     eazySnapModeActive = eazySnapModeActive,
+                    eazyChatVisible = eazyChatVisible,
                     onEazyClick = {
                         eazyStartTab = EazySidebarTab.Chat
                         eazyChatVisible = true
@@ -899,7 +902,10 @@ fun ShopScreen(
         tokenStore = tokenStore,
         chatStore = eazyChatStore,
         eazySettingsStore = eazySettingsStore,
-        onDismiss = { eazyChatVisible = false },
+        onDismiss = {
+            if (EazyGuideModeStore.active.value) EazyGuideModeStore.exit()
+            eazyChatVisible = false
+        },
         onLoginClick = {
             eazyChatVisible = false
             showLoginOptions = true
@@ -907,6 +913,12 @@ fun ShopScreen(
         onResetMascot = { eazyMascotStore.resetSync() },
         chatContext = if (isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop,
         startTab = eazyStartTab
+    )
+
+    EazyGuideOverlay(
+        creatorApi = eazySyncApi,
+        pagePath = currentPagePath,
+        locale = localeStore.getLanguageCodeSync()
     )
 
     MenuDrawer(
