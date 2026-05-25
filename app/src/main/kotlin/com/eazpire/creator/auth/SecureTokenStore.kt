@@ -126,7 +126,7 @@ class SecureTokenStore(context: Context) {
             refreshToken != null -> ed.putString(KEY_REFRESH_TOKEN, refreshToken)
             clearRefreshTokenIfNull -> ed.remove(KEY_REFRESH_TOKEN)
         }
-        if (sync) ed.commit() else ed.apply()
+        ed.commit()
         mirrorToBackup()
     }
 

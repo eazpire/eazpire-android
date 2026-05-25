@@ -75,13 +75,14 @@ object ShopSessionGuard {
                     tr.accessToken.ifBlank { null },
                     newExp,
                     refreshToken = rt,
-                    clearRefreshTokenIfNull = false
+                    clearRefreshTokenIfNull = false,
+                    sync = true,
                 )
                 WearAuthSync.push(context, tokenStore)
             } catch (_: IOException) {
                 // Transient – nächster App-Start oder später erneut
             } catch (_: AuthException) {
-                performFullLogout(context, tokenStore)
+                // Keep app JWT session after updates; user can re-auth Shopify when needed.
             }
         }
 
@@ -99,9 +100,9 @@ object ShopSessionGuard {
             try {
                 val api = ShopifyCustomerAccountApi(access)
                 val customer = api.getCustomer()
-                if (customer == null) {
+                if (customer == null && tokenStore.getRefreshToken().isNullOrBlank()) {
                     performFullLogout(context, tokenStore)
-                } else {
+                } else if (customer != null) {
                     tokenStore.setShopifyAccessExpiresAtEpochMs(
                         System.currentTimeMillis() + LEGACY_VALIDATION_EXTEND_MS
                     )

@@ -26,8 +26,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -102,6 +103,11 @@ import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.ui.components.HangerIcon
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import com.eazpire.creator.pricing.QuantityDiscount
 import com.eazpire.creator.util.SizeAiProductTypeMapper
 import com.eazpire.creator.util.matchShopifySizeOption
 import kotlinx.coroutines.Dispatchers
@@ -110,9 +116,39 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Same logic as web getMediaForColor (eaz-redesign-pdp.js): filter images by selected color
- * using alt prefix (e.g. "navy|front|back") or variant_ids fallback.
+ * Same logic as web getMediaForVariant (eaz-redesign-pdp.js): filter images by selected color
+ * using alt prefix (e.g. "white|front|back") from variant featured media.
  */
+private fun getMediaViewSortScore(img: ShopifyProductsApi.ProductImage): Int {
+    val alt = (img.alt ?: "").lowercase()
+    if (alt.isBlank() || !alt.contains("|")) return 50
+    val parts = alt.split("|")
+    val view = parts.getOrNull(1)?.trim().orEmpty()
+    val isPreview = parts.size >= 3 && parts[2].trim().lowercase() == "preview-default"
+    if (isPreview) return 0
+    if (view == "front" || view.startsWith("front")) return 10
+    if (view == "back") return 20
+    if (view.startsWith("detail")) return 30
+    if (view.startsWith("folded")) return 90
+    return 40
+}
+
+private fun sortMediaForColorGallery(
+    images: List<ShopifyProductsApi.ProductImage>,
+    featuredSrc: String?
+): List<ShopifyProductsApi.ProductImage> {
+    if (images.size < 2) return images
+    val sorted = images.sortedBy { getMediaViewSortScore(it) }.toMutableList()
+    if (featuredSrc != null) {
+        val idx = sorted.indexOfFirst { it.src == featuredSrc }
+        if (idx > 0) {
+            val featured = sorted.removeAt(idx)
+            sorted.add(0, featured)
+        }
+    }
+    return sorted
+}
+
 private fun getMediaForColor(
     selectedColor: String,
     selectedVariant: ShopifyProductsApi.ProductDetail.ProductVariant?,
@@ -120,52 +156,61 @@ private fun getMediaForColor(
     variants: List<ShopifyProductsApi.ProductDetail.ProductVariant>
 ): List<String> {
     val fallback = allImages.take(5).map { it.src }
-    if (selectedColor.isBlank() || variants.isEmpty() || allImages.isEmpty()) return fallback
+    if (variants.isEmpty() || allImages.isEmpty()) return fallback
 
     val variantForColor = variants.find { v ->
         v.option1.equals(selectedColor, true) || v.option2.equals(selectedColor, true) || v.option3.equals(selectedColor, true)
     } ?: selectedVariant ?: return fallback
 
     val featuredSrc = variantForColor.featuredImageSrc
-    val selectedColorKey = normalizeColorKey(selectedColor)
+    val featuredImage = featuredSrc?.let { src -> allImages.find { it.src == src } }
+    val selectedColorKey = when {
+        featuredImage != null -> getMediaAltColorKey(featuredImage).ifBlank { normalizeColorKey(selectedColor) }
+        else -> normalizeColorKey(selectedColor)
+    }
     val anchorIndex = if (featuredSrc != null) allImages.indexOfFirst { it.src == featuredSrc } else -1
 
-    // 1) Strict color-key matching from alt prefix (e.g. "navy|front|...")
+    // 1) Strict color-key matching from alt prefix (e.g. "white|front|...")
     val matched = allImages.filter { img ->
         val key = getMediaAltColorKey(img)
         key.isNotBlank() && key == selectedColorKey
     }
-    if (matched.size >= 2) return matched.map { it.src }.take(5)
+    if (matched.isNotEmpty()) {
+        return sortMediaForColorGallery(matched, featuredSrc).map { it.src }.take(5)
+    }
 
-    // 2) Fallback: contiguous images from anchor forward (same color key or no conflict)
+    // 2) Contiguous images from anchor forward (same color key or no conflict)
     if (anchorIndex >= 0) {
         val contiguous = mutableListOf<ShopifyProductsApi.ProductImage>()
         for (i in anchorIndex until allImages.size) {
             val img = allImages[i]
             val key = getMediaAltColorKey(img)
-            if (key.isNotBlank() && key != selectedColorKey) {
+            if (selectedColorKey.isNotBlank() && key.isNotBlank() && key != selectedColorKey) {
                 if (contiguous.isNotEmpty()) break
                 continue
             }
             contiguous.add(img)
             if (contiguous.size >= 5) break
         }
-        if (contiguous.isNotEmpty()) return contiguous.map { it.src }
-    }
-
-    // 3) variant_ids fallback (when no alt-based matching)
-    val vid = variantForColor.id
-    if (vid != 0L) {
-        val byVariant = allImages.filter { it.variantIds.isEmpty() || it.variantIds.contains(vid) }
-        if (byVariant.isNotEmpty()) {
-            val withFeat = if (featuredSrc != null && byVariant.none { it.src == featuredSrc })
-                listOf(ShopifyProductsApi.ProductImage(featuredSrc, listOf(vid), null)) + byVariant
-            else byVariant
-            return withFeat.map { it.src }.take(5)
+        if (contiguous.isNotEmpty()) {
+            return sortMediaForColorGallery(contiguous, featuredSrc).map { it.src }
         }
     }
 
-    return fallback.ifEmpty { featuredSrc?.let { listOf(it) } ?: emptyList() }
+    // 3) variant_ids fallback — only images tied to this variant and matching color alt when present
+    val vid = variantForColor.id
+    if (vid != 0L) {
+        val byVariant = allImages.filter { img ->
+            val key = getMediaAltColorKey(img)
+            if (selectedColorKey.isNotBlank() && key.isNotBlank() && key != selectedColorKey) return@filter false
+            img.variantIds.contains(vid)
+        }
+        if (byVariant.isNotEmpty()) {
+            return sortMediaForColorGallery(byVariant, featuredSrc).map { it.src }.take(5)
+        }
+    }
+
+    return featuredSrc?.let { listOf(it) } ?: fallback.ifEmpty { emptyList() }
 }
 
 private fun normalizeColorKey(value: String): String =
@@ -229,7 +274,7 @@ private fun buildPdpCarouselSameType(
         val typeMatch = if (pk.isNotBlank()) o.metaProductKey == pk
         else o.productType.isNotBlank() && o.productType == p.productType
         typeMatch && normalizeDesignKey(o.title) != seedDesign
-    }.take(12)
+    }.take(50)
 }
 
 private fun buildPdpCarouselSameDesign(
@@ -250,7 +295,7 @@ private fun buildPdpCarouselSameDesign(
             else -> o.productType.isNotBlank() && o.productType != p.productType
         }
         designMatch && diffType
-    }.take(12)
+    }.take(50)
 }
 
 /**
@@ -356,6 +401,7 @@ fun ProductDetailScreen(
     var reviewsSheetVisible by remember { mutableStateOf(false) }
     var selectedImageIndex by remember { mutableIntStateOf(0) }
     var quantity by remember { mutableIntStateOf(1) }
+    var showQuantityDiscountModal by remember { mutableStateOf(false) }
     var showCartToast by remember { mutableStateOf(false) }
     var showFavoriteToast by remember { mutableStateOf(false) }
     var showCartPlusOne by remember { mutableStateOf(false) }
@@ -377,7 +423,7 @@ fun ProductDetailScreen(
     LaunchedEffect(productHandle) {
         isLoading = true
         product = withContext(Dispatchers.IO) { api.getProductByHandle(productHandle) }
-        catalogProducts = withContext(Dispatchers.IO) { api.getProductsWithFullMetafields(100).products }
+        catalogProducts = withContext(Dispatchers.IO) { api.getProductsWithFullMetafields(250).products }
         isLoading = false
     }
 
@@ -497,14 +543,17 @@ fun ProductDetailScreen(
     val price = selectedVariant?.price ?: 0.0
     val comparePrice = selectedVariant?.compareAtPrice
     val available = selectedVariant?.available ?: true
+    val lineEstimate = remember(price, quantity) { QuantityDiscount.estimateLineTotals(price, quantity) }
+    val unitPriceAfterDiscount = if (quantity > 0) lineEstimate.afterDiscount / quantity else price
     /** Storefront cart needs a real Shopify variant id (>0). */
     val variantIdForCart = (selectedVariant?.id ?: 0L).takeIf { it > 0L }
     // Images for selected variant only – same logic as web getMediaForColor (eaz-redesign-pdp.js)
     val images = remember(selectedColor, selectedVariant, p.images, p.variants) {
         getMediaForColor(selectedColor, selectedVariant, p.images, p.variants)
     }
-    LaunchedEffect(selectedVariant?.id) {
+    LaunchedEffect(selectedColor, selectedVariant?.id) {
         selectedImageIndex = 0
+        tryOnActive = false
     }
 
     LaunchedEffect(tryOnActive, selectedColor, mockupTryOnInfo, productColorHexMap) {
@@ -722,12 +771,34 @@ fun ProductDetailScreen(
                     }
                 }
                 // Main image
+                val density = LocalDensity.current
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .aspectRatio(1f)
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color(0xFFF0F0F0))
+                        .pointerInput(imageCount, selectedImageIndex) {
+                            if (imageCount <= 1) return@pointerInput
+                            var totalDrag = 0f
+                            val thresholdPx = with(density) { 48.dp.toPx() }
+                            detectHorizontalDragGestures(
+                                onDragStart = { totalDrag = 0f },
+                                onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                                onDragEnd = {
+                                    when {
+                                        totalDrag > thresholdPx -> {
+                                            selectedImageIndex =
+                                                (selectedImageIndex - 1).coerceAtLeast(0)
+                                        }
+                                        totalDrag < -thresholdPx -> {
+                                            selectedImageIndex =
+                                                (selectedImageIndex + 1).coerceAtMost(imageCount - 1)
+                                        }
+                                    }
+                                },
+                            )
+                        },
                 ) {
                     if (images.isNotEmpty()) {
                         val imgIdx = selectedImageIndex.coerceIn(0, (imageCount - 1).coerceAtLeast(0))
@@ -929,38 +1000,39 @@ fun ProductDetailScreen(
                 if (carSameType.isNotEmpty() || carSameDesign.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        Column(
-                            modifier = Modifier.widthIn(max = 220.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        Row(
+                            modifier = Modifier.widthIn(max = 140.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top,
                         ) {
                             CreatorAvatarCircle(
                                 name = creatorLabel,
                                 avatarUrl = creatorPreview?.avatarUrl,
-                                size = 72.dp,
+                                size = 56.dp,
                                 onClick = openCreatorProfile
                             )
-                            Text(
-                                text = creatorLabel,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = EazColors.TextPrimary,
-                                modifier = Modifier.clickable(onClick = openCreatorProfile)
-                            )
-                            TextButton(onClick = openCreatorProfile) {
+                            Column(
+                                modifier = Modifier.weight(1f, fill = false),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
                                 Text(
-                                    t("eaz.pdp.creator_view_profile", "View profile"),
-                                    color = EazColors.Orange,
-                                    fontWeight = FontWeight.SemiBold
+                                    text = creatorLabel,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = EazColors.TextPrimary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.clickable(onClick = openCreatorProfile),
                                 )
-                            }
-                            if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
-                                CreatorRatingRow(
-                                    avg = creatorPreview!!.ratingAvg!!,
-                                    count = creatorPreview!!.ratingCount!!
-                                )
+                                if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
+                                    CreatorRatingRow(
+                                        avg = creatorPreview!!.ratingAvg!!,
+                                        count = creatorPreview!!.ratingCount!!,
+                                    )
+                                }
                             }
                         }
                         Column(
@@ -968,14 +1040,14 @@ fun ProductDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             if (carSameType.isNotEmpty()) {
-                                PdpProductCarouselRow(
+                                PdpInfiniteProductCarouselRow(
                                     title = t("eaz.pdp.carousel_same_type_designs", "More designs on this product"),
                                     products = carSameType,
                                     onProductClick = openRelated
                                 )
                             }
                             if (carSameDesign.isNotEmpty()) {
-                                PdpProductCarouselRow(
+                                PdpInfiniteProductCarouselRow(
                                     title = t("eaz.pdp.carousel_same_design_products", "More products with this design"),
                                     products = carSameDesign,
                                     onProductClick = openRelated
@@ -984,17 +1056,17 @@ fun ProductDetailScreen(
                         }
                     }
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            CreatorAvatarCircle(
-                                name = creatorLabel,
-                                avatarUrl = creatorPreview?.avatarUrl,
-                                size = 72.dp,
-                                onClick = openCreatorProfile
-                            )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        CreatorAvatarCircle(
+                            name = creatorLabel,
+                            avatarUrl = creatorPreview?.avatarUrl,
+                            size = 56.dp,
+                            onClick = openCreatorProfile
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 text = creatorLabel,
                                 style = MaterialTheme.typography.titleMedium,
@@ -1002,19 +1074,12 @@ fun ProductDetailScreen(
                                 color = EazColors.TextPrimary,
                                 modifier = Modifier.clickable(onClick = openCreatorProfile)
                             )
-                        }
-                        TextButton(onClick = openCreatorProfile) {
-                            Text(
-                                t("eaz.pdp.creator_view_profile", "View profile"),
-                                color = EazColors.Orange,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
-                            CreatorRatingRow(
-                                avg = creatorPreview!!.ratingAvg!!,
-                                count = creatorPreview!!.ratingCount!!
-                            )
+                            if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
+                                CreatorRatingRow(
+                                    avg = creatorPreview!!.ratingAvg!!,
+                                    count = creatorPreview!!.ratingCount!!
+                                )
+                            }
                         }
                     }
                 }
@@ -1091,7 +1156,6 @@ fun ProductDetailScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color.White)
-                .navigationBarsPadding()
                 .padding(horizontal = 12.dp)
         ) {
         // Row 1: Qty, Favorite, Share, Delivery, Total
@@ -1112,7 +1176,18 @@ fun ProductDetailScreen(
                 IconButton(onClick = { if (quantity > 1) quantity-- }, modifier = Modifier.size(34.dp)) {
                     Text("−", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
                 }
-                Text("$quantity", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp), color = EazColors.TextPrimary)
+                Text("$quantity", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp), color = EazColors.TextPrimary)
+                IconButton(
+                    onClick = { showQuantityDiscountModal = true },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = t("creator.quantity_discount.info_icon_label", "Quantity discount information"),
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
                 IconButton(onClick = { quantity++ }, modifier = Modifier.size(34.dp)) {
                     Text("+", style = MaterialTheme.typography.titleMedium, color = EazColors.TextPrimary)
                 }
@@ -1179,7 +1254,12 @@ fun ProductDetailScreen(
                 Icon(Icons.Default.Share, contentDescription = "Share", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
             Spacer(modifier = Modifier.weight(1f))
-            Text("Total: CHF %.2f incl.".format(price), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+            Text(
+                "Total: CHF %.2f incl.".format(lineEstimate.afterDiscount),
+                style = MaterialTheme.typography.labelSmall,
+                color = EazColors.TextSecondary,
+                maxLines = 1,
+            )
         }
         // Row 2: Price, Delivery, Cart, Buy now
         Row(
@@ -1191,7 +1271,13 @@ fun ProductDetailScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("CHF %.2f".format(price), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = EazColors.TextPrimary)
+                Text(
+                    "CHF %.2f".format(unitPriceAfterDiscount),
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = EazColors.TextPrimary,
+                    maxLines = 1,
+                )
                 promoOverlay?.let { po ->
                     val ends = po.promotionEndsAtMs
                     val nextSlot = po.promoCampaignStartsAtMs ?: po.promoNextWindowStartsAtMs
@@ -1215,7 +1301,18 @@ fun ProductDetailScreen(
                 }
             }
             val deliveryDate = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMAN).format(java.util.Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000))
-            Text("ca. $deliveryDate", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    Icons.Default.LocalShipping,
+                    contentDescription = null,
+                    tint = EazColors.TextSecondary,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text("ca. $deliveryDate", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, maxLines = 1)
+            }
             if (comparePrice != null && comparePrice > price) {
                 Text("CHF %.2f".format(comparePrice), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
             }
@@ -1353,7 +1450,10 @@ fun ProductDetailScreen(
         }
 
         // Main Footer – ganz unten (wie Web)
-        GlobalFooter(onTermsClick = onTermsClick)
+        GlobalFooter(
+            onTermsClick = onTermsClick,
+            modifier = Modifier.navigationBarsPadding(),
+        )
     }
 
         if (showCloseButton) {
@@ -1568,6 +1668,15 @@ fun ProductDetailScreen(
             onDismiss = { checkoutUrl = null }
         )
     }
+
+    QuantityDiscountModal(
+        visible = showQuantityDiscountModal,
+        onDismiss = { showQuantityDiscountModal = false },
+        unitPrice = price,
+        quantity = quantity,
+        currencyLabel = "CHF",
+        t = t,
+    )
 }
 
 /** Parse body_html into sections by headings: Design Detail, Product Features, Care Instructions, Size Table, GPSR */
@@ -1732,6 +1841,69 @@ private fun HtmlWebView(content: String, modifier: Modifier = Modifier) {
         },
         modifier = modifier
     )
+}
+
+@Composable
+private fun PdpInfiniteProductCarouselRow(
+    title: String,
+    products: List<ShopifyProductsApi.ProductItem>,
+    onProductClick: (String) -> Unit
+) {
+    val base = products.take(50)
+    if (base.isEmpty()) return
+    val ctx = LocalContext.current
+    val repeated = remember(base) {
+        List(base.size * 40) { idx -> base[idx % base.size] }
+    }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = base.size * 20)
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = EazColors.TextPrimary,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        LazyRow(
+            state = listState,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 4.dp),
+        ) {
+            items(repeated.size, key = { "pdp-carousel-$it-${repeated[it].handle}" }) { index ->
+                val item = repeated[index]
+                val img = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
+                val pk = item.metaProductKey.takeIf { it.isNotBlank() }
+                val (dt, _) = splitProductTitle(item.title, item.productType, pk)
+                Column(
+                    modifier = Modifier
+                        .width(122.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF5F5F5))
+                        .clickable { onProductClick(item.handle) }
+                        .padding(6.dp)
+                ) {
+                    if (img != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(ctx).data(img).build(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(6.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    Text(
+                        dt,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = EazColors.TextPrimary
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

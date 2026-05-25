@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,7 +44,12 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import com.eazpire.creator.ui.vouchers.VoucherModalTab
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -137,7 +143,7 @@ fun MenuDrawer(
     onFavoritesClick: () -> Unit = {},
     onAccountClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
-    onVouchersClick: () -> Unit = {},
+    onVouchersClick: (VoucherModalTab) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -215,7 +221,7 @@ fun MenuDrawer(
                     onCategoryClick = onCategoryClick,
                     onExternalUrl = onExternalUrl,
                     dismissDrawer = { doDismiss() },
-                    onVouchersClick = { onVouchersClick(); doDismiss() }
+                    onVouchersClick = { tab -> onVouchersClick(tab); doDismiss() }
                 )
             }
         }
@@ -398,7 +404,7 @@ private fun MenuDrawerInteractiveRoot(
     onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)?,
     onExternalUrl: ((url: String) -> Unit)?,
     dismissDrawer: () -> Unit,
-    onVouchersClick: () -> Unit
+    onVouchersClick: (VoucherModalTab) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1385,7 +1391,7 @@ private fun SidebarDrawerGridEngine(
     onExternalUrl: ((url: String) -> Unit)?,
     dismiss: () -> Unit,
     context: android.content.Context,
-    onVouchersClickFull: () -> Unit,
+    onVouchersClickFull: (VoucherModalTab) -> Unit,
     collapsedMap: SnapshotStateMap<String, Boolean>,
 ) {
     val movable = remember(sections) { draggableIdsMemo(sections) }
@@ -1417,8 +1423,13 @@ private fun SidebarDrawerGridEngine(
                         contentAlpha = containerHiddenSkip(id).second,
                         t = t,
                     )
-                    Column(Modifier.padding(horizontal = 12.dp)) {
-                        SidebarGutscheineInline(ownerId = ownerId, api = api, t = t, onOpenFullWallet = onVouchersClickFull)
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        SidebarGutscheineInline(
+                            ownerId = ownerId,
+                            api = api,
+                            t = t,
+                            onOpenWallet = onVouchersClickFull,
+                        )
                     }
                 }
 
@@ -1956,14 +1967,16 @@ private fun SidebarGutscheineInline(
     ownerId: String,
     api: CreatorApi,
     t: (String, String) -> String,
-    onOpenFullWallet: () -> Unit,
+    onOpenWallet: (VoucherModalTab) -> Unit,
 ) {
     var tab by remember { mutableStateOf(0) }
+    var expanded by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var giftCards by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var promo by remember { mutableStateOf<JSONObject?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val giftCardBuyUrl = "https://www.eazpire.com/products/gift-card"
 
     LaunchedEffect(ownerId) {
         loading = true
@@ -1998,120 +2011,225 @@ private fun SidebarGutscheineInline(
         }
     }
 
-    Column(Modifier.padding(vertical = 8.dp)) {
-        TabRow(selectedTabIndex = tab) {
-            Tab(
-                selected = tab == 0,
-                onClick = { tab = 0 },
-                text = { Text(t("eaz.sidebar.my_gift_cards", "My Gift Cards")) },
-            )
-            Tab(
-                selected = tab == 1,
-                onClick = { tab = 1 },
-                text = {
-                    Text(t("eaz.sidebar.coupons", "Coupons"))
-                },
-            )
+    val couponCount =
+        remember(promo) {
+            val p = promo ?: return@remember 0
+            val slotsTotal = p.optInt("slots_total", 5)
+            val active = p.optJSONArray("active") ?: JSONArray()
+            (slotsTotal - active.length()).coerceAtLeast(0)
         }
 
-        TextButton(onClick = onOpenFullWallet, modifier = Modifier.padding(top = 4.dp)) {
-            Text(t("eaz.wallet.open_vouchers", "Open gift cards"))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+    ) {
+        Row(Modifier.fillMaxWidth()) {
+            SidebarWalletTabChip(
+                modifier = Modifier.weight(1f),
+                label = t("eaz.sidebar.my_gift_cards", "My Gift Cards"),
+                count = giftCards.size,
+                selected = tab == 0,
+                onClick = { tab = 0 },
+                onCountClick = { onOpenWallet(VoucherModalTab.GIFT_CARDS) },
+            )
+            Spacer(Modifier.size(8.dp))
+            SidebarWalletTabChip(
+                modifier = Modifier.weight(1f),
+                label = t("eaz.sidebar.coupons", "Coupons"),
+                count = couponCount,
+                selected = tab == 1,
+                onClick = { tab = 1 },
+                onCountClick = { onOpenWallet(VoucherModalTab.PROMO_CODES) },
+            )
         }
 
         if (ownerId.isBlank()) {
             Text(
                 t("eaz.sidebar.wallet_sign_in_hint", "Sign in to see gift cards and coupons here."),
-                Modifier.padding(top = 8.dp),
+                Modifier.padding(top = 12.dp),
                 color = EazColors.TextSecondary,
+                style = MaterialTheme.typography.bodySmall,
             )
-        } else {
-            if (loading) {
-                Box(
+        } else if (loading) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(Modifier.size(28.dp))
+            }
+        } else if (err != null) {
+            Text(err ?: "", modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.error)
+        } else if (tab == 0) {
+            if (giftCards.isEmpty()) {
+                Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center,
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProgressIndicator(Modifier.size(28.dp))
-                }
-            } else if (err != null) {
-                Text(err ?: "", modifier = Modifier.padding(8.dp), color = MaterialTheme.colorScheme.error)
-            } else if (tab == 0) {
-                if (giftCards.isEmpty()) {
                     Text(
                         t("eaz.sidebar.no_gift_cards_yet", "No gift cards yet"),
-                        Modifier.padding(8.dp),
                         color = EazColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall,
                     )
-                } else {
-                    giftCards.take(8).forEach { gc ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                            Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                gutterGiftMoneyLine(gc),
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                    SidebarGiftBuyNowButton(t = t) {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(giftCardBuyUrl)))
+                        } catch (_: Exception) {
                         }
                     }
                 }
             } else {
-                val p = promo
-                if (p == null) {
-                    Text(t("eaz.sidebar.no_coupons_available", "No coupons available"), Modifier.padding(8.dp))
-                } else {
-                    val slotsTotal = p.optInt("slots_total", 5)
-                    val active = p.optJSONArray("active") ?: JSONArray()
-                    val used = active.length()
-                    val available = (slotsTotal - used).coerceAtLeast(0)
+                val visibleCards = if (expanded) giftCards else giftCards.take(1)
+                visibleCards.forEach { gc ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFF5F0E8))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .weight(1f),
+                        ) {
+                            Icon(
+                                Icons.Default.CardGiftcard,
+                                contentDescription = null,
+                                tint = EazColors.Orange,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                gutterGiftMoneyLine(gc),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(Modifier.size(8.dp))
+                        SidebarGiftBuyNowButton(t = t) {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(giftCardBuyUrl)))
+                            } catch (_: Exception) {
+                            }
+                        }
+                    }
+                }
+                if (giftCards.size > 1) {
+                    TextButton(onClick = { expanded = !expanded }) {
+                        Text(
+                            if (expanded) {
+                                t("eaz.sidebar.show_less_gift_cards", "Show less")
+                            } else {
+                                t("eaz.sidebar.show_more_gift_cards", "Show all ({count})")
+                                    .replace("{count}", giftCards.size.toString())
+                            },
+                            color = EazColors.Orange,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        } else {
+            val p = promo
+            if (p == null || couponCount <= 0) {
+                Text(
+                    t("eaz.sidebar.no_coupons_available", "No coupons available"),
+                    Modifier.padding(top = 12.dp),
+                    color = EazColors.TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                Text(
+                    t(
+                        "creator.voucher_page.promo_slots_counter",
+                        "{available} / {total} slots available",
+                    ).replace("{available}", couponCount.toString())
+                        .replace("{total}", p.optInt("slots_total", 5).toString()),
+                    modifier = Modifier.padding(top = 12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = EazColors.TextSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.SidebarWalletTabChip(
+    modifier: Modifier = Modifier,
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onCountClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) EazColors.Orange else EazColors.TextPrimary,
+            )
+            if (count > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (selected) EazColors.Orange.copy(alpha = 0.12f) else Color(0xFFF3F4F6))
+                        .clickable(onClick = onCountClick)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
                     Text(
-                        t(
-                            "creator.voucher_page.promo_slots_counter",
-                            "{available} / {total} slots available",
-                        ).replace("{available}", available.toString()).replace("{total}", slotsTotal.toString()),
-                        modifier = Modifier.padding(8.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = EazColors.TextSecondary,
+                        count.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selected) EazColors.Orange else EazColors.TextSecondary,
                     )
                 }
             }
         }
+        Box(
+            Modifier
+                .padding(top = 6.dp)
+                .height(if (selected) 2.dp else 1.dp)
+                .fillMaxWidth()
+                .background(if (selected) EazColors.Orange else Color(0xFFE8E8E8)),
+        )
+    }
+}
 
-        TextButton(
-            onClick = {
-                if (ownerId.isBlank()) return@TextButton
-                scope.launch {
-                    loading = true
-                    try {
-                        val pr = withContext(Dispatchers.IO) { api.getPromoSlots(ownerId) }
-                        promo = if (pr.optBoolean("ok", false)) pr else promo
-                        val g =
-                            withContext(Dispatchers.IO) {
-                                api.getCustomerGiftCards(ownerId, AuthConfig.SHOP_DOMAIN)
-                            }
-                        giftCards =
-                            if (g.optBoolean("ok", false)) {
-                                val arr = g.optJSONArray("gift_cards") ?: JSONArray()
-                                buildList(arr.length()) {
-                                    for (i in 0 until arr.length()) {
-                                        val o = arr.getJSONObject(i)
-                                        if (gutterGiftPurchased(o)) add(o)
-                                    }
-                                }
-                            } else giftCards
-                    } catch (_: Exception) {
-                    } finally {
-                        loading = false
-                    }
-                }
-            },
-        ) {
-            Text(t("eaz.sidebar.menu_reload", "Reload"))
-        }
+@Composable
+private fun SidebarGiftBuyNowButton(t: (String, String) -> String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111827), contentColor = Color.White),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(
+            t("eaz.sidebar.gift_card_buy_now", "Buy now"),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

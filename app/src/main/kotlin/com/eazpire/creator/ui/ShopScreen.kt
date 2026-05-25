@@ -73,6 +73,7 @@ import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
 import com.eazpire.creator.ui.header.ShopMenuBar
 import com.eazpire.creator.ui.vouchers.VoucherModal
+import com.eazpire.creator.ui.vouchers.VoucherModalTab
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -285,6 +286,7 @@ fun ShopScreen(
     var overlayComposeStartKey by remember { mutableIntStateOf(0) }
     var termsModalVisible by remember { mutableStateOf(false) }
     var voucherModalVisible by remember { mutableStateOf(false) }
+    var voucherModalInitialTab by remember { mutableStateOf<VoucherModalTab?>(null) }
 
     val jwtForApi = tokenStore.getJwt()
     val ownerId = tokenStore.getOwnerId().orEmpty()
@@ -971,14 +973,21 @@ fun ShopScreen(
             menuDrawerVisible = false
             accountModalVisible = true
         },
-        onVouchersClick = { voucherModalVisible = true }
+        onVouchersClick = { tab ->
+            voucherModalInitialTab = tab
+            voucherModalVisible = true
+        }
     )
 
     VoucherModal(
         visible = voucherModalVisible,
-        onDismiss = { voucherModalVisible = false },
+        onDismiss = {
+            voucherModalVisible = false
+            voucherModalInitialTab = null
+        },
         tokenStore = tokenStore,
-        translationStore = translationStore
+        translationStore = translationStore,
+        initialTab = voucherModalInitialTab,
     )
 
     if (termsModalVisible) {

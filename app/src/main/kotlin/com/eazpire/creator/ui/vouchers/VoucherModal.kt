@@ -63,6 +63,12 @@ import org.json.JSONObject
 import java.util.Currency
 import java.util.Locale
 
+enum class VoucherModalTab {
+    STORE_CREDIT,
+    GIFT_CARDS,
+    PROMO_CODES,
+}
+
 private enum class GiftCardSubTab {
     PURCHASED,
     REWARDS,
@@ -81,7 +87,8 @@ fun VoucherModal(
     visible: Boolean,
     onDismiss: () -> Unit,
     tokenStore: SecureTokenStore,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    initialTab: VoucherModalTab? = null,
 ) {
     val t = remember(translationStore) { { k: String, d: String -> translationStore.t(k, d) } }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
@@ -104,6 +111,16 @@ fun VoucherModal(
     var mainTab by remember { mutableStateOf(MainTab.STORE_CREDIT) }
     var giftSubTab by remember { mutableStateOf(GiftCardSubTab.PURCHASED) }
     var promoSubCreated by remember { mutableStateOf(true) }
+
+    LaunchedEffect(visible, initialTab) {
+        if (visible && initialTab != null) {
+            mainTab = when (initialTab) {
+                VoucherModalTab.STORE_CREDIT -> MainTab.STORE_CREDIT
+                VoucherModalTab.GIFT_CARDS -> MainTab.GIFT_CARDS
+                VoucherModalTab.PROMO_CODES -> MainTab.PROMO_CODES
+            }
+        }
+    }
 
     var loading by remember { mutableStateOf(true) }
     var payoutJson by remember { mutableStateOf<JSONObject?>(null) }
