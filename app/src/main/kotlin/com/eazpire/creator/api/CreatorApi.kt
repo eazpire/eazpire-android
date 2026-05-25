@@ -1088,6 +1088,34 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=get-creator-profile */
+    suspend fun getCreatorProfile(
+        creatorName: String? = null,
+        creatorSlug: String? = null,
+        ownerId: String? = null,
+        region: String? = null
+    ): JSONObject {
+        val params = mutableMapOf<String, String>()
+        creatorName?.takeIf { it.isNotBlank() }?.let { params["creator_name"] = it }
+        creatorSlug?.takeIf { it.isNotBlank() }?.let { params["creator_slug"] = it }
+        ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
+        region?.takeIf { it.isNotBlank() }?.let { params["region"] = it }
+        return call("get-creator-profile", params)
+    }
+
+    /** GET ?op=get-shopify-products filtered by creator */
+    suspend fun getCreatorShopProducts(
+        creatorName: String? = null,
+        creatorSlug: String? = null,
+        ownerId: String? = null
+    ): JSONObject {
+        val params = mutableMapOf<String, String>()
+        creatorName?.takeIf { it.isNotBlank() }?.let { params["creator_name"] = it }
+        creatorSlug?.takeIf { it.isNotBlank() }?.let { params["creator_slug"] = it }
+        ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
+        return call("get-shopify-products", params)
+    }
+
     /** GET ?op=get-shopify-products&shop=xxx&owner_id=xxx → { ok, products: [...] } */
     suspend fun getShopifyProducts(shop: String? = null, ownerId: String? = null, region: String? = null): JSONObject {
         val params = mutableMapOf<String, String>()

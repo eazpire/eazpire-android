@@ -242,6 +242,7 @@ fun ShopScreen(
     var shopCreateStudioPhase by remember { mutableStateOf<ShopCreateProductPhase?>(null) }
     var shopCreateCatalogProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
+    var selectedCreatorName by remember { mutableStateOf<String?>(null) }
     var isCreatorMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value) {
@@ -354,6 +355,14 @@ fun ShopScreen(
             else -> uri.path ?: "/"
         }
         when {
+            path.startsWith("/creator/") -> {
+                val slug = path.removePrefix("/creator/").trimEnd('/').substringBefore("?")
+                if (slug.isNotBlank()) {
+                    selectedCreatorName = slug
+                    selectedProductHandle = null
+                    selectedCollection = null
+                }
+            }
             path.startsWith("/products/") -> {
                 val handle = path.removePrefix("/products/").trimEnd('/').substringBefore("?")
                 if (handle.isNotBlank()) selectedProductHandle = handle
@@ -592,12 +601,26 @@ fun ShopScreen(
                         shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(p)
                     }
                 )
+                selectedCreatorName != null -> CreatorProfileScreen(
+                    creatorName = selectedCreatorName!!,
+                    api = creatorPollApi,
+                    onBack = { selectedCreatorName = null },
+                    onProductClick = { handle ->
+                        selectedCreatorName = null
+                        selectedProductHandle = handle
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
                 selectedProductHandle != null -> ProductDetailScreen(
                     productHandle = selectedProductHandle!!,
                     onBack = { selectedProductHandle = null },
                     tokenStore = tokenStore,
                     onTermsClick = { termsModalVisible = true },
-                    onNavigateToProduct = { selectedProductHandle = it }
+                    onNavigateToProduct = { selectedProductHandle = it },
+                    onNavigateToCreator = { name ->
+                        selectedProductHandle = null
+                        selectedCreatorName = name
+                    }
                 )
                 shopSearchQuery != null -> ShopSearchScreen(
                     searchQuery = shopSearchQuery!!,

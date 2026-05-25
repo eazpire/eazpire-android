@@ -36,7 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -71,7 +71,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
@@ -91,13 +93,77 @@ data class CatalogProduct(
     val providerKey: String? = null
 )
 
-private data class CatalogFacetSelection(
-    val groups: Set<String> = emptySet(),
-    val audiences: Set<String> = emptySet(),
-    val designTypes: Set<String> = emptySet(),
-    val categoryLeaves: Set<String> = emptySet(),
-    val production: Set<String> = emptySet()
+private data class CatalogFacetTriSelection(
+    val categoryLeaves: Map<String, FacetTriState> = emptyMap(),
+    val audiences: Map<String, FacetTriState> = emptyMap(),
+    val designTypes: Map<String, FacetTriState> = emptyMap(),
+    val production: Map<String, FacetTriState> = emptyMap(),
+    val providers: Map<String, FacetTriState> = emptyMap()
 )
+
+private fun triIncludes(states: Map<String, FacetTriState>): List<String> =
+    states.filterValues { it == 1 }.keys.toList()
+
+private fun triExcludes(states: Map<String, FacetTriState>): List<String> =
+    states.filterValues { it == -1 }.keys.toList()
+
+private fun matchesFacetGroup(
+    includes: List<String>,
+    excludes: List<String>,
+    matches: (String) -> Boolean
+): Boolean {
+    for (ex in excludes) if (matches(ex)) return false
+    if (includes.isNotEmpty()) return includes.any(matches)
+    return true
+}
+
+private fun filterCatalogProductsTri(
+    products: List<CatalogProduct>,
+    sel: CatalogFacetTriSelection
+): List<CatalogProduct> {
+    return products.filter { p ->
+        val leaf = (p.categoryLeaf ?: p.categoryKey)?.lowercase()?.trim().orEmpty()
+        if (!matchesFacetGroup(
+                triIncludes(sel.categoryLeaves),
+                triExcludes(sel.categoryLeaves)
+            ) { v -> leaf.isNotEmpty() && leaf == v }
+        ) return@filter false
+
+        if (!matchesFacetGroup(
+                triIncludes(sel.audiences),
+                triExcludes(sel.audiences)
+            ) { v -> audienceMatchesOne(p.audience, v) }
+        ) return@filter false
+
+        if (!matchesFacetGroup(
+                triIncludes(sel.designTypes),
+                triExcludes(sel.designTypes)
+            ) { v -> designTypeMatches(p.visibleDesignTypes, setOf(v)) }
+        ) return@filter false
+
+        if (!matchesFacetGroup(
+                triIncludes(sel.production),
+                triExcludes(sel.production)
+            ) { v -> p.productionType.lowercase() == v.lowercase() }
+        ) return@filter false
+
+        val pk = p.providerKey?.lowercase()?.trim().orEmpty()
+        if (!matchesFacetGroup(
+                triIncludes(sel.providers),
+                triExcludes(sel.providers)
+            ) { v -> pk.isNotEmpty() && pk == v.lowercase() }
+        ) return@filter false
+
+        true
+    }
+}
+
+private fun audienceMatchesOne(audience: List<String>, filterVal: String): Boolean {
+    val f = filterVal.trim().lowercase()
+    if (f.isEmpty()) return true
+    if (audience.any { it.equals("unisex", ignoreCase = true) }) return true
+    return audience.any { it.equals(f, ignoreCase = true) }
+}
 
 private val CATALOG_LEAVES_PER_GROUP = mapOf(
     "clothing" to setOf("t-shirts", "hoodies", "sweatshirts", "tanks"),
@@ -106,21 +172,12 @@ private val CATALOG_LEAVES_PER_GROUP = mapOf(
     "other" to setOf("other")
 )
 
-private fun catalogProductGroup(p: CatalogProduct): String {
-    val leaf = (p.categoryLeaf ?: p.categoryKey)?.lowercase()?.trim().orEmpty()
-    if (leaf.isEmpty()) return "other"
-    CATALOG_LEAVES_PER_GROUP.forEach { (group, leaves) ->
-        if (leaf in leaves) return group
-    }
-    return "other"
-}
-
-private fun audienceMatchesAny(audience: List<String>, selected: Set<String>): Boolean {
-    if (selected.isEmpty()) return true
-    if (audience.isEmpty()) return true
-    if (audience.any { it.equals("unisex", ignoreCase = true) }) return true
-    return selected.any { f -> audience.any { it.equals(f, ignoreCase = true) } }
-}
+private val CATALOG_GROUP_OPTIONS = listOf(
+    "clothing" to "group_clothing",
+    "accessories" to "group_accessories",
+    "home_living" to "group_home_living",
+    "other" to "group_other"
+)
 
 private fun designTypeMatches(types: List<String>, selected: Set<String>): Boolean {
     if (selected.isEmpty()) return true
@@ -128,21 +185,42 @@ private fun designTypeMatches(types: List<String>, selected: Set<String>): Boole
     return selected.any { f -> types.any { it.equals(f, ignoreCase = true) } }
 }
 
-private fun filterCatalogProducts(
-    products: List<CatalogProduct>,
-    sel: CatalogFacetSelection
-): List<CatalogProduct> {
-    return products.filter { p ->
-        if (sel.groups.isNotEmpty() && catalogProductGroup(p) !in sel.groups) return@filter false
-        if (sel.categoryLeaves.isNotEmpty()) {
-            val lk = (p.categoryLeaf ?: p.categoryKey)?.lowercase()?.trim().orEmpty()
-            if (lk.isNotEmpty() && lk !in sel.categoryLeaves) return@filter false
+private fun leafLabelFor(products: List<CatalogProduct>, leaf: String): String {
+    products.firstOrNull {
+        (it.categoryLeaf ?: it.categoryKey)?.equals(leaf, ignoreCase = true) == true
+    }?.title?.let { return leaf.replace('-', ' ').replaceFirstChar { c -> c.uppercase() } }
+    return leaf.replace('-', ' ').replaceFirstChar { c -> c.uppercase() }
+}
+
+private fun facetCounts(products: List<CatalogProduct>): Map<String, Map<String, Int>> {
+    val leaves = mutableMapOf<String, Int>()
+    val audiences = mutableMapOf<String, Int>()
+    val designTypes = mutableMapOf<String, Int>()
+    val production = mutableMapOf<String, Int>()
+    val providers = mutableMapOf<String, Int>()
+    products.forEach { p ->
+        val leaf = (p.categoryLeaf ?: p.categoryKey)?.lowercase()?.trim().orEmpty()
+        if (leaf.isNotEmpty()) leaves[leaf] = (leaves[leaf] ?: 0) + 1
+        p.audience.forEach { a ->
+            val k = a.lowercase().trim()
+            if (k.isNotEmpty()) audiences[k] = (audiences[k] ?: 0) + 1
         }
-        if (sel.production.isNotEmpty() && p.productionType.lowercase() !in sel.production) return@filter false
-        if (!audienceMatchesAny(p.audience, sel.audiences)) return@filter false
-        if (!designTypeMatches(p.visibleDesignTypes, sel.designTypes)) return@filter false
-        true
+        p.visibleDesignTypes.forEach { dt ->
+            val k = dt.lowercase().trim()
+            if (k.isNotEmpty()) designTypes[k] = (designTypes[k] ?: 0) + 1
+        }
+        val pt = p.productionType.lowercase().trim()
+        if (pt.isNotEmpty()) production[pt] = (production[pt] ?: 0) + 1
+        val pk = p.providerKey?.lowercase()?.trim().orEmpty()
+        if (pk.isNotEmpty()) providers[pk] = (providers[pk] ?: 0) + 1
     }
+    return mapOf(
+        "category_leaf" to leaves,
+        "audience" to audiences,
+        "design_type" to designTypes,
+        "production" to production,
+        "provider" to providers
+    )
 }
 
 private fun parseJsonStringList(arr: JSONArray?): List<String> {
@@ -471,11 +549,11 @@ private fun ShopCreateCatalogGrid(
     onProductClick: (CatalogProduct) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var facetSel by remember { mutableStateOf(CatalogFacetSelection()) }
+    var facetSel by remember { mutableStateOf(CatalogFacetTriSelection()) }
     var filterDrawerVisible by remember { mutableStateOf(false) }
     var sortBy by remember { mutableStateOf("manual") }
     var sortSheetVisible by remember { mutableStateOf(false) }
-    val filtered = remember(products, facetSel) { filterCatalogProducts(products, facetSel) }
+    val filtered = remember(products, facetSel) { filterCatalogProductsTri(products, facetSel) }
     val sorted = remember(filtered, sortBy) { sortCatalogProducts(filtered, sortBy) }
     val currentSortLabel = SHOP_CREATE_SORT_OPTIONS.find { it.value == sortBy }?.label?.let {
         t("collection.sort_$sortBy", it)
@@ -527,6 +605,7 @@ private fun ShopCreateCatalogGrid(
 
     if (filterDrawerVisible) {
         ShopCreateFilterDrawer(
+            products = products,
             facetSel = facetSel,
             onFacetChange = { facetSel = it },
             t = t,
@@ -547,14 +626,26 @@ private fun ShopCreateCatalogGrid(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ShopCreateFilterDrawer(
-    facetSel: CatalogFacetSelection,
-    onFacetChange: (CatalogFacetSelection) -> Unit,
+    products: List<CatalogProduct>,
+    facetSel: CatalogFacetTriSelection,
+    onFacetChange: (CatalogFacetTriSelection) -> Unit,
     t: (String, String) -> String,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val counts = remember(products) { facetCounts(products) }
+
+    fun dismissAnimated() {
+        scope.launch {
+            sheetState.hide()
+        }.invokeOnCompletion {
+            if (!sheetState.isVisible) onDismiss()
+        }
+    }
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { dismissAnimated() },
         sheetState = sheetState
     ) {
         Column(
@@ -563,31 +654,19 @@ private fun ShopCreateFilterDrawer(
                 .fillMaxHeight(0.9f)
                 .heightIn(min = 450.dp)
         ) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(vertical = 14.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                IconButton(onClick = { dismissAnimated() }) {
                     Icon(
                         Icons.Default.FilterList,
-                        contentDescription = null,
+                        contentDescription = t("collection.filter", "Filters"),
                         tint = EazColors.Orange,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
-                    Text(
-                        t("collection.filter", "Filters"),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = EazColors.TextPrimary
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = t("creator.common.close", "Close"))
                 }
             }
             Column(
@@ -596,7 +675,37 @@ private fun ShopCreateFilterDrawer(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
             ) {
-                CatalogFacetCheckboxGroup(
+                Text(
+                    t("creator.shop_create_product.catalog_filter_category", "Category"),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                CATALOG_GROUP_OPTIONS.forEach { (groupKey, labelKey) ->
+                    val leaves = CATALOG_LEAVES_PER_GROUP[groupKey].orEmpty()
+                    val groupBody = leaves.mapNotNull { leaf ->
+                        val n = counts["category_leaf"]?.get(leaf) ?: 0
+                        if (n <= 0) return@mapNotNull null
+                        leaf to n
+                    }
+                    if (groupBody.isEmpty()) return@forEach
+                    Text(
+                        t("creator.shop_create_product.$labelKey", groupKey),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = EazColors.TextSecondary,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                    )
+                    groupBody.forEach { (leaf, n) ->
+                        FacetTriSwitchRow(
+                            label = leafLabelFor(products, leaf),
+                            count = n,
+                            state = facetSel.categoryLeaves[leaf] ?: 0,
+                            onStateChange = { st ->
+                                onFacetChange(facetSel.copy(categoryLeaves = facetSel.categoryLeaves + (leaf to st)))
+                            }
+                        )
+                    }
+                }
+                CatalogTriFacetGroup(
                     title = t("creator.shop_create_product.catalog_filter_audience", "Audience"),
                     options = listOf(
                         "women" to t("creator.shop_create_product.audience_women", "Women"),
@@ -604,33 +713,11 @@ private fun ShopCreateFilterDrawer(
                         "kids" to t("creator.shop_create_product.audience_kids", "Kids"),
                         "toddler" to t("creator.shop_create_product.audience_toddler", "Toddler")
                     ),
-                    selected = facetSel.audiences,
-                    onToggle = { v, on ->
-                        onFacetChange(
-                            facetSel.copy(
-                                audiences = if (on) facetSel.audiences + v else facetSel.audiences - v
-                            )
-                        )
-                    }
+                    counts = counts["audience"].orEmpty(),
+                    states = facetSel.audiences,
+                    onStateChange = { v, st -> onFacetChange(facetSel.copy(audiences = facetSel.audiences + (v to st))) }
                 )
-                CatalogFacetCheckboxGroup(
-                    title = t("creator.shop_create_product.group_clothing", "Category"),
-                    options = listOf(
-                        "clothing" to t("creator.shop_create_product.group_clothing", "Clothing"),
-                        "accessories" to t("creator.shop_create_product.group_accessories", "Accessories"),
-                        "home_living" to t("creator.shop_create_product.group_home_living", "Home & Living"),
-                        "other" to t("creator.shop_create_product.group_other", "Other")
-                    ),
-                    selected = facetSel.groups,
-                    onToggle = { v, on ->
-                        onFacetChange(
-                            facetSel.copy(
-                                groups = if (on) facetSel.groups + v else facetSel.groups - v
-                            )
-                        )
-                    }
-                )
-                CatalogFacetCheckboxGroup(
+                CatalogTriFacetGroup(
                     title = t("creator.shop_create_product.catalog_filter_design_type", "Design type"),
                     options = listOf(
                         "classic" to t("creator.shop_create_product.dt_classic", "Classic"),
@@ -639,31 +726,31 @@ private fun ShopCreateFilterDrawer(
                         "full-coverage" to t("creator.shop_create_product.dt_full_coverage", "Full-Coverage"),
                         "panorama" to t("creator.shop_create_product.dt_panorama", "Panorama")
                     ),
-                    selected = facetSel.designTypes,
-                    onToggle = { v, on ->
-                        onFacetChange(
-                            facetSel.copy(
-                                designTypes = if (on) facetSel.designTypes + v else facetSel.designTypes - v
-                            )
-                        )
-                    }
+                    counts = counts["design_type"].orEmpty(),
+                    states = facetSel.designTypes,
+                    onStateChange = { v, st -> onFacetChange(facetSel.copy(designTypes = facetSel.designTypes + (v to st))) }
                 )
-                CatalogFacetCheckboxGroup(
+                CatalogTriFacetGroup(
                     title = t("creator.shop_create_product.catalog_filter_production", "Production"),
                     options = listOf(
                         "print" to t("creator.shop_create_product.production_print", "Print"),
                         "embroidery" to t("creator.shop_create_product.production_embroidery", "Embroidery"),
                         "3d_print" to t("creator.shop_create_product.production_3d", "3D print")
                     ),
-                    selected = facetSel.production,
-                    onToggle = { v, on ->
-                        onFacetChange(
-                            facetSel.copy(
-                                production = if (on) facetSel.production + v else facetSel.production - v
-                            )
-                        )
-                    }
+                    counts = counts["production"].orEmpty(),
+                    states = facetSel.production,
+                    onStateChange = { v, st -> onFacetChange(facetSel.copy(production = facetSel.production + (v to st))) }
                 )
+                val providerCounts = counts["provider"].orEmpty()
+                if (providerCounts.isNotEmpty()) {
+                    CatalogTriFacetGroup(
+                        title = t("creator.shop_create_product.catalog_filter_provider", "Provider"),
+                        options = providerCounts.keys.sorted().map { it to it.replaceFirstChar { c -> c.uppercase() } },
+                        counts = providerCounts,
+                        states = facetSel.providers,
+                        onStateChange = { v, st -> onFacetChange(facetSel.copy(providers = facetSel.providers + (v to st))) }
+                    )
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -671,26 +758,24 @@ private fun ShopCreateFilterDrawer(
 }
 
 @Composable
-private fun CatalogFacetCheckboxGroup(
+private fun CatalogTriFacetGroup(
     title: String,
     options: List<Pair<String, String>>,
-    selected: Set<String>,
-    onToggle: (String, Boolean) -> Unit
+    counts: Map<String, Int>,
+    states: Map<String, FacetTriState>,
+    onStateChange: (String, FacetTriState) -> Unit
 ) {
-    Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 6.dp))
-    options.forEach { (value, label) ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onToggle(value, value !in selected) }
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(checked = value in selected, onCheckedChange = { onToggle(value, it) })
-            Text(label, modifier = Modifier.padding(start = 4.dp))
-        }
+    val visible = options.filter { (value, _) -> (counts[value] ?: 0) > 0 }
+    if (visible.isEmpty()) return
+    Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+    visible.forEach { (value, label) ->
+        FacetTriSwitchRow(
+            label = label,
+            count = counts[value],
+            state = states[value] ?: 0,
+            onStateChange = { onStateChange(value, it) }
+        )
     }
-    Spacer(Modifier.height(12.dp))
 }
 
 @Composable

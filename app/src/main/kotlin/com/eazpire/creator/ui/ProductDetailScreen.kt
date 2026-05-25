@@ -341,6 +341,7 @@ fun ProductDetailScreen(
     showCloseButton: Boolean = false,
     onTermsClick: (() -> Unit)? = null,
     onNavigateToProduct: ((String) -> Unit)? = null,
+    onNavigateToCreator: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
@@ -879,16 +880,49 @@ fun ProductDetailScreen(
                 }
             }
             val creatorLabel = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "Creator" }
+            var creatorPreview by remember(p.creatorDisplay, p.vendor) { mutableStateOf<CreatorProfilePreview?>(null) }
+            LaunchedEffect(creatorLabel) {
+                if (creatorLabel.isBlank() || creatorLabel == "Creator") {
+                    creatorPreview = null
+                    return@LaunchedEffect
+                }
+                try {
+                    val data = withContext(Dispatchers.IO) {
+                        creatorApi.getCreatorProfile(creatorName = creatorLabel, creatorSlug = creatorLabel)
+                    }
+                    if (data.optBoolean("ok", false)) {
+                        val ratingObj = data.optJSONObject("rating")
+                        val avatarObj = data.optJSONObject("avatar")
+                        creatorPreview = CreatorProfilePreview(
+                            name = data.optString("creator_name", creatorLabel).ifBlank { creatorLabel },
+                            avatarUrl = avatarObj?.optString("image_url", "")?.trim()?.ifBlank { null },
+                            ratingAvg = ratingObj?.optDouble("avg")?.takeIf { it > 0.0 }
+                                ?: ratingObj?.optDouble("rating")?.takeIf { it > 0.0 },
+                            ratingCount = ratingObj?.optInt("count")?.takeIf { it > 0 }
+                                ?: ratingObj?.optInt("rating_count")?.takeIf { it > 0 }
+                        )
+                    }
+                } catch (_: Exception) {
+                    creatorPreview = null
+                }
+            }
+            val openCreatorProfile: () -> Unit = {
+                if (onNavigateToCreator != null) {
+                    onNavigateToCreator.invoke(creatorPreview?.name ?: creatorLabel)
+                } else {
+                    try {
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://www.eazpire.com/creator/${creatorLabel.lowercase().replace(' ', '-')}")
+                            )
+                        )
+                    } catch (_: Exception) {
+                    }
+                }
+            }
             val showCreatorSection =
                 carSameType.isNotEmpty() || carSameDesign.isNotEmpty() || p.creatorDisplay.isNotBlank() || p.vendor.isNotBlank()
-            val creatorProfileUrl = remember(creatorLabel) {
-                val enc = try {
-                    URLEncoder.encode(creatorLabel, "UTF-8")
-                } catch (_: Exception) {
-                    creatorLabel
-                }
-                "https://www.eazpire.com/collections/all?filter.v.m.custom.creator=$enc"
-            }
 
             if (showCreatorSection) {
             Column(
@@ -911,38 +945,30 @@ fun ProductDetailScreen(
                             modifier = Modifier.widthIn(max = 220.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(CircleShape)
-                                    .background(EazColors.Orange),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    creatorLabel.take(1).uppercase(),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                            CreatorAvatarCircle(
+                                name = creatorLabel,
+                                avatarUrl = creatorPreview?.avatarUrl,
+                                size = 72.dp,
+                                onClick = openCreatorProfile
+                            )
                             Text(
                                 text = creatorLabel,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = EazColors.TextPrimary
+                                color = EazColors.TextPrimary,
+                                modifier = Modifier.clickable(onClick = openCreatorProfile)
                             )
-                            TextButton(
-                                onClick = {
-                                    try {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(creatorProfileUrl)))
-                                    } catch (_: Exception) {
-                                    }
-                                }
-                            ) {
+                            TextButton(onClick = openCreatorProfile) {
                                 Text(
                                     t("eaz.pdp.creator_view_profile", "View profile"),
                                     color = EazColors.Orange,
                                     fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
+                                CreatorRatingRow(
+                                    avg = creatorPreview!!.ratingAvg!!,
+                                    count = creatorPreview!!.ratingCount!!
                                 )
                             }
                         }
@@ -972,39 +998,31 @@ fun ProductDetailScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(CircleShape)
-                                    .background(EazColors.Orange),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    creatorLabel.take(1).uppercase(),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                            CreatorAvatarCircle(
+                                name = creatorLabel,
+                                avatarUrl = creatorPreview?.avatarUrl,
+                                size = 72.dp,
+                                onClick = openCreatorProfile
+                            )
                             Text(
                                 text = creatorLabel,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = EazColors.TextPrimary
+                                color = EazColors.TextPrimary,
+                                modifier = Modifier.clickable(onClick = openCreatorProfile)
                             )
                         }
-                        TextButton(
-                            onClick = {
-                                try {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(creatorProfileUrl)))
-                                } catch (_: Exception) {
-                                }
-                            }
-                        ) {
+                        TextButton(onClick = openCreatorProfile) {
                             Text(
                                 t("eaz.pdp.creator_view_profile", "View profile"),
                                 color = EazColors.Orange,
                                 fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
+                            CreatorRatingRow(
+                                avg = creatorPreview!!.ratingAvg!!,
+                                count = creatorPreview!!.ratingCount!!
                             )
                         }
                     }
