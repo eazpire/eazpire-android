@@ -3,7 +3,6 @@ package com.eazpire.creator.ui
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -50,6 +49,7 @@ import com.eazpire.creator.auth.PkceUtils
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopifyAuthService
 import com.eazpire.creator.cart.StorefrontCartStore
+import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.notifications.NotificationPreferencesRepository
 import com.eazpire.creator.push.PushTokenRegistrar
 import com.eazpire.creator.wear.sync.WearAuthSync
@@ -92,7 +92,7 @@ fun AuthScreen(
     var lastAuthUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(loginMethod) {
-        Log.d("AuthDebug", "[AUTHSCREEN] loginMethod=$loginMethod uses unified WebView OAuth flow")
+        AuthDebugLog.d("[AUTHSCREEN] loginMethod=$loginMethod uses unified WebView OAuth flow")
     }
 
     fun isShopCallbackUri(uri: Uri?): Boolean {
@@ -110,7 +110,7 @@ fun AuthScreen(
 
     fun handleCallback(url: String) {
         if (callbackHandled) return
-        Log.d("AuthDebug", "[CALLBACK] Received callback url=$url")
+        AuthDebugLog.d("[CALLBACK] Received callback url=$url")
         val uri = Uri.parse(url)
         val code = uri.getQueryParameter("code")
         val state = uri.getQueryParameter("state")
@@ -150,7 +150,7 @@ fun AuthScreen(
                     clearRefreshTokenIfNull = false,
                     sync = true
                 )
-                Log.d("AuthDebug", "[CALLBACK] Login success; saved jwt ownerId=${result.ownerId}")
+                AuthDebugLog.d("[CALLBACK] Login success; saved jwt ownerId=${result.ownerId}")
                 withContext(Dispatchers.IO) {
                     NotificationPreferencesRepository(context).syncFromServer(
                         CreatorApi(jwt = tokenStore.getJwt())
@@ -171,11 +171,11 @@ fun AuthScreen(
             } catch (e: AuthException) {
                 callbackHandled = false
                 error = e.message
-                Log.e("AuthDebug", "[CALLBACK] AuthException: ${e.message}", e)
+                AuthDebugLog.e("[CALLBACK] AuthException: ${e.message}", e)
             } catch (e: Exception) {
                 callbackHandled = false
                 error = e.message ?: "Token exchange failed"
-                Log.e("AuthDebug", "[CALLBACK] Exception: ${e.message}", e)
+                AuthDebugLog.e("[CALLBACK] Exception: ${e.message}", e)
             } finally {
                 isLoading = false
             }
@@ -189,17 +189,11 @@ fun AuthScreen(
             callbackHandled = false
             loginAttemptId += 1
             val attempt = loginAttemptId
-            Log.d(
-                "AuthDebug",
-                "[LOGIN#$attempt] START method=$loginMethod unifiedWebView=true"
-            )
+            AuthDebugLog.d("[LOGIN#$attempt] START method=$loginMethod unifiedWebView=true")
             try {
                 clearCookiesForLogin()
                 val endpoints = authService.discoverEndpoints()
-                Log.d(
-                    "AuthDebug",
-                    "[LOGIN#$attempt] DISCOVERY authorizationEndpoint=${endpoints.authorizationEndpoint} tokenEndpoint=${endpoints.tokenEndpoint}"
-                )
+                AuthDebugLog.d("[LOGIN#$attempt] DISCOVERY authorizationEndpoint=${endpoints.authorizationEndpoint} tokenEndpoint=${endpoints.tokenEndpoint}")
                 val verifier = PkceUtils.generateCodeVerifier()
                 val state = PkceUtils.generateState()
                 codeVerifier = verifier
@@ -211,13 +205,13 @@ fun AuthScreen(
                     state
                 )
                 lastAuthUrl = url
-                Log.d("AuthDebug", "[LOGIN#$attempt] AUTH_URL $url")
+                AuthDebugLog.d("[LOGIN#$attempt] AUTH_URL $url")
                 oauthWebViewUrl = url
                 webViewProgress = 0
                 oauthWebViewLoadDone = false
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
-                Log.e("AuthDebug", "[LOGIN#$attempt] Failed: ${e.message}", e)
+                AuthDebugLog.e("[LOGIN#$attempt] Failed: ${e.message}", e)
             } finally {
                 isLoading = false
             }
@@ -275,15 +269,9 @@ fun AuthScreen(
                                 }
                                 webViewClient = object : WebViewClient() {
                                     private fun handleNavigation(view: WebView?, u: Uri): Boolean {
-                                        Log.d(
-                                            "AuthDebug",
-                                            "[WEBVIEW NAVIGATION] attempt=$loginAttemptId url=$u host=${u.host} scheme=${u.scheme}"
-                                        )
+                                        AuthDebugLog.d("[WEBVIEW NAVIGATION] attempt=$loginAttemptId url=$u host=${u.host} scheme=${u.scheme}")
                                         if (isShopCallbackUri(u)) {
-                                            Log.d(
-                                                "AuthDebug",
-                                                "[WEBVIEW CALLBACK DETECTED handleNavigation] attempt=$loginAttemptId url=$u"
-                                            )
+                                            AuthDebugLog.d("[WEBVIEW CALLBACK DETECTED handleNavigation] attempt=$loginAttemptId url=$u")
                                             view?.stopLoading()
                                             handleCallback(u.toString())
                                             return true
@@ -296,20 +284,14 @@ fun AuthScreen(
                                         request: WebResourceRequest?
                                     ): Boolean {
                                         val u = request?.url ?: return false
-                                        Log.d(
-                                            "AuthDebug",
-                                            "[WEBVIEW SHOULD_OVERRIDE] attempt=$loginAttemptId url=$u isForMainFrame=${request.isForMainFrame} method=${request.method}"
-                                        )
+                                        AuthDebugLog.d("[WEBVIEW SHOULD_OVERRIDE] attempt=$loginAttemptId url=$u isForMainFrame=${request.isForMainFrame} method=${request.method}")
                                         return handleNavigation(view, u)
                                     }
 
                                     @Deprecated("Deprecated in Java")
                                     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                                         val u = url?.let { Uri.parse(it) } ?: return false
-                                        Log.d(
-                                            "AuthDebug",
-                                            "[WEBVIEW SHOULD_OVERRIDE_DEPRECATED] attempt=$loginAttemptId url=$u"
-                                        )
+                                        AuthDebugLog.d("[WEBVIEW SHOULD_OVERRIDE_DEPRECATED] attempt=$loginAttemptId url=$u")
                                         return handleNavigation(view, u)
                                     }
 
@@ -318,37 +300,24 @@ fun AuthScreen(
                                         url: String?,
                                         favicon: Bitmap?
                                     ) {
-                                        Log.d(
-                                            "AuthDebug",
-                                            "[WEBVIEW PAGE STARTED] attempt=$loginAttemptId url=$url"
-                                        )
+                                        AuthDebugLog.d("[WEBVIEW PAGE STARTED] attempt=$loginAttemptId url=$url")
                                         url ?: return
                                         try {
                                             val u = Uri.parse(url)
                                             if (isShopCallbackUri(u)) {
-                                                Log.d(
-                                                    "AuthDebug",
-                                                    "[WEBVIEW CALLBACK DETECTED onPageStarted] attempt=$loginAttemptId url=$url"
-                                                )
+                                                AuthDebugLog.d("[WEBVIEW CALLBACK DETECTED onPageStarted] attempt=$loginAttemptId url=$url")
                                                 view?.stopLoading()
                                                 handleCallback(url)
                                                 return
                                             }
                                         } catch (e: Exception) {
-                                            Log.w(
-                                                "AuthDebug",
-                                                "[WEBVIEW PAGE STARTED] Failed to parse url=$url",
-                                                e
-                                            )
+                                            AuthDebugLog.w("[WEBVIEW PAGE STARTED] Failed to parse url=$url", e)
                                         }
                                     }
 
                                     override fun onPageFinished(view: WebView?, url: String?) {
                                         super.onPageFinished(view, url)
-                                        Log.d(
-                                            "AuthDebug",
-                                            "[WEBVIEW PAGE FINISHED] attempt=$loginAttemptId url=$url title=${view?.title} progress=${view?.progress}"
-                                        )
+                                        AuthDebugLog.d("[WEBVIEW PAGE FINISHED] attempt=$loginAttemptId url=$url title=${view?.title} progress=${view?.progress}")
                                         try {
                                             view?.evaluateJavascript(
                                                 """
@@ -364,17 +333,10 @@ fun AuthScreen(
                                                 })();
                                                 """.trimIndent()
                                             ) { result ->
-                                                Log.d(
-                                                    "AuthDebug",
-                                                    "[WEBVIEW DOM SNAPSHOT] attempt=$loginAttemptId url=$url result=$result"
-                                                )
+                                                AuthDebugLog.d("[WEBVIEW DOM SNAPSHOT] attempt=$loginAttemptId url=$url result=$result")
                                             }
                                         } catch (e: Exception) {
-                                            Log.w(
-                                                "AuthDebug",
-                                                "[WEBVIEW DOM SNAPSHOT] failed attempt=$loginAttemptId url=$url",
-                                                e
-                                            )
+                                            AuthDebugLog.w("[WEBVIEW DOM SNAPSHOT] failed attempt=$loginAttemptId url=$url", e)
                                         }
                                     }
 
@@ -389,10 +351,7 @@ fun AuthScreen(
                                         } else {
                                             null
                                         } ?: "Unknown WebView error"
-                                        Log.e(
-                                            "AuthDebug",
-                                            "[WEBVIEW ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} description=$description"
-                                        )
+                                        AuthDebugLog.e("[WEBVIEW ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} description=$description", )
                                         if (request?.isForMainFrame == true) {
                                             error = "Login-Seite konnte nicht geladen werden: $description"
                                         }
@@ -408,10 +367,7 @@ fun AuthScreen(
                                         val reason = errorResponse?.reasonPhrase ?: "HTTP error"
                                         val mime = errorResponse?.mimeType ?: ""
                                         val encoding = errorResponse?.encoding ?: ""
-                                        Log.e(
-                                            "AuthDebug",
-                                            "[WEBVIEW HTTP ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} status=$status reason=$reason mime=$mime encoding=$encoding"
-                                        )
+                                        AuthDebugLog.e("[WEBVIEW HTTP ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} status=$status reason=$reason mime=$mime encoding=$encoding", )
                                         if (request?.isForMainFrame == true) {
                                             error = "Login-Seite konnte nicht geladen werden: HTTP $status $reason"
                                         }
@@ -422,10 +378,7 @@ fun AuthScreen(
                         update = { wv ->
                             val target = oauthWebViewUrl
                             if (target != null && !oauthWebViewLoadDone && !callbackHandled) {
-                                Log.d(
-                                    "AuthDebug",
-                                    "[WEBVIEW LOAD INITIAL] attempt=$loginAttemptId target=$target"
-                                )
+                                AuthDebugLog.d("[WEBVIEW LOAD INITIAL] attempt=$loginAttemptId target=$target")
                                 wv.loadUrl(target)
                                 oauthWebViewLoadDone = true
                             }
@@ -451,7 +404,7 @@ fun AuthScreen(
                                     Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
                                 )
                             } catch (e: Exception) {
-                                Log.e("AuthDebug", "[OPEN EXTERNAL] failed url=$authUrl", e)
+                                AuthDebugLog.e("[OPEN EXTERNAL] failed url=$authUrl", e)
                             }
                         },
                         modifier = Modifier
@@ -516,7 +469,7 @@ fun AuthScreen(
                                     Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
                                 )
                             } catch (e: Exception) {
-                                Log.e("AuthDebug", "[OPEN EXTERNAL] failed url=$authUrl", e)
+                                AuthDebugLog.e("[OPEN EXTERNAL] failed url=$authUrl", e)
                             }
                         }
                     ) {
