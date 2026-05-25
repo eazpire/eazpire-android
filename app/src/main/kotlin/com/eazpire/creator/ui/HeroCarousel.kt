@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -41,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
@@ -356,15 +358,23 @@ fun HeroCarousel(
     val pairCount = (heroImages.size + 1) / 2
     var currentPairIndex by remember { mutableStateOf(0) }
     val slideProgress = remember { Animatable(1f) }
-    var imageSizeBySlot by remember { mutableStateOf<Map<Int, Pair<Int, Int>>>(emptyMap()) }
+    var imageSizeByHeroId by remember { mutableStateOf<Map<String, Pair<Int, Int>>>(emptyMap()) }
+    var carouselPaused by remember { mutableStateOf(false) }
+    var hotspotLoading by remember { mutableStateOf(false) }
     val isModalOpen = productModalHandleState?.value != null
 
-    LaunchedEffect(heroImages.size, isModalOpen) {
-        if (pairCount < 2 || isModalOpen) return@LaunchedEffect
+    LaunchedEffect(isModalOpen) {
+        if (!isModalOpen && carouselPaused) {
+            carouselPaused = false
+        }
+    }
+
+    LaunchedEffect(heroImages.size, carouselPaused, isModalOpen) {
+        if (pairCount < 2 || carouselPaused || isModalOpen) return@LaunchedEffect
 
         while (true) {
             delay(HERO_PAIR_ADVANCE_MS)
-            if (productModalHandleState?.value != null) return@LaunchedEffect
+            if (carouselPaused || productModalHandleState?.value != null) return@LaunchedEffect
 
             currentPairIndex = (currentPairIndex + 1) % pairCount
             slideProgress.snapTo(0f)
@@ -400,63 +410,77 @@ fun HeroCarousel(
         }
 
     fun handleHotspotClick(hotspot: HeroHotspot) {
+        carouselPaused = true
+        hotspotLoading = true
         Log.d(
             TAG_PRODUCT_MODAL,
             "[3] onHotspotClick: handle=${hotspot.productHandle} gid=${hotspot.productGid} productModalState=${productModalHandleState != null} url=${hotspot.url}"
         )
 
         scope.launch {
-            val handle = withContext(Dispatchers.IO) {
-                productsApi.resolveProductHandle(
-                    handle = hotspot.productHandle ?: productHandleFromUrl(hotspot.url),
-                    gid = hotspot.productGid
-                )
-            }
+            try {
+                val directHandle = hotspot.productHandle?.trim()?.takeIf { it.isNotBlank() }
+                    ?: productHandleFromUrl(hotspot.url)
+                val handle = if (!directHandle.isNullOrBlank()) {
+                    directHandle
+                } else {
+                    withContext(Dispatchers.IO) {
+                        productsApi.resolveProductHandle(
+                            handle = null,
+                            gid = hotspot.productGid
+                        )
+                    }
+                }
 
-            if (!handle.isNullOrBlank()) {
-                val cleanHandle = handle.trim()
+                if (!handle.isNullOrBlank()) {
+                    val cleanHandle = handle.trim()
 
-                Log.d(
-                    TAG_PRODUCT_MODAL,
-                    "[4] Hotspot resolved product handle=$cleanHandle; callback=${onHotspotProductClick != null}; state=${productModalHandleState != null}"
-                )
-
-                onHotspotProductClick?.invoke(cleanHandle)
-
-                if (productModalHandleState != null) {
-                    debugLog(
-                        "HeroCarousel.kt",
-                        "Setting productModalHandleState",
-                        mapOf("handle" to cleanHandle),
-                        "H1"
+                    Log.d(
+                        TAG_PRODUCT_MODAL,
+                        "[4] Hotspot resolved product handle=$cleanHandle; callback=${onHotspotProductClick != null}; state=${productModalHandleState != null}"
                     )
-                    productModalHandleState.value = cleanHandle
+
+                    onHotspotProductClick?.invoke(cleanHandle)
+
+                    if (productModalHandleState != null) {
+                        debugLog(
+                            "HeroCarousel.kt",
+                            "Setting productModalHandleState",
+                            mapOf("handle" to cleanHandle),
+                            "H1"
+                        )
+                        productModalHandleState.value = cleanHandle
+                        return@launch
+                    }
+
+                    if (onHotspotProductClick == null) {
+                        onProductClick?.invoke(cleanHandle)
+                    }
+                    carouselPaused = false
                     return@launch
                 }
 
-                if (onHotspotProductClick == null) {
-                    onProductClick?.invoke(cleanHandle)
-                }
-                return@launch
-            }
+                Log.w(
+                    TAG_PRODUCT_MODAL,
+                    "[3b] Hotspot clicked but no product handle found: url=${hotspot.url}, title=${hotspot.title}, gid=${hotspot.productGid}"
+                )
 
-            Log.w(
-                TAG_PRODUCT_MODAL,
-                "[3b] Hotspot clicked but no product handle found: url=${hotspot.url}, title=${hotspot.title}, gid=${hotspot.productGid}"
-            )
+                if (!hotspot.url.isNullOrBlank() && hotspot.url != "#") {
+                    val fullUrl = if (hotspot.url.startsWith("http")) {
+                        hotspot.url
+                    } else {
+                        "$STORE_BASE_URL${hotspot.url}"
+                    }
 
-            if (!hotspot.url.isNullOrBlank() && hotspot.url != "#") {
-                val fullUrl = if (hotspot.url.startsWith("http")) {
-                    hotspot.url
-                } else {
-                    "$STORE_BASE_URL${hotspot.url}"
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
+                    } catch (e: Exception) {
+                        Log.w(TAG_PRODUCT_MODAL, "[3c] Failed to open hotspot URL: $fullUrl", e)
+                    }
                 }
-
-                try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
-                } catch (e: Exception) {
-                    Log.w(TAG_PRODUCT_MODAL, "[3c] Failed to open hotspot URL: $fullUrl", e)
-                }
+                carouselPaused = false
+            } finally {
+                hotspotLoading = false
             }
         }
     }
@@ -470,6 +494,7 @@ fun HeroCarousel(
             .fillMaxWidth()
             .padding(bottom = 16.dp)
     ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(1.dp)
@@ -489,7 +514,7 @@ fun HeroCarousel(
                     val baseRight = basePairIndex * 2 + 1
                     val baseHero = heroImages[(if (slot == 0) baseLeft else baseRight) % heroImages.size]
                     val baseHotspots = baseHero.hotspots
-                    val baseImageSize = imageSizeBySlot[slot]
+                    val baseImageSize = imageSizeByHeroId[baseHero.id]
                     val baseAlignment = hotspotAlignmentFromCentroid(baseHotspots)
 
                     HeroCell(
@@ -498,7 +523,11 @@ fun HeroCarousel(
                         slotImageSize = baseImageSize,
                         alignment = baseAlignment,
                         onHotspotClick = { handleHotspotClick(it) },
-                        onImageSize = { w, h -> if (w > 0 && h > 0) imageSizeBySlot = imageSizeBySlot + (slot to (w to h)) },
+                        onImageSize = { w, h ->
+                            if (w > 0 && h > 0 && baseHero.id.isNotBlank()) {
+                                imageSizeByHeroId = imageSizeByHeroId + (baseHero.id to (w to h))
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxSize()
                             .zIndex(0f)
@@ -508,20 +537,40 @@ fun HeroCarousel(
                         val overlayRight = currentPairIndex * 2 + 1
                         val overlayHero = heroImages[(if (slot == 0) overlayLeft else overlayRight) % heroImages.size]
                         val overlayHotspots = overlayHero.hotspots
+                        val overlayImageSize = imageSizeByHeroId[overlayHero.id]
                         val overlayAlignment = hotspotAlignmentFromCentroid(overlayHotspots)
                         HeroCell(
                             hero = overlayHero,
                             slotHotspots = overlayHotspots,
-                            slotImageSize = null,
+                            slotImageSize = overlayImageSize,
                             alignment = overlayAlignment,
                             onHotspotClick = { handleHotspotClick(it) },
-                            onImageSize = { _, _ -> },
+                            onImageSize = { w, h ->
+                                if (w > 0 && h > 0 && overlayHero.id.isNotBlank()) {
+                                    imageSizeByHeroId = imageSizeByHeroId + (overlayHero.id to (w to h))
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer { translationY = offsetY }
                                 .zIndex(1f)
                         )
                     }
+                }
+            }
+        }
+            if (hotspotLoading) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(Color.White.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        color = EazColors.Orange,
+                        strokeWidth = 3.dp
+                    )
                 }
             }
         }
@@ -542,7 +591,7 @@ private fun HeroCell(
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(hero.imageUrl)
-                .crossfade(300)
+                .crossfade(150)
                 .build(),
             contentDescription = hero.title ?: "Hero image",
             contentScale = ContentScale.Crop,
@@ -683,7 +732,7 @@ private fun HeroHotspotsOverlay(
     val density = LocalDensity.current
     var clickedHotspot by remember(hotspots) { mutableStateOf<HeroHotspot?>(null) }
     BoxWithConstraints(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize().alpha(if (imageSize != null || hotspots.isEmpty()) 1f else 0f)
     ) {
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
