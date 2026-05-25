@@ -351,7 +351,7 @@ fun AuthScreen(
                                         } else {
                                             null
                                         } ?: "Unknown WebView error"
-                                        AuthDebugLog.e("[WEBVIEW ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} description=$description", )
+                                        AuthDebugLog.e("[WEBVIEW ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} description=$description")
                                         if (request?.isForMainFrame == true) {
                                             error = "Login-Seite konnte nicht geladen werden: $description"
                                         }
@@ -367,7 +367,7 @@ fun AuthScreen(
                                         val reason = errorResponse?.reasonPhrase ?: "HTTP error"
                                         val mime = errorResponse?.mimeType ?: ""
                                         val encoding = errorResponse?.encoding ?: ""
-                                        AuthDebugLog.e("[WEBVIEW HTTP ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} status=$status reason=$reason mime=$mime encoding=$encoding", )
+                                        AuthDebugLog.e("[WEBVIEW HTTP ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} status=$status reason=$reason mime=$mime encoding=$encoding")
                                         if (request?.isForMainFrame == true) {
                                             error = "Login-Seite konnte nicht geladen werden: HTTP $status $reason"
                                         }

@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
+import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.debug.initDebugLog
 import com.eazpire.creator.debug.initLangSwitchDebug
 import com.eazpire.creator.chat.EazySidebarTab
@@ -181,10 +182,7 @@ class MainActivity : ComponentActivity() {
     private fun handleOAuthCallback(intent: Intent?) {
         val data = intent?.data ?: return
         if (data.scheme?.startsWith("shop.") == true && data.host == "callback") {
-            android.util.Log.d(
-                "AuthDebug",
-                "[MAIN CALLBACK] Forwarding OAuth callback to ShopScreen via pendingDeepLink: $data"
-            )
+            AuthDebugLog.d("[MAIN CALLBACK] Forwarding OAuth callback to ShopScreen via pendingDeepLink: $data")
             // Actual handling happens in ShopScreen -> oauthCallbackForAuth -> AuthScreen.
             // Do not exchange tokens here, otherwise state/verifier ownership becomes split.
         }
