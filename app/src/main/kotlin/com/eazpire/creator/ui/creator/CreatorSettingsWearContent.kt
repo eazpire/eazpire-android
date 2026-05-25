@@ -30,11 +30,11 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.wear.WearPairPrefs
 import com.eazpire.creator.wear.sync.WearAuthSync
-import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
 
 private const val WEAR_PLAY_STORE_URL =
     "https://play.google.com/store/apps/details?id=com.eazpire.creator.wear"
@@ -53,17 +53,57 @@ fun CreatorSettingsWearContent(
     var showScanner by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var claiming by remember { mutableStateOf(false) }
-    var connectedNodes by remember { mutableIntStateOf(0) }
+    var loadingStatus by remember { mutableStateOf(false) }
+    var wearConnected by remember { mutableStateOf(false) }
+    var wearDeviceName by remember { mutableStateOf<String?>(null) }
+    var wearConnectedAt by remember { mutableStateOf<Long?>(null) }
     var refreshKey by remember { mutableIntStateOf(0) }
 
-    val wearDeviceName = remember(refreshKey) { WearPairPrefs.getDeviceName(context) }
-    val wearPairedAt = remember(refreshKey) { WearPairPrefs.getPairedAt(context) }
+    fun formatConnectedAt(ts: Long?): String? {
+        if (ts == null || ts <= 0L) return null
+        return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+            .format(Date(ts))
+    }
 
-    LaunchedEffect(refreshKey) {
-        connectedNodes = try {
-            Wearable.getNodeClient(context).connectedNodes.await().size
-        } catch (_: Exception) {
-            0
+    fun loadServerStatus() {
+        val j = jwt?.trim().orEmpty()
+        if (j.isBlank()) {
+            wearConnected = false
+            wearDeviceName = null
+            wearConnectedAt = null
+            return
+        }
+        loadingStatus = true
+        scope.launch {
+            try {
+                val res = withContext(Dispatchers.IO) { WearPairApi(jwt = j).getStatus(j) }
+                if (res.optBoolean("connected", false)) {
+                    wearConnected = true
+                    wearDeviceName = res.optString("device_name", "").trim().ifBlank {
+                        res.optString("device_id", "").trim()
+                    }.ifBlank { null }
+                    val at = res.optLong("connected_at", 0L)
+                    wearConnectedAt = at.takeIf { it > 0L }
+                    wearDeviceName?.let { name ->
+                        WearPairPrefs.save(
+                            context,
+                            res.optString("device_id", "").ifBlank { "watch" },
+                            name,
+                            wearConnectedAt,
+                        )
+                    }
+                } else {
+                    wearConnected = false
+                    wearDeviceName = WearPairPrefs.getDeviceName(context)
+                    wearConnectedAt = WearPairPrefs.getPairedAt(context).takeIf { it > 0L }
+                }
+            } catch (_: Exception) {
+                wearConnected = WearPairPrefs.getDeviceId(context) != null
+                wearDeviceName = WearPairPrefs.getDeviceName(context)
+                wearConnectedAt = WearPairPrefs.getPairedAt(context).takeIf { it > 0L }
+            } finally {
+                loadingStatus = false
+            }
         }
     }
 
@@ -90,8 +130,9 @@ fun CreatorSettingsWearContent(
                 if (res.optBoolean("ok", false)) {
                     val deviceId = res.optString("device_id", "").trim()
                     val deviceName = res.optString("device_name", "").trim()
+                    val connectedAt = res.optLong("connected_at", System.currentTimeMillis())
                     if (deviceId.isNotBlank()) {
-                        WearPairPrefs.save(context, deviceId, deviceName.ifBlank { null })
+                        WearPairPrefs.save(context, deviceId, deviceName.ifBlank { null }, connectedAt)
                     }
                     WearAuthSync.push(context, tokenStore)
                     statusMessage = translationStore.t(
@@ -99,6 +140,7 @@ fun CreatorSettingsWearContent(
                         "Watch connected. Open the Wear app on your watch.",
                     )
                     refreshKey++
+                    loadServerStatus()
                 } else {
                     statusMessage = res.optString("error", "claim_failed")
                 }
@@ -109,6 +151,34 @@ fun CreatorSettingsWearContent(
                 showScanner = false
             }
         }
+    }
+
+    fun disconnectWear() {
+        val j = jwt?.trim().orEmpty()
+        if (j.isBlank()) return
+        scope.launch {
+            claiming = true
+            try {
+                withContext(Dispatchers.IO) { WearPairApi(jwt = j).disconnect(j) }
+                WearAuthSync.clear(context)
+                WearPairPrefs.clear(context)
+                wearConnected = false
+                wearDeviceName = null
+                wearConnectedAt = null
+                statusMessage = translationStore.t(
+                    "creator.settings.wear_disconnected",
+                    "Watch disconnected.",
+                )
+            } catch (e: Exception) {
+                statusMessage = e.message
+            } finally {
+                claiming = false
+            }
+        }
+    }
+
+    LaunchedEffect(refreshKey, loggedIn) {
+        loadServerStatus()
     }
 
     LaunchedEffect(pendingPairToken) {
@@ -173,27 +243,33 @@ fun CreatorSettingsWearContent(
             style = MaterialTheme.typography.bodyMedium,
             color = Color.White,
         )
-        Text(
-            text = if (connectedNodes > 0) {
-                translationStore.t(
-                    "creator.settings.wear_nodes_connected",
-                    "Wear OS link: $connectedNodes device(s) connected",
-                ).replace("$connectedNodes", connectedNodes.toString())
-            } else {
-                translationStore.t(
-                    "creator.settings.wear_nodes_none",
-                    "Wear OS link: no watch connected via Bluetooth",
-                )
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.7f),
-        )
-        if (!wearDeviceName.isNullOrBlank()) {
+        if (loadingStatus) {
+            CircularProgressIndicator(color = EazColors.Orange)
+        } else if (wearConnected && !wearDeviceName.isNullOrBlank()) {
             Text(
                 text = translationStore.t(
-                    "creator.settings.wear_last_paired",
-                    "Last paired watch: {{name}}",
-                ).replace("{{name}}", wearDeviceName),
+                    "creator.settings.wear_connected_watch",
+                    "Connected watch: {{name}}",
+                ).replace("{{name}}", wearDeviceName!!),
+                style = MaterialTheme.typography.bodyMedium,
+                color = EazColors.Orange,
+            )
+            formatConnectedAt(wearConnectedAt)?.let { whenStr ->
+                Text(
+                    text = translationStore.t(
+                        "creator.settings.wear_connected_at",
+                        "Connected: {{when}}",
+                    ).replace("{{when}}", whenStr),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.75f),
+                )
+            }
+        } else if (loggedIn) {
+            Text(
+                text = translationStore.t(
+                    "creator.settings.wear_not_connected",
+                    "No watch connected to your account.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.7f),
             )
@@ -212,21 +288,31 @@ fun CreatorSettingsWearContent(
             )
         }
 
-        Button(
-            onClick = {
-                if (!loggedIn) {
-                    statusMessage = translationStore.t(
-                        "creator.settings.wear_login_required",
-                        "Log in on this device first.",
-                    )
-                } else {
-                    showScanner = true
-                }
-            },
-            enabled = !claiming,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(translationStore.t("creator.settings.wear_connect", "Connect"))
+        if (wearConnected) {
+            OutlinedButton(
+                onClick = { disconnectWear() },
+                enabled = !claiming,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(translationStore.t("creator.settings.wear_disconnect", "Disconnect watch"))
+            }
+        } else {
+            Button(
+                onClick = {
+                    if (!loggedIn) {
+                        statusMessage = translationStore.t(
+                            "creator.settings.wear_login_required",
+                            "Log in on this device first.",
+                        )
+                    } else {
+                        showScanner = true
+                    }
+                },
+                enabled = !claiming,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(translationStore.t("creator.settings.wear_connect", "Connect"))
+            }
         }
     }
 }

@@ -9,12 +9,17 @@ object WearPairPrefs {
     private const val KEY_DEVICE_NAME = "wear_device_name"
     private const val KEY_PAIRED_AT = "paired_at"
 
-    fun save(context: Context, deviceId: String, deviceName: String?) {
+    fun save(
+        context: Context,
+        deviceId: String,
+        deviceName: String?,
+        pairedAt: Long = System.currentTimeMillis(),
+    ) {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_DEVICE_ID, deviceId.trim())
             .putString(KEY_DEVICE_NAME, deviceName?.trim().orEmpty())
-            .putLong(KEY_PAIRED_AT, System.currentTimeMillis())
+            .putLong(KEY_PAIRED_AT, pairedAt)
             .apply()
     }
 

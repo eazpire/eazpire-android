@@ -29,6 +29,24 @@ class WearPairApi(
         postJson("$baseUrl/api/wear-pair/claim", body.toString())
     }
 
+    suspend fun getStatus(jwt: String): JSONObject = withContext(Dispatchers.IO) {
+        getJson("$baseUrl/api/wear-pair/status", jwt)
+    }
+
+    suspend fun disconnect(jwt: String): JSONObject = withContext(Dispatchers.IO) {
+        postJson("$baseUrl/api/wear-pair/disconnect", "{}", jwt)
+    }
+
+    private fun getJson(url: String, jwt: String? = null): JSONObject {
+        val request = Request.Builder()
+            .url(url)
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .get()
+            .build()
+        val response = client.newCall(request).execute()
+        return JSONObject(response.body?.string() ?: "{}")
+    }
+
     companion object {
         /** Parses `eazpire://wear-pair?t=…` or HTTPS wear-pair URLs from QR text. */
         fun parseTokenFromQrPayload(raw: String): String? {
@@ -65,12 +83,12 @@ class WearPairApi(
         }
     }
 
-    private fun postJson(url: String, jsonBody: String): JSONObject {
+    private fun postJson(url: String, jsonBody: String, authJwt: String? = jwt): JSONObject {
         val request = Request.Builder()
             .url(url)
             .post(jsonBody.toRequestBody(jsonType))
             .apply {
-                jwt?.let { addHeader("Authorization", "Bearer $it") }
+                authJwt?.let { addHeader("Authorization", "Bearer $it") }
             }
             .build()
         val response = client.newCall(request).execute()
