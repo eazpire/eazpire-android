@@ -29,8 +29,8 @@ class ShopifyAuthService {
 
     suspend fun discoverEndpoints(): AuthEndpoints = withContext(Dispatchers.IO) {
         val discoveryUrls = listOf(
-            "https://${AuthConfig.SHOP_DOMAIN}/.well-known/openid-configuration",
-            AuthConfig.OIDC_DISCOVERY_URL_FALLBACK
+            AuthConfig.OIDC_DISCOVERY_URL,
+            "https://${AuthConfig.SHOP_DOMAIN}/.well-known/openid-configuration"
         )
         var lastError: AuthException? = null
         for (url in discoveryUrls) {
@@ -49,7 +49,10 @@ class ShopifyAuthService {
                     lastError = AuthException("Missing authorization_endpoint or token_endpoint")
                     continue
                 }
-                return@withContext AuthEndpoints(auth, token)
+                return@withContext AuthEndpoints(
+                    AuthConfig.normalizeOAuthEndpoint(auth),
+                    AuthConfig.normalizeOAuthEndpoint(token)
+                )
             } catch (e: AuthException) {
                 lastError = e
             }

@@ -135,7 +135,7 @@ fun AuthScreen(
             Browser.EXTRA_HEADERS,
             Bundle().apply { putString("Accept", AuthConfig.SHOPIFY_HTML_ACCEPT) }
         )
-        tabsIntent.launchUrl(context, Uri.parse(url))
+        tabsIntent.launchUrl(context, Uri.parse(AuthConfig.normalizeOAuthEndpoint(url)))
         awaitingOAuthCallback = true
     }
 
@@ -227,11 +227,13 @@ fun AuthScreen(
                 OAuthPkceStore.save(appCtx, state, verifier)
                 val hint = emailHint?.trim()?.takeIf { it.isNotBlank() }
                     ?: emailInput.trim().takeIf { it.isNotBlank() }
-                val url = authService.buildAuthorizationUrl(
-                    endpoints.authorizationEndpoint,
-                    verifier,
-                    state,
-                    loginHint = if (loginMethod == AuthLoginMethod.EMAIL) hint else null
+                val url = AuthConfig.normalizeOAuthEndpoint(
+                    authService.buildAuthorizationUrl(
+                        endpoints.authorizationEndpoint,
+                        verifier,
+                        state,
+                        loginHint = if (loginMethod == AuthLoginMethod.EMAIL) hint else null
+                    )
                 )
                 when (loginMethod) {
                     AuthLoginMethod.GOOGLE -> launchOAuthCustomTab(url)
@@ -302,6 +304,10 @@ fun AuthScreen(
                                 }
                                 webViewClient = object : WebViewClient() {
                                     private fun handleNavigation(view: WebView?, u: Uri): Boolean {
+                                        AuthConfig.rewriteAccountHostUri(u)?.let { rewritten ->
+                                            view?.loadUrl(rewritten.toString(), oauthRequestHeaders())
+                                            return true
+                                        }
                                         if (isShopCallbackUri(u)) {
                                             view?.stopLoading()
                                             handleCallback(u.toString())
@@ -363,7 +369,7 @@ fun AuthScreen(
                         update = { wv ->
                             val target = oauthWebViewUrl
                             if (target != null && !oauthWebViewLoadDone && !callbackHandled) {
-                                wv.loadUrl(target, oauthRequestHeaders())
+                                wv.loadUrl(AuthConfig.normalizeOAuthEndpoint(target), oauthRequestHeaders())
                                 oauthWebViewLoadDone = true
                             }
                         }
