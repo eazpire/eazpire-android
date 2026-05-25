@@ -28,20 +28,36 @@ class ShopifyAuthService {
     data class AuthEndpoints(val authorizationEndpoint: String, val tokenEndpoint: String)
 
     suspend fun discoverEndpoints(): AuthEndpoints = withContext(Dispatchers.IO) {
-        val url = "https://${AuthConfig.SHOP_DOMAIN}/.well-known/openid-configuration"
-        val request = Request.Builder().url(url).build()
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw AuthException("Discovery failed: ${response.code}")
+        val discoveryUrls = listOf(
+            AuthConfig.OIDC_DISCOVERY_URL,
+            "https://${AuthConfig.SHOP_DOMAIN}/.well-known/openid-configuration"
+        )
+        var lastError: AuthException? = null
+        for (url in discoveryUrls) {
+            try {
+                val request = Request.Builder().url(url).build()
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    lastError = AuthException("Discovery failed: ${response.code} ($url)")
+                    continue
+                }
+                val body = response.body?.string() ?: throw AuthException("Empty discovery response")
+                val json = JSONObject(body)
+                val auth = json.optString("authorization_endpoint")
+                val token = json.optString("token_endpoint")
+                if (auth.isBlank() || token.isBlank()) {
+                    lastError = AuthException("Missing authorization_endpoint or token_endpoint")
+                    continue
+                }
+                return@withContext AuthEndpoints(
+                    AuthConfig.normalizeOAuthEndpoint(auth),
+                    AuthConfig.normalizeOAuthEndpoint(token)
+                )
+            } catch (e: AuthException) {
+                lastError = e
+            }
         }
-        val body = response.body?.string() ?: throw AuthException("Empty discovery response")
-        val json = JSONObject(body)
-        val auth = json.optString("authorization_endpoint")
-        val token = json.optString("token_endpoint")
-        if (auth.isBlank() || token.isBlank()) {
-            throw AuthException("Missing authorization_endpoint or token_endpoint")
-        }
-        AuthEndpoints(auth, token)
+        throw lastError ?: AuthException("Discovery failed")
     }
 
     fun buildAuthorizationUrl(

@@ -44,6 +44,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
+import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.AuthException
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.OAuthPkceStore
@@ -63,7 +64,8 @@ import kotlin.coroutines.resume
 /**
  * Shopify Customer Account OAuth (PKCE).
  * - **Google** → Chrome Custom Tab (Google blocks embedded WebView).
- * - **Shop / Email** → in-app WebView (account.eazpire.com renders blank in Custom Tabs).
+ * - **Shop / Email** → in-app WebView.
+ * OAuth uses shopify.com endpoints (not account.eazpire.com — Cloudflare blank page).
  */
 @Composable
 fun AuthScreen(
@@ -124,7 +126,7 @@ fun AuthScreen(
         val tabsIntent = CustomTabsIntent.Builder()
             .setShowTitle(true)
             .build()
-        tabsIntent.launchUrl(context, Uri.parse(url))
+        tabsIntent.launchUrl(context, Uri.parse(AuthConfig.normalizeOAuthEndpoint(url)))
         awaitingOAuthCallback = true
     }
 
@@ -216,11 +218,13 @@ fun AuthScreen(
                 OAuthPkceStore.save(appCtx, state, verifier)
                 val hint = emailHint?.trim()?.takeIf { it.isNotBlank() }
                     ?: emailInput.trim().takeIf { it.isNotBlank() }
-                val url = authService.buildAuthorizationUrl(
-                    endpoints.authorizationEndpoint,
-                    verifier,
-                    state,
-                    loginHint = if (loginMethod == AuthLoginMethod.EMAIL) hint else null
+                val url = AuthConfig.normalizeOAuthEndpoint(
+                    authService.buildAuthorizationUrl(
+                        endpoints.authorizationEndpoint,
+                        verifier,
+                        state,
+                        loginHint = if (loginMethod == AuthLoginMethod.EMAIL) hint else null
+                    )
                 )
                 when (loginMethod) {
                     AuthLoginMethod.GOOGLE -> launchOAuthCustomTab(url)
@@ -274,8 +278,11 @@ fun AuthScreen(
                         factory = { ctx ->
                             WebView(ctx).apply {
                                 setBackgroundColor(android.graphics.Color.WHITE)
+                                CookieManager.getInstance().setAcceptCookie(true)
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
+                                settings.databaseEnabled = true
                                 settings.cacheMode = WebSettings.LOAD_DEFAULT
                                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                                 val def = WebSettings.getDefaultUserAgent(ctx)
@@ -288,6 +295,10 @@ fun AuthScreen(
                                 }
                                 webViewClient = object : WebViewClient() {
                                     private fun handleNavigation(view: WebView?, u: Uri): Boolean {
+                                        AuthConfig.rewriteAccountHostUri(u)?.let { rewritten ->
+                                            view?.loadUrl(rewritten.toString())
+                                            return true
+                                        }
                                         if (isShopCallbackUri(u)) {
                                             view?.stopLoading()
                                             handleCallback(u.toString())
@@ -349,7 +360,7 @@ fun AuthScreen(
                         update = { wv ->
                             val target = oauthWebViewUrl
                             if (target != null && !oauthWebViewLoadDone && !callbackHandled) {
-                                wv.loadUrl(target)
+                                wv.loadUrl(AuthConfig.normalizeOAuthEndpoint(target))
                                 oauthWebViewLoadDone = true
                             }
                         }
