@@ -26,7 +26,8 @@ object AuthConfig {
     const val STOREFRONT_SHOP = "eazpire.myshopify.com"
     const val REDIRECT_URI = "shop.73952035098.eazpire://callback"
     /**
-     * Chrome Custom Tabs send Accept */* for HTML navigations; Shopify may respond 406 (empty body).
+     * Chrome Custom Tabs send generic Accept (star-slash-star) for HTML navigations;
+     * Shopify may respond 406 (empty body).
      * Must match worker patch in accountEazpireRedirectFix.js.
      */
     const val SHOPIFY_HTML_ACCEPT =

@@ -67,7 +67,7 @@ import kotlin.coroutines.resume
  * Shopify Customer Account OAuth (PKCE).
  * - **Google** → Chrome Custom Tab (Google blocks embedded WebView).
  * - **Shop / Email** → in-app WebView.
- * OAuth on account.eazpire.com — Custom Tabs must send Accept: text/html (not */*).
+ * OAuth on account.eazpire.com — Custom Tabs must send Accept: text/html (not generic star-slash-star).
  */
 @Composable
 fun AuthScreen(
