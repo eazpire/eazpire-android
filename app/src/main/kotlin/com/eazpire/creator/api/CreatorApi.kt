@@ -1942,6 +1942,10 @@ class CreatorApi(
     suspend fun unregisterFcmToken(token: String): JSONObject =
         postJson("unregister-fcm-token", mapOf("token" to token))
 
+    /** GET ?op=android-notification-config (auth: JWT) */
+    suspend fun getAndroidNotificationConfig(): JSONObject =
+        call("android-notification-config", emptyMap())
+
     /** GET ?op=get-notification-preferences (auth: JWT) */
     suspend fun getNotificationPreferences(): JSONObject =
         call("get-notification-preferences", emptyMap())

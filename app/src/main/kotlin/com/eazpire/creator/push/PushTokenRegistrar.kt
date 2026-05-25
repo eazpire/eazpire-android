@@ -3,6 +3,7 @@ package com.eazpire.creator.push
 import android.content.Context
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.notifications.NotificationRemoteConfigRepository
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,10 @@ object PushTokenRegistrar {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     CreatorApi(jwt = jwt).registerFcmToken(token)
+                    com.eazpire.creator.notifications.NotificationRemoteConfigRepository.syncFromServer(
+                        context,
+                        CreatorApi(jwt = jwt)
+                    )
                 } catch (_: Exception) {
                 }
             }
