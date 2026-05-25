@@ -247,6 +247,7 @@ fun ShopScreen(
     var shopCreateCatalogProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
     var selectedProductHandle by remember { mutableStateOf<String?>(null) }
     var selectedCreatorName by remember { mutableStateOf<String?>(null) }
+    val shopNavHistory = rememberShopNavHistoryController()
     var isCreatorMode by remember { mutableStateOf(false) }
     val pendingWearPair = pendingWearPairToken?.value
     LaunchedEffect(pendingWearPair) {
@@ -337,6 +338,69 @@ fun ShopScreen(
     LaunchedEffect(isCreatorMode) {
         if (isCreatorMode) slotBoundsState.value = null
         if (!isCreatorMode) creatorGenEazyLookLeft = false
+    }
+
+    fun buildShopNavSnapshot(): ShopNavSnapshot =
+        ShopNavSnapshot(
+            selectedCollection = selectedCollection,
+            shopSearchQuery = shopSearchQuery,
+            shopCreateActive = shopCreateActive,
+            shopCreateStudioOpen = shopCreateStudioPhase != null,
+            selectedProductHandle = selectedProductHandle,
+            selectedCreatorName = selectedCreatorName,
+            productModalHandle = productModalHandleState.value,
+        )
+
+    fun applyShopNavSnapshot(snapshot: ShopNavSnapshot) {
+        selectedCollection = snapshot.selectedCollection
+        shopSearchQuery = snapshot.shopSearchQuery
+        shopCreateActive = snapshot.shopCreateActive
+        if (!snapshot.shopCreateStudioOpen) {
+            shopCreateStudioPhase = null
+        }
+        selectedProductHandle = snapshot.selectedProductHandle
+        selectedCreatorName = snapshot.selectedCreatorName
+        productModalHandleState.value = snapshot.productModalHandle
+    }
+
+    LaunchedEffect(
+        selectedCollection,
+        shopSearchQuery,
+        shopCreateActive,
+        shopCreateStudioPhase,
+        selectedProductHandle,
+        selectedCreatorName,
+        productModalHandleState.value,
+    ) {
+        if (shopNavHistory.isRestoring) {
+            shopNavHistory.finishRestore()
+            return@LaunchedEffect
+        }
+        shopNavHistory.push(buildShopNavSnapshot())
+    }
+
+    val shopNavSwipeEnabled =
+        !isCreatorMode &&
+            !menuDrawerVisible &&
+            !cartDrawerVisible &&
+            !favoritesModalVisible &&
+            !eazyChatVisible &&
+            !showAuthScreen &&
+            !accountModalVisible &&
+            !termsModalVisible &&
+            !voucherModalVisible &&
+            !showLoginOptions
+
+    fun handleShopNavSwipeBack() {
+        if (productModalHandleState.value != null) {
+            productModalHandleState.value = null
+            return
+        }
+        shopNavHistory.goBack()?.let { applyShopNavSnapshot(it) }
+    }
+
+    fun handleShopNavSwipeForward() {
+        shopNavHistory.goForward()?.let { applyShopNavSnapshot(it) }
     }
 
     LaunchedEffect(pendingDeepLink?.value) {
@@ -620,6 +684,11 @@ fun ShopScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .shopNavEdgeSwipe(
+                    enabled = shopNavSwipeEnabled,
+                    onSwipeBack = { handleShopNavSwipeBack() },
+                    onSwipeForward = { handleShopNavSwipeForward() },
+                )
         ) {
             when {
                 shopCreateActive && shopCreateStudioPhase == null -> ShopCreateCollectionScreen(
