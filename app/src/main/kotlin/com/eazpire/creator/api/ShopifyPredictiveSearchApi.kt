@@ -6,6 +6,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -70,8 +71,7 @@ class ShopifyPredictiveSearchApi(
         val q = query.trim()
         if (q.length < 2) return@withContext Result(emptyList(), emptyList())
 
-        val url = "$storeBaseUrl/search/suggest.json?q=${java.net.URLEncoder.encode(q, "UTF-8")}" +
-            "&resources[type]=product,query&resources[limit_scope]=each&resources[limit]=10"
+        val url = buildSuggestJsonUrl(q)
 
         val body = httpGetBody(url, acceptJson = true) ?: return@withContext Result(emptyList(), emptyList())
 
@@ -214,6 +214,45 @@ class ShopifyPredictiveSearchApi(
         return map.values.toList()
     }
 
+    private fun buildSuggestJsonUrl(query: String): String {
+        val base = storeBaseUrl.trimEnd('/').toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("Invalid storeBaseUrl: $storeBaseUrl")
+        return base.newBuilder()
+            .addPathSegment("search")
+            .addPathSegment("suggest.json")
+            .addQueryParameter("q", query)
+            .addQueryParameter("resources[type]", "product,query")
+            .addQueryParameter("resources[limit_scope]", "each")
+            .addQueryParameter("resources[limit]", "10")
+            .build()
+            .toString()
+    }
+
+    private fun buildPredictiveProbeUrl(probeQuery: String): String {
+        val base = storeBaseUrl.trimEnd('/').toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("Invalid storeBaseUrl: $storeBaseUrl")
+        return base.newBuilder()
+            .addPathSegment("search")
+            .addQueryParameter("q", probeQuery)
+            .addQueryParameter("type", "product")
+            .addQueryParameter("view", PREDICTIVE_VIEW)
+            .build()
+            .toString()
+    }
+
+    private fun buildPredictiveSectionUrl(query: String, sectionId: String): String {
+        val base = storeBaseUrl.trimEnd('/').toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("Invalid storeBaseUrl: $storeBaseUrl")
+        return base.newBuilder()
+            .addPathSegment("search")
+            .addQueryParameter("q", query)
+            .addQueryParameter("type", "product")
+            .addQueryParameter("view", PREDICTIVE_VIEW)
+            .addQueryParameter("sections", sectionId)
+            .build()
+            .toString()
+    }
+
     private fun fetchPredictiveSectionProductsLocked(query: String): List<SectionProductRow> {
         if (query.length < 2) return emptyList()
         fun attempt(clearedCache: Boolean): List<SectionProductRow> {
@@ -233,7 +272,7 @@ class ShopifyPredictiveSearchApi(
         synchronized(sectionIdLock) {
             cachedSectionApiId?.let { if (SECTION_ID_STRICT.matches(it)) return it }
         }
-        val probeUrl = "${storeBaseUrl.trimEnd('/')}/search?q=${enc("a")}&type=product&view=${enc(PREDICTIVE_VIEW)}"
+        val probeUrl = buildPredictiveProbeUrl("a")
         val html = httpGetBody(probeUrl, acceptJson = false) ?: return null
         var m = SECTION_ID_HTML_REGEX.find(html)
         if (m == null) m = SECTION_ID_FALLBACK_REGEX.find(html)
@@ -244,8 +283,7 @@ class ShopifyPredictiveSearchApi(
     }
 
     private fun fetchSectionFragment(query: String, sectionId: String): String? {
-        val base = storeBaseUrl.trimEnd('/')
-        val url = "$base/search?q=${enc(query)}&type=product&view=${enc(PREDICTIVE_VIEW)}&sections=${enc(sectionId)}"
+        val url = buildPredictiveSectionUrl(query, sectionId)
         val body = httpGetBody(url, acceptJson = true) ?: return null
         val trimmed = body.trim()
         if (trimmed.startsWith("<")) return null
@@ -329,8 +367,6 @@ class ShopifyPredictiveSearchApi(
         val p = if (pathOrUrl.startsWith("/")) pathOrUrl else "/$pathOrUrl"
         return base + p
     }
-
-    private fun enc(s: String): String = java.net.URLEncoder.encode(s, "UTF-8")
 
     private fun computePriceCents(price: Any?): Long? {
         val d = when (price) {

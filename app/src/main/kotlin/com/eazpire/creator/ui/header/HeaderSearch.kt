@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -54,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -87,9 +89,11 @@ fun HeaderSearch(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
+    val focusManager = LocalFocusManager.current
     val api = remember { ShopifyPredictiveSearchApi() }
     val store = LocalTranslationStore.current
     val noResultsText = store?.t("eaz.search.no_results", "No results") ?: "No results"
+    val closeSearchText = store?.t("eaz.search.close_aria", "Close search") ?: "Close search"
     val suggestionsLabel = store?.t("eaz.search.section_suggestions", "Suggestions") ?: "Suggestions"
     val productsLabel = store?.t("eaz.search.section_products", "Products") ?: "Products"
     val loadingMoreText = store?.t("eaz.search.loading_more", "Loading more results…") ?: "Loading more results…"
@@ -105,6 +109,14 @@ fun HeaderSearch(
     var fieldHeightPx by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ShopifyPredictiveSearchApi.PredictiveSearchState?>(null) }
+
+    fun dismissSearch() {
+        onQueryChange("")
+        result = null
+        loading = false
+        focused = false
+        focusManager.clearFocus()
+    }
 
     LaunchedEffect(query) {
         val q = query.trim()
@@ -194,7 +206,7 @@ fun HeaderSearch(
             Popup(
                 alignment = Alignment.TopStart,
                 offset = IntOffset(0, fieldHeightPx),
-                onDismissRequest = { },
+                onDismissRequest = { dismissSearch() },
                 properties = PopupProperties(
                     focusable = false,
                     dismissOnBackPress = true,
@@ -211,6 +223,25 @@ fun HeaderSearch(
                     shadowElevation = 10.dp,
                     color = Color.White
                 ) {
+                    Box(Modifier.fillMaxWidth()) {
+                        IconButton(
+                            onClick = { dismissSearch() },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp, end = 4.dp)
+                                .size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = closeSearchText,
+                                tint = EazColors.TextSecondary
+                            )
+                        }
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 40.dp)
+                        ) {
                     when {
                         loading && result == null -> {
                             Box(
@@ -333,6 +364,8 @@ fun HeaderSearch(
                                     }
                                 }
                             }
+                        }
+                    }
                         }
                     }
                 }
