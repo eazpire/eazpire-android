@@ -342,6 +342,18 @@ class CreatorApi(
         )
     }
 
+    suspend fun getPrizesInventoryList(ownerId: String): JSONObject =
+        postJson(
+            "prizes-inventory-list",
+            mapOf("owner_id" to ownerId, "type" to "all", "category" to "all"),
+        )
+
+    suspend fun getPrizesTradeListings(): JSONObject =
+        call("prizes-trade-listings", mapOf("limit" to "30"))
+
+    suspend fun getPrizesTradeTokens(ownerId: String): JSONObject =
+        call("prizes-trade-tokens", mapOf("owner_id" to ownerId))
+
     private suspend fun postDailyGamePlayJson(shop: String, body: JSONObject): JSONObject =
         withContext(Dispatchers.IO) {
             val url =

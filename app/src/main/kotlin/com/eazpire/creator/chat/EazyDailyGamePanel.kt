@@ -68,13 +68,9 @@ fun EazyDailyGamePanel(
     var memorySession by remember { mutableStateOf<Pair<MemoryDeckUi, MemoryTimingUi>?>(null) }
 
     fun applyStateJson(j: JSONObject) {
-        val prize = j.optString("prize_amount", "").trim()
+        val winProb = j.optDouble("win_probability", 0.25)
         prizeLine =
-            if (prize.isNotEmpty()) {
-                "${t("eazy_chat.games_prize_label", "Prize value")}: $prize"
-            } else {
-                null
-            }
+            "${(winProb * 100).toInt()}% ${t("eazy_chat.games_win_chance_suffix", "win chance")} · ${t("eazy_chat.games_random_prizes_hint", "random daily prizes")}"
 
         if (j.optBoolean("pending_memory", false)) {
             playEnabled = false

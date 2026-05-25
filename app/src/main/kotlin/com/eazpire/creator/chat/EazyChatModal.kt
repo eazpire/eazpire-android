@@ -1347,7 +1347,7 @@ fun EazyChatModal(
                                     }
                                 }
                             )
-                            EazySidebarTab.Games -> EazyDailyGamePanel(
+                            EazySidebarTab.Games -> EazyGamesHubPanel(
                                 api = api,
                                 ownerId = ownerId,
                                 isLoggedIn = isLoggedIn,
