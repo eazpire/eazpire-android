@@ -472,6 +472,7 @@ fun ShopScreen(
                             selectedCollection = null
                             shopSearchQuery = null
                             selectedProductHandle = null
+                            selectedCreatorName = null
                             productModalHandleState.value = null
                             scrollToTopTrigger++
                         }
@@ -491,6 +492,7 @@ fun ShopScreen(
                                 val handle = path.removePrefix("/products/").trimEnd('/').substringBefore("?")
                                 if (handle.isNotBlank()) {
                                     shopSearchQuery = null
+                                    selectedCreatorName = null
                                     selectedProductHandle = handle
                                 }
                             }
@@ -499,6 +501,7 @@ fun ShopScreen(
                                 if (q.isNotEmpty()) {
                                     selectedCollection = null
                                     selectedProductHandle = null
+                                    selectedCreatorName = null
                                     productModalHandleState.value = null
                                     shopSearchQuery = q
                                 } else {
@@ -515,6 +518,7 @@ fun ShopScreen(
                         if (t.isNotEmpty()) {
                             selectedCollection = null
                             selectedProductHandle = null
+                            selectedCreatorName = null
                             productModalHandleState.value = null
                             shopSearchQuery = t
                         }
@@ -529,6 +533,10 @@ fun ShopScreen(
                                 shopCreateActive = false
                                 shopCreateStudioPhase = null
                             }
+                            selectedCreatorName != null -> {
+                                selectedCreatorName = null
+                                scrollToTopTrigger++
+                            }
                             selectedCollection != null -> selectedCollection = null
                             else -> menuDrawerVisible = true
                         }
@@ -537,12 +545,14 @@ fun ShopScreen(
                         if (handle == SHOP_MENU_CREATE_HANDLE) {
                             shopSearchQuery = null
                             selectedProductHandle = null
+                            selectedCreatorName = null
                             selectedCollection = null
                             shopCreateStudioPhase = null
                             shopCreateActive = true
                         } else {
                             shopSearchQuery = null
                             selectedProductHandle = null
+                            selectedCreatorName = null
                             selectedCollection = Triple(title, handle, null)
                         }
                     },
@@ -609,15 +619,6 @@ fun ShopScreen(
                         shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(p)
                     }
                 )
-                selectedCreatorName != null -> CreatorProfileScreen(
-                    creatorName = selectedCreatorName!!,
-                    api = creatorPollApi,
-                    onBack = { selectedCreatorName = null },
-                    onProductClick = { handle ->
-                        selectedProductHandle = handle
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
                 selectedProductHandle != null -> ProductDetailScreen(
                     productHandle = selectedProductHandle!!,
                     onBack = {
@@ -630,6 +631,15 @@ fun ShopScreen(
                         selectedProductHandle = null
                         selectedCreatorName = name
                     }
+                )
+                selectedCreatorName != null -> CreatorProfileScreen(
+                    creatorName = selectedCreatorName!!,
+                    api = creatorPollApi,
+                    onBack = { selectedCreatorName = null },
+                    onProductClick = { handle ->
+                        if (handle.isNotBlank()) selectedProductHandle = handle
+                    },
+                    modifier = Modifier.fillMaxSize()
                 )
                 shopSearchQuery != null -> ShopSearchScreen(
                     searchQuery = shopSearchQuery!!,
@@ -903,6 +913,7 @@ fun ShopScreen(
             if (handle == SHOP_MENU_CREATE_HANDLE) {
             selectedCollection = null
             selectedProductHandle = null
+            selectedCreatorName = null
             shopSearchQuery = null
             shopCreateActive = false
             shopCreateStudioPhase = null
@@ -910,6 +921,8 @@ fun ShopScreen(
                 shopCreateActive = true
             } else {
                 selectedProductHandle = null
+                selectedCreatorName = null
+                shopSearchQuery = null
                 selectedCollection = Triple(title, handle, productType)
             }
         },
@@ -923,6 +936,9 @@ fun ShopScreen(
             menuDrawerVisible = false
             selectedCollection = null
             selectedProductHandle = null
+            selectedCreatorName = null
+            shopSearchQuery = null
+            scrollToTopTrigger++
         },
         onCartClick = {
             menuDrawerVisible = false

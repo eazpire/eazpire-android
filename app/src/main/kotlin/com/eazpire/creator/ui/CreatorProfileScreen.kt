@@ -16,8 +16,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import java.text.DateFormat
+import java.util.Date
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
@@ -26,7 +29,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -71,11 +82,24 @@ data class CreatorProfilePreview(
 data class CreatorShopProduct(
     val handle: String,
     val title: String,
+    val productName: String? = null,
     val imageUrl: String?,
     val price: String?,
     val priceAmount: Double? = null,
     val createdAtMs: Long? = null,
     val productType: String? = null
+)
+
+data class CreatorReviewItem(
+    val id: String,
+    val rating: Double,
+    val title: String,
+    val body: String,
+    val reviewerName: String,
+    val createdAtMs: Long?,
+    val productHandle: String?,
+    val productTitle: String?,
+    val productImage: String?
 )
 
 val CREATOR_PROFILE_SORT_OPTIONS = listOf(
@@ -114,6 +138,9 @@ fun CreatorProfileScreen(
     var filterQuery by remember(creatorName) { mutableStateOf("") }
     var showSortSheet by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
+    var showReviewsModal by remember { mutableStateOf(false) }
+    var resolvedCreatorName by remember(creatorName) { mutableStateOf(creatorName) }
+    var ownerId by remember(creatorName) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(creatorName, countryCode, catalogRegion) {
         loading = true
@@ -135,7 +162,9 @@ fun CreatorProfileScreen(
             val avatarObj = profileJson.optJSONObject("avatar")
             val coverObj = profileJson.optJSONObject("cover")
             val resolvedName = profileJson.optString("creator_name", creatorName).ifBlank { creatorName }
-            val ownerId = profileJson.optString("owner_id", "").trim().ifBlank { null }
+            resolvedCreatorName = resolvedName
+            val resolvedOwnerId = profileJson.optString("owner_id", "").trim().ifBlank { null }
+            ownerId = resolvedOwnerId
             val coverUrl = coverObj?.optString("image_url", "")?.trim()?.ifBlank { null }
                 ?: coverObj?.optJSONArray("cover_rotation_slides")?.optJSONObject(0)
                     ?.optString("image_url", "")?.trim()?.ifBlank { null }
@@ -144,7 +173,7 @@ fun CreatorProfileScreen(
                 api.getCreatorShopProducts(
                     creatorName = resolvedName,
                     creatorSlug = creatorName,
-                    ownerId = ownerId,
+                    ownerId = resolvedOwnerId,
                     country = countryCode,
                     region = catalogRegion
                 )
@@ -215,7 +244,10 @@ fun CreatorProfileScreen(
                             ratingAvg = p?.ratingAvg,
                             ratingCount = p?.ratingCount,
                             productCount = p?.productCount ?: products.size,
-                            t = t
+                            t = t,
+                            onRatingClick = {
+                                if ((p?.ratingCount ?: 0) > 0) showReviewsModal = true
+                            }
                         )
                     }
                     stickyHeader {
@@ -304,25 +336,113 @@ fun CreatorProfileScreen(
         onSortSelected = { sortBy = it }
     )
 
+    CreatorReviewsModal(
+        visible = showReviewsModal,
+        api = api,
+        creatorName = resolvedCreatorName,
+        creatorSlug = creatorName,
+        ownerId = ownerId,
+        ratingAvg = profile?.ratingAvg,
+        ratingCount = profile?.ratingCount,
+        t = t,
+        onDismiss = { showReviewsModal = false },
+        onProductClick = { handle ->
+            showReviewsModal = false
+            if (handle.isNotBlank()) onProductClick(handle)
+        }
+    )
+
     if (showFilterSheet) {
+        val filterScrollState = rememberScrollState()
         ModalBottomSheet(
             onDismissRequest = { showFilterSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    t("collection.filter", "Filter"),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-                OutlinedTextField(
-                    value = filterQuery,
-                    onValueChange = { filterQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(t("collection.search_within", "Search within results")) },
-                    singleLine = true
-                )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.8f)
+                    .heightIn(min = 320.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.FilterList,
+                            contentDescription = null,
+                            tint = EazColors.Orange,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            t("collection.filter", "Filters"),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = EazColors.TextPrimary
+                        )
+                    }
+                    IconButton(onClick = { showFilterSheet = false }) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = t("common.close", "Close"),
+                            tint = EazColors.TextSecondary
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(filterScrollState)
+                        .padding(horizontal = 20.dp)
+                ) {
+                    Text(
+                        t("collection.within_search_label", "Search in results"),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = EazColors.TextPrimary,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    TextField(
+                        value = filterQuery,
+                        onValueChange = { filterQuery = it },
+                        placeholder = {
+                            Text(
+                                t("collection.within_search_placeholder", "Search titles, creator, type…"),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 14.dp)
+                            .heightIn(min = 44.dp),
+                        singleLine = true
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    TextButton(
+                        onClick = { filterQuery = "" },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(t("collection.reset", "Reset"))
+                    }
+                    TextButton(
+                        onClick = { showFilterSheet = false },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(t("collection.apply", "Apply"), color = EazColors.Orange)
+                    }
+                }
             }
         }
     }
@@ -336,7 +456,8 @@ private fun CreatorProfileHero(
     ratingAvg: Double?,
     ratingCount: Int?,
     productCount: Int,
-    t: (String, String) -> String
+    t: (String, String) -> String,
+    onRatingClick: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -372,11 +493,11 @@ private fun CreatorProfileHero(
         )
         Row(
             modifier = Modifier
-                .align(Alignment.BottomStart)
+                .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.Top
         ) {
             CreatorAvatarLogo(
                 name = name,
@@ -406,7 +527,11 @@ private fun CreatorProfileHero(
                 }
                 if (ratingAvg != null && ratingCount != null) {
                     Spacer(Modifier.height(6.dp))
-                    CreatorHeroRatingRow(avg = ratingAvg, count = ratingCount)
+                    CreatorHeroRatingRow(
+                        avg = ratingAvg,
+                        count = ratingCount,
+                        onClick = onRatingClick
+                    )
                 }
             }
         }
@@ -414,8 +539,11 @@ private fun CreatorProfileHero(
 }
 
 @Composable
-private fun CreatorHeroRatingRow(avg: Double, count: Int) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun CreatorHeroRatingRow(avg: Double, count: Int, onClick: () -> Unit = {}) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
         repeat(5) { index ->
             val filled = avg >= index + 1 - 0.25
             Icon(
@@ -448,7 +576,7 @@ private fun CreatorShopProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val (designTitle, productType) = splitCreatorProductTitle(product.title, product.productType)
+    val (designTitle, productLabel) = splitCreatorProductTitle(product.title, product.productName)
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
@@ -483,9 +611,9 @@ private fun CreatorShopProductCard(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 2.dp)
         )
-        if (productType.isNotBlank()) {
+        if (productLabel.isNotBlank()) {
             Text(
-                text = productType,
+                text = productLabel,
                 style = MaterialTheme.typography.labelSmall,
                 color = EazColors.TextSecondary,
                 maxLines = 1,
@@ -599,6 +727,7 @@ private fun parseCreatorShopProduct(o: JSONObject): CreatorShopProduct {
     return CreatorShopProduct(
         handle = handle,
         title = title,
+        productName = o.optString("product_name", "").trim().ifBlank { null },
         imageUrl = run {
             val preview = o.optString("preview_image_url", "").trim()
             if (preview.isNotBlank()) preview
@@ -622,17 +751,294 @@ private fun parseCreatedAtMs(raw: String): Long? {
     }
 }
 
-private fun splitCreatorProductTitle(title: String, productType: String?): Pair<String, String> {
+private fun splitCreatorProductTitle(title: String, productName: String?): Pair<String, String> {
     val normalized = title
         .replace(" — ", " | ")
         .replace(" – ", " | ")
         .replace(" - ", " | ")
     val parts = normalized.split(" | ").map { it.trim() }.filter { it.isNotBlank() }
-    val design = parts.firstOrNull() ?: title
-    val type = productType?.trim().orEmpty().ifBlank {
-        parts.drop(1).joinToString(" - ")
+    val design = parts.firstOrNull()?.ifBlank { title } ?: title
+    val label = when {
+        parts.size > 1 -> parts.drop(1).joinToString(" - ")
+        !productName.isNullOrBlank() -> productName.trim()
+        else -> ""
     }
-    return design to type
+    return design to label
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreatorReviewsModal(
+    visible: Boolean,
+    api: CreatorApi,
+    creatorName: String,
+    creatorSlug: String,
+    ownerId: String?,
+    ratingAvg: Double?,
+    ratingCount: Int?,
+    t: (String, String) -> String,
+    onDismiss: () -> Unit,
+    onProductClick: (String) -> Unit
+) {
+    if (!visible) return
+
+    var loading by remember(visible, creatorName) { mutableStateOf(true) }
+    var reviews by remember(visible, creatorName) { mutableStateOf<List<CreatorReviewItem>>(emptyList()) }
+    var summaryAvg by remember(visible, creatorName) { mutableStateOf(ratingAvg) }
+    var summaryCount by remember(visible, creatorName) { mutableStateOf(ratingCount) }
+    var emptyMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(visible, creatorName, ownerId) {
+        if (!visible) return@LaunchedEffect
+        loading = true
+        emptyMessage = null
+        reviews = emptyList()
+        try {
+            val data = withContext(Dispatchers.IO) {
+                api.getCreatorReviews(
+                    creatorName = creatorName,
+                    creatorSlug = creatorSlug,
+                    ownerId = ownerId
+                )
+            }
+            if (!data.optBoolean("ok", false)) {
+                emptyMessage = t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+                return@LaunchedEffect
+            }
+            val ratingObj = data.optJSONObject("rating")
+            summaryAvg = ratingObj?.optDouble("avg")?.takeIf { it > 0.0 }
+                ?: ratingObj?.optDouble("rating")?.takeIf { it > 0.0 }
+                ?: ratingAvg
+            summaryCount = ratingObj?.optInt("count")?.takeIf { it > 0 }
+                ?: ratingObj?.optInt("rating_count")?.takeIf { it > 0 }
+                ?: ratingCount
+            val arr = data.optJSONArray("reviews") ?: JSONArray()
+            val list = mutableListOf<CreatorReviewItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                list.add(
+                    CreatorReviewItem(
+                        id = o.optString("id", i.toString()),
+                        rating = o.optDouble("rating", 0.0),
+                        title = o.optString("title", "").trim(),
+                        body = o.optString("body", "").trim(),
+                        reviewerName = o.optString("reviewer_name", "").trim(),
+                        createdAtMs = o.optLong("created_at", 0L).takeIf { it > 0L },
+                        productHandle = o.optString("product_handle", "").trim().ifBlank { null },
+                        productTitle = o.optString("product_title", "").trim().ifBlank { null },
+                        productImage = o.optString("product_image", "").trim().ifBlank { null }
+                    )
+                )
+            }
+            reviews = list
+            if (list.isEmpty()) {
+                emptyMessage = t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+            }
+        } catch (_: Exception) {
+            emptyMessage = t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+        } finally {
+            loading = false
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+                .heightIn(min = 360.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    t("eaz.creator_profile.reviews_modal_title", "Creator reviews"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = t("eaz.creator_profile.close", "Close"),
+                        tint = EazColors.TextSecondary
+                    )
+                }
+            }
+            if (summaryAvg != null && summaryCount != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(5) { index ->
+                        val filled = summaryAvg!! >= index + 1 - 0.25
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = null,
+                            tint = if (filled) EazColors.Orange else Color(0xFFDDDDDD),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Text(
+                        text = String.format("%.1f", summaryAvg),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                    Text(
+                        text = "($summaryCount)",
+                        color = EazColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+            }
+            when {
+                loading -> Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = EazColors.Orange)
+                }
+                !emptyMessage.isNullOrBlank() -> Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(emptyMessage!!, color = EazColors.TextSecondary)
+                }
+                else -> LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(reviews, key = { it.id }) { review ->
+                        CreatorReviewListItem(
+                            review = review,
+                            t = t,
+                            onProductClick = onProductClick
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreatorReviewListItem(
+    review: CreatorReviewItem,
+    t: (String, String) -> String,
+    onProductClick: (String) -> Unit
+) {
+    val author = review.reviewerName.ifBlank { t("eaz.creator_profile.review_anonymous", "Anonymous") }
+    val dateLabel = review.createdAtMs?.let {
+        DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).format(Date(it))
+    }.orEmpty()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        val handle = review.productHandle
+        if (!review.productImage.isNullOrBlank() || !handle.isNullOrBlank()) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.width(80.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFEFEFEF))
+                        .then(
+                            if (!handle.isNullOrBlank()) Modifier.clickable { onProductClick(handle) }
+                            else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!review.productImage.isNullOrBlank()) {
+                        AsyncImage(
+                            model = review.productImage,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+                if (!review.productTitle.isNullOrBlank()) {
+                    Text(
+                        text = review.productTitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                repeat(5) { index ->
+                    val filled = review.rating >= index + 1 - 0.25
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = null,
+                        tint = if (filled) EazColors.Orange else Color(0xFFDDDDDD),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+                Text(
+                    text = String.format("%.1f", review.rating),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+                if (dateLabel.isNotBlank()) {
+                    Text(
+                        text = dateLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = EazColors.TextSecondary,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+            Text(
+                text = author,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            if (review.title.isNotBlank()) {
+                Text(
+                    text = review.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            if (review.body.isNotBlank()) {
+                Text(
+                    text = review.body,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = EazColors.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+    }
 }
 
 private fun sortCreatorProducts(list: List<CreatorShopProduct>, sortBy: String): List<CreatorShopProduct> {

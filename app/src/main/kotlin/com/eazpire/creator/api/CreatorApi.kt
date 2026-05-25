@@ -1103,6 +1103,24 @@ class CreatorApi(
         return call("get-creator-profile", params)
     }
 
+    /** GET ?op=get-creator-reviews */
+    suspend fun getCreatorReviews(
+        creatorName: String? = null,
+        creatorSlug: String? = null,
+        ownerId: String? = null,
+        limit: Int = 100,
+        offset: Int = 0
+    ): JSONObject {
+        val params = mutableMapOf(
+            "limit" to limit.coerceIn(1, 100).toString(),
+            "offset" to offset.coerceAtLeast(0).toString()
+        )
+        creatorName?.takeIf { it.isNotBlank() }?.let { params["creator_name"] = it }
+        creatorSlug?.takeIf { it.isNotBlank() }?.let { params["creator_slug"] = it }
+        ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
+        return call("get-creator-reviews", params)
+    }
+
     /** GET ?op=get-shopify-products filtered by creator */
     suspend fun getCreatorShopProducts(
         creatorName: String? = null,
