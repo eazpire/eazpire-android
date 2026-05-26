@@ -108,8 +108,7 @@ object CustomerMockPreviewStore {
         if (isTryOnSessionActive(context, handle)) return true
         val pk = resolveProductKeyFromMap(map, handle, productKey) ?: return false
         val entry = map?.optJSONObject("mockups")?.optJSONObject(pk) ?: return false
-        if (MockupPreviewPool.isShopPreviewActive(entry)) return true
-        return MockupPreviewPool.hasPreviewPool(entry)
+        return MockupPreviewPool.isShopPreviewActive(entry)
     }
 
     private fun resolveProductKeyFromMap(map: JSONObject?, handle: String, productKeyMeta: String?): String? {
