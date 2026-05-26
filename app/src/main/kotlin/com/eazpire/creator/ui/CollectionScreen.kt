@@ -1188,7 +1188,7 @@ private fun CollectionProductCard(
             if (images.isNotEmpty()) {
                 EazProductCardRotatingImages(
                     imageUrls = images,
-                    productId = product.id,
+                    productId = product.id.toString(),
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
                     rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS

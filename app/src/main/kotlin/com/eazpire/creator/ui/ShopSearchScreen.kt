@@ -216,7 +216,7 @@ private fun ShopSearchProductCard(
             if (images.isNotEmpty()) {
                 com.eazpire.creator.ui.components.EazProductCardRotatingImages(
                     imageUrls = images,
-                    productId = product.id,
+                    productId = product.id.toString(),
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize()
                 )

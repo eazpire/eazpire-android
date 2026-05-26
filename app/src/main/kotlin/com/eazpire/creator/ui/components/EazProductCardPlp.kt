@@ -174,7 +174,7 @@ fun EazProductCardMediaOverlays(
                 } else {
                     HangerIcon(
                         modifier = Modifier.size(20.dp),
-                        tint = if (isTryOnActive) Color.White else Color(0xFF1A1A1A)
+                        color = if (isTryOnActive) Color.White else Color(0xFF1A1A1A)
                     )
                 }
             }

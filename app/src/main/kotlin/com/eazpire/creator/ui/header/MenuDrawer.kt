@@ -100,7 +100,9 @@ import com.eazpire.creator.shop.sidebar.AudienceDetailLine
 import com.eazpire.creator.shop.sidebar.AudiencePanelBody
 import com.eazpire.creator.shop.sidebar.AudienceSidebarSection
 import com.eazpire.creator.shop.sidebar.CategoryTile
+import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.shop.sidebar.CreatePromoSection
+import com.eazpire.creator.shop.sidebar.SidebarNavVisuals
 import com.eazpire.creator.shop.sidebar.ExpandCell
 import com.eazpire.creator.shop.sidebar.GroupedCategorySection
 import com.eazpire.creator.shop.sidebar.GutscheineGridSection
@@ -118,6 +120,9 @@ import com.eazpire.creator.shop.sidebar.SidebarHiddenState
 import com.eazpire.creator.sidebar.SidebarViewMode
 import com.eazpire.creator.sidebar.SidebarViewStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -525,9 +530,34 @@ private fun MenuDrawerInteractiveRoot(
 
     val (_, listRootsRaw, sections) =
         remember(mainMenu, sectionOrder) {
-            ShopSidebarLayoutEngine.buildGridSections(mainMenu, null, true, sectionOrder)
+            ShopSidebarLayoutEngine.buildGridSections(mainMenu, null, false, sectionOrder)
         }
     val listRoots = remember(listRootsRaw) { listRootsRaw.map { it.squashDuplicateParents() } }
+
+    var collectionProductCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    LaunchedEffect(listRoots) {
+        val handles = SidebarNavVisuals.collectCollectionHandles(listRoots)
+        if (handles.isEmpty()) {
+            collectionProductCounts = emptyMap()
+            return@LaunchedEffect
+        }
+        val apiProducts = ShopifyProductsApi()
+        val loaded = mutableMapOf<String, Int>()
+        handles.chunked(8).forEach { batch ->
+            coroutineScope {
+                batch
+                    .map { handle ->
+                        async(Dispatchers.IO) {
+                            handle to apiProducts.getCollectionProductCount(handle)
+                        }
+                    }.awaitAll()
+                    .forEach { (handle, count) ->
+                        count?.let { loaded[handle] = it }
+                    }
+            }
+        }
+        collectionProductCounts = loaded.toMap()
+    }
 
     /** Web parity ([theme/assets/eaz-redesign-sidebar.js]): hidden restore strip when eye is “open” and mid/cat items are hidden */
     val showHiddenRestorePanel = eyeRevealHidden && hidden.hiddenCategoryBadgeCount() > 0
@@ -682,6 +712,7 @@ private fun MenuDrawerInteractiveRoot(
                                             expanded = listExpandedMap,
                                             path = "r",
                                             t = t,
+                                            collectionProductCounts = collectionProductCounts,
                                             onLeafClick = {
                                                 openParsedNavLeaf(it, onCategoryClick, onExternalUrl, context, dismissDrawer)
                                             },
@@ -885,14 +916,41 @@ private fun MenuDrawerRecursiveListItems(
     expanded: SnapshotStateMap<String, Boolean>,
     path: String,
     t: (String, String) -> String,
+    collectionProductCounts: Map<String, Int>,
     onLeafClick: (ParsedNavItem) -> Unit,
 ) {
     val key = "${path}_${depth}_${item.handle}_${item.title}"
     val branch = item.links.isNotEmpty()
     val open = expanded[key] ?: (depth == 0 && branch)
-    val padStart = (8 + depth * 12).dp
+    val padStart = (16 + depth * 14).dp
+    val handleKey = item.handle.ifBlank { SidebarNavVisuals.handleFromNavUrl(item.url).orEmpty() }
+    val collectionHandle = SidebarNavVisuals.handleFromNavUrl(item.url)
+    val productCount = collectionHandle?.let { collectionProductCounts[it] }
+    val menuEmoji = SidebarNavVisuals.emojiForHandle(handleKey.ifBlank { collectionHandle.orEmpty() })
+    val titleStyle =
+        if (depth == 0) {
+            MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+        } else {
+            MaterialTheme.typography.titleSmall.copy(fontWeight = if (branch) FontWeight.SemiBold else FontWeight.Normal)
+        }
 
     Column(Modifier.fillMaxWidth()) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = padStart, end = 12.dp),
+        ) {
+            Divider(color = Color(0xFFDED5CA), thickness = 0.5.dp)
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 1.dp)
+                        .height(0.5.dp)
+                        .background(Color.White.copy(alpha = 0.55f)),
+            )
+        }
         Row(
             modifier =
                 Modifier
@@ -903,18 +961,29 @@ private fun MenuDrawerRecursiveListItems(
                             else -> expanded[key] = !open
                         }
                     }
-                    .padding(start = padStart, top = 6.dp, end = 8.dp, bottom = 6.dp),
+                    .padding(start = padStart, top = 12.dp, end = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text =
-                    if (item.title.isBlank()) item.handle else item.title,
-                style = MaterialTheme.typography.bodyLarge,
+                text = if (item.title.isBlank()) item.handle else item.title,
+                style = titleStyle,
                 color = EazColors.TextPrimary,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+            )
+            if (productCount != null && productCount > 0) {
+                Text(
+                    text = productCount.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = EazColors.TextSecondary,
+                )
+            }
+            Text(
+                text = menuEmoji,
+                style = MaterialTheme.typography.titleMedium,
             )
             if (branch) {
                 Icon(
@@ -934,7 +1003,7 @@ private fun MenuDrawerRecursiveListItems(
         }
 
         AnimatedVisibility(open && branch) {
-            Column(Modifier.padding(start = padStart)) {
+            Column {
                 item.links.forEach { child ->
                     MenuDrawerRecursiveListItems(
                         item = child,
@@ -942,6 +1011,7 @@ private fun MenuDrawerRecursiveListItems(
                         expanded = expanded,
                         path = key,
                         t = t,
+                        collectionProductCounts = collectionProductCounts,
                         onLeafClick = onLeafClick,
                     )
                 }
@@ -2027,7 +2097,11 @@ private fun SidebarGutscheineInline(
             .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(12.dp))
             .padding(12.dp),
     ) {
-        Row(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             SidebarWalletTabChip(
                 modifier = Modifier.weight(1f),
                 label = t("eaz.sidebar.my_gift_cards", "My Gift Cards"),
@@ -2036,7 +2110,6 @@ private fun SidebarGutscheineInline(
                 onClick = { tab = 0 },
                 onCountClick = { onOpenWallet(VoucherModalTab.GIFT_CARDS) },
             )
-            Spacer(Modifier.size(8.dp))
             SidebarWalletTabChip(
                 modifier = Modifier.weight(1f),
                 label = t("eaz.sidebar.coupons", "Coupons"),
@@ -2045,6 +2118,12 @@ private fun SidebarGutscheineInline(
                 onClick = { tab = 1 },
                 onCountClick = { onOpenWallet(VoucherModalTab.PROMO_CODES) },
             )
+            SidebarGiftBuyNowButton(t = t) {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(giftCardBuyUrl)))
+                } catch (_: Exception) {
+                }
+            }
         }
 
         if (ownerId.isBlank()) {
@@ -2067,25 +2146,12 @@ private fun SidebarGutscheineInline(
             Text(err ?: "", modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.error)
         } else if (tab == 0) {
             if (giftCards.isEmpty()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        t("eaz.sidebar.no_gift_cards_yet", "No gift cards yet"),
-                        color = EazColors.TextSecondary,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    SidebarGiftBuyNowButton(t = t) {
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(giftCardBuyUrl)))
-                        } catch (_: Exception) {
-                        }
-                    }
-                }
+                Text(
+                    t("eaz.sidebar.no_gift_cards_yet", "No gift cards yet"),
+                    Modifier.padding(top = 12.dp),
+                    color = EazColors.TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             } else {
                 val visibleCards = if (expanded) giftCards else giftCards.take(1)
                 visibleCards.forEach { gc ->
@@ -2093,7 +2159,7 @@ private fun SidebarGutscheineInline(
                         Modifier
                             .fillMaxWidth()
                             .padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Row(
@@ -2119,27 +2185,25 @@ private fun SidebarGutscheineInline(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        Spacer(Modifier.size(8.dp))
-                        SidebarGiftBuyNowButton(t = t) {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(giftCardBuyUrl)))
-                            } catch (_: Exception) {
-                            }
+                        if (!expanded && giftCards.size > 1) {
+                            Text(
+                                text =
+                                    t("eaz.sidebar.show_more_gift_cards", "Show all ({count})")
+                                        .replace("{count}", giftCards.size.toString()),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = EazColors.Orange,
+                                modifier = Modifier.clickable { expanded = true },
+                            )
+                        } else if (expanded && giftCards.size > 1) {
+                            Text(
+                                text = t("eaz.sidebar.show_less_gift_cards", "Show less"),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = EazColors.Orange,
+                                modifier = Modifier.clickable { expanded = false },
+                            )
                         }
-                    }
-                }
-                if (giftCards.size > 1) {
-                    TextButton(onClick = { expanded = !expanded }) {
-                        Text(
-                            if (expanded) {
-                                t("eaz.sidebar.show_less_gift_cards", "Show less")
-                            } else {
-                                t("eaz.sidebar.show_more_gift_cards", "Show all ({count})")
-                                    .replace("{count}", giftCards.size.toString())
-                            },
-                            color = EazColors.Orange,
-                            fontWeight = FontWeight.SemiBold,
-                        )
                     }
                 }
             }

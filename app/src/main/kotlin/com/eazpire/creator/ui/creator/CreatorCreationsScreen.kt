@@ -268,7 +268,7 @@ fun CreatorCreationsScreen(
             "designs" -> {
                 designsLoading = true
                 try {
-                    val (designsList, summary): Pair<List<CreationDesign>, Map<String, Int>> = withContext(Dispatchers.IO) {
+                    val designsResult = withContext(Dispatchers.IO) {
                         if (designsActivityFilter == "inactive") {
                             val genRes = api.listGenerated(ownerId, 100)
                             val generatedItems = (genRes.optJSONArray("items") ?: JSONArray()).let { arr ->
@@ -375,8 +375,8 @@ fun CreatorCreationsScreen(
                             d.copy(productsCount = (d.id ?: d.designId)?.let { summaryMap[it] ?: 0 } ?: 0)
                         } to summaryMap
                     }
-                    designs = designsList
-                    productsCountByDesignId = summary
+                    designs = designsResult.first
+                    productsCountByDesignId = designsResult.second
                 } catch (_: Exception) {
                     designs = emptyList()
                 } finally {

@@ -68,6 +68,25 @@ class ShopifyProductsApi(
         val nextCursor: String?
     )
 
+    /** Lightweight count from Shopify `/collections/{handle}.json`. */
+    suspend fun getCollectionProductCount(collectionHandle: String): Int? =
+        withContext(Dispatchers.IO) {
+            if (collectionHandle.isBlank()) return@withContext null
+            try {
+                val url = "$storeUrl/collections/$collectionHandle.json"
+                val request = Request.Builder().url(url).build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string() ?: return@withContext null
+                val collection = JSONObject(body).optJSONObject("collection") ?: return@withContext null
+                val count =
+                    collection.optInt("products_count", -1).takeIf { it >= 0 }
+                        ?: collection.optInt("all_products_count", -1).takeIf { it >= 0 }
+                count
+            } catch (_: Exception) {
+                null
+            }
+        }
+
     /**
      * Lädt Produkte einer Collection oder alle Produkte.
      * Primär: Storefront API (Worker). Fallback: products.json wenn leer/Fehler.

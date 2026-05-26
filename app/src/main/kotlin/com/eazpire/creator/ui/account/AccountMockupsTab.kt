@@ -74,16 +74,26 @@ data class MockupProfilePhoto(
     val personType: String?
 )
 
+data class MockupVariant(
+    val id: Long,
+    val mockupUrl: String?,
+    val useAsPreview: Boolean
+)
+
 data class MockupCatalogProduct(
     val productKey: String,
     val productName: String,
     val mockupUrl: String?,
     val templateUrl: String?,
     val activeMockupId: Long?,
-    val useAsPreview: Boolean,
+    val previewCount: Int,
+    val shopPreviewEnabled: Boolean,
     val isGenerated: Boolean,
-    val status: String?
-)
+    val status: String?,
+    val variants: List<MockupVariant> = emptyList()
+) {
+    val shopPreviewActive: Boolean get() = shopPreviewEnabled
+}
 
 @Composable
 fun AccountMockupsTab(
@@ -229,7 +239,7 @@ fun AccountMockupsTab(
                     lightboxVariants = parseVariantsForProduct(resp, product.productKey)
                 }
             } catch (e: Exception) {
-                DebugLog.w("AccountMockupsTab", "lightbox variants: ${e.message}")
+                DebugLog.w("AccountMockupsTab lightbox variants: ${e.message}")
             }
         }
     }
