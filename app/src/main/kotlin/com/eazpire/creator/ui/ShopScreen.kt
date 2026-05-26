@@ -1,6 +1,8 @@
 package com.eazpire.creator.ui
 
 import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
 import android.content.Intent
 import android.net.Uri
@@ -42,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
@@ -78,6 +81,7 @@ import com.eazpire.creator.ui.vouchers.VoucherModalTab
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -241,6 +245,8 @@ fun ShopScreen(
     var eazySnapModeActive by remember { mutableStateOf(false) }
     val slotBoundsState = remember { mutableStateOf<Rect?>(null) }
     val scope = rememberCoroutineScope()
+    val rootView = LocalView.current
+    var modePixelTransition by remember { mutableStateOf<CreatorModePixelTransitionState?>(null) }
     var currentPagePath by remember { mutableStateOf("/") }
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
@@ -252,6 +258,33 @@ fun ShopScreen(
     var selectedCreatorName by remember { mutableStateOf<String?>(null) }
     val shopNavHistory = rememberShopNavHistoryController()
     var isCreatorMode by remember { mutableStateOf(false) }
+
+    fun switchCreatorMode(toCreator: Boolean, animate: Boolean = true) {
+        if (toCreator == isCreatorMode || modePixelTransition != null) return
+        if (!animate) {
+            isCreatorMode = toCreator
+            return
+        }
+        scope.launch {
+            val snapshot = withContext(Dispatchers.Main) {
+                val w = rootView.width.coerceAtLeast(1)
+                val h = rootView.height.coerceAtLeast(1)
+                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bitmap ->
+                    rootView.draw(AndroidCanvas(bitmap))
+                }
+            }
+            modePixelTransition = CreatorModePixelTransitionState(
+                snapshot = snapshot,
+                direction = if (toCreator) {
+                    CreatorModePixelDirection.LeftToRight
+                } else {
+                    CreatorModePixelDirection.RightToLeft
+                },
+            )
+            isCreatorMode = toCreator
+        }
+    }
+
     val pendingWearPair = pendingWearPairToken?.value
     LaunchedEffect(pendingWearPair) {
         if (!pendingWearPair.isNullOrBlank()) isCreatorMode = true
@@ -271,7 +304,7 @@ fun ShopScreen(
         }
         val ps = pendingOpenShop
         if (ps?.value == true) {
-            isCreatorMode = false
+            switchCreatorMode(toCreator = false, animate = false)
             eazyChatVisible = false
             ps.value = false
         }
@@ -450,8 +483,8 @@ fun ShopScreen(
                     selectedCollection = Triple(title, handle, null)
                 }
             }
-            path.startsWith("/pages/creator-dashboard") -> isCreatorMode = true
-            path.startsWith("/pages/design-generator") -> isCreatorMode = true
+            path.startsWith("/pages/creator-dashboard") -> switchCreatorMode(toCreator = true, animate = false)
+            path.startsWith("/pages/design-generator") -> switchCreatorMode(toCreator = true, animate = false)
             path.startsWith("/search") -> {
                 val q = uri.getQueryParameter("q")?.trim().orEmpty()
                 if (q.isNotEmpty()) {
@@ -470,7 +503,7 @@ fun ShopScreen(
             tokenStore = tokenStore,
             localeStore = localeStore,
             translationStore = translationStore,
-            onSwitchToShop = { isCreatorMode = false },
+            onSwitchToShop = { switchCreatorMode(toCreator = false) },
             onAccountClick = {
                 if (tokenStore.isLoggedIn()) {
                     accountModalVisible = true
@@ -542,7 +575,7 @@ fun ShopScreen(
                     onEazyLongPress = { eazyMascotStore.setDockedSync(false) },
                     slotBoundsState = slotBoundsState,
                     isCreatorMode = isCreatorMode,
-                    onCreatorModeChange = { isCreatorMode = it },
+                    onCreatorModeChange = { switchCreatorMode(toCreator = it) },
                     onLogoClick = {
                         if (!showAuthScreen) {
                             accountModalVisible = false
@@ -1145,6 +1178,20 @@ fun ShopScreen(
                 oauthCallbackUri = oauthCallbackForAuth
             )
         }
+    }
+
+    modePixelTransition?.let { transition ->
+        CreatorModePixelTransitionOverlay(
+            snapshot = transition.snapshot,
+            direction = transition.direction,
+            onFinished = {
+                transition.snapshot.recycle()
+                modePixelTransition = null
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(9999f),
+        )
     }
     }
     }
