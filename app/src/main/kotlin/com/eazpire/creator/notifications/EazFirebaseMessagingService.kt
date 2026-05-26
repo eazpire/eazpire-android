@@ -28,13 +28,15 @@ class EazFirebaseMessagingService : FirebaseMessagingService() {
         val nid = (message.data["notification_id"] ?: message.messageId ?: System.currentTimeMillis().toString())
             .hashCode()
         val extras = message.data.mapValues { it.value }
-        EazNotificationDisplay.showPush(
-            this,
-            title,
-            body,
-            nid and 0x7fff_ffff,
-            extras
-        )
+        scope.launch {
+            EazNotificationDisplay.showPushInternal(
+                this@EazFirebaseMessagingService,
+                title,
+                body,
+                nid and 0x7fff_ffff,
+                extras
+            )
+        }
     }
 
     override fun onNewToken(token: String) {

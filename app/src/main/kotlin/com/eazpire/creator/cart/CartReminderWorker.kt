@@ -37,7 +37,7 @@ class CartReminderWorker(
             AppCartStore.setCount(0)
             return@withContext Result.success()
         }
-        EazNotificationDisplay.showCartReminder(applicationContext)
+        EazNotificationDisplay.showCartReminderInternal(applicationContext)
         Result.success()
     }
 }

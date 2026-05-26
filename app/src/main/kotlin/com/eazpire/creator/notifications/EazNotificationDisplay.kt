@@ -6,101 +6,44 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.drawable.BitmapDrawable
+import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
-import androidx.core.graphics.drawable.IconCompat
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import com.eazpire.creator.MainActivity
 import com.eazpire.creator.R
 import com.eazpire.creator.chat.EazySidebarTab
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
 import kotlin.math.min
 
 object EazNotificationDisplay {
     private const val REQ_PUSH = 1001
     private const val REQ_CART = 1002
 
-    /**
-     * Brand mark is shown only via [setLargeIcon] (left circle). [setSmallIcon] is mandatory but on
-     * Material/Pixel also fills the trailing slot — we use a 1×1 transparent bitmap so no second logo on the right.
-     */
-    private const val SHADE_LARGE_ICON_DP = 64f
+    /** Large-icon / hero bitmap size (px). */
+    private const val HERO_ICON_DP = 256f
 
-    /** Inset for the shade left large circle. */
-    private const val SHADE_LARGE_ICON_INSET_SCALE = 0.88f
+    /** Inset for category fallback vectors inside the hero circle. */
+    private const val FALLBACK_ICON_INSET_SCALE = 0.62f
 
-    /** Bump when changing icon rendering so cached bitmaps are not reused across builds. */
-    private const val ICON_RENDER_VERSION = 9
+    private const val HERO_LOAD_TIMEOUT_MS = 5_000L
 
-    @Volatile
-    private var transparentSmallIconBitmap: Bitmap? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    @Volatile
-    private var cachedShadeLargeIcon: Pair<Int, Bitmap>? = null
-
-    /** Required platform small icon: invisible in the shade so only [shadeLargeIconBitmap] shows the mark. */
-    private fun smallIconCompat(context: Context): IconCompat {
-        return try {
-            val bmp = transparentSmallIconBitmap ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
-                it.eraseColor(Color.TRANSPARENT)
-                transparentSmallIconBitmap = it
-            }
-            IconCompat.createWithBitmap(bmp)
-        } catch (_: Exception) {
-            IconCompat.createWithResource(context, R.drawable.ic_stat_eazpire)
-        }
-    }
-
-    /** Same brand mark for the shade’s large-icon slot (left circle). */
-    private fun shadeLargeIconBitmap(context: Context): Bitmap? {
-        val app = context.applicationContext
-        val cached = cachedShadeLargeIcon
-        if (cached != null && cached.first == ICON_RENDER_VERSION) {
-            return cached.second
-        }
-        return try {
-            val bmp = buildBrandIconBitmap(app, SHADE_LARGE_ICON_DP, SHADE_LARGE_ICON_INSET_SCALE)
-            cachedShadeLargeIcon = ICON_RENDER_VERSION to bmp
-            bmp
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun buildBrandIconBitmap(context: Context, canvasDp: Float, insetScale: Float): Bitmap {
-        val d = ContextCompat.getDrawable(context, R.drawable.eazpire_logo)
-            ?: return buildFallbackBrandIconBitmap(context, canvasDp, insetScale)
-        DrawableCompat.setTint(d, Color.WHITE)
-        val sizePx = (canvasDp * context.resources.displayMetrics.density).toInt().coerceAtLeast(48)
-        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        bmp.eraseColor(Color.TRANSPARENT)
-        val canvas = Canvas(bmp)
-        val iw = d.intrinsicWidth.coerceAtLeast(1)
-        val ih = d.intrinsicHeight.coerceAtLeast(1)
-        val scale = min(sizePx.toFloat() / iw, sizePx.toFloat() / ih) * insetScale
-        val w = (iw * scale).toInt()
-        val h = (ih * scale).toInt()
-        val left = (sizePx - w) / 2
-        val top = (sizePx - h) / 2
-        d.setBounds(left, top, left + w, top + h)
-        d.draw(canvas)
-        return bmp
-    }
-
-    private fun buildFallbackBrandIconBitmap(context: Context, canvasDp: Float, insetScale: Float): Bitmap {
-        val d = ContextCompat.getDrawable(context, R.drawable.ic_stat_eazpire)
-            ?: throw IllegalStateException("ic_stat_eazpire missing")
-        val sizePx = (canvasDp * context.resources.displayMetrics.density).toInt().coerceAtLeast(48)
-        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        bmp.eraseColor(Color.TRANSPARENT)
-        val canvas = Canvas(bmp)
-        val side = (sizePx * insetScale).toInt()
-        val left = (sizePx - side) / 2
-        val top = (sizePx - side) / 2
-        d.setBounds(left, top, left + side, top + side)
-        d.draw(canvas)
-        return bmp
-    }
+    /** Status bar + compact notification app mark (white monochrome). */
+    private fun smallIconRes(): Int = R.drawable.ic_stat_eazpire
 
     /**
      * Maps FCM `data` (e.g. [open_target]) to MainActivity extras.
@@ -144,25 +87,32 @@ object EazNotificationDisplay {
         notificationId: Int,
         extras: Map<String, String?> = emptyMap()
     ) {
-        EazNotificationChannels.ensure(context)
-        val intent = buildMainIntentFromPushExtras(context, extras)
-        val pending = PendingIntent.getActivity(
-            context,
-            REQ_PUSH + notificationId,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        scope.launch {
+            showPushInternal(context, title, body, notificationId, extras)
+        }
+    }
+
+    suspend fun showPushInternal(
+        context: Context,
+        title: String,
+        body: String,
+        notificationId: Int,
+        extras: Map<String, String?> = emptyMap()
+    ) {
+        val app = context.applicationContext
+        EazNotificationChannels.ensure(app)
+        val category = extras["category"]
+        val heroVisual = resolveHeroVisual(app, extras, category)
+        postNotification(
+            context = app,
+            channelId = EazNotificationChannels.PUSH_IN_APP,
+            title = title,
+            body = body,
+            notificationId = notificationId,
+            requestCode = REQ_PUSH + notificationId,
+            extras = extras,
+            heroVisual = heroVisual
         )
-        val n = NotificationCompat.Builder(context, EazNotificationChannels.PUSH_IN_APP)
-            .setSmallIcon(smallIconCompat(context))
-            .setLargeIcon(shadeLargeIconBitmap(context))
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .setContentIntent(pending)
-            .build()
-        NotificationManagerCompat.from(context).notify(notificationId, n)
     }
 
     /**
@@ -182,29 +132,254 @@ object EazNotificationDisplay {
     }
 
     fun showCartReminder(context: Context) {
-        EazNotificationChannels.ensure(context)
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(MainActivity.EXTRA_OPEN_CART, true)
+        scope.launch {
+            showCartReminderInternal(context)
         }
+    }
+
+    suspend fun showCartReminderInternal(context: Context) {
+        val app = context.applicationContext
+        EazNotificationChannels.ensure(app)
+        val title = app.getString(R.string.notification_cart_title)
+        val body = app.getString(R.string.notification_cart_body)
+        val extras = mapOf(
+            "open_target" to "cart",
+            "category" to "android_cart_abandon"
+        )
+        val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_cart), isRemoteImage = false)
+        postNotification(
+            context = app,
+            channelId = EazNotificationChannels.CART_REMINDER,
+            title = title,
+            body = body,
+            notificationId = REQ_CART,
+            requestCode = REQ_CART,
+            extras = extras,
+            heroVisual = heroVisual
+        )
+    }
+
+    fun showCartPromoReminder(context: Context, kind: String) {
+        scope.launch {
+            showCartPromoReminderInternal(context, kind)
+        }
+    }
+
+    suspend fun showCartPromoReminderInternal(context: Context, kind: String) {
+        val app = context.applicationContext
+        EazNotificationChannels.ensure(app)
+        val is60 = kind == "60"
+        val title = app.getString(
+            if (is60) R.string.notif_cart_promo_60_title else R.string.notif_cart_promo_10_title
+        )
+        val body = app.getString(
+            if (is60) R.string.notif_cart_promo_60_body else R.string.notif_cart_promo_10_body
+        )
+        val category = if (is60) "android_cart_promo_60" else "android_cart_promo_10"
+        val notificationId = if (is60) NOTIF_ID_CART_PROMO_60 else NOTIF_ID_CART_PROMO_10
+        val extras = mapOf(
+            "open_target" to "cart",
+            "category" to category
+        )
+        val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_cart), isRemoteImage = false)
+        postNotification(
+            context = app,
+            channelId = EazNotificationChannels.CART_REMINDER,
+            title = title,
+            body = body,
+            notificationId = notificationId,
+            requestCode = notificationId,
+            extras = extras,
+            heroVisual = heroVisual
+        )
+    }
+
+    private data class HeroVisual(val bitmap: Bitmap?, val isRemoteImage: Boolean)
+
+    private suspend fun postNotification(
+        context: Context,
+        channelId: String,
+        title: String,
+        body: String,
+        notificationId: Int,
+        requestCode: Int,
+        extras: Map<String, String?>,
+        heroVisual: HeroVisual
+    ) {
+        val intent = buildMainIntentFromPushExtras(context, extras)
         val pending = PendingIntent.getActivity(
             context,
-            REQ_CART,
+            requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val title = context.getString(R.string.notification_cart_title)
-        val body = context.getString(R.string.notification_cart_body)
-        val n = NotificationCompat.Builder(context, EazNotificationChannels.CART_REMINDER)
-            .setSmallIcon(smallIconCompat(context))
-            .setLargeIcon(shadeLargeIconBitmap(context))
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(smallIconRes())
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(pending)
-            .build()
-        NotificationManagerCompat.from(context).notify(REQ_CART, n)
+
+        if (heroVisual.bitmap != null) {
+            builder.setLargeIcon(heroVisual.bitmap)
+        }
+
+        if (heroVisual.isRemoteImage && heroVisual.bitmap != null) {
+            builder.setStyle(
+                NotificationCompat.BigPictureStyle()
+                    .bigPicture(heroVisual.bitmap)
+                    .bigLargeIcon(null as Bitmap?)
+                    .setSummaryText(body)
+            )
+        } else {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        }
+
+        withContext(Dispatchers.Main) {
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+        }
     }
+
+    private suspend fun resolveHeroVisual(
+        context: Context,
+        extras: Map<String, String?>,
+        category: String?
+    ): HeroVisual {
+        resolveHeroImageUrl(extras)?.let { url ->
+            loadHeroBitmap(context, url)?.let { return HeroVisual(it, isRemoteImage = true) }
+        }
+        val fallbackRes = fallbackIconRes(category)
+        return HeroVisual(fallbackIconBitmap(context, fallbackRes), isRemoteImage = false)
+    }
+
+    fun resolveHeroImageUrl(extras: Map<String, String?>): String? {
+        val orderedKeys = listOf(
+            "hero_image_url",
+            "preview_url",
+            "image_url",
+            "thumbnail_url",
+            "product_image_url"
+        )
+        for (key in orderedKeys) {
+            extras[key]?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        extras["result"]?.let { parseNestedImageUrl(it) }?.let { return it }
+        return null
+    }
+
+    private fun parseNestedImageUrl(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        return try {
+            val json = JSONObject(trimmed)
+            listOf("preview_url", "image_url", "thumbnail_url")
+                .asSequence()
+                .map { json.optString(it).trim() }
+                .firstOrNull { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    @DrawableRes
+    fun fallbackIconRes(category: String?): Int {
+        val c = category?.lowercase()?.trim().orEmpty()
+        if (c.isEmpty()) return R.drawable.ic_stat_eazpire
+        if (c.contains("cart") || c.contains("abandon") || c.startsWith("android_cart")) {
+            return R.drawable.ic_notif_cart
+        }
+        if (c.contains("job_started") || c == "active_job") {
+            return R.drawable.ic_notif_job
+        }
+        if (c.contains("shop")) {
+            return R.drawable.ic_notif_shop
+        }
+        if (c.contains("video") || c.contains("hero_image") || c == "hero_image") {
+            return R.drawable.ic_notif_media
+        }
+        if (c.startsWith("mentor_") &&
+            !c.contains("design") &&
+            !c.contains("hero") &&
+            !c.contains("product")
+        ) {
+            return R.drawable.ic_notif_community
+        }
+        if (c.contains("gift") || c.contains("referral") || c.contains("community")) {
+            return R.drawable.ic_notif_community
+        }
+        return R.drawable.ic_stat_eazpire
+    }
+
+    private suspend fun loadHeroBitmap(context: Context, url: String): Bitmap? {
+        return withTimeoutOrNull(HERO_LOAD_TIMEOUT_MS) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val request = ImageRequest.Builder(context)
+                        .data(url)
+                        .allowHardware(false)
+                        .build()
+                    when (val result = context.imageLoader.execute(request)) {
+                        is SuccessResult -> drawableToBitmap(result.drawable)
+                        else -> null
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }?.let { fitCenterSquare(it, heroIconSizePx(context)) }
+    }
+
+    private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable): Bitmap? {
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            return drawable.bitmap
+        }
+        val w = drawable.intrinsicWidth.coerceAtLeast(1)
+        val h = drawable.intrinsicHeight.coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        drawable.setBounds(0, 0, w, h)
+        drawable.draw(canvas)
+        return bmp
+    }
+
+    private fun fallbackIconBitmap(context: Context, @DrawableRes resId: Int): Bitmap? {
+        return try {
+            val sizePx = heroIconSizePx(context)
+            val d = ContextCompat.getDrawable(context, resId) ?: return null
+            DrawableCompat.setTint(d, Color.WHITE)
+            val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+            bmp.eraseColor(Color.TRANSPARENT)
+            val canvas = Canvas(bmp)
+            val side = (sizePx * FALLBACK_ICON_INSET_SCALE).toInt()
+            val left = (sizePx - side) / 2
+            val top = (sizePx - side) / 2
+            d.setBounds(left, top, left + side, top + side)
+            d.draw(canvas)
+            bmp
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Fit-center into a square without cropping or stretching. */
+    fun fitCenterSquare(source: Bitmap, sizePx: Int): Bitmap {
+        val out = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        out.eraseColor(Color.TRANSPARENT)
+        val canvas = Canvas(out)
+        val scale = min(sizePx.toFloat() / source.width, sizePx.toFloat() / source.height)
+        val w = (source.width * scale).toInt().coerceAtLeast(1)
+        val h = (source.height * scale).toInt().coerceAtLeast(1)
+        val left = (sizePx - w) / 2
+        val top = (sizePx - h) / 2
+        canvas.drawBitmap(source, null, Rect(left, top, left + w, top + h), null)
+        return out
+    }
+
+    private fun heroIconSizePx(context: Context): Int {
+        return (HERO_ICON_DP * context.resources.displayMetrics.density).toInt().coerceAtLeast(128)
+    }
+
+    private const val NOTIF_ID_CART_PROMO_60 = 91001
+    private const val NOTIF_ID_CART_PROMO_10 = 91002
 }
