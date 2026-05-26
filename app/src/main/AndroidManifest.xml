@@ -22,6 +22,9 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_stat_eazpire" />
+        <meta-data
+            android:name="com.google.android.gms.wearable.beta.app"
+            android:resource="@xml/wearable_app_desc" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

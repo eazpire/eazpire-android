@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Advertises phone ↔ watch link for Wearable CapabilityClient (Play companion review). -->
+<wearableApp package="com.eazpire.creator.wear">
+    <capability name="eaz_creator_account_sync" />
+</wearableApp>

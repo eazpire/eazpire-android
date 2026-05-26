@@ -139,6 +139,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         playInAppUpdateHelper.onResume()
+        // Wear OS: re-push session when reviewer returns from phone login (Data Layer).
+        if (!SecureTokenStore(this).getJwt().isNullOrBlank()) {
+            WearAuthSync.push(this, SecureTokenStore(this))
+        }
         // Play Core ist manchmal beim ersten Frame noch nicht bereit — zweite Prüfung nach kurzer Verzögerung.
         playUpdateHandler.removeCallbacks(playUpdateRetryRunnable)
         playUpdateHandler.postDelayed(playUpdateRetryRunnable, 2_500L)
