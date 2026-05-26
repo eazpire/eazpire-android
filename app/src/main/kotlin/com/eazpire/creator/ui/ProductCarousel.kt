@@ -47,8 +47,10 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.imageLoader
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.api.hasPromoPricingUi
+import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import kotlinx.coroutines.delay
 import java.text.NumberFormat
 import java.util.Locale
@@ -83,7 +85,10 @@ fun ProductCarousel(
     promoEndsPrefix: String = "",
     promoEndedLabel: String = "",
     promoNextDiscountPrefix: String = "",
-    promoNextPriceHintPrefix: String = ""
+    promoNextPriceHintPrefix: String = "",
+    ownerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0
 ) {
     if (products.isEmpty()) {
         if (emptyStateMessage == null) return

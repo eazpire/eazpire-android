@@ -70,6 +70,8 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.api.hasPromoPricingUi
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -79,6 +81,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.mutableIntStateOf
 
 private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
 private const val PRODUCTS_PER_PAGE = 24
@@ -278,7 +281,17 @@ fun CollectionScreen(
     val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val api = remember { ShopifyProductsApi() }
-    val creatorApi = remember { CreatorApi() }
+    val tokenStore = remember { SecureTokenStore(context) }
+    val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
+    val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
+    val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }
+    var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
+    LaunchedEffect(ownerId) {
+        if (ownerId.isNotBlank()) {
+            CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+            mockPreviewRevision = CustomerMockPreviewStore.revision
+        }
+    }
     var productsByPage by remember { mutableStateOf<Map<Int, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
     var pageCursors by remember { mutableStateOf(listOf<String?>(null)) }
     var hasNextPage by remember { mutableStateOf(false) }
@@ -441,6 +454,9 @@ fun CollectionScreen(
                     val showPromoUi = product.hasPromoPricingUi()
                     CollectionProductCard(
                         product = product,
+                        ownerId = ownerId,
+                        creatorApi = creatorApi,
+                        mockPreviewRevision = mockPreviewRevision,
                         showPromoUi = showPromoUi,
                         promoEndsPrefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
                         promoEndedLabel = t("eaz.shop.promo_countdown_ended", "Ended"),
@@ -1114,6 +1130,9 @@ private fun splitProductTitleForCard(title: String, productType: String): Pair<S
 @Composable
 private fun CollectionProductCard(
     product: ShopifyProductsApi.ProductItem,
+    ownerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0,
     showPromoUi: Boolean = false,
     promoEndsPrefix: String = "",
     promoEndedLabel: String = "",
@@ -1123,7 +1142,16 @@ private fun CollectionProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val images = product.variantImages.ifEmpty { product.images }
+    val shopImages = product.variantImages.ifEmpty { product.images }
+    var images by remember(product.id) { mutableStateOf(shopImages) }
+    val ctx = LocalContext.current
+    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision) {
+        if (ownerId.isBlank() || creatorApi == null) {
+            images = shopImages
+            return@LaunchedEffect
+        }
+        images = CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, null)
+    }
     var currentIndex by remember(product.id) { mutableStateOf(0) }
 
     LaunchedEffect(product.id, images.size) {

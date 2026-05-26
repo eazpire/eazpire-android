@@ -587,12 +587,12 @@ class CreatorApi(
         mapOf("product_key" to productKey, "print_area_key" to printAreaKey)
     )
 
-    /** POST ?op=generate-customer-mockups – multipart: photo + person_type */
-    suspend fun generateCustomerMockups(
+    /** POST ?op=upload-mockup-photo – multipart: photo + optional person_type */
+    suspend fun uploadMockupPhoto(
         ownerId: String,
         photoBytes: ByteArray,
         contentType: String,
-        personType: String
+        personType: String? = null
     ): JSONObject = withContext(Dispatchers.IO) {
         val ext = when {
             contentType.contains("png") -> "png"
@@ -600,25 +600,76 @@ class CreatorApi(
             else -> "jpg"
         }
         val mediaType = contentType.toMediaType()
-        val body = MultipartBody.Builder()
+        val builder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart(
                 "photo",
                 "photo.$ext",
                 okhttp3.RequestBody.create(mediaType, photoBytes)
             )
-            .addFormDataPart("person_type", personType)
-            .build()
-        val url = "$baseUrl/apps/creator-dispatch?op=generate-customer-mockups&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+        personType?.takeIf { it.isNotBlank() }?.let { builder.addFormDataPart("person_type", it) }
+        val url =
+            "$baseUrl/apps/creator-dispatch?op=upload-mockup-photo&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
         val request = Request.Builder()
             .url(url)
-            .post(body)
+            .post(builder.build())
             .addHeader("Accept", "application/json")
             .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
             .build()
         val response = client.newCall(request).execute()
         JSONObject(response.body?.string() ?: "{}")
     }
+
+    /** GET ?op=list-mockup-photos&owner_id=xxx */
+    suspend fun listMockupPhotos(ownerId: String): JSONObject = call(
+        "list-mockup-photos",
+        mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId)
+    )
+
+    /** GET ?op=list-mockup-products&owner_id=xxx */
+    suspend fun listMockupProducts(ownerId: String): JSONObject = call(
+        "list-mockup-products",
+        mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId)
+    )
+
+    /** POST ?op=generate-customer-mockups – JSON: product_key + optional photo_ids[] */
+    suspend fun generateCustomerMockupsForProduct(
+        ownerId: String,
+        productKey: String,
+        photoIds: List<Long> = emptyList()
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("product_key", productKey)
+        if (photoIds.isNotEmpty()) {
+            body.put("photo_ids", JSONArray().apply { photoIds.forEach { put(it) } })
+        }
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=generate-customer-mockups")
+            append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&_t=${System.currentTimeMillis()}")
+        }
+        val request = Request.Builder()
+            .url(url)
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
+
+    /** POST ?op=delete-mockup-photo – Body: { photo_id } */
+    suspend fun deleteMockupPhoto(ownerId: String, photoId: Long): JSONObject =
+        postJson("delete-mockup-photo", mapOf("photo_id" to photoId), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=regenerate-customer-mockup – Body: { mockup_id } */
+    suspend fun regenerateCustomerMockup(ownerId: String, mockupId: Long): JSONObject =
+        postJson("regenerate-customer-mockup", mapOf("mockup_id" to mockupId), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=apply-customer-mockup – Body: { mockup_id } (sets Wearing) */
+    suspend fun applyCustomerMockup(ownerId: String, mockupId: Long): JSONObject =
+        postJson("apply-customer-mockup", mapOf("mockup_id" to mockupId), mapOf("owner_id" to ownerId))
 
     /** GET ?op=poll-job&job_id=xxx */
     suspend fun pollJob(jobId: String): JSONObject = call(
