@@ -1147,26 +1147,31 @@ private fun CollectionProductCard(
     promoNextPriceHintPrefix: String = "",
     promoStartsPrefix: String = "",
     onClick: () -> Unit,
+    onCartClick: () -> Unit = onClick,
     modifier: Modifier = Modifier
 ) {
     val shopImages = product.variantImages.ifEmpty { product.images }
     var images by remember(product.id) { mutableStateOf(shopImages) }
     val ctx = LocalContext.current
-    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision) {
+    val scope = rememberCoroutineScope()
+    var imageReload by remember(product.id) { mutableIntStateOf(0) }
+    var tryOnActive by remember(product.handle) {
+        mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
+    }
+    var showTryOn by remember(product.id) { mutableStateOf(false) }
+    var tryOnLoading by remember(product.id) { mutableStateOf(false) }
+
+    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
         if (ownerId.isBlank() || creatorApi == null) {
             images = shopImages
+            showTryOn = false
             return@LaunchedEffect
         }
-        images = CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, null)
-    }
-    var currentIndex by remember(product.id) { mutableStateOf(0) }
-
-    LaunchedEffect(product.id, images.size) {
-        if (images.size <= 1) return@LaunchedEffect
-        while (true) {
-            delay(IMAGE_ROTATE_INTERVAL_MS)
-            currentIndex = (currentIndex + 1) % images.size
-        }
+        val map = CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+        showTryOn =
+            CustomerMockPreviewStore.tryOnInfo(map, product.handle, product.metaProductKey, product.designId) != null
+        tryOnActive = CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle)
+        images = CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, map)
     }
 
     Column(
@@ -1181,33 +1186,46 @@ private fun CollectionProductCard(
                 .clip(RoundedCornerShape(8.dp))
         ) {
             if (images.isNotEmpty()) {
-                images.forEachIndexed { index, url ->
-                    val isActive = index == currentIndex
-                    val alpha by androidx.compose.animation.core.animateFloatAsState(
-                        targetValue = if (isActive) 1f else 0f,
-                        animationSpec = androidx.compose.animation.core.tween(
-                            durationMillis = 1200,
-                            easing = androidx.compose.animation.core.FastOutSlowInEasing
-                        ),
-                        label = "productImageAlpha"
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer(alpha = alpha)
-                            .zIndex(if (isActive) 1f else 0f)
-                    ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(url)
-                                .crossfade(0)
-                                .build(),
-                            contentDescription = product.title,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                EazProductCardRotatingImages(
+                    imageUrls = images,
+                    productId = product.id,
+                    contentDescription = product.title,
+                    modifier = Modifier.fillMaxSize(),
+                    rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS
+                )
+            }
+            EazProductCardMediaOverlays(
+                showTryOn = showTryOn,
+                isTryOnActive = tryOnActive,
+                tryOnLoading = tryOnLoading,
+                onFavoriteClick = {
+                    if (ownerId.isBlank() || creatorApi == null) return@EazProductCardMediaOverlays
+                    scope.launch {
+                        runCatching {
+                            creatorApi.addFavorite(
+                                customerId = ownerId,
+                                productId = product.id.toString(),
+                                variantId = null,
+                                productTitle = product.title,
+                                productImage = images.firstOrNull()
+                            )
+                            FavoritesRefreshTrigger.trigger()
+                        }
+                    }
+                },
+                onCartClick = onCartClick,
+                onTryOnClick = {
+                    if (ownerId.isBlank()) return@EazProductCardMediaOverlays
+                    scope.launch {
+                        tryOnLoading = true
+                        val next = !tryOnActive
+                        togglePlpTryOnSession(ctx, product.handle, next)
+                        tryOnActive = next
+                        imageReload++
+                        tryOnLoading = false
                     }
                 }
-            }
+            )
         }
         val (designTitle, productTypeTitle) = remember(product.title, product.productType) {
             splitProductTitleForCard(product.title, product.productType)

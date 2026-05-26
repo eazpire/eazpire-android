@@ -771,6 +771,7 @@ fun ShopScreen(
                 selectedCreatorName != null -> CreatorProfileScreen(
                     creatorName = selectedCreatorName!!,
                     api = creatorPollApi,
+                    viewerOwnerId = tokenStore.getOwnerId().orEmpty(),
                     onBack = { selectedCreatorName = null },
                     onProductClick = { handle ->
                         if (handle.isNotBlank()) selectedProductHandle = handle

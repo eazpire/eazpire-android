@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val PAGE_SIZE = 48
@@ -172,19 +174,33 @@ private fun ShopSearchProductCard(
     creatorApi: CreatorApi? = null,
     mockPreviewRevision: Int = 0,
     onClick: () -> Unit,
+    onCartClick: () -> Unit = onClick,
     modifier: Modifier = Modifier
 ) {
     val shopImages = product.variantImages.ifEmpty { product.images }
     var images by remember(product.id) { mutableStateOf(shopImages) }
     val ctx = LocalContext.current
-    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision) {
+    val scope = rememberCoroutineScope()
+    var imageReload by remember(product.id) { mutableIntStateOf(0) }
+    var tryOnActive by remember(product.handle) {
+        mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
+    }
+    var showTryOn by remember(product.id) { mutableStateOf(false) }
+    var tryOnLoading by remember(product.id) { mutableStateOf(false) }
+
+    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
         if (ownerId.isBlank() || creatorApi == null) {
             images = shopImages
+            showTryOn = false
             return@LaunchedEffect
         }
-        images = CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, null)
+        val map = CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+        showTryOn =
+            CustomerMockPreviewStore.tryOnInfo(map, product.handle, product.metaProductKey, product.designId) != null
+        tryOnActive = CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle)
+        images = CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, map)
     }
-    val firstUrl = images.firstOrNull()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -197,16 +213,46 @@ private fun ShopSearchProductCard(
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFFF5F5F5))
         ) {
-            if (firstUrl != null) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(firstUrl)
-                        .crossfade(0)
-                        .build(),
+            if (images.isNotEmpty()) {
+                com.eazpire.creator.ui.components.EazProductCardRotatingImages(
+                    imageUrls = images,
+                    productId = product.id,
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize()
                 )
             }
+            com.eazpire.creator.ui.components.EazProductCardMediaOverlays(
+                showTryOn = showTryOn,
+                isTryOnActive = tryOnActive,
+                tryOnLoading = tryOnLoading,
+                onFavoriteClick = {
+                    if (ownerId.isBlank() || creatorApi == null) return@EazProductCardMediaOverlays
+                    scope.launch {
+                        runCatching {
+                            creatorApi.addFavorite(
+                                customerId = ownerId,
+                                productId = product.id.toString(),
+                                variantId = null,
+                                productTitle = product.title,
+                                productImage = images.firstOrNull()
+                            )
+                            com.eazpire.creator.favorites.FavoritesRefreshTrigger.trigger()
+                        }
+                    }
+                },
+                onCartClick = onCartClick,
+                onTryOnClick = {
+                    if (ownerId.isBlank()) return@EazProductCardMediaOverlays
+                    scope.launch {
+                        tryOnLoading = true
+                        val next = !tryOnActive
+                        com.eazpire.creator.ui.components.togglePlpTryOnSession(ctx, product.handle, next)
+                        tryOnActive = next
+                        imageReload++
+                        tryOnLoading = false
+                    }
+                }
+            )
         }
         Text(
             text = product.title,

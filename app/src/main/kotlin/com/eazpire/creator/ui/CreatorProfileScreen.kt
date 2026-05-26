@@ -69,7 +69,9 @@ import android.util.Log
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -129,6 +131,7 @@ val CREATOR_PROFILE_SORT_OPTIONS = listOf(
 fun CreatorProfileScreen(
     creatorName: String,
     api: CreatorApi,
+    viewerOwnerId: String = "",
     onBack: () -> Unit,
     onProductClick: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -443,8 +446,11 @@ fun CreatorProfileScreen(
                                         CreatorShopProductCard(
                                             product = item,
                                             creatorLabel = p?.name ?: creatorName,
+                                            viewerOwnerId = viewerOwnerId,
+                                            creatorApi = api,
                                             modifier = Modifier.weight(1f),
-                                            onClick = { onProductClick(item.handle) }
+                                            onClick = { onProductClick(item.handle) },
+                                            onCartClick = { onProductClick(item.handle) }
                                         )
                                     }
                                     if (rowItems.size == 1) {
@@ -633,10 +639,19 @@ private fun CreatorHeroRatingRow(avg: Double, count: Int, onClick: () -> Unit = 
 private fun CreatorShopProductCard(
     product: CreatorShopProduct,
     creatorLabel: String,
+    viewerOwnerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0,
     onClick: () -> Unit,
+    onCartClick: () -> Unit = onClick,
     modifier: Modifier = Modifier
 ) {
     val (designTitle, productLabel) = splitCreatorProductTitle(product.title, product.productName)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val imageUrls = remember(product.imageUrl) {
+        listOfNotNull(product.imageUrl?.takeIf { it.isNotBlank() })
+    }
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
@@ -644,16 +659,45 @@ private fun CreatorShopProductCard(
             .clickable(onClick = onClick)
             .padding(8.dp)
     ) {
-        AsyncImage(
-            model = product.imageUrl,
-            contentDescription = null,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFEFEFEF)),
-            contentScale = ContentScale.Crop
-        )
+                .background(Color(0xFFEFEFEF))
+        ) {
+            if (imageUrls.isNotEmpty()) {
+                com.eazpire.creator.ui.components.EazProductCardRotatingImages(
+                    imageUrls = imageUrls,
+                    productId = product.shopifyProductId ?: product.handle,
+                    contentDescription = product.title,
+                    modifier = Modifier.fillMaxSize(),
+                    autoRotate = imageUrls.size > 1
+                )
+            }
+            com.eazpire.creator.ui.components.EazProductCardMediaOverlays(
+                showTryOn = false,
+                onFavoriteClick = {
+                    val oid = viewerOwnerId
+                    val api = creatorApi
+                    val pid = product.shopifyProductId
+                    if (oid.isBlank() || api == null || pid.isNullOrBlank()) return@EazProductCardMediaOverlays
+                    scope.launch {
+                        runCatching {
+                            api.addFavorite(
+                                customerId = oid,
+                                productId = pid,
+                                variantId = null,
+                                productTitle = product.title,
+                                productImage = product.imageUrl
+                            )
+                            com.eazpire.creator.favorites.FavoritesRefreshTrigger.trigger()
+                        }
+                    }
+                },
+                onCartClick = onCartClick
+            )
+        }
         Text(
             text = creatorLabel.uppercase(Locale.ROOT),
             style = MaterialTheme.typography.labelSmall,

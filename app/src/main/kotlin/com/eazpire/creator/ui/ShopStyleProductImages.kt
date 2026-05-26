@@ -37,6 +37,8 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.ImageRequest
+import com.eazpire.creator.ui.components.plpRotationJitterMs
+import com.eazpire.creator.ui.components.plpRotationStartIndex
 import kotlinx.coroutines.delay
 
 /** Matches CollectionScreen / ProductCarousel: preload, optional auto-rotate, AsyncImage + ImageRequest.crossfade(0). */
@@ -67,18 +69,23 @@ fun ShopStyleProductImages(
     val urls = remember(imageUrls) {
         imageUrls.map { it.trim() }.filter { it.isNotBlank() }.distinct()
     }
-    var currentIndex by remember { mutableStateOf(0) }
+    val rotationSeed = remember(urls) {
+        urls.firstOrNull()?.hashCode()?.toString() ?: "0"
+    }
+    var currentIndex by remember(urls.size, rotationSeed) {
+        mutableStateOf(plpRotationStartIndex(rotationSeed, urls.size.coerceAtLeast(1)))
+    }
 
     LaunchedEffect(urls) {
-        currentIndex = 0
         urls.forEach { u ->
             context.imageLoader.enqueue(ImageRequest.Builder(context).data(u).build())
         }
     }
 
     val useAutoRotate = autoRotate && !manualVariantNavigation && urls.size > 1
-    LaunchedEffect(useAutoRotate, urls.size, rotateIntervalMs) {
+    LaunchedEffect(useAutoRotate, urls.size, rotateIntervalMs, rotationSeed) {
         if (!useAutoRotate) return@LaunchedEffect
+        delay(plpRotationJitterMs(rotationSeed))
         while (true) {
             delay(rotateIntervalMs)
             currentIndex = (currentIndex + 1) % urls.size
