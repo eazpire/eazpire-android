@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,8 +41,11 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -64,6 +68,18 @@ fun ShopSearchScreen(
     val emptyText = store?.t("eaz.search.no_results", "No results") ?: "No results"
 
     val api = remember { ShopifyProductsApi() }
+    val context = LocalContext.current
+    val tokenStore = remember { SecureTokenStore(context) }
+    val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
+    val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
+    val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }
+    var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
+    LaunchedEffect(ownerId) {
+        if (ownerId.isNotBlank()) {
+            CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+            mockPreviewRevision = CustomerMockPreviewStore.revision
+        }
+    }
     var products by remember(searchQuery) { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     var loading by remember(searchQuery) { mutableStateOf(true) }
 
@@ -135,7 +151,13 @@ fun ShopSearchScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(products, key = { it.id }) { p ->
-                        ShopSearchProductCard(product = p, onClick = { onProductClick(p) })
+                        ShopSearchProductCard(
+                            product = p,
+                            ownerId = ownerId,
+                            creatorApi = creatorApi,
+                            mockPreviewRevision = mockPreviewRevision,
+                            onClick = { onProductClick(p) }
+                        )
                     }
                 }
             }
@@ -146,10 +168,22 @@ fun ShopSearchScreen(
 @Composable
 private fun ShopSearchProductCard(
     product: ShopifyProductsApi.ProductItem,
+    ownerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val images = product.variantImages.ifEmpty { product.images }
+    val shopImages = product.variantImages.ifEmpty { product.images }
+    var images by remember(product.id) { mutableStateOf(shopImages) }
+    val ctx = LocalContext.current
+    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision) {
+        if (ownerId.isBlank() || creatorApi == null) {
+            images = shopImages
+            return@LaunchedEffect
+        }
+        images = CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, null)
+    }
     val firstUrl = images.firstOrNull()
     Column(
         modifier = modifier

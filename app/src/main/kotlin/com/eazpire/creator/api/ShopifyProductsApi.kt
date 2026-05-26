@@ -88,7 +88,8 @@ class ShopifyProductsApi(
         if (result.products.isEmpty()) return@withContext result
         // Wie Web: Enrichment wenn Design-Metadaten fehlen (Storefront oder products.json)
         val hasDesignMeta = result.products.any { it.contentType.isNotBlank() || it.designType.isNotBlank() || it.designStyle.isNotEmpty() }
-        if (!hasDesignMeta) {
+        val needsMockMeta = result.products.any { it.metaProductKey.isBlank() || it.designId.isBlank() }
+        if (!hasDesignMeta || needsMockMeta) {
             val metafields = fetchMetafieldsFromWorker(result.products.map { it.handle })
             val enriched = result.products.map { p ->
                 val mf = metafields[p.handle]
