@@ -455,6 +455,17 @@ fun ProductDetailScreen(
                 productKeyMeta = prod.productKey,
                 designIdMeta = prod.designIdMeta
             )
+            val wearing = mockupTryOnInfo?.let { info ->
+                val pk = info.productKey
+                val entry = map.optJSONObject("mockups")?.optJSONObject(pk)
+                entry?.optBoolean("use_as_preview", false) == true ||
+                    entry?.optInt("use_as_preview", 0) == 1
+            } == true
+            val sessionTryOn = com.eazpire.creator.mockup.CustomerMockPreviewStore
+                .isTryOnSessionActive(context, productHandle)
+            if (mockupTryOnInfo != null && (wearing || sessionTryOn)) {
+                tryOnActive = true
+            }
         } catch (_: Exception) {
             mockupTryOnInfo = null
         }
@@ -553,7 +564,6 @@ fun ProductDetailScreen(
     }
     LaunchedEffect(selectedColor, selectedVariant?.id) {
         selectedImageIndex = 0
-        tryOnActive = false
     }
 
     LaunchedEffect(tryOnActive, selectedColor, mockupTryOnInfo, productColorHexMap) {
@@ -822,7 +832,10 @@ fun ProductDetailScreen(
                                     else Color.White.copy(alpha = 0.92f)
                                 )
                                 .clickable(enabled = !tryOnLoading) {
-                                    tryOnActive = !tryOnActive
+                                    val next = !tryOnActive
+                                    tryOnActive = next
+                                    com.eazpire.creator.mockup.CustomerMockPreviewStore
+                                        .setTryOnSessionActive(context, productHandle, next)
                                 },
                             contentAlignment = Alignment.Center
                         ) {

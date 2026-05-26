@@ -277,6 +277,9 @@ private fun PromoCountdownChip(endsAtMs: Long, endsPrefix: String, endedLabel: S
 @Composable
 private fun ProductCard(
     product: ShopifyProductsApi.ProductItem,
+    ownerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0,
     promoStyle: Boolean = false,
     promoEndsPrefix: String = "",
     promoEndedLabel: String = "",
@@ -285,7 +288,15 @@ private fun ProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val images = (product.variantImages.ifEmpty { product.images })
+    val shopImages = product.variantImages.ifEmpty { product.images }
+    var images by remember(product.id) { mutableStateOf(shopImages) }
+    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision) {
+        if (ownerId.isBlank() || creatorApi == null) {
+            images = shopImages
+            return@LaunchedEffect
+        }
+        images = CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, null)
+    }
     var displayIndex by remember(product.id) { mutableStateOf(0) }
     var isTransitioning by remember(product.id) { mutableStateOf(false) }
     val context = LocalContext.current

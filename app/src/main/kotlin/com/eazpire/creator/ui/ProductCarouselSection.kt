@@ -17,7 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import androidx.compose.runtime.mutableIntStateOf
 import com.eazpire.creator.i18n.LocalTranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -66,7 +69,17 @@ fun ProductCarouselSection(
     val store = LocalTranslationStore.current
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val api = remember { ShopifyProductsApi() }
-    val creatorApi = remember { CreatorApi() }
+    val tokenStore = remember { SecureTokenStore(context) }
+    val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
+    val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
+    val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }
+    var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
+    LaunchedEffect(ownerId) {
+        if (ownerId.isNotBlank()) {
+            CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+            mockPreviewRevision = CustomerMockPreviewStore.revision
+        }
+    }
     val localeStore = remember { LocaleStore(context) }
     var productsByHomeSection by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
     var productsByCategory by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
@@ -146,7 +159,10 @@ fun ProductCarouselSection(
             promoEndsPrefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
             promoEndedLabel = t("eaz.shop.promo_countdown_ended", "Ended"),
             promoNextDiscountPrefix = t("eaz.shop.promo_next_discount_prefix", "Discount in"),
-            promoNextPriceHintPrefix = t("eaz.shop.promo_next_price_hint_prefix", "Promo from")
+            promoNextPriceHintPrefix = t("eaz.shop.promo_next_price_hint_prefix", "Promo from"),
+            ownerId = ownerId,
+            creatorApi = creatorApi,
+            mockPreviewRevision = mockPreviewRevision
         )
         HOME_SECTIONS.forEach { section ->
             val products = productsByHomeSection[section.id].orEmpty()
@@ -157,7 +173,10 @@ fun ProductCarouselSection(
                 collectionHandle = section.collectionHandle,
                 onTitleClick = null,
                 onProductClick = onProductClick,
-                modifier = Modifier.padding(bottom = 6.dp)
+                modifier = Modifier.padding(bottom = 6.dp),
+                ownerId = ownerId,
+                creatorApi = creatorApi,
+                mockPreviewRevision = mockPreviewRevision
             )
         }
         CAROUSEL_CATEGORIES.forEachIndexed { index, (title, handle) ->
@@ -170,7 +189,10 @@ fun ProductCarouselSection(
                 collectionHandle = handle,
                 onTitleClick = onCategoryClick?.let { { it(title, handle) } },
                 onProductClick = onProductClick,
-                modifier = Modifier.padding(bottom = if (isLast) 24.dp else 6.dp)
+                modifier = Modifier.padding(bottom = if (isLast) 24.dp else 6.dp),
+                ownerId = ownerId,
+                creatorApi = creatorApi,
+                mockPreviewRevision = mockPreviewRevision
             )
         }
     }
