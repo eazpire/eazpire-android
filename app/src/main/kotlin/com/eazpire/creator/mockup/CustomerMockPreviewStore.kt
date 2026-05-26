@@ -137,12 +137,12 @@ object CustomerMockPreviewStore {
     ): List<String> {
         val base = product.variantImages.ifEmpty { product.images }
         val handle = product.handle
-        val pk = product.productKey
+        val pk = product.metaProductKey
         if (ownerId.isBlank() || handle.isBlank() || !isTryOnApparelProduct(pk)) return base
         val data = map ?: loadMap(api, ownerId) ?: return base
-        if (!shouldShowMockOnCard(data, context, handle, pk, product.designIdMeta)) return base
+        if (!shouldShowMockOnCard(data, context, handle, pk, product.designId)) return base
 
-        val info = tryOnInfo(data, handle, pk, product.designIdMeta) ?: return base
+        val info = tryOnInfo(data, handle, pk, product.designId) ?: return base
         val cached = info.cachedByColor.values.distinct().filter { it.isNotBlank() }
         if (cached.isNotEmpty()) {
             return if (cached.size >= base.size.coerceAtLeast(1)) {
@@ -161,10 +161,7 @@ object CustomerMockPreviewStore {
             emptyMap()
         }
 
-        val firstColor = product.options
-            .find { it.name.equals("Color", true) || it.name.equals("Colour", true) || it.name.equals("Farbe", true) }
-            ?.values?.firstOrNull()
-            .orEmpty()
+        val firstColor = ""
         val url = resolveMockupImageUrl(info, firstColor, ownerId, colorMap)
         return if (!url.isNullOrBlank()) listOf(url) else base
     }

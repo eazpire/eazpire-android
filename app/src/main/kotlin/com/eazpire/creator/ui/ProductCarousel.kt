@@ -288,6 +288,7 @@ private fun ProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val shopImages = product.variantImages.ifEmpty { product.images }
     var images by remember(product.id) { mutableStateOf(shopImages) }
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision) {
@@ -299,7 +300,6 @@ private fun ProductCard(
     }
     var displayIndex by remember(product.id) { mutableStateOf(0) }
     var isTransitioning by remember(product.id) { mutableStateOf(false) }
-    val context = LocalContext.current
 
     LaunchedEffect(product.id, images) {
         images.forEach { url ->

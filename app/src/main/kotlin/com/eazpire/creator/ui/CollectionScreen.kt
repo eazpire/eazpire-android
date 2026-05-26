@@ -280,6 +280,7 @@ fun CollectionScreen(
     val store = LocalTranslationStore.current
     val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
+    val context = LocalContext.current
     val api = remember { ShopifyProductsApi() }
     val tokenStore = remember { SecureTokenStore(context) }
     val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
@@ -303,7 +304,6 @@ fun CollectionScreen(
     var productFilters by remember { mutableStateOf(ProductFilters()) }
     var withinSearchQuery by remember { mutableStateOf("") }
     var filterCountProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
-    val context = LocalContext.current
     val localeStore = remember { LocaleStore(context) }
     val density = LocalDensity.current
 

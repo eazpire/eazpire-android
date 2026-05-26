@@ -30,6 +30,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -419,6 +420,7 @@ fun ProductDetailScreen(
     var tryOnActive by remember(productHandle) { mutableStateOf(false) }
     var tryOnImageUrl by remember(productHandle) { mutableStateOf<String?>(null) }
     var tryOnLoading by remember(productHandle) { mutableStateOf(false) }
+    var tryOnOverlayMessage by remember(productHandle) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(productHandle) {
         isLoading = true
@@ -570,19 +572,29 @@ fun ProductDetailScreen(
         if (!tryOnActive) {
             tryOnImageUrl = null
             tryOnLoading = false
+            if (tryOnOverlayMessage != null) {
+                kotlinx.coroutines.delay(280)
+            }
+            tryOnOverlayMessage = null
             return@LaunchedEffect
         }
         val info = mockupTryOnInfo ?: run {
             tryOnActive = false
+            tryOnOverlayMessage = null
             return@LaunchedEffect
         }
         val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: run {
             tryOnActive = false
+            tryOnOverlayMessage = null
             return@LaunchedEffect
+        }
+        if (tryOnOverlayMessage.isNullOrBlank()) {
+            tryOnOverlayMessage = t("eaz.pdp.try_on_overlay_on", "Putting on your look…")
         }
         tryOnLoading = true
         val url = resolveMockupImageUrl(info, selectedColor, ownerId, productColorHexMap)
         tryOnLoading = false
+        tryOnOverlayMessage = null
         if (url.isNullOrBlank()) {
             tryOnActive = false
             tryOnImageUrl = null
@@ -812,13 +824,54 @@ fun ProductDetailScreen(
                 ) {
                     if (images.isNotEmpty()) {
                         val imgIdx = selectedImageIndex.coerceIn(0, (imageCount - 1).coerceAtLeast(0))
-                        val displayUrl = if (tryOnActive && !tryOnImageUrl.isNullOrBlank()) tryOnImageUrl else images[imgIdx]
-                        AsyncImage(
-                            model = ImageRequest.Builder(context).data(displayUrl).build(),
-                            contentDescription = p.title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
-                        )
+                        val displayUrl = if (tryOnActive && !tryOnImageUrl.isNullOrBlank()) {
+                            tryOnImageUrl!!
+                        } else {
+                            images[imgIdx]
+                        }
+                        Crossfade(
+                            targetState = displayUrl,
+                            animationSpec = tween(280),
+                            label = "pdpImageCrossfade"
+                        ) { url ->
+                            AsyncImage(
+                                model = ImageRequest.Builder(context).data(url).build(),
+                                contentDescription = p.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    }
+                    val overlayMsg = tryOnOverlayMessage
+                    AnimatedVisibility(
+                        visible = overlayMsg != null,
+                        enter = fadeIn(tween(220)) + slideInVertically(
+                            initialOffsetY = { it / 5 },
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ),
+                        exit = fadeOut(tween(180))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.White.copy(alpha = 0.72f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(28.dp),
+                                    color = Color(0xFF111827),
+                                    strokeWidth = 2.5.dp
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = overlayMsg.orEmpty(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF111827)
+                                )
+                            }
+                        }
                     }
                     mockupTryOnInfo?.let {
                         Box(
@@ -831,26 +884,23 @@ fun ProductDetailScreen(
                                     if (tryOnActive) Color(0xFF111827)
                                     else Color.White.copy(alpha = 0.92f)
                                 )
-                                .clickable(enabled = !tryOnLoading) {
+                                .clickable(enabled = overlayMsg == null) {
                                     val next = !tryOnActive
+                                    tryOnOverlayMessage = if (next) {
+                                        t("eaz.pdp.try_on_overlay_on", "Putting on your look…")
+                                    } else {
+                                        t("eaz.pdp.try_on_overlay_off", "Taking off mock…")
+                                    }
                                     tryOnActive = next
                                     com.eazpire.creator.mockup.CustomerMockPreviewStore
                                         .setTryOnSessionActive(context, productHandle, next)
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            if (tryOnLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = if (tryOnActive) Color.White else EazColors.TextPrimary,
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                HangerIcon(
-                                    color = if (tryOnActive) Color.White else EazColors.TextPrimary,
-                                    size = 20.dp
-                                )
-                            }
+                            HangerIcon(
+                                color = if (tryOnActive) Color.White else EazColors.TextPrimary,
+                                size = 20.dp
+                            )
                         }
                     }
                     // Dots

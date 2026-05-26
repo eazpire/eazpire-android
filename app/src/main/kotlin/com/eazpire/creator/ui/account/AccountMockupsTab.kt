@@ -214,14 +214,25 @@ fun AccountMockupsTab(
 
     fun onToggleWearing(product: MockupCatalogProduct) {
         val mockupId = product.activeMockupId ?: return
+        val enabling = !product.useAsPreview
+        generated = generated.map { row ->
+            when {
+                row.productKey == product.productKey -> row.copy(useAsPreview = enabling)
+                enabling -> row.copy(useAsPreview = false)
+                else -> row
+            }
+        }
         scope.launch {
             try {
-                val resp = api.toggleMockupPreview(ownerId, mockupId, !product.useAsPreview)
+                val resp = api.toggleMockupPreview(ownerId, mockupId, enabling)
                 if (resp.optBoolean("ok", false)) {
                     CustomerMockPreviewStore.invalidate()
+                } else {
                     reload()
                 }
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+                reload()
+            }
         }
     }
 
