@@ -855,6 +855,22 @@ class CreatorApi(
     suspend fun redeemCreatorCode(ownerId: String, code: String): JSONObject =
         postJson("redeem-creator-code", mapOf("code" to code), mapOf("owner_id" to ownerId))
 
+    /** POST ?op=reveal-creator-code&owner_id=xxx Body: { entitlement_id } */
+    suspend fun revealCreatorCode(ownerId: String, entitlementId: Long): JSONObject =
+        postJson("reveal-creator-code", mapOf("entitlement_id" to entitlementId), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=gift-creator-code&owner_id=xxx */
+    suspend fun giftCreatorCode(ownerId: String, codeId: Long, channel: String, target: String? = null): JSONObject =
+        postJson(
+            "gift-creator-code",
+            mapOf("code_id" to codeId, "channel" to channel, "confirmed" to true, "target" to (target ?: "")),
+            mapOf("owner_id" to ownerId)
+        )
+
+    /** POST ?op=claim-purchase-via-qr&owner_id=xxx */
+    suspend fun claimPurchaseViaQr(ownerId: String, qrToken: String): JSONObject =
+        postJson("claim-purchase-via-qr", mapOf("qr_token" to qrToken), mapOf("owner_id" to ownerId))
+
     /** GET ?op=get-creator-code-stats&owner_id=xxx → { ok, stats: { total_generated, total_redeemed, community_size } } */
     suspend fun getCreatorCodeStats(ownerId: String): JSONObject = call(
         "get-creator-code-stats",
