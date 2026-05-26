@@ -843,7 +843,7 @@ fun ProductDetailScreen(
                         }
                     }
                     val overlayMsg = tryOnOverlayMessage
-                    AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = overlayMsg != null,
                         enter = fadeIn(tween(220)) + slideInVertically(
                             initialOffsetY = { it / 5 },
