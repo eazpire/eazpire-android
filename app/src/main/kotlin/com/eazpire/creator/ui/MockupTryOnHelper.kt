@@ -1,5 +1,6 @@
 package com.eazpire.creator.ui
 
+import com.eazpire.creator.mockup.MockupPreviewPool
 import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -22,8 +23,23 @@ data class MockupTryOnInfo(
     val designId: String?,
     val productKey: String,
     /** color hex (no #) → rendered image URL */
-    val cachedByColor: Map<String, String>
-)
+    val cachedByColor: Map<String, String>,
+    val previewMockupIds: List<Long> = emptyList(),
+    val shopPreviewEnabled: Boolean = true,
+    private val cachedByMockupId: Map<Long, Map<String, String>> = emptyMap()
+) {
+    fun forColorIndex(handle: String, colorIndex: Int): MockupTryOnInfo {
+        val picked = when {
+            previewMockupIds.isNotEmpty() && shopPreviewEnabled -> {
+                val seed = "$handle:$colorIndex"
+                previewMockupIds[MockupPreviewPool.hashString(seed) % previewMockupIds.size]
+            }
+            else -> mockupId
+        }
+        val cache = cachedByMockupId[picked] ?: if (picked == mockupId) cachedByColor else emptyMap()
+        return copy(mockupId = picked, cachedByColor = cache)
+    }
+}
 
 private val COLOR_NAME_TO_HEX = mapOf(
     "white" to "FFFFFF",
@@ -165,9 +181,13 @@ fun parseMockupTryOnInfo(
     val info = mockupsObj.optJSONObject(productKey) ?: return null
     if (!info.optBoolean("has_mask", false)) return null
     if (!info.optBoolean("print_area_confirmed", false)) return null
+    if (!MockupPreviewPool.isShopPreviewActive(info)) return null
 
-    val mockupId = info.optLong("mockup_id", -1L)
-    if (mockupId < 0L) return null
+    val previewIds = MockupPreviewPool.getPreviewIds(info)
+    val mockupId = MockupPreviewPool.pickMockupId(info, handle, 0)
+        ?: info.optLong("mockup_id", -1L).takeIf { it > 0 }
+        ?: previewIds.firstOrNull()
+        ?: return null
 
     val handleDesignMap = data.optJSONObject("handle_design_map")
     var designId = handleDesignMap?.optString(handle)?.takeIf { it.isNotBlank() }
@@ -176,11 +196,14 @@ fun parseMockupTryOnInfo(
     val isTemplateProduct = handle == productKey
     if (designId.isNullOrBlank() && !isTemplateProduct) return null
 
-    val cachedByColor = mutableMapOf<String, String>()
+    val wantDesign = designId ?: "NONE"
     val cachedVariants = data.optJSONObject("cached_variants")
-    val group = cachedVariants?.optJSONArray(mockupId.toString())
-    if (group != null) {
-        val wantDesign = designId ?: "NONE"
+    val idsForCache = if (previewIds.isNotEmpty()) previewIds else listOf(mockupId)
+    val cachedByMockupId = mutableMapOf<Long, Map<String, String>>()
+
+    fun parseGroup(id: Long): Map<String, String> {
+        val out = mutableMapOf<String, String>()
+        val group = cachedVariants?.optJSONArray(id.toString()) ?: return out
         for (i in 0 until group.length()) {
             val row = group.optJSONObject(i) ?: continue
             val rowDesign = row.optString("design_id").takeIf { it.isNotBlank() } ?: "NONE"
@@ -188,16 +211,27 @@ fun parseMockupTryOnInfo(
             val color = row.optString("color").uppercase().replace("#", "")
             val url = row.optString("url")
             if (color.length == 6 && url.isNotBlank()) {
-                cachedByColor[color] = url
+                out[color] = url
             }
         }
+        return out
     }
+
+    for (id in idsForCache) {
+        cachedByMockupId[id] = parseGroup(id)
+    }
+
+    val cachedByColor = cachedByMockupId[mockupId] ?: emptyMap()
+    val shopEnabled = !info.has("shop_preview_enabled") || info.optBoolean("shop_preview_enabled", true)
 
     return MockupTryOnInfo(
         mockupId = mockupId,
         designId = designId,
         productKey = productKey,
-        cachedByColor = cachedByColor
+        cachedByColor = cachedByColor,
+        previewMockupIds = previewIds,
+        shopPreviewEnabled = shopEnabled,
+        cachedByMockupId = cachedByMockupId
     )
 }
 

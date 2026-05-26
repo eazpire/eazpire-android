@@ -108,7 +108,7 @@ object CustomerMockPreviewStore {
         if (isTryOnSessionActive(context, handle)) return true
         val pk = resolveProductKeyFromMap(map, handle, productKey) ?: return false
         val entry = map?.optJSONObject("mockups")?.optJSONObject(pk) ?: return false
-        return entry.optBoolean("use_as_preview", false) || entry.optInt("use_as_preview", 0) == 1
+        return MockupPreviewPool.isShopPreviewActive(entry)
     }
 
     private fun resolveProductKeyFromMap(map: JSONObject?, handle: String, productKeyMeta: String?): String? {
@@ -143,15 +143,6 @@ object CustomerMockPreviewStore {
         if (!shouldShowMockOnCard(data, context, handle, pk, product.designId)) return base
 
         val info = tryOnInfo(data, handle, pk, product.designId) ?: return base
-        val cached = info.cachedByColor.values.distinct().filter { it.isNotBlank() }
-        if (cached.isNotEmpty()) {
-            return if (cached.size >= base.size.coerceAtLeast(1)) {
-                cached.take(base.size.coerceAtLeast(1))
-            } else {
-                List(base.size.coerceAtLeast(1)) { i -> cached[i % cached.size] }
-            }
-        }
-
         val colorMap = if (!pk.isNullOrBlank()) {
             runCatching {
                 val colorsResp = api.getColorVariants(pk)
@@ -161,9 +152,18 @@ object CustomerMockPreviewStore {
             emptyMap()
         }
 
-        val firstColor = ""
-        val url = resolveMockupImageUrl(info, firstColor, ownerId, colorMap)
-        return if (!url.isNullOrBlank()) listOf(url) else base
+        val size = base.size.coerceAtLeast(1)
+        val resolved = (0 until size).mapNotNull { i ->
+            val slice = info.forColorIndex(handle, i)
+            slice.cachedByColor.values.firstOrNull { it.isNotBlank() }
+                ?: resolveMockupImageUrl(slice, "", ownerId, colorMap)
+        }
+        if (resolved.isEmpty()) return base
+        return if (resolved.size >= size) {
+            resolved.take(size)
+        } else {
+            List(size) { i -> resolved[i % resolved.size] }
+        }
     }
 
     suspend fun resolveSingleImageUrl(

@@ -567,9 +567,12 @@ class CreatorApi(
     suspend fun getCountryProductCounts(): JSONObject = call("country-product-counts")
 
     /** GET ?op=list-customer-mockups&owner_id=xxx → { ok, mockups: [...] } */
-    suspend fun listCustomerMockups(ownerId: String): JSONObject = call(
+    suspend fun listCustomerMockups(ownerId: String, productKey: String? = null): JSONObject = call(
         "list-customer-mockups",
-        mapOf("owner_id" to ownerId)
+        buildMap {
+            put("owner_id", ownerId)
+            if (!productKey.isNullOrBlank()) put("product_key", productKey)
+        }
     )
 
     /** GET ?op=get-customer-mockup-map&owner_id=xxx&handle=... — activated preview mockups only */
@@ -809,6 +812,14 @@ class CreatorApi(
     /** POST ?op=toggle-mockup-preview&owner_id=xxx – Body: { mockup_id, enabled } */
     suspend fun toggleMockupPreview(ownerId: String, mockupId: Long, enabled: Boolean): JSONObject =
         postJson("toggle-mockup-preview", mapOf("mockup_id" to mockupId, "enabled" to enabled), mapOf("owner_id" to ownerId))
+
+    /** POST ?op=toggle-product-shop-preview&owner_id=xxx – Body: { product_key, enabled } */
+    suspend fun toggleProductShopPreview(ownerId: String, productKey: String, enabled: Boolean): JSONObject =
+        postJson(
+            "toggle-product-shop-preview",
+            mapOf("product_key" to productKey, "enabled" to enabled),
+            mapOf("owner_id" to ownerId)
+        )
 
     /** POST ?op=delete-customer-mockup&owner_id=xxx – Body: { mockup_id } */
     suspend fun deleteCustomerMockup(ownerId: String, mockupId: Long): JSONObject =

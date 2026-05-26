@@ -660,13 +660,14 @@ fun ProductDetailScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize().background(EazColors.Orange)) {
         Column(modifier = Modifier.fillMaxSize()) {
         // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
 
         Column(
             modifier = Modifier
                 .weight(1f)
+                .background(Color.White)
                 .verticalScroll(rememberScrollState())
         ) {
             // pdp-info (order 1) – Brand, Title, Product Details btn, Subtitle
@@ -1464,10 +1465,9 @@ fun ProductDetailScreen(
         }
         }
 
-        // Main Footer – ganz unten (wie Web)
+        // Main Footer – flush with screen bottom (root already applies systemBarsPadding)
         GlobalFooter(
             onTermsClick = onTermsClick,
-            modifier = Modifier.navigationBarsPadding(),
         )
     }
 

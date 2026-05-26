@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.AlertDialog
@@ -55,6 +57,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.mockup.MockupPreviewPool
 import com.eazpire.creator.ui.components.HangerIcon
 import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.delay
@@ -102,6 +105,8 @@ fun AccountMockupsTab(
     var isGenerating by remember { mutableStateOf(false) }
     var generatingProgress by remember { mutableStateOf("") }
     var lightboxProduct by remember { mutableStateOf<MockupCatalogProduct?>(null) }
+    var lightboxVariants by remember { mutableStateOf<List<MockupVariant>>(emptyList()) }
+    var lightboxIndex by remember { mutableStateOf(0) }
     var deleteConfirm by remember { mutableStateOf<MockupCatalogProduct?>(null) }
 
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
@@ -212,21 +217,92 @@ fun AccountMockupsTab(
         }
     }
 
-    fun onToggleWearing(product: MockupCatalogProduct) {
-        val mockupId = product.activeMockupId ?: return
-        val enabling = !product.useAsPreview
-        generated = generated.map { row ->
-            when {
-                row.productKey == product.productKey -> row.copy(useAsPreview = enabling)
-                enabling -> row.copy(useAsPreview = false)
-                else -> row
+    fun openLightbox(product: MockupCatalogProduct) {
+        lightboxProduct = product
+        lightboxVariants = product.variants
+        lightboxIndex = 0
+        if (product.variants.isNotEmpty()) return
+        scope.launch {
+            try {
+                val resp = api.listCustomerMockups(ownerId, product.productKey)
+                if (resp.optBoolean("ok", false)) {
+                    lightboxVariants = parseVariantsForProduct(resp, product.productKey)
+                }
+            } catch (e: Exception) {
+                DebugLog.w("AccountMockupsTab", "lightbox variants: ${e.message}")
             }
+        }
+    }
+
+    fun onToggleShopPreview(product: MockupCatalogProduct) {
+        val enabling = !product.shopPreviewActive
+        if (enabling && product.previewCount == 0) {
+            errorMessage = t(
+                "creator.my_mockups.select_preview_in_modal",
+                "Select at least one mock in the preview to enable shop rendering."
+            )
+            return
+        }
+        generated = generated.map { row ->
+            if (row.productKey == product.productKey) row.copy(shopPreviewEnabled = enabling) else row
+        }
+        scope.launch {
+            try {
+                val resp = api.toggleProductShopPreview(ownerId, product.productKey, enabling)
+                if (resp.optBoolean("ok", false)) {
+                    val count = resp.optInt("preview_count", product.previewCount)
+                    generated = generated.map { row ->
+                        if (row.productKey == product.productKey) {
+                            row.copy(
+                                shopPreviewEnabled = resp.optBoolean("shop_preview_enabled", enabling),
+                                previewCount = count
+                            )
+                        } else row
+                    }
+                    CustomerMockPreviewStore.invalidate()
+                } else {
+                    reload()
+                }
+            } catch (_: Exception) {
+                reload()
+            }
+        }
+    }
+
+    fun onToggleMockPreview(mockupId: Long, enabling: Boolean) {
+        val productKey = lightboxProduct?.productKey ?: return
+        val currentCount = generated.find { it.productKey == productKey }?.previewCount ?: 0
+        if (enabling && currentCount >= MockupPreviewPool.MAX_PREVIEW_MOCKS_PER_PRODUCT) {
+            errorMessage = t(
+                "creator.my_mockups.max_preview_mocks",
+                "You can enable up to 5 mocks per product."
+            )
+            return
+        }
+        lightboxVariants = lightboxVariants.map { v ->
+            if (v.id == mockupId) v.copy(useAsPreview = enabling) else v
         }
         scope.launch {
             try {
                 val resp = api.toggleMockupPreview(ownerId, mockupId, enabling)
                 if (resp.optBoolean("ok", false)) {
+                    val count = resp.optInt("preview_count", currentCount)
+                    generated = generated.map { row ->
+                        if (row.productKey == productKey) {
+                            row.copy(
+                                previewCount = count,
+                                shopPreviewEnabled = row.shopPreviewEnabled || count > 0,
+                                variants = lightboxVariants
+                            )
+                        } else row
+                    }
                     CustomerMockPreviewStore.invalidate()
+                } else if (resp.optString("error") == "max_preview_mocks") {
+                    errorMessage = t(
+                        "creator.my_mockups.max_preview_mocks",
+                        "You can enable up to 5 mocks per product."
+                    )
+                    reload()
                 } else {
                     reload()
                 }
@@ -336,8 +412,8 @@ fun AccountMockupsTab(
                 MockupProductGrid(
                     products = generated,
                     t = t,
-                    onOpen = { lightboxProduct = it },
-                    onToggleWearing = { onToggleWearing(it) },
+                    onOpen = { openLightbox(it) },
+                    onToggleShopPreview = { onToggleShopPreview(it) },
                     onDelete = { deleteConfirm = it }
                 )
             }
@@ -395,24 +471,101 @@ fun AccountMockupsTab(
     }
 
     lightboxProduct?.let { product ->
+        val variants = lightboxVariants.ifEmpty { product.variants }
+        val idx = lightboxIndex.coerceIn(0, (variants.size - 1).coerceAtLeast(0))
+        val current = variants.getOrNull(idx)
+        val imageUrl = current?.mockupUrl ?: product.mockupUrl ?: product.templateUrl
+        val previewCount = generated.find { it.productKey == product.productKey }?.previewCount
+            ?: variants.count { it.useAsPreview }
+        val wearActive = current?.useAsPreview == true
+        val wearDisabled = !wearActive && previewCount >= MockupPreviewPool.MAX_PREVIEW_MOCKS_PER_PRODUCT
+
         AlertDialog(
-            onDismissRequest = { lightboxProduct = null },
+            onDismissRequest = {
+                lightboxProduct = null
+                lightboxVariants = emptyList()
+                lightboxIndex = 0
+            },
             title = { Text(product.productName) },
             text = {
-                val url = product.mockupUrl ?: product.templateUrl
-                if (!url.isNullOrBlank()) {
-                    AsyncImage(
-                        model = url,
-                        contentDescription = null,
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(8.dp))
-                    )
+                    ) {
+                        if (!imageUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                        if (variants.size > 1) {
+                            IconButton(
+                                onClick = {
+                                    lightboxIndex = (idx - 1 + variants.size) % variants.size
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .padding(4.dp)
+                                    .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
+                            ) {
+                                Icon(Icons.Default.ChevronLeft, contentDescription = null)
+                            }
+                            IconButton(
+                                onClick = {
+                                    lightboxIndex = (idx + 1) % variants.size
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(4.dp)
+                                    .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
+                            ) {
+                                Icon(Icons.Default.ChevronRight, contentDescription = null)
+                            }
+                        }
+                        if (current != null) {
+                            IconButton(
+                                onClick = {
+                                    if (!wearDisabled) {
+                                        onToggleMockPreview(current.id, !wearActive)
+                                    }
+                                },
+                                enabled = !wearDisabled,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 8.dp)
+                                    .background(
+                                        if (wearActive) Color(0xFF111827) else Color.White.copy(alpha = 0.92f),
+                                        RoundedCornerShape(50)
+                                    )
+                            ) {
+                                HangerIcon(
+                                    color = if (wearActive) Color.White else Color(0xFF374151),
+                                    size = 22.dp
+                                )
+                            }
+                        }
+                    }
+                    if (variants.size > 1) {
+                        Text(
+                            "${idx + 1} / ${variants.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EazColors.TextSecondary,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { lightboxProduct = null }) {
+                TextButton(onClick = {
+                    lightboxProduct = null
+                    lightboxVariants = emptyList()
+                    lightboxIndex = 0
+                }) {
                     Text(t("creator.common.close", "Close"))
                 }
             }
@@ -443,7 +596,7 @@ private fun MockupProductGrid(
     products: List<MockupCatalogProduct>,
     t: (String, String) -> String,
     onOpen: (MockupCatalogProduct) -> Unit,
-    onToggleWearing: (MockupCatalogProduct) -> Unit,
+    onToggleShopPreview: (MockupCatalogProduct) -> Unit,
     onDelete: (MockupCatalogProduct) -> Unit
 ) {
     products.chunked(2).forEach { row ->
@@ -482,24 +635,35 @@ private fun MockupProductGrid(
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(6.dp),
-                            horizontalArrangement = Arrangement.End
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clickable { onToggleShopPreview(product) }
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(
+                                            if (product.shopPreviewActive) Color(0xFF111827) else Color(0xFFF9FAFB),
+                                            RoundedCornerShape(8.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    HangerIcon(
+                                        color = if (product.shopPreviewActive) Color.White else Color(0xFF374151),
+                                        size = 16.dp
+                                    )
+                                }
+                                Text(
+                                    text = product.previewCount.toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = EazColors.TextSecondary
+                                )
+                            }
                             IconButton(onClick = { onDelete(product) }, modifier = Modifier.size(32.dp)) {
                                 Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
-                            }
-                            IconButton(
-                                onClick = { onToggleWearing(product) },
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(
-                                        if (product.useAsPreview) Color(0xFF111827) else Color(0xFFF9FAFB),
-                                        RoundedCornerShape(8.dp)
-                                    )
-                            ) {
-                                HangerIcon(
-                                    color = if (product.useAsPreview) Color.White else Color(0xFF374151),
-                                    size = 16.dp
-                                )
                             }
                         }
                     }
@@ -520,12 +684,28 @@ private suspend fun reloadCatalog(
         parsePhotos(photosResp.optJSONArray("photos"))
     } else emptyList()
 
+    val variantsByProduct = mutableMapOf<String, List<MockupVariant>>()
+    runCatching {
+        val mockupsResp = api.listCustomerMockups(ownerId)
+        if (mockupsResp.optBoolean("ok", false)) {
+            val products = mockupsResp.optJSONArray("products")
+            if (products != null) {
+                for (i in 0 until products.length()) {
+                    val p = products.optJSONObject(i) ?: continue
+                    val pk = p.optString("product_key", "")
+                    if (pk.isBlank()) continue
+                    variantsByProduct[pk] = parseVariantsArray(p.optJSONArray("variants"))
+                }
+            }
+        }
+    }
+
     val prodResp = api.listMockupProducts(ownerId)
     val generated = mutableListOf<MockupCatalogProduct>()
     val available = mutableListOf<MockupCatalogProduct>()
     if (prodResp.optBoolean("ok", false)) {
-        parseCatalogProducts(prodResp.optJSONArray("generated"), true, generated)
-        parseCatalogProducts(prodResp.optJSONArray("available"), false, available)
+        parseCatalogProducts(prodResp.optJSONArray("generated"), true, generated, variantsByProduct)
+        parseCatalogProducts(prodResp.optJSONArray("available"), false, available, variantsByProduct)
     }
     onResult(photos, generated, available)
 }
@@ -544,16 +724,48 @@ private fun parsePhotos(arr: JSONArray?): List<MockupProfilePhoto> {
     }
 }
 
+private fun parseVariantsArray(arr: JSONArray?): List<MockupVariant> {
+    if (arr == null) return emptyList()
+    return (0 until arr.length()).mapNotNull { i ->
+        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        val id = o.optLong("id", -1L)
+        if (id < 0) return@mapNotNull null
+        MockupVariant(
+            id = id,
+            mockupUrl = o.optString("mockup_url").takeIf { it.isNotBlank() },
+            useAsPreview = o.optBoolean("use_as_preview", false)
+        )
+    }
+}
+
+private fun parseVariantsForProduct(resp: org.json.JSONObject, productKey: String): List<MockupVariant> {
+    val products = resp.optJSONArray("products") ?: return emptyList()
+    for (i in 0 until products.length()) {
+        val p = products.optJSONObject(i) ?: continue
+        if (p.optString("product_key") == productKey) {
+            return parseVariantsArray(p.optJSONArray("variants"))
+        }
+    }
+    return emptyList()
+}
+
 private fun parseCatalogProducts(
     arr: JSONArray?,
     isGenerated: Boolean,
-    out: MutableList<MockupCatalogProduct>
+    out: MutableList<MockupCatalogProduct>,
+    variantsByProduct: Map<String, List<MockupVariant>>
 ) {
     if (arr == null) return
     for (i in 0 until arr.length()) {
         val o = arr.optJSONObject(i) ?: continue
         val pk = o.optString("product_key", "")
         if (pk.isBlank()) continue
+        val variants = variantsByProduct[pk].orEmpty()
+        val previewCount = if (o.has("preview_count")) {
+            o.optInt("preview_count", 0)
+        } else {
+            variants.count { it.useAsPreview }
+        }
         out.add(
             MockupCatalogProduct(
                 productKey = pk,
@@ -561,9 +773,11 @@ private fun parseCatalogProducts(
                 mockupUrl = o.optString("mockup_url").takeIf { it.isNotBlank() },
                 templateUrl = o.optString("template_url").takeIf { it.isNotBlank() },
                 activeMockupId = o.optLong("active_mockup_id", -1L).takeIf { it > 0 },
-                useAsPreview = o.optBoolean("use_as_preview", false),
+                previewCount = previewCount,
+                shopPreviewEnabled = o.optBoolean("shop_preview_enabled", previewCount > 0),
                 isGenerated = isGenerated,
-                status = o.optString("status").takeIf { it.isNotBlank() }
+                status = o.optString("status").takeIf { it.isNotBlank() },
+                variants = variants
             )
         )
     }

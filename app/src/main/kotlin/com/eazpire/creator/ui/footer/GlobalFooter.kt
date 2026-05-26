@@ -56,8 +56,7 @@ fun GlobalFooter(
             }
             .background(FooterBg)
             .padding(horizontal = 12.dp)
-            .padding(vertical = 4.dp)
-            .padding(bottom = 12.dp), // safe area
+            .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
