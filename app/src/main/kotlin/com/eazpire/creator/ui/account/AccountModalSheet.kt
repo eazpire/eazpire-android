@@ -45,16 +45,17 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
+import com.eazpire.creator.i18n.LocalTranslationStore
 
-enum class AccountTab(val label: String) {
-    Profile("Profile"),
-    Notifications("Notifications"),
-    SizeAI("Size AI"),
-    Wardrobe("Wardrobe"),
-    Mockups("My Mockups"),
-    Creations("My Creations"),
-    Community("Community"),
-    Balance("Balance & Payouts")
+enum class AccountTab(val labelKey: String, val labelDefault: String) {
+    Profile("content.account_profile_settings", "Profile Settings"),
+    Notifications("creator.notifications.notifications_tab", "Notifications"),
+    SizeAI("content.account_size_ai", "Size AI"),
+    Wardrobe("content.account_wardrobe", "Wardrobe"),
+    Mockups("content.account_mockups", "My Mockups"),
+    Creations("content.account_my_creations", "My Creations"),
+    Community("content.account_community", "Community"),
+    Balance("content.account_balance_payouts", "Balance & Payouts"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +79,8 @@ fun AccountModalSheet(
     var wardrobeCanSave by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
+    val translationStore = LocalTranslationStore.current
+    fun t(key: String, default: String) = translationStore?.t(key, default) ?: default
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -110,7 +113,10 @@ fun AccountModalSheet(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = AccountTab.entries[selectedTab].label,
+                                text = t(
+                                    AccountTab.entries[selectedTab].labelKey,
+                                    AccountTab.entries[selectedTab].labelDefault
+                                ),
                                 style = MaterialTheme.typography.titleLarge,
                                 color = EazColors.TextPrimary
                             )
@@ -133,6 +139,7 @@ fun AccountModalSheet(
                         when (val tab = AccountTab.entries[selectedTab]) {
                             AccountTab.Profile -> AccountProfileTab(
                                 tokenStore = tokenStore,
+                                translationStore = translationStore,
                                 onSaveActionReady = { footerSaveAction = it },
                                 onSavingStateChange = { footerSaveInProgress = it },
                                 onLogout = {
@@ -192,7 +199,13 @@ fun AccountModalSheet(
                                             enabled = !footerSaveInProgress,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Text(if (footerSaveInProgress) "Saving..." else "Save")
+                                            Text(
+                                                if (footerSaveInProgress) {
+                                                    t("creator.js.saving", "Saving...")
+                                                } else {
+                                                    t("creator.common.save", "Save")
+                                                }
+                                            )
                                         }
                                     }
                                     2 -> {
@@ -202,7 +215,13 @@ fun AccountModalSheet(
                                                 enabled = !footerSaveInProgress,
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Text(if (footerSaveInProgress) "Saving..." else "Save profile")
+                                                Text(
+                                                    if (footerSaveInProgress) {
+                                                        t("creator.js.saving", "Saving...")
+                                                    } else {
+                                                        t("creator.settings.profile_save_button", "Save profile settings")
+                                                    }
+                                                )
                                             }
                                         }
                                     }
@@ -288,7 +307,7 @@ fun AccountModalSheet(
                                 AccountTab.entries.forEachIndexed { index, tab ->
                                     val isSelected = selectedTab == index
                                     Text(
-                                        text = tab.label,
+                                        text = t(tab.labelKey, tab.labelDefault),
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {

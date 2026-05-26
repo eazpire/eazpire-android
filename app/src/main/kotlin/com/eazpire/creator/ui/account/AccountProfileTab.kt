@@ -57,6 +57,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.account.wardrobe.WardrobeColors
 import com.eazpire.creator.auth.AuthConfig
@@ -160,7 +161,8 @@ fun AccountProfileTab(
 ) {
     val context = LocalContext.current
     val dm = EazColors.CreatorModal
-    fun tr(key: String, def: String) = translationStore?.t(key, def) ?: def
+    val i18n = translationStore ?: LocalTranslationStore.current
+    fun tr(key: String, def: String) = i18n?.t(key, def) ?: def
     val textPrimary = if (useDarkPanel) dm.TextPrimary else EazColors.TextPrimary
     val textSecondary = if (useDarkPanel) dm.TextSecondary else EazColors.TextSecondary
     val outlineFieldColors = if (useDarkPanel) {
