@@ -103,6 +103,8 @@ import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
+import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.mockup.MockupPreviewPool
 import com.eazpire.creator.ui.components.HangerIcon
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -421,6 +423,17 @@ fun ProductDetailScreen(
     var tryOnImageUrl by remember(productHandle) { mutableStateOf<String?>(null) }
     var tryOnLoading by remember(productHandle) { mutableStateOf(false) }
     var tryOnOverlayMessage by remember(productHandle) { mutableStateOf<String?>(null) }
+    var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
+    val ownerIdForMocks = remember { tokenStore.getOwnerId()?.takeIf { it.isNotBlank() }.orEmpty() }
+
+    LaunchedEffect(ownerIdForMocks) {
+        if (ownerIdForMocks.isNotBlank()) {
+            withContext(Dispatchers.IO) {
+                CustomerMockPreviewStore.loadMap(creatorApi, ownerIdForMocks)
+            }
+            mockPreviewRevision = CustomerMockPreviewStore.revision
+        }
+    }
 
     LaunchedEffect(productHandle) {
         isLoading = true
@@ -460,8 +473,7 @@ fun ProductDetailScreen(
             val wearing = mockupTryOnInfo?.let { info ->
                 val pk = info.productKey
                 val entry = map.optJSONObject("mockups")?.optJSONObject(pk)
-                entry?.optBoolean("use_as_preview", false) == true ||
-                    entry?.optInt("use_as_preview", 0) == 1
+                entry != null && MockupPreviewPool.isShopPreviewActive(entry)
             } == true
             val sessionTryOn = com.eazpire.creator.mockup.CustomerMockPreviewStore
                 .isTryOnSessionActive(context, productHandle)
@@ -1059,6 +1071,9 @@ fun ProductDetailScreen(
                                 PdpInfiniteProductCarouselRow(
                                     title = t("eaz.pdp.carousel_same_type_designs", "More designs on this product"),
                                     products = carSameType,
+                                    ownerId = ownerIdForMocks,
+                                    creatorApi = creatorApi,
+                                    mockPreviewRevision = mockPreviewRevision,
                                     onProductClick = openRelated
                                 )
                             }
@@ -1066,6 +1081,9 @@ fun ProductDetailScreen(
                                 PdpInfiniteProductCarouselRow(
                                     title = t("eaz.pdp.carousel_same_design_products", "More products with this design"),
                                     products = carSameDesign,
+                                    ownerId = ownerIdForMocks,
+                                    creatorApi = creatorApi,
+                                    mockPreviewRevision = mockPreviewRevision,
                                     onProductClick = openRelated
                                 )
                             }
@@ -1859,9 +1877,53 @@ private fun HtmlWebView(content: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
+@Composable
+private fun PdpMockAwareProductThumb(
+    product: ShopifyProductsApi.ProductItem,
+    ownerId: String,
+    creatorApi: CreatorApi,
+    mockPreviewRevision: Int,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val shopImages = product.variantImages.ifEmpty { product.images }
+    var displayUrl by remember(product.handle, mockPreviewRevision) {
+        mutableStateOf(shopImages.firstOrNull())
+    }
+    LaunchedEffect(product.handle, ownerId, mockPreviewRevision, shopImages) {
+        if (ownerId.isBlank()) {
+            displayUrl = shopImages.firstOrNull()
+            return@LaunchedEffect
+        }
+        val map = withContext(Dispatchers.IO) {
+            CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+        }
+        val resolved = CustomerMockPreviewStore.resolveCardImages(
+            context,
+            creatorApi,
+            ownerId,
+            product,
+            map
+        )
+        displayUrl = resolved.firstOrNull() ?: shopImages.firstOrNull()
+    }
+    val url = displayUrl
+    if (url != null) {
+        AsyncImage(
+            model = ImageRequest.Builder(context).data(url).build(),
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop
+        )
+    }
+}
+
 private fun PdpInfiniteProductCarouselRow(
     title: String,
     products: List<ShopifyProductsApi.ProductItem>,
+    ownerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0,
     onProductClick: (String) -> Unit
 ) {
     val base = products.take(50)
@@ -1886,7 +1948,6 @@ private fun PdpInfiniteProductCarouselRow(
         ) {
             items(repeated.size, key = { "pdp-carousel-$it-${repeated[it].handle}" }) { index ->
                 val item = repeated[index]
-                val img = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
                 val pk = item.metaProductKey.takeIf { it.isNotBlank() }
                 val (dt, _) = splitProductTitle(item.title, item.productType, pk)
                 Column(
@@ -1897,16 +1958,30 @@ private fun PdpInfiniteProductCarouselRow(
                         .clickable { onProductClick(item.handle) }
                         .padding(6.dp)
                 ) {
-                    if (img != null) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(ctx).data(img).build(),
-                            contentDescription = null,
+                    if (creatorApi != null) {
+                        PdpMockAwareProductThumb(
+                            product = item,
+                            ownerId = ownerId,
+                            creatorApi = creatorApi,
+                            mockPreviewRevision = mockPreviewRevision,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(6.dp)),
-                            contentScale = ContentScale.Crop
+                                .clip(RoundedCornerShape(6.dp))
                         )
+                    } else {
+                        val fallback = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
+                        if (fallback != null) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(ctx).data(fallback).build(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(6.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     }
                     Text(
                         dt,
@@ -1925,6 +2000,9 @@ private fun PdpInfiniteProductCarouselRow(
 private fun PdpProductCarouselRow(
     title: String,
     products: List<ShopifyProductsApi.ProductItem>,
+    ownerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0,
     onProductClick: (String) -> Unit
 ) {
     if (products.isEmpty()) return
@@ -1942,7 +2020,6 @@ private fun PdpProductCarouselRow(
             contentPadding = PaddingValues(bottom = 4.dp)
         ) {
             items(products, key = { it.handle }) { item ->
-                val img = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
                 val pk = item.metaProductKey.takeIf { it.isNotBlank() }
                 val (dt, _) = splitProductTitle(item.title, item.productType, pk)
                 Column(
@@ -1953,16 +2030,30 @@ private fun PdpProductCarouselRow(
                         .clickable { onProductClick(item.handle) }
                         .padding(6.dp)
                 ) {
-                    if (img != null) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(ctx).data(img).build(),
-                            contentDescription = null,
+                    if (creatorApi != null) {
+                        PdpMockAwareProductThumb(
+                            product = item,
+                            ownerId = ownerId,
+                            creatorApi = creatorApi,
+                            mockPreviewRevision = mockPreviewRevision,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(6.dp)),
-                            contentScale = ContentScale.Crop
+                                .clip(RoundedCornerShape(6.dp))
                         )
+                    } else {
+                        val fallback = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
+                        if (fallback != null) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(ctx).data(fallback).build(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(6.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     }
                     Text(
                         dt,
