@@ -753,6 +753,47 @@ private fun ShopCreateFilterDrawer(
                 }
                 Spacer(Modifier.height(24.dp))
             }
+
+            // Footer (fixed) — reset filters
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFF5F5F5))
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White)
+                        .clickable { onFacetChange(CatalogFacetTriSelection()) }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        t("creator.shop_create_product.catalog_reset_filters", "Reset filters"),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = EazColors.Orange
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EazColors.Orange)
+                        .clickable { dismissAnimated() }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        t("collection.apply", "Apply"),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White
+                    )
+                }
+            }
         }
     }
 }
