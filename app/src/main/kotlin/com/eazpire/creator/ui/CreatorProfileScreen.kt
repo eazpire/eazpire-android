@@ -1,6 +1,9 @@
 package com.eazpire.creator.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -142,7 +145,13 @@ fun CreatorProfileScreen(
     var loading by remember(creatorName) { mutableStateOf(true) }
     var error by remember(creatorName) { mutableStateOf<String?>(null) }
     var profile by remember(creatorName) { mutableStateOf<CreatorProfilePreview?>(null) }
-    var products by remember(creatorName) { mutableStateOf<List<CreatorShopProduct>>(emptyList()) }
+    var productsByPage by remember(creatorName) { mutableStateOf<Map<Int, List<CreatorShopProduct>>>(emptyMap()) }
+    var filterCountProducts by remember(creatorName) { mutableStateOf<List<CreatorShopProduct>>(emptyList()) }
+    var currentPage by remember(creatorName) { mutableStateOf(1) }
+    var totalProductCount by remember(creatorName) { mutableStateOf(0) }
+    var hasMoreProducts by remember(creatorName) { mutableStateOf(false) }
+    var productsLoading by remember(creatorName) { mutableStateOf(false) }
+    var profileReady by remember(creatorName) { mutableStateOf(false) }
     var sortBy by remember(creatorName) { mutableStateOf("date-desc") }
     var withinSearchQuery by remember(creatorName) { mutableStateOf("") }
     var productFilters by remember(creatorName) { mutableStateOf(ProductFilters()) }
@@ -155,6 +164,12 @@ fun CreatorProfileScreen(
     LaunchedEffect(creatorName, countryCode, catalogRegion) {
         loading = true
         error = null
+        profileReady = false
+        productsByPage = emptyMap()
+        filterCountProducts = emptyList()
+        currentPage = 1
+        totalProductCount = 0
+        hasMoreProducts = false
         try {
             val profileJson = withContext(Dispatchers.IO) {
                 api.getCreatorProfile(
@@ -179,11 +194,86 @@ fun CreatorProfileScreen(
                 ?: coverObj?.optJSONArray("cover_rotation_slides")?.optJSONObject(0)
                     ?.optString("image_url", "")?.trim()?.ifBlank { null }
 
+            profile = CreatorProfilePreview(
+                name = resolvedName,
+                avatarUrl = avatarObj?.optString("image_url", "")?.trim()?.ifBlank { null },
+                coverUrl = coverUrl,
+                ratingAvg = ratingObj?.optDouble("avg")?.takeIf { it > 0.0 }
+                    ?: ratingObj?.optDouble("rating")?.takeIf { it > 0.0 },
+                ratingCount = ratingObj?.optInt("count")?.takeIf { it > 0 }
+                    ?: ratingObj?.optInt("rating_count")?.takeIf { it > 0 },
+                productCount = 0
+            )
+            profileReady = true
+        } catch (e: Exception) {
+            error = e.message ?: "error"
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(creatorName, currentPage, profileReady, resolvedCreatorName, ownerId, countryCode, catalogRegion) {
+        if (!profileReady || error != null) return@LaunchedEffect
+        if (productsByPage.containsKey(currentPage)) return@LaunchedEffect
+        productsLoading = true
+        try {
+            val offset = (currentPage - 1) * CREATOR_PROFILE_PRODUCTS_PER_PAGE
             val productsJson = withContext(Dispatchers.IO) {
                 api.getCreatorShopProducts(
-                    creatorName = resolvedName,
+                    creatorName = resolvedCreatorName,
                     creatorSlug = creatorName,
-                    ownerId = resolvedOwnerId,
+                    ownerId = ownerId,
+                    country = countryCode,
+                    region = catalogRegion,
+                    limit = CREATOR_PROFILE_PRODUCTS_PER_PAGE,
+                    offset = offset
+                )
+            }
+            val list = mutableListOf<CreatorShopProduct>()
+            if (productsJson.optBoolean("ok", false)) {
+                val arr = productsJson.optJSONArray("products") ?: JSONArray()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    list.add(parseCreatorShopProduct(o))
+                }
+                val total = productsJson.optInt("total", -1)
+                if (total >= 0) {
+                    totalProductCount = total
+                    profile = profile?.copy(productCount = total)
+                } else {
+                    totalProductCount = maxOf(totalProductCount, offset + list.size)
+                    profile = profile?.copy(productCount = totalProductCount)
+                }
+                hasMoreProducts = productsJson.optBoolean("has_more", list.size >= CREATOR_PROFILE_PRODUCTS_PER_PAGE)
+            }
+            productsByPage = productsByPage + (currentPage to list)
+        } catch (_: Exception) {
+            /* keep prior pages */
+        } finally {
+            productsLoading = false
+        }
+    }
+
+    LaunchedEffect(
+        creatorName,
+        showFilterSheet,
+        productFilters,
+        withinSearchQuery,
+        profileReady,
+        resolvedCreatorName,
+        ownerId,
+        countryCode,
+        catalogRegion
+    ) {
+        if (!profileReady) return@LaunchedEffect
+        val needAll = showFilterSheet || !productFilters.isEmpty() || withinSearchQuery.isNotBlank()
+        if (!needAll || filterCountProducts.isNotEmpty()) return@LaunchedEffect
+        try {
+            val productsJson = withContext(Dispatchers.IO) {
+                api.getCreatorShopProducts(
+                    creatorName = resolvedCreatorName,
+                    creatorSlug = creatorName,
+                    ownerId = ownerId,
                     country = countryCode,
                     region = catalogRegion
                 )
@@ -196,38 +286,63 @@ fun CreatorProfileScreen(
                     list.add(parseCreatorShopProduct(o))
                 }
             }
-            products = list
-            profile = CreatorProfilePreview(
-                name = resolvedName,
-                avatarUrl = avatarObj?.optString("image_url", "")?.trim()?.ifBlank { null },
-                coverUrl = coverUrl,
-                ratingAvg = ratingObj?.optDouble("avg")?.takeIf { it > 0.0 }
-                    ?: ratingObj?.optDouble("rating")?.takeIf { it > 0.0 },
-                ratingCount = ratingObj?.optInt("count")?.takeIf { it > 0 }
-                    ?: ratingObj?.optInt("rating_count")?.takeIf { it > 0 },
-                productCount = list.size
-            )
-        } catch (e: Exception) {
-            error = e.message ?: "error"
-        } finally {
-            loading = false
+            filterCountProducts = list
+        } catch (_: Exception) {
+            /* ignore */
         }
     }
 
-    val filteredSortedProducts by remember(products, sortBy, productFilters, withinSearchQuery) {
+    val allLoadedProducts = remember(productsByPage, filterCountProducts) {
+        if (filterCountProducts.isNotEmpty()) filterCountProducts
+        else productsByPage.values.flatten()
+    }
+    val usesServerPaging = productFilters.isEmpty() && withinSearchQuery.isBlank()
+    val pageProducts = productsByPage[currentPage] ?: emptyList()
+
+    val filteredSortedProducts by remember(allLoadedProducts, pageProducts, sortBy, productFilters, withinSearchQuery, usesServerPaging, currentPage) {
         derivedStateOf {
-            val items = products.map { it.toFilterProductItem() }
+            val source = if (usesServerPaging) pageProducts else allLoadedProducts
+            val items = source.map { it.toFilterProductItem() }
             val filtered = applyCollectionProductFilters(items, productFilters)
             val searched = applyCollectionWithinSearchFilter(filtered, withinSearchQuery)
-            val byHandle = products.associateBy { it.handle }
-            sortCreatorProducts(
+            val byHandle = source.associateBy { it.handle }
+            val sorted = sortCreatorProducts(
                 searched.mapNotNull { byHandle[it.handle] },
                 sortBy
             )
+            if (usesServerPaging) sorted
+            else {
+                val start = (currentPage - 1) * CREATOR_PROFILE_PRODUCTS_PER_PAGE
+                sorted.drop(start).take(CREATOR_PROFILE_PRODUCTS_PER_PAGE)
+            }
+        }
+    }
+
+    val filteredTotalCount by remember(allLoadedProducts, productFilters, withinSearchQuery, usesServerPaging) {
+        derivedStateOf {
+            if (usesServerPaging) totalProductCount
+            else {
+                val items = allLoadedProducts.map { it.toFilterProductItem() }
+                applyCollectionWithinSearchFilter(
+                    applyCollectionProductFilters(items, productFilters),
+                    withinSearchQuery
+                ).size
+            }
+        }
+    }
+
+    val totalPages = remember(filteredTotalCount, hasMoreProducts, currentPage, usesServerPaging, allLoadedProducts, productFilters, withinSearchQuery) {
+        if (!usesServerPaging) {
+            maxOf(1, (filteredTotalCount + CREATOR_PROFILE_PRODUCTS_PER_PAGE - 1) / CREATOR_PROFILE_PRODUCTS_PER_PAGE)
+        } else if (filteredTotalCount > 0) {
+            maxOf(1, (filteredTotalCount + CREATOR_PROFILE_PRODUCTS_PER_PAGE - 1) / CREATOR_PROFILE_PRODUCTS_PER_PAGE)
+        } else {
+            maxOf(1, if (hasMoreProducts) currentPage + 1 else currentPage)
         }
     }
 
     val sortLabel = CREATOR_PROFILE_SORT_OPTIONS.find { it.value == sortBy }?.label ?: "Date, new to old"
+    val density = LocalDensity.current
 
     Column(
         modifier = modifier
@@ -246,70 +361,108 @@ fun CreatorProfileScreen(
             }
             else -> {
                 val p = profile
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    item {
-                        CreatorProfileHero(
-                            name = p?.name ?: creatorName,
-                            avatarUrl = p?.avatarUrl,
-                            coverUrl = p?.coverUrl,
-                            ratingAvg = p?.ratingAvg,
-                            ratingCount = p?.ratingCount,
-                            productCount = p?.productCount ?: products.size,
-                            t = t,
-                            onRatingClick = {
-                                if ((p?.ratingCount ?: 0) > 0) showReviewsModal = true
-                            }
-                        )
-                    }
-                    stickyHeader {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.White)
-                        ) {
-                            CollectionResultsBar(
-                                filteredCount = filteredSortedProducts.size,
-                                totalCount = products.size,
-                                sortBy = sortBy,
-                                sortLabel = sortLabel,
-                                t = t,
-                                onFilterClick = { showFilterSheet = true },
-                                onSortClick = { showSortSheet = true }
-                            )
-                        }
-                    }
-                    if (filteredSortedProducts.isEmpty()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .pointerInput(currentPage, totalPages) {
+                                var totalDrag = 0f
+                                val thresholdPx = with(density) { 60.dp.toPx() }
+                                detectHorizontalDragGestures(
+                                    onDragStart = { totalDrag = 0f },
+                                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                                    onDragEnd = {
+                                        when {
+                                            totalDrag > thresholdPx && currentPage > 1 -> currentPage -= 1
+                                            totalDrag < -thresholdPx && currentPage < totalPages -> currentPage += 1
+                                        }
+                                    }
+                                )
+                            },
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
                         item {
-                            Text(
-                                t("eaz.creator_profile.empty_products", "No products from this creator yet."),
-                                modifier = Modifier.padding(16.dp),
-                                color = EazColors.TextSecondary
+                            CreatorProfileHero(
+                                name = p?.name ?: creatorName,
+                                avatarUrl = p?.avatarUrl,
+                                coverUrl = p?.coverUrl,
+                                ratingAvg = p?.ratingAvg,
+                                ratingCount = p?.ratingCount,
+                                productCount = p?.productCount ?: filteredTotalCount,
+                                t = t,
+                                onRatingClick = {
+                                    if ((p?.ratingCount ?: 0) > 0) showReviewsModal = true
+                                }
                             )
                         }
-                    } else {
-                        items(filteredSortedProducts.chunked(2)) { rowItems ->
-                            Row(
+                        stickyHeader {
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    .background(Color.White)
                             ) {
-                                rowItems.forEach { item ->
-                                    CreatorShopProductCard(
-                                        product = item,
-                                        creatorLabel = p?.name ?: creatorName,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = { onProductClick(item.handle) }
-                                    )
+                                CollectionResultsBar(
+                                    filteredCount = if (usesServerPaging) filteredTotalCount else filteredSortedProducts.size,
+                                    totalCount = filteredTotalCount,
+                                    sortBy = sortBy,
+                                    sortLabel = sortLabel,
+                                    t = t,
+                                    onFilterClick = { showFilterSheet = true },
+                                    onSortClick = { showSortSheet = true }
+                                )
+                            }
+                        }
+                        if (productsLoading && filteredSortedProducts.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = EazColors.Orange)
                                 }
-                                if (rowItems.size == 1) {
-                                    Spacer(modifier = Modifier.weight(1f))
+                            }
+                        } else if (filteredSortedProducts.isEmpty()) {
+                            item {
+                                Text(
+                                    t("eaz.creator_profile.empty_products", "No products from this creator yet."),
+                                    modifier = Modifier.padding(16.dp),
+                                    color = EazColors.TextSecondary
+                                )
+                            }
+                        } else {
+                            items(filteredSortedProducts.chunked(2)) { rowItems ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    rowItems.forEach { item ->
+                                        CreatorShopProductCard(
+                                            product = item,
+                                            creatorLabel = p?.name ?: creatorName,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { onProductClick(item.handle) }
+                                        )
+                                    }
+                                    if (rowItems.size == 1) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }
+                    }
+                    if (totalPages > 1) {
+                        ProductPaginationDots(
+                            totalPages = totalPages,
+                            currentPage = currentPage,
+                            onPageClick = { currentPage = it },
+                            onSwipePrev = { if (currentPage > 1) currentPage -= 1 },
+                            onSwipeNext = { if (currentPage < totalPages) currentPage += 1 },
+                            style = PaginationDotsStyle.Light
+                        )
                     }
                 }
             }
@@ -333,7 +486,7 @@ fun CreatorProfileScreen(
         ownerId = ownerId,
         ratingAvg = profile?.ratingAvg,
         ratingCount = profile?.ratingCount,
-        shopProducts = products,
+        shopProducts = allLoadedProducts,
         t = t,
         onDismiss = { showReviewsModal = false },
         onProductClick = { handle ->
@@ -345,7 +498,7 @@ fun CreatorProfileScreen(
     if (showFilterSheet) {
         CollectionFilterDrawer(
             filters = productFilters,
-            products = products.map { it.toFilterProductItem() },
+            products = allLoadedProducts.map { it.toFilterProductItem() },
             withinSearchQuery = withinSearchQuery,
             onWithinSearchChange = { withinSearchQuery = it },
             onFiltersChange = { productFilters = it },

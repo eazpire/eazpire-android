@@ -28,6 +28,9 @@ import com.eazpire.creator.EazColors
 /** Page size for Creations products tab and hero product picker (shop collection uses server paging). */
 const val CREATIONS_PRODUCTS_PER_PAGE = 24
 
+/** Public creator profile PLP — matches web collection-style dot pagination. */
+const val CREATOR_PROFILE_PRODUCTS_PER_PAGE = 100
+
 enum class PaginationDotsStyle {
     /** Collection / shop bottom bar */
     Light,

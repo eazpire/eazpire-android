@@ -1139,7 +1139,9 @@ class CreatorApi(
         creatorSlug: String? = null,
         ownerId: String? = null,
         country: String? = null,
-        region: String? = null
+        region: String? = null,
+        limit: Int? = null,
+        offset: Int? = null
     ): JSONObject {
         val params = mutableMapOf<String, String>()
         creatorName?.takeIf { it.isNotBlank() }?.let { params["creator_name"] = it }
@@ -1147,6 +1149,8 @@ class CreatorApi(
         ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
         country?.takeIf { it.isNotBlank() }?.let { params["country"] = it.uppercase().take(2) }
         region?.takeIf { it.isNotBlank() }?.let { params["region"] = it.uppercase() }
+        limit?.takeIf { it > 0 }?.let { params["limit"] = it.coerceIn(1, 100).toString() }
+        offset?.takeIf { it >= 0 }?.let { params["offset"] = it.toString() }
         return call("get-shopify-products", params)
     }
 
