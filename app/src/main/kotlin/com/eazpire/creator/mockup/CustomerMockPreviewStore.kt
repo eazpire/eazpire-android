@@ -1,6 +1,7 @@
 package com.eazpire.creator.mockup
 
 import android.content.Context
+import android.util.Log
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.ui.MockupTryOnInfo
@@ -18,6 +19,7 @@ import org.json.JSONObject
  */
 object CustomerMockPreviewStore {
 
+    private const val TAG = "EazMockPreview"
     private const val PREFS = "eaz_mock_preview"
     private const val KEY_TRYON_HANDLES = "tryon_handles"
     private const val MAP_TTL_MS = 60_000L
@@ -106,12 +108,23 @@ object CustomerMockPreviewStore {
     ): Boolean {
         if (tryOnInfo(map, handle, productKey, designId) == null) return false
         if (isTryOnSessionActive(context, handle)) return true
+        return shouldAutoShowMockOnCard(map, handle, productKey, designId)
+    }
+
+    /** Wearing / shop-preview auto display (no manual session). */
+    fun shouldAutoShowMockOnCard(
+        map: JSONObject?,
+        handle: String,
+        productKey: String?,
+        designId: String?
+    ): Boolean {
+        if (tryOnInfo(map, handle, productKey, designId) == null) return false
         val pk = resolveProductKeyFromMap(map, handle, productKey) ?: return false
         val entry = map?.optJSONObject("mockups")?.optJSONObject(pk) ?: return false
         return MockupPreviewPool.isShopPreviewActive(entry)
     }
 
-    private fun resolveProductKeyFromMap(map: JSONObject?, handle: String, productKeyMeta: String?): String? {
+    fun resolveProductKeyFromMap(map: JSONObject?, handle: String, productKeyMeta: String?): String? {
         productKeyMeta?.takeIf { it.isNotBlank() }?.let { return it }
         if (map == null) return null
         val htk = map.optJSONObject("handle_to_key")
@@ -134,23 +147,43 @@ object CustomerMockPreviewStore {
         ownerId: String,
         product: ShopifyProductsApi.ProductItem,
         map: JSONObject?
-    ): List<String> {
+    ): List<String> = withContext(Dispatchers.IO) {
         val base = product.variantImages.ifEmpty { product.images }
         val handle = product.handle
-        val pk = product.metaProductKey
-        if (ownerId.isBlank() || handle.isBlank() || !isTryOnApparelProduct(pk)) return base
-        val data = map ?: loadMap(api, ownerId) ?: return base
-        if (!shouldShowMockOnCard(data, context, handle, pk, product.designId)) return base
+        val metaPk = product.metaProductKey
 
-        val info = tryOnInfo(data, handle, pk, product.designId) ?: return base
-        val colorMap = if (!pk.isNullOrBlank()) {
-            runCatching {
-                val colorsResp = api.getColorVariants(pk)
-                if (colorsResp.optBoolean("ok", false)) parseProductColorHexMap(colorsResp) else emptyMap()
-            }.getOrDefault(emptyMap())
-        } else {
-            emptyMap()
+        if (ownerId.isBlank() || handle.isBlank()) {
+            logCardSkip(handle, metaPk, null, product.designId, "no_owner_or_handle")
+            return@withContext base
         }
+
+        val data = map ?: loadMap(api, ownerId)
+        if (data == null) {
+            logCardSkip(handle, metaPk, null, product.designId, "no_map")
+            return@withContext base
+        }
+
+        val info = tryOnInfo(data, handle, metaPk, product.designId)
+        if (info == null) {
+            logCardSkip(handle, metaPk, null, product.designId, "no_try_on_info")
+            return@withContext base
+        }
+
+        if (!isTryOnApparelProduct(info.productKey)) {
+            logCardSkip(handle, metaPk, info.productKey, product.designId, "not_apparel")
+            return@withContext base
+        }
+
+        val show = shouldShowMockOnCard(data, context, handle, metaPk, product.designId)
+        if (!show) {
+            logCardSkip(handle, metaPk, info.productKey, product.designId, "should_not_show")
+            return@withContext base
+        }
+
+        val colorMap = runCatching {
+            val colorsResp = api.getColorVariants(info.productKey)
+            if (colorsResp.optBoolean("ok", false)) parseProductColorHexMap(colorsResp) else emptyMap()
+        }.getOrDefault(emptyMap())
 
         val size = base.size.coerceAtLeast(1)
         val resolved = (0 until size).mapNotNull { i ->
@@ -158,8 +191,15 @@ object CustomerMockPreviewStore {
             slice.cachedByColor.values.firstOrNull { it.isNotBlank() }
                 ?: resolveMockupImageUrl(slice, "", ownerId, colorMap)
         }
-        if (resolved.isEmpty()) return base
-        return if (resolved.size >= size) {
+
+        Log.d(
+            TAG,
+            "handle=$handle metaPk=$metaPk resolvedPk=${info.productKey} design=${product.designId} " +
+                "show=$show cachedColors=${info.cachedByColor.size} resolvedUrls=${resolved.size}"
+        )
+
+        if (resolved.isEmpty()) return@withContext base
+        if (resolved.size >= size) {
             resolved.take(size)
         } else {
             List(size) { i -> resolved[i % resolved.size] }
@@ -175,20 +215,34 @@ object CustomerMockPreviewStore {
         designId: String?,
         fallbackUrl: String?,
         colorName: String = ""
-    ): String? {
-        if (ownerId.isBlank() || handle.isBlank()) return fallbackUrl
-        val map = loadMap(api, ownerId) ?: return fallbackUrl
-        if (!shouldShowMockOnCard(map, context, handle, productKey, designId)) return fallbackUrl
-        val info = tryOnInfo(map, handle, productKey, designId) ?: return fallbackUrl
+    ): String? = withContext(Dispatchers.IO) {
+        if (ownerId.isBlank() || handle.isBlank()) return@withContext fallbackUrl
+        val map = loadMap(api, ownerId) ?: return@withContext fallbackUrl
+        val info = tryOnInfo(map, handle, productKey, designId) ?: return@withContext fallbackUrl
+        if (!isTryOnApparelProduct(info.productKey)) return@withContext fallbackUrl
+        if (!shouldShowMockOnCard(map, context, handle, productKey, designId)) return@withContext fallbackUrl
+
         val cached = info.cachedByColor.values.firstOrNull { it.isNotBlank() }
-        if (cached != null) return cached
-        val colorMap = if (!productKey.isNullOrBlank()) {
-            runCatching {
-                val r = api.getColorVariants(productKey)
-                if (r.optBoolean("ok", false)) parseProductColorHexMap(r) else emptyMap()
-            }.getOrDefault(emptyMap())
-        } else emptyMap()
+        if (cached != null) return@withContext cached
+
+        val colorMap = runCatching {
+            val r = api.getColorVariants(info.productKey)
+            if (r.optBoolean("ok", false)) parseProductColorHexMap(r) else emptyMap()
+        }.getOrDefault(emptyMap())
         val color = colorName.ifBlank { "White" }
-        return resolveMockupImageUrl(info, color, ownerId, colorMap) ?: fallbackUrl
+        resolveMockupImageUrl(info, color, ownerId, colorMap) ?: fallbackUrl
+    }
+
+    private fun logCardSkip(
+        handle: String,
+        metaPk: String?,
+        resolvedPk: String?,
+        designId: String?,
+        reason: String
+    ) {
+        Log.d(
+            TAG,
+            "handle=$handle metaPk=$metaPk resolvedPk=$resolvedPk design=$designId skip=$reason"
+        )
     }
 }

@@ -1,5 +1,6 @@
 package com.eazpire.creator.ui
 
+import android.util.Log
 import com.eazpire.creator.mockup.MockupPreviewPool
 import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
@@ -153,15 +154,22 @@ fun isTryOnApparelProduct(productKey: String?): Boolean {
     return pk.isNotBlank() && TRY_ON_APPAREL_PRODUCT_KEYS.contains(pk)
 }
 
+private const val MOCKUP_TRY_ON_TAG = "EazMockPreview"
+
 fun parseMockupTryOnInfo(
     data: JSONObject,
     handle: String,
     productKeyMeta: String?,
     designIdMeta: String?
 ): MockupTryOnInfo? {
-    if (!data.optBoolean("ok", false)) return null
+    fun gate(reason: String): MockupTryOnInfo? {
+        Log.d(MOCKUP_TRY_ON_TAG, "handle=$handle metaPk=$productKeyMeta gate=$reason")
+        return null
+    }
 
-    val mockupsObj = data.optJSONObject("mockups") ?: return null
+    if (!data.optBoolean("ok", false)) return gate("not_ok")
+
+    val mockupsObj = data.optJSONObject("mockups") ?: return gate("no_mockups")
     val handleToKey = data.optJSONObject("handle_to_key")
     var productKey = handleToKey?.optString(handle)?.takeIf { it.isNotBlank() }
 
@@ -176,25 +184,25 @@ fun parseMockupTryOnInfo(
         }
     }
     if (productKey.isNullOrBlank()) productKey = productKeyMeta?.takeIf { it.isNotBlank() }
-    if (productKey.isNullOrBlank()) return null
+    if (productKey.isNullOrBlank()) return gate("no_product_key")
 
-    val info = mockupsObj.optJSONObject(productKey) ?: return null
-    if (!info.optBoolean("has_mask", false)) return null
-    if (!info.optBoolean("print_area_confirmed", false)) return null
-    if (!MockupPreviewPool.hasPreviewPool(info)) return null
+    val info = mockupsObj.optJSONObject(productKey) ?: return gate("no_mockup_entry")
+    if (!info.optBoolean("has_mask", false)) return gate("no_mask")
+    if (!info.optBoolean("print_area_confirmed", false)) return gate("print_area_unconfirmed")
 
     val previewIds = MockupPreviewPool.getPreviewIds(info)
     val mockupId = MockupPreviewPool.pickMockupId(info, handle, 0)
         ?: info.optLong("mockup_id", -1L).takeIf { it > 0 }
+        ?: info.optString("mockup_id").toLongOrNull()?.takeIf { it > 0 }
         ?: previewIds.firstOrNull()
-        ?: return null
+        ?: return gate("no_mockup_id")
 
     val handleDesignMap = data.optJSONObject("handle_design_map")
     var designId = handleDesignMap?.optString(handle)?.takeIf { it.isNotBlank() }
     if (designId.isNullOrBlank()) designId = designIdMeta?.takeIf { it.isNotBlank() }
 
     val isTemplateProduct = handle == productKey
-    if (designId.isNullOrBlank() && !isTemplateProduct) return null
+    if (designId.isNullOrBlank() && !isTemplateProduct) return gate("no_design_id")
 
     val wantDesign = designId ?: "NONE"
     val cachedVariants = data.optJSONObject("cached_variants")
@@ -224,6 +232,10 @@ fun parseMockupTryOnInfo(
     val cachedByColor = cachedByMockupId[mockupId] ?: emptyMap()
     val shopEnabled = !info.has("shop_preview_enabled") || info.optBoolean("shop_preview_enabled", true)
 
+    Log.d(
+        MOCKUP_TRY_ON_TAG,
+        "handle=$handle metaPk=$productKeyMeta resolvedPk=$productKey design=$designId gate=ok mockupId=$mockupId"
+    )
     return MockupTryOnInfo(
         mockupId = mockupId,
         designId = designId,

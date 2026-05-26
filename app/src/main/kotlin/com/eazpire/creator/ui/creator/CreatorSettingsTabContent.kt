@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.creatorcodes.CreatorCodeAvailableHintStore
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.account.AccountCommunityTab
@@ -175,6 +176,7 @@ private fun CreatorSettingsCreatorCodesContent(
             isLoading = true
             try {
                 val data = withContext(Dispatchers.IO) { api.getCreatorCode(ownerId) }
+                CreatorCodeAvailableHintStore.refreshFromResponse(data)
                 isCreator = data.optBoolean("is_creator", false)
                 canGenerate = data.optBoolean("can_generate", false)
                 data.optJSONObject("active_code")?.let { ac ->

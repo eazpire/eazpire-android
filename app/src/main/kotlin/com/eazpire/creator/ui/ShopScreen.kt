@@ -53,6 +53,7 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.creatorcodes.CreatorCodeAvailableHintStore
 import com.eazpire.creator.chat.EazyChatContext
 import com.eazpire.creator.chat.EazyChatModal
 import com.eazpire.creator.chat.EazyGuideOverlay
@@ -317,6 +318,24 @@ fun ShopScreen(
     val jwtForApi = tokenStore.getJwt()
     val ownerId = tokenStore.getOwnerId().orEmpty()
     val eazySyncApi = remember(jwtForApi, ownerId) { CreatorApi(jwt = jwtForApi) }
+    val creatorCodeHintActive by CreatorCodeAvailableHintStore.active.collectAsState()
+
+    LaunchedEffect(ownerId, jwtForApi) {
+        while (true) {
+            if (ownerId.isNotBlank() && !jwtForApi.isNullOrBlank()) {
+                try {
+                    CreatorCodeAvailableHintStore.refreshFromResponse(
+                        withContext(Dispatchers.IO) { eazySyncApi.getCreatorCode(ownerId) }
+                    )
+                } catch (_: Exception) {
+                    CreatorCodeAvailableHintStore.clear()
+                }
+            } else {
+                CreatorCodeAvailableHintStore.clear()
+            }
+            delay(60_000)
+        }
+    }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isBlank()) return@LaunchedEffect
@@ -571,6 +590,8 @@ fun ShopScreen(
                     slotBoundsState = slotBoundsState,
                     isCreatorMode = isCreatorMode,
                     onCreatorModeChange = { switchCreatorMode(toCreator = it) },
+                    creatorCodeShopHintActive = creatorCodeHintActive,
+                    creatorCodeProfileHintActive = creatorCodeHintActive,
                     onLogoClick = {
                         if (!showAuthScreen) {
                             accountModalVisible = false

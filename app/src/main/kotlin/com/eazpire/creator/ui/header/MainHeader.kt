@@ -83,6 +83,8 @@ fun MainHeader(
     slotBoundsState: androidx.compose.runtime.MutableState<Rect?>? = null,
     isCreatorMode: Boolean = false,
     onCreatorModeChange: (Boolean) -> Unit = {},
+    creatorCodeShopHintActive: Boolean = false,
+    creatorCodeProfileHintActive: Boolean = false,
     onSearchNavigate: (String) -> Unit = {},
     onSearchQuerySubmit: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -246,7 +248,8 @@ fun MainHeader(
             }
             CreatorSwitch(
                 isCreatorMode = isCreatorMode,
-                onModeChange = onCreatorModeChange
+                onModeChange = onCreatorModeChange,
+                autoShopHintActive = creatorCodeShopHintActive && !isCreatorMode,
             )
         }
         Row(
@@ -275,7 +278,8 @@ fun MainHeader(
                 favoritesCount = favoritesCount,
                 onAccountClick = onAccountClick,
                 onFavoritesClick = { onFavoritesModalChangeActual(true) },
-                onCartClick = { onCartDrawerChangeActual(true) }
+                onCartClick = { onCartDrawerChangeActual(true) },
+                profileHintActive = creatorCodeProfileHintActive && isCreatorMode,
             )
         }
         Box(

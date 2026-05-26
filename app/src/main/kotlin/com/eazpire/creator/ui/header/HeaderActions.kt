@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.creatorcodes.creatorCodeHintPulse
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +33,7 @@ fun HeaderActions(
     onAccountClick: () -> Unit = {},
     onFavoritesClick: () -> Unit = {},
     onCartClick: () -> Unit = {},
+    profileHintActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -46,7 +48,8 @@ fun HeaderActions(
             Icon(
                 imageVector = Icons.Outlined.PersonOutline,
                 contentDescription = "Account",
-                tint = EazColors.TextPrimary
+                tint = EazColors.TextPrimary,
+                modifier = Modifier.creatorCodeHintPulse(profileHintActive, cornerRadiusDp = 20f),
             )
         }
         Box {

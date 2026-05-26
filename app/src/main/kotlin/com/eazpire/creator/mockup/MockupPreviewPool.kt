@@ -23,8 +23,9 @@ object MockupPreviewPool {
                 arr.optLong(i, -1L).takeIf { it > 0 }
             }
         }
-        val single = meta.optLong("mockup_id", -1L)
-        return if (single > 0) listOf(single) else emptyList()
+        val single = meta.optLong("mockup_id", -1L).takeIf { it > 0 }
+            ?: meta.optString("mockup_id").toLongOrNull()?.takeIf { it > 0 }
+        return if (single != null) listOf(single) else emptyList()
     }
 
     fun hasPreviewPool(meta: JSONObject?): Boolean = getPreviewIds(meta).isNotEmpty()

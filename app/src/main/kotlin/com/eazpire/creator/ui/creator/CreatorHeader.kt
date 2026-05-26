@@ -68,6 +68,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.chat.EazyGuideModeStore
+import com.eazpire.creator.creatorcodes.creatorCodeHintPulse
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -217,6 +218,7 @@ fun CreatorHeader(
     startGenerationLoading: Boolean = false,
     onStartGenerationClick: () -> Unit = {},
     startGenerationLabel: String = "",
+    profileHintActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var fiatText by remember { mutableStateOf("…") }
@@ -359,6 +361,7 @@ fun CreatorHeader(
                 Box(
                     modifier = Modifier
                         .size(36.dp)
+                        .creatorCodeHintPulse(profileHintActive, cornerRadiusDp = 10f)
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }

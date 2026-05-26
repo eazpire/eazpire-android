@@ -317,9 +317,21 @@ private fun ProductCard(
             return@LaunchedEffect
         }
         val map = CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
-        showTryOn =
-            CustomerMockPreviewStore.tryOnInfo(map, product.handle, product.metaProductKey, product.designId) != null
-        tryOnActive = CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle)
+        val info = CustomerMockPreviewStore.tryOnInfo(
+            map,
+            product.handle,
+            product.metaProductKey,
+            product.designId
+        )
+        showTryOn = info != null
+        val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
+            map,
+            product.handle,
+            product.metaProductKey,
+            product.designId
+        )
+        tryOnActive =
+            CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle) || autoActive
         images = CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
     }
 

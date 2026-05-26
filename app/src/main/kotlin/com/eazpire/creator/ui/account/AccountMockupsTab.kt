@@ -42,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -119,6 +120,8 @@ fun AccountMockupsTab(
     var lightboxVariants by remember { mutableStateOf<List<MockupVariant>>(emptyList()) }
     var lightboxIndex by remember { mutableStateOf(0) }
     var deleteConfirm by remember { mutableStateOf<MockupCatalogProduct?>(null) }
+    var autoMockEnabled by remember { mutableStateOf(true) }
+    var wearingMockCount by remember { mutableIntStateOf(0) }
 
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
     val scope = rememberCoroutineScope()
@@ -703,7 +706,13 @@ private fun MockupProductGrid(
 private suspend fun reloadCatalog(
     api: com.eazpire.creator.api.CreatorApi,
     ownerId: String,
-    onResult: (List<MockupProfilePhoto>, List<MockupCatalogProduct>, List<MockupCatalogProduct>) -> Unit
+    onResult: (
+        List<MockupProfilePhoto>,
+        List<MockupCatalogProduct>,
+        List<MockupCatalogProduct>,
+        Boolean,
+        Int
+    ) -> Unit
 ) {
     val photosResp = api.listMockupPhotos(ownerId)
     val photos = if (photosResp.optBoolean("ok", false)) {

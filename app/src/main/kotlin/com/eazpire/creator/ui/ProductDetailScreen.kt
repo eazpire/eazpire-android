@@ -104,7 +104,6 @@ import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
-import com.eazpire.creator.mockup.MockupPreviewPool
 import com.eazpire.creator.ui.components.HangerIcon
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -450,34 +449,36 @@ fun ProductDetailScreen(
         tryOnLoading = false
         val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val prod = product ?: return@LaunchedEffect
-        if (!isTryOnApparelProduct(prod.productKey)) return@LaunchedEffect
         try {
-            val pk = prod.productKey?.takeIf { it.isNotBlank() }
-            if (pk != null) {
-                val colorsResp = withContext(Dispatchers.IO) {
-                    creatorApi.getColorVariants(pk)
-                }
-                if (colorsResp.optBoolean("ok", false)) {
-                    productColorHexMap = parseProductColorHexMap(colorsResp)
-                }
-            }
             val map = withContext(Dispatchers.IO) {
-                creatorApi.getCustomerMockupMap(ownerId, productHandle)
-            }
+                CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+            } ?: return@LaunchedEffect
             mockupTryOnInfo = parseMockupTryOnInfo(
                 data = map,
                 handle = productHandle,
                 productKeyMeta = prod.productKey,
                 designIdMeta = prod.designIdMeta
             )
-            val wearing = mockupTryOnInfo?.let { info ->
-                val pk = info.productKey
-                val entry = map.optJSONObject("mockups")?.optJSONObject(pk)
-                entry != null && MockupPreviewPool.isShopPreviewActive(entry)
-            } == true
-            val sessionTryOn = com.eazpire.creator.mockup.CustomerMockPreviewStore
-                .isTryOnSessionActive(context, productHandle)
-            if (mockupTryOnInfo != null && (wearing || sessionTryOn)) {
+            val info = mockupTryOnInfo
+            if (info != null && isTryOnApparelProduct(info.productKey)) {
+                val colorsResp = withContext(Dispatchers.IO) {
+                    creatorApi.getColorVariants(info.productKey)
+                }
+                if (colorsResp.optBoolean("ok", false)) {
+                    productColorHexMap = parseProductColorHexMap(colorsResp)
+                }
+            } else {
+                mockupTryOnInfo = null
+                return@LaunchedEffect
+            }
+            val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
+                map,
+                productHandle,
+                prod.productKey,
+                prod.designIdMeta
+            )
+            val sessionTryOn = CustomerMockPreviewStore.isTryOnSessionActive(context, productHandle)
+            if (mockupTryOnInfo != null && (autoActive || sessionTryOn)) {
                 tryOnActive = true
             }
         } catch (_: Exception) {
@@ -604,7 +605,9 @@ fun ProductDetailScreen(
             tryOnOverlayMessage = t("eaz.pdp.try_on_overlay_on", "Putting on your look…")
         }
         tryOnLoading = true
-        val url = resolveMockupImageUrl(info, selectedColor, ownerId, productColorHexMap)
+        val url = withContext(Dispatchers.IO) {
+            resolveMockupImageUrl(info, selectedColor, ownerId, productColorHexMap)
+        }
         tryOnLoading = false
         tryOnOverlayMessage = null
         if (url.isNullOrBlank()) {
@@ -1877,7 +1880,6 @@ private fun HtmlWebView(content: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-@Composable
 private fun PdpMockAwareProductThumb(
     product: ShopifyProductsApi.ProductItem,
     ownerId: String,
@@ -1918,6 +1920,7 @@ private fun PdpMockAwareProductThumb(
     }
 }
 
+@Composable
 private fun PdpInfiniteProductCarouselRow(
     title: String,
     products: List<ShopifyProductsApi.ProductItem>,

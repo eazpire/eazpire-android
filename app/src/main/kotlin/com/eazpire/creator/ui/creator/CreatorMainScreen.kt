@@ -52,6 +52,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.audio.CreatorAudioAutoplayPrefs
 import com.eazpire.creator.audio.CreatorAudioStore
+import com.eazpire.creator.creatorcodes.CreatorCodeAvailableHintStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.footer.TermsModal
@@ -130,6 +131,7 @@ fun CreatorMainScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
+    val creatorCodeHintActive by CreatorCodeAvailableHintStore.active.collectAsState()
     var currentScreen by remember(initialScreen) {
         mutableIntStateOf(initialScreen?.coerceIn(0, 4) ?: 0)
     }
@@ -301,6 +303,7 @@ fun CreatorMainScreen(
                     onMenuClick = { drawerVisible = true },
                     onBalanceClick = { salesModalVisible = true },
                     onAccountClick = { creatorSettingsVisible = true },
+                    profileHintActive = creatorCodeHintActive,
                     tokenStore = tokenStore,
                     eazyDocked = eazyDocked,
                     eazySnapModeActive = eazySnapModeActive,
@@ -577,6 +580,7 @@ fun CreatorMainScreen(
                 translationStore = translationStore,
                 initialTab = if (wearPairTokenForSettings != null) 10 else 0,
                 pendingWearPairToken = wearPairTokenForSettings,
+                creatorCodeHintActive = creatorCodeHintActive,
                 onDismiss = {
                     creatorSettingsVisible = false
                     wearPairTokenForSettings = null

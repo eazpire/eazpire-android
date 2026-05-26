@@ -37,7 +37,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.creatorcodes.creatorCodeHintPulse
 import com.eazpire.creator.i18n.TranslationStore
 
 /** Creator Settings Modal – fullscreen von unten, icons-only Sidebar wie Web (Profile, Creator Codes, Community, Creator Names, Level, EAZ, Payout, Interests, NFT) */
@@ -62,6 +69,7 @@ fun CreatorSettingsModal(
     onLoginClick: () -> Unit = {},
     initialTab: Int = 0,
     pendingWearPairToken: String? = null,
+    creatorCodeHintActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val isLoggedIn = tokenStore.isLoggedIn()
@@ -80,6 +88,15 @@ fun CreatorSettingsModal(
         SettingsTabItem(translationStore.t("creator.settings.nav_interests", "Interests"), Icons.Default.Favorite),
         SettingsTabItem(translationStore.t("creator.settings.nav_nft", "NFT"), Icons.Default.Collections),
         SettingsTabItem(translationStore.t("creator.settings.nav_wear", "Creator Wear"), Icons.Default.Watch),
+    )
+    val codesTabIndex = 2
+    val profileTabIndex = 0
+    val hintPulseTransition = rememberInfiniteTransition(label = "settingsCodesHint")
+    val codesHintPulse by hintPulseTransition.animateFloat(
+        initialValue = 0.18f,
+        targetValue = 0.38f,
+        animationSpec = infiniteRepeatable(animation = tween(2000), repeatMode = RepeatMode.Reverse),
+        label = "settingsCodesHintValue",
     )
 
     ModalBottomSheet(
@@ -108,14 +125,27 @@ fun CreatorSettingsModal(
             ) {
                 tabs.forEachIndexed { i, tab ->
                     val isActive = i == currentTab
+                    val showProfileHint = creatorCodeHintActive && i == profileTabIndex && !isActive
+                    val showCodesHint = creatorCodeHintActive && i == codesTabIndex && !isActive
                     Icon(
                         tab.icon,
                         contentDescription = tab.label,
                         tint = if (isActive) EazColors.Orange else Color.White.copy(alpha = 0.7f),
                         modifier = Modifier
                             .size(40.dp)
+                            .then(
+                                if (showProfileHint) {
+                                    Modifier.creatorCodeHintPulse(true, cornerRadiusDp = 10f)
+                                } else {
+                                    Modifier
+                                }
+                            )
                             .background(
-                                if (isActive) EazColors.Orange.copy(alpha = 0.2f) else Color.Transparent,
+                                when {
+                                    isActive -> EazColors.Orange.copy(alpha = 0.2f)
+                                    showCodesHint -> EazColors.Orange.copy(alpha = codesHintPulse)
+                                    else -> Color.Transparent
+                                },
                                 RoundedCornerShape(10.dp)
                             )
                             .clickable(

@@ -35,6 +35,13 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -63,6 +70,7 @@ fun CreatorSwitch(
     isCreatorMode: Boolean,
     onModeChange: (Boolean) -> Unit,
     compact: Boolean = false,
+    autoShopHintActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -121,6 +129,27 @@ fun CreatorSwitch(
         isTutorialPlaying = false
     }
 
+    LaunchedEffect(autoShopHintActive, isCreatorMode) {
+        if (!autoShopHintActive || isCreatorMode) return@LaunchedEffect
+        while (true) {
+            delay(10_000)
+            if (autoShopHintActive && !isCreatorMode && !isTutorialPlaying) {
+                triggerTutorial++
+            }
+        }
+    }
+
+    val hintPulseTransition = rememberInfiniteTransition(label = "switchHintPulse")
+    val hintPulse by hintPulseTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "switchHintPulseValue",
+    )
+
     Box(
         modifier = modifier
             .width(trackWidth)
@@ -129,6 +158,21 @@ fun CreatorSwitch(
             .clip(RoundedCornerShape(percent = 50))
             .background(if (isCreatorMode) TrackBgCreator else TrackBgLight)
             .border(1.dp, if (isCreatorMode) TrackBorderCreator else TrackBorderLight, RoundedCornerShape(percent = 50))
+            .then(
+                if (isTutorialPlaying) {
+                    Modifier.drawBehind {
+                        val stroke = 3f + hintPulse * 4f
+                        drawRoundRect(
+                            color = EazColors.Orange.copy(alpha = 0.25f + hintPulse * 0.35f),
+                            size = size,
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f),
+                            style = Stroke(width = stroke),
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .padding(padding)
             .pointerInput(Unit) {
                 var totalDrag = 0f
