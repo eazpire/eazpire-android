@@ -398,11 +398,14 @@ fun CreatorMainScreen(
                             )
                         }
                 ) {
+                    val guestLockedScreen = !tokenStore.isLoggedIn() && currentScreen in 1..4
+                    Box(modifier = Modifier.fillMaxSize()) {
                     when (currentScreen) {
                         0 -> CreatorDashboardScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onOpenSalesModal = { salesModalVisible = true },
+                            onLoginClick = onAccountClick,
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -475,6 +478,13 @@ fun CreatorMainScreen(
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )
+                    }
+                    if (guestLockedScreen) {
+                        CreatorGuestLockOverlay(
+                            translationStore = translationStore,
+                            onLoginClick = onAccountClick,
+                        )
+                    }
                     }
                 }
             }
@@ -557,7 +567,8 @@ fun CreatorMainScreen(
             CreatorSalesModal(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
-                onDismiss = { salesModalVisible = false }
+                onDismiss = { salesModalVisible = false },
+                onLoginClick = onAccountClick,
             )
         }
         if (creatorSettingsVisible) {
@@ -570,6 +581,7 @@ fun CreatorMainScreen(
                     creatorSettingsVisible = false
                     wearPairTokenForSettings = null
                 },
+                onLoginClick = onAccountClick,
             )
         }
         if (audioModalVisible) {
@@ -577,7 +589,8 @@ fun CreatorMainScreen(
                 store = audioStore,
                 tokenStore = tokenStore,
                 translationStore = translationStore,
-                onDismiss = { audioModalVisible = false }
+                onDismiss = { audioModalVisible = false },
+                onLoginClick = onAccountClick,
             )
         }
         if (languageModalVisible) {

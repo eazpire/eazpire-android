@@ -3,15 +3,19 @@ package com.eazpire.creator.ui.creator
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,12 +42,15 @@ import java.util.Date
 
 private const val WEAR_PLAY_STORE_URL =
     "https://play.google.com/store/apps/details?id=com.eazpire.creator.wear"
+private const val SETTINGS_TAB_CREATOR_CODES = 2
+private const val SETTINGS_TAB_CREATOR_NAMES = 4
 
 @Composable
 fun CreatorSettingsWearContent(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     pendingPairToken: String? = null,
+    onRequestSettingsTab: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -58,6 +65,8 @@ fun CreatorSettingsWearContent(
     var wearDeviceName by remember { mutableStateOf<String?>(null) }
     var wearConnectedAt by remember { mutableStateOf<Long?>(null) }
     var refreshKey by remember { mutableIntStateOf(0) }
+    var connectReady by remember { mutableStateOf(false) }
+    var missingPrereq by remember { mutableStateOf<List<String>>(emptyList()) }
 
     fun formatConnectedAt(ts: Long?): String? {
         if (ts == null || ts <= 0L) return null
@@ -71,6 +80,8 @@ fun CreatorSettingsWearContent(
             wearConnected = false
             wearDeviceName = null
             wearConnectedAt = null
+            connectReady = false
+            missingPrereq = emptyList()
             return
         }
         loadingStatus = true
@@ -141,6 +152,18 @@ fun CreatorSettingsWearContent(
                     )
                     refreshKey++
                     loadServerStatus()
+                } else if (res.optString("error") == "wear_prerequisites_not_met") {
+                    val pre = res.optJSONObject("prerequisites")
+                    connectReady = false
+                    missingPrereq = pre?.optJSONArray("missing")?.let { arr ->
+                        (0 until arr.length()).mapNotNull { i ->
+                            arr.optString(i, "").trim().takeIf { it.isNotEmpty() }
+                        }
+                    } ?: listOf("creator_code", "creator_name")
+                    statusMessage = translationStore.t(
+                        "creator.settings.wear_prereq_title",
+                        "Before you can connect",
+                    )
                 } else {
                     statusMessage = res.optString("error", "claim_failed")
                 }
@@ -279,6 +302,71 @@ fun CreatorSettingsWearContent(
             CircularProgressIndicator(color = EazColors.Orange)
         }
 
+        if (loggedIn && !wearConnected && missingPrereq.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        EazColors.Orange.copy(alpha = 0.08f),
+                        RoundedCornerShape(12.dp),
+                    )
+                    .border(1.dp, EazColors.Orange.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = translationStore.t(
+                        "creator.settings.wear_prereq_title",
+                        "Before you can connect",
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White,
+                )
+                Text(
+                    text = translationStore.t(
+                        "creator.settings.wear_prereq_intro",
+                        "Complete these steps in Creator Settings:",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.75f),
+                )
+                if (missingPrereq.contains("creator_code")) {
+                    WearPrereqItem(
+                        title = translationStore.t(
+                            "creator.settings.wear_prereq_creator_code",
+                            "Redeem a Creator Code",
+                        ),
+                        how = translationStore.t(
+                            "creator.settings.wear_prereq_creator_code_how",
+                            "Open Creator Settings → Creator Codes and enter your code.",
+                        ),
+                        cta = translationStore.t(
+                            "creator.settings.wear_prereq_go_creator_code",
+                            "Go to Creator Codes",
+                        ),
+                        onCta = { onRequestSettingsTab(SETTINGS_TAB_CREATOR_CODES) },
+                    )
+                }
+                if (missingPrereq.contains("creator_name")) {
+                    WearPrereqItem(
+                        title = translationStore.t(
+                            "creator.settings.wear_prereq_creator_name",
+                            "Add at least one Creator Name",
+                        ),
+                        how = translationStore.t(
+                            "creator.settings.wear_prereq_creator_name_how",
+                            "Open Creator Settings → Creator Names and add your public display name.",
+                        ),
+                        cta = translationStore.t(
+                            "creator.settings.wear_prereq_go_creator_names",
+                            "Go to Creator Names",
+                        ),
+                        onCta = { onRequestSettingsTab(SETTINGS_TAB_CREATOR_NAMES) },
+                    )
+                }
+            }
+        }
+
         statusMessage?.let { msg ->
             Text(
                 text = msg,
@@ -296,7 +384,7 @@ fun CreatorSettingsWearContent(
             ) {
                 Text(translationStore.t("creator.settings.wear_disconnect", "Disconnect watch"))
             }
-        } else {
+        } else if (loggedIn && (connectReady || missingPrereq.isEmpty())) {
             Button(
                 onClick = {
                     if (!loggedIn) {
@@ -304,15 +392,42 @@ fun CreatorSettingsWearContent(
                             "creator.settings.wear_login_required",
                             "Log in on this device first.",
                         )
+                    } else if (!connectReady && missingPrereq.isNotEmpty()) {
+                        statusMessage = translationStore.t(
+                            "creator.settings.wear_prereq_title",
+                            "Before you can connect",
+                        )
                     } else {
                         showScanner = true
                     }
                 },
-                enabled = !claiming,
+                enabled = !claiming && connectReady,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(translationStore.t("creator.settings.wear_connect", "Connect"))
             }
+        }
+    }
+}
+
+@Composable
+private fun WearPrereqItem(
+    title: String,
+    how: String,
+    cta: String,
+    onCta: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(text = title, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+        Text(text = how, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
+        TextButton(onClick = onCta) {
+            Text(cta, color = EazColors.Orange)
         }
     }
 }

@@ -1,8 +1,6 @@
 package com.eazpire.creator.ui
 
 import android.app.Activity
-import android.graphics.Bitmap
-import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
 import android.content.Intent
 import android.net.Uri
@@ -44,7 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
@@ -246,8 +243,6 @@ fun ShopScreen(
     var eazySnapModeActive by remember { mutableStateOf(false) }
     val slotBoundsState = remember { mutableStateOf<Rect?>(null) }
     val scope = rememberCoroutineScope()
-    val rootView = LocalView.current
-    var modePixelTransition by remember { mutableStateOf<CreatorModePixelTransitionState?>(null) }
     var currentPagePath by remember { mutableStateOf("/") }
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
@@ -260,28 +255,9 @@ fun ShopScreen(
     val shopNavHistory = rememberShopNavHistoryController()
     var isCreatorMode by remember { mutableStateOf(false) }
 
-    fun switchCreatorMode(toCreator: Boolean, animate: Boolean = true) {
-        if (toCreator == isCreatorMode || modePixelTransition != null) return
-        if (!animate) {
-            isCreatorMode = toCreator
-            return
-        }
-        scope.launch {
-            if (toCreator) {
-                modePixelTransition = CreatorModePixelTransitionState.ShopToCreatorIntro
-                isCreatorMode = true
-                return@launch
-            }
-            val snapshot = withContext(Dispatchers.Main) {
-                val w = rootView.width.coerceAtLeast(1)
-                val h = rootView.height.coerceAtLeast(1)
-                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bitmap ->
-                    rootView.draw(AndroidCanvas(bitmap))
-                }
-            }
-            modePixelTransition = CreatorModePixelTransitionState.CreatorToShop(snapshot)
-            isCreatorMode = false
-        }
+    fun switchCreatorMode(toCreator: Boolean, @Suppress("UNUSED_PARAMETER") animate: Boolean = false) {
+        if (toCreator == isCreatorMode) return
+        isCreatorMode = toCreator
     }
 
     val pendingWearPair = pendingWearPairToken?.value
@@ -1200,20 +1176,6 @@ fun ShopScreen(
         }
     }
 
-    modePixelTransition?.let { transition ->
-        CreatorModePixelTransitionOverlay(
-            state = transition,
-            onFinished = {
-                if (transition is CreatorModePixelTransitionState.CreatorToShop) {
-                    transition.snapshot.recycle()
-                }
-                modePixelTransition = null
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(9999f),
-        )
-    }
     }
     }
 }

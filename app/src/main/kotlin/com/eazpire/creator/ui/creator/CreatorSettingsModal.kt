@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -58,10 +59,12 @@ fun CreatorSettingsModal(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onDismiss: () -> Unit,
+    onLoginClick: () -> Unit = {},
     initialTab: Int = 0,
     pendingWearPairToken: String? = null,
     modifier: Modifier = Modifier
 ) {
+    val isLoggedIn = tokenStore.isLoggedIn()
     var currentTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 10)) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -86,12 +89,13 @@ fun CreatorSettingsModal(
         modifier = modifier.fillMaxHeight(1f),
         dragHandle = null
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding()
+                .navigationBarsPadding(),
         ) {
+        Row(modifier = Modifier.fillMaxSize()) {
             // Icons-only Sidebar (fix, schmal)
             Column(
                 modifier = Modifier
@@ -147,12 +151,20 @@ fun CreatorSettingsModal(
                     tokenStore = tokenStore,
                     translationStore = translationStore,
                     pendingWearPairToken = pendingWearPairToken,
+                    onRequestSettingsTab = { currentTab = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .background(Color(0xFF0B1220))
                 )
             }
+        }
+        if (!isLoggedIn) {
+            CreatorGuestLockOverlay(
+                translationStore = translationStore,
+                onLoginClick = onLoginClick,
+            )
+        }
         }
     }
 }

@@ -171,7 +171,14 @@ fun CreatorLevelBadge(
             } catch (_: Exception) {}
         }
     } else {
+        levelNum = 0
         levelName = translationStore.t("creator.overview.level_names.0", "Starter")
+        xpValue = "0 / 50"
+        xpFillPercent = 0f
+        xpHint = translationStore.t(
+            "creator.mobile.xp_until_next",
+            "XP until next level",
+        )
     }
 
     Row(

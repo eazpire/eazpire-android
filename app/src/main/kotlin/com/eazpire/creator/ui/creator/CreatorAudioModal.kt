@@ -74,8 +74,10 @@ fun CreatorAudioModal(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onDismiss: () -> Unit,
+    onLoginClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isLoggedIn = tokenStore.isLoggedIn()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -136,6 +138,7 @@ fun CreatorAudioModal(
         modifier = modifier.fillMaxSize(),
         dragHandle = null
     ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -314,6 +317,13 @@ fun CreatorAudioModal(
                     }
                 }
             }
+        }
+        if (!isLoggedIn) {
+            CreatorGuestLockOverlay(
+                translationStore = translationStore,
+                onLoginClick = onLoginClick,
+            )
+        }
         }
     }
 

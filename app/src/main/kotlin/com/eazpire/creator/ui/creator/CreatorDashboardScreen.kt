@@ -24,6 +24,7 @@ fun CreatorDashboardScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onOpenSalesModal: () -> Unit,
+    onLoginClick: () -> Unit = {},
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {
@@ -44,7 +45,8 @@ fun CreatorDashboardScreen(
         CreatorJourneySection(
             translationStore = translationStore,
             ownerId = tokenStore.getOwnerId(),
-            isLoggedIn = tokenStore.isLoggedIn()
+            isLoggedIn = tokenStore.isLoggedIn(),
+            onLoginClick = onLoginClick,
         )
         CreatorStatsSection(
             translationStore = translationStore,

@@ -140,58 +140,129 @@ fun CreatorStatsSection(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        CreatorStatCard(
-            icon = "💰",
-            label = translationStore.t("creator.overview.sales_label", "Sales"),
-            primaryLabel = translationStore.t("creator.overview.sales_eazpire", "Eazpire"),
-            primaryValue = salesEazpire,
-            secondaryLabel = translationStore.t("creator.overview.sales_amazon", "Amazon"),
-            secondaryValue = salesAmazon,
-            onClick = if (isLoggedIn) onOpenSalesModal else null,
-            modifier = Modifier.weight(1f)
-        )
-        CreatorStatCard(
-            icon = "🎨",
-            label = translationStore.t("creator.overview.designs_label", "Designs"),
-            primaryLabel = translationStore.t("creator.overview.designs_generated", "Generated"),
-            primaryValue = designsGenerated,
-            secondaryLabel = translationStore.t("creator.overview.designs_uploaded", "Uploaded"),
-            secondaryValue = designsUploaded,
-            onClick = null,
-            modifier = Modifier.weight(1f)
-        )
-    }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        CreatorStatCard(
-            icon = "📦",
-            label = translationStore.t("creator.overview.products_label", "Products"),
-            primaryLabel = translationStore.t("creator.overview.products_online", "Online"),
-            primaryValue = productsOnline,
-            secondaryLabel = translationStore.t("creator.overview.products_offline", "Offline"),
-            secondaryValue = productsOffline,
-            onClick = null,
-            modifier = Modifier.weight(1f)
-        )
-        CreatorStatCard(
-            icon = "🖼️",
-            label = translationStore.t("creator.overview.hero_images_label", "Hero Images"),
-            primaryLabel = translationStore.t("creator.overview.designs_generated", "Generated"),
-            primaryValue = heroesGenerated,
-            secondaryLabel = translationStore.t("creator.overview.products_online", "Online"),
-            secondaryValue = heroesOnline,
-            onClick = null,
-            modifier = Modifier.weight(1f)
-        )
-    }
+            if (isLoggedIn) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CreatorStatCard(
+                        icon = "💰",
+                        label = translationStore.t("creator.overview.sales_label", "Sales"),
+                        primaryLabel = translationStore.t("creator.overview.sales_eazpire", "Eazpire"),
+                        primaryValue = salesEazpire,
+                        secondaryLabel = translationStore.t("creator.overview.sales_amazon", "Amazon"),
+                        secondaryValue = salesAmazon,
+                        onClick = onOpenSalesModal,
+                        modifier = Modifier.weight(1f)
+                    )
+                    CreatorStatCard(
+                        icon = "🎨",
+                        label = translationStore.t("creator.overview.designs_label", "Designs"),
+                        primaryLabel = translationStore.t("creator.overview.designs_generated", "Generated"),
+                        primaryValue = designsGenerated,
+                        secondaryLabel = translationStore.t("creator.overview.designs_uploaded", "Uploaded"),
+                        secondaryValue = designsUploaded,
+                        onClick = null,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CreatorStatCard(
+                        icon = "📦",
+                        label = translationStore.t("creator.overview.products_label", "Products"),
+                        primaryLabel = translationStore.t("creator.overview.products_online", "Online"),
+                        primaryValue = productsOnline,
+                        secondaryLabel = translationStore.t("creator.overview.products_offline", "Offline"),
+                        secondaryValue = productsOffline,
+                        onClick = null,
+                        modifier = Modifier.weight(1f)
+                    )
+                    CreatorStatCard(
+                        icon = "🖼️",
+                        label = translationStore.t("creator.overview.hero_images_label", "Hero Images"),
+                        primaryLabel = translationStore.t("creator.overview.designs_generated", "Generated"),
+                        primaryValue = heroesGenerated,
+                        secondaryLabel = translationStore.t("creator.overview.products_online", "Online"),
+                        secondaryValue = heroesOnline,
+                        onClick = null,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CreatorGuestLockedStatCard(
+                        icon = "🎨",
+                        label = translationStore.t("creator.overview.designs_label", "Designs"),
+                        meta = translationStore.t("creator.mobile.total", "Total"),
+                        value = "–",
+                        modifier = Modifier.weight(1f),
+                    )
+                    CreatorGuestLockedStatCard(
+                        icon = "📦",
+                        label = translationStore.t("creator.overview.products_label", "Products"),
+                        meta = translationStore.t("creator.mobile.online", "Online"),
+                        value = "–",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CreatorGuestLockedStatCard(
+                        icon = "⭐",
+                        label = translationStore.t("creator.overview.level_label", "Level"),
+                        meta = translationStore.t("creator.overview.level_names.0", "Starter"),
+                        value = "0",
+                        modifier = Modifier.weight(1f),
+                    )
+                    CreatorGuestLockedStatCard(
+                        icon = "🖼️",
+                        label = translationStore.t("creator.overview.hero_images_label", "Hero Images"),
+                        meta = translationStore.t("creator.mobile.generated", "Generated"),
+                        value = "–",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun CreatorGuestLockedStatCard(
+    icon: String,
+    label: String,
+    meta: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(
+                color = Color(0xFF232634).copy(alpha = 0.55f),
+                shape = RoundedCornerShape(14.dp),
+            )
+            .padding(16.dp),
+    ) {
+        Text(text = icon, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 12.sp),
+            color = Color.White,
+        )
+        Text(text = meta, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = Color.White.copy(alpha = 0.85f),
+        )
     }
 }
 

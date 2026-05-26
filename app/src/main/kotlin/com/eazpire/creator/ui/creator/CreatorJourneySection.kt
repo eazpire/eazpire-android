@@ -128,6 +128,7 @@ fun CreatorJourneySection(
     translationStore: TranslationStore,
     ownerId: String?,
     isLoggedIn: Boolean,
+    onLoginClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var progressPercent by remember { mutableStateOf(0) }
@@ -297,6 +298,112 @@ fun CreatorJourneySection(
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+private fun CreatorJourneyGuestSection(
+    translationStore: TranslationStore,
+    onLoginClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val t = { k: String, d: String -> translationStore.t(k, d) }
+    val containerShape = RoundedCornerShape(16.dp)
+    val headerShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    val glassContainerBg = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF0F172A).copy(alpha = 0.72f),
+            Color(0xFF0B1220).copy(alpha = 0.68f),
+            Color(0xFF070B14).copy(alpha = 0.7f),
+        ),
+    )
+    val glassHeaderBg = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF02060F).copy(alpha = 0.88f),
+            Color(0xFF050A16).copy(alpha = 0.9f),
+        ),
+    )
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp)
+            .clip(containerShape)
+            .background(glassContainerBg)
+            .border(1.dp, Color.White.copy(alpha = 0.12f), containerShape),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(headerShape)
+                .background(glassHeaderBg)
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = t("creator.overview.guest_journey_title", "Start Your Journey"),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = com.eazpire.creator.EazColors.Orange,
+            )
+            Text(
+                text = "0/1",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.7f),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.08f)),
+        )
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.06f))
+                    .clickable(onClick = onLoginClick)
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(text = "🚀", style = MaterialTheme.typography.titleLarge)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = t("creator.overview.todo_login", "Log in to start creating"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                    )
+                    Text(
+                        text = t("creator.overview.todo_login_reward", "🔓 Unlock Level 1"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
+                }
+                Text(text = "→", color = Color.White.copy(alpha = 0.6f))
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = t("creator.overview.guest_cta_text", "Don't have an account yet?"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.75f),
+                )
+                Text(
+                    text = t("creator.overview.guest_cta_register", "Create free account"),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = com.eazpire.creator.EazColors.Orange,
+                    modifier = Modifier
+                        .padding(top = 6.dp)
+                        .clickable(onClick = onLoginClick),
+                )
+            }
         }
     }
 }

@@ -59,8 +59,10 @@ fun CreatorSalesModal(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onDismiss: () -> Unit,
+    onLoginClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isLoggedIn = tokenStore.isLoggedIn()
     var currentTab by remember { mutableIntStateOf(0) }
     var balanceText by remember { mutableStateOf("0.00") }
     var currencySymbol by remember { mutableStateOf("€") }
@@ -173,6 +175,12 @@ fun CreatorSalesModal(
                         balanceText = balanceText,
                         currencySymbol = currencySymbol,
                         translationStore = translationStore
+                    )
+                }
+                if (!isLoggedIn) {
+                    CreatorGuestLockOverlay(
+                        translationStore = translationStore,
+                        onLoginClick = onLoginClick,
                     )
                 }
                 }

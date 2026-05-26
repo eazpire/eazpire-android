@@ -63,6 +63,7 @@ fun CreatorSettingsTabContent(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     pendingWearPairToken: String? = null,
+    onRequestSettingsTab: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
@@ -94,6 +95,7 @@ fun CreatorSettingsTabContent(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
                 pendingPairToken = pendingWearPairToken,
+                onRequestSettingsTab = onRequestSettingsTab,
             )
         }
     }
