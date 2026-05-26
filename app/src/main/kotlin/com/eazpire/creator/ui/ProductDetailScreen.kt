@@ -877,7 +877,7 @@ fun ProductDetailScreen(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(bottom = 48.dp)
+                                .padding(bottom = 12.dp)
                                 .size(44.dp)
                                 .clip(CircleShape)
                                 .background(
@@ -901,27 +901,6 @@ fun ProductDetailScreen(
                                 color = if (tryOnActive) Color.White else EazColors.TextPrimary,
                                 size = 20.dp
                             )
-                        }
-                    }
-                    // Dots
-                    if (imageCount > 1) {
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            repeat(imageCount) { idx ->
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (idx == selectedImageIndex) Color.White
-                                            else Color.White.copy(alpha = 0.5f)
-                                        )
-                                )
-                            }
                         }
                     }
                 }
