@@ -164,7 +164,9 @@ fun CreatorCreationsScreen(
     translationStore: TranslationStore,
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier,
-    onRequestGeneratorPrefill: (GeneratorPrefillRequest) -> Unit = {}
+    onRequestGeneratorPrefill: (GeneratorPrefillRequest) -> Unit = {},
+    initialDesignsActivityFilter: String? = null,
+    onInitialDesignsActivityConsumed: () -> Unit = {},
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
@@ -175,6 +177,7 @@ fun CreatorCreationsScreen(
     val shop = AuthConfig.SHOP_DOMAIN
 
     var currentTab by remember { mutableStateOf("designs") }
+    var designsActivityFilter by remember { mutableStateOf("active") }
     var designs by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
     var products by remember { mutableStateOf<List<CreationProduct>>(emptyList()) }
     var productsCountByDesignId by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
@@ -188,6 +191,17 @@ fun CreatorCreationsScreen(
     var designPreviewDesign by remember { mutableStateOf<CreationDesign?>(null) }
     var creationsFilter by remember { mutableStateOf(CreationsFilterState()) }
     var designsRefreshTrigger by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(initialDesignsActivityFilter) {
+        val f = initialDesignsActivityFilter?.trim()?.lowercase().orEmpty()
+        if (f == "inactive" || f == "active") {
+            currentTab = "designs"
+            designsActivityFilter = f
+            designsRefreshTrigger++
+            onInitialDesignsActivityConsumed()
+        }
+    }
+
     var uploadInProgress by remember { mutableStateOf(false) }
     var uploadModalVisible by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -243,7 +257,7 @@ fun CreatorCreationsScreen(
         uploadModalVisible = true
     }
 
-    LaunchedEffect(ownerId, currentTab, designsRefreshTrigger) {
+    LaunchedEffect(ownerId, currentTab, designsRefreshTrigger, designsActivityFilter) {
         if (ownerId.isBlank()) {
             designsLoading = false
             productsLoading = false
@@ -255,7 +269,40 @@ fun CreatorCreationsScreen(
                 designsLoading = true
                 try {
                     val (designsList, summary) = withContext(Dispatchers.IO) {
-                        // Nur gespeicherte/uploaded Designs laden (wie Web My Creations)
+                        if (designsActivityFilter == "inactive") {
+                            val genRes = api.listGenerated(ownerId, 100)
+                            val generatedItems = (genRes.optJSONArray("items") ?: JSONArray()).let { arr ->
+                                (0 until arr.length()).mapNotNull { i ->
+                                    val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                                    val preview = obj.optString("preview_url", "")
+                                        .ifBlank { obj.optJSONObject("result")?.optString("preview_url").orEmpty() }
+                                        .ifBlank { obj.optJSONObject("result")?.optString("image_url").orEmpty() }
+                                    if (preview.isBlank()) return@mapNotNull null
+                                    CreationDesign(
+                                        id = obj.optString("design_id", "").takeIf { it.isNotBlank() }
+                                            ?: obj.optString("id", "").takeIf { it.isNotBlank() },
+                                        designId = obj.optString("design_id", "").takeIf { it.isNotBlank() }
+                                            ?: obj.optString("id", "").takeIf { it.isNotBlank() },
+                                        jobId = obj.optString("job_id", "").takeIf { it.isNotBlank() },
+                                        imageUrl = preview,
+                                        previewUrl = preview,
+                                        originalUrl = preview,
+                                        title = obj.optString("title", obj.optString("prompt", "Design")).take(80),
+                                        prompt = obj.optString("prompt").takeIf { it.isNotBlank() },
+                                        designPrompt = obj.optString("design_prompt").takeIf { it.isNotBlank() },
+                                        createdAt = (obj.opt("started") as? Number)?.toLong()
+                                            ?: (obj.opt("updated_at") as? Number)?.toLong() ?: 0L,
+                                        source = "generated",
+                                        designSource = "Generated",
+                                        creatorName = obj.optString("creator_name", "").takeIf { it.isNotBlank() },
+                                        productsCount = 0,
+                                    )
+                                }
+                            }
+                            return@withContext generatedItems.sortedByDescending { it.createdAt } to emptyMap()
+                        }
+
+                        // Active library designs (saved / uploaded in library)
                         val listRes = api.listDesigns(ownerId, 100)
                         val summaryRes = api.getPublishedSummary(ownerId, shop)
 
@@ -533,6 +580,31 @@ fun CreatorCreationsScreen(
 
         when (currentTab) {
             "designs" -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    listOf(
+                        "active" to translationStore.t("creator.creations.designs_tab_active", "Active"),
+                        "inactive" to translationStore.t("creator.creations.designs_tab_inactive", "Inactive"),
+                    ).forEach { (key, label) ->
+                        val active = designsActivityFilter == key
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (active) EazColors.Orange else Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.clickable {
+                                if (designsActivityFilter != key) {
+                                    designsActivityFilter = key
+                                    designsRefreshTrigger++
+                                }
+                            },
+                        )
+                    }
+                }
                 if (designsLoading) {
                     Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = EazColors.Orange)

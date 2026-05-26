@@ -41,6 +41,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPEN_SHOP = "eaz_open_shop"
         const val EXTRA_OPEN_EAZY_CHAT = "eaz_open_eazy_chat"
         const val EXTRA_EAZY_TAB = "eaz_eazy_tab"
+        /** Creator → My Creations → Designs → Inactive (Wear upload complete). */
+        const val EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS = "eaz_open_creator_inactive_designs"
     }
 
     val pendingDeepLink = mutableStateOf<Uri?>(null)
@@ -51,6 +53,8 @@ class MainActivity : ComponentActivity() {
     val pendingOpenShop = mutableStateOf(false)
     /** From eazpire://wear-pair or /wear-pair deep link — opens Creator Settings → Wear + claim. */
     val pendingWearPairToken = mutableStateOf<String?>(null)
+    /** Wear upload finished — open Creator creations, inactive designs tab. */
+    val pendingCreatorInactiveDesigns = mutableStateOf(false)
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -106,6 +110,7 @@ class MainActivity : ComponentActivity() {
                         pendingOpenCart = pendingOpenCart,
                         pendingOpenShop = pendingOpenShop,
                         pendingWearPairToken = pendingWearPairToken,
+                        pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
                     )
                 }
             }
@@ -163,6 +168,9 @@ class MainActivity : ComponentActivity() {
             pendingEazyTab.value = EazySidebarTab.Notifications
         } else if (intent.getBooleanExtra(EXTRA_OPEN_EAZY_CHAT, false)) {
             pendingEazyTab.value = EazySidebarTab.Notifications
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS, false)) {
+            pendingCreatorInactiveDesigns.value = true
         }
     }
 

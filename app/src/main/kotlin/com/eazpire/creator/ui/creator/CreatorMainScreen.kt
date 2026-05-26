@@ -100,6 +100,9 @@ fun CreatorMainScreen(
     overlayComposeStartKey: Int = 0,
     pendingWearPairToken: String? = null,
     onWearPairTokenConsumed: () -> Unit = {},
+    initialScreen: Int? = null,
+    initialDesignsActivityFilter: String? = null,
+    onInitialDesignsActivityConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var drawerVisible by remember { mutableStateOf(false) }
@@ -127,7 +130,13 @@ fun CreatorMainScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
-    var currentScreen by remember { mutableIntStateOf(0) }
+    var currentScreen by remember(initialScreen) {
+        mutableIntStateOf(initialScreen?.coerceIn(0, 4) ?: 0)
+    }
+    LaunchedEffect(initialScreen) {
+        val screen = initialScreen?.coerceIn(0, 4) ?: return@LaunchedEffect
+        currentScreen = screen
+    }
     var generatorEazyReady by remember { mutableStateOf(false) }
     var heroEazyReady by remember { mutableStateOf(false) }
     var videoEazyReady by remember { mutableStateOf(false) }
@@ -419,6 +428,8 @@ fun CreatorMainScreen(
                         2 -> CreatorCreationsScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
+                            initialDesignsActivityFilter = initialDesignsActivityFilter,
+                            onInitialDesignsActivityConsumed = onInitialDesignsActivityConsumed,
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize(),
                             onRequestGeneratorPrefill = { req ->

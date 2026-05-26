@@ -103,6 +103,7 @@ fun ShopScreen(
     pendingOpenCart: MutableState<Boolean>? = null,
     pendingOpenShop: MutableState<Boolean>? = null,
     pendingWearPairToken: MutableState<String?>? = null,
+    pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -288,6 +289,9 @@ fun ShopScreen(
         if (!pendingWearPair.isNullOrBlank()) isCreatorMode = true
     }
 
+    var pendingCreationsScreen by remember { mutableIntStateOf(-1) }
+    var pendingDesignsActivityFilter by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value) {
         val pt = pendingEazyTab
         if (pt?.value != null) {
@@ -305,6 +309,17 @@ fun ShopScreen(
             switchCreatorMode(toCreator = false, animate = false)
             eazyChatVisible = false
             ps.value = false
+        }
+    }
+
+    LaunchedEffect(pendingCreatorInactiveDesigns?.value) {
+        val pin = pendingCreatorInactiveDesigns
+        if (pin?.value == true) {
+            switchCreatorMode(toCreator = true, animate = false)
+            eazyChatVisible = false
+            pendingCreationsScreen = 2
+            pendingDesignsActivityFilter = "inactive"
+            pin.value = false
         }
     }
 
@@ -501,6 +516,12 @@ fun ShopScreen(
             tokenStore = tokenStore,
             localeStore = localeStore,
             translationStore = translationStore,
+            initialScreen = pendingCreationsScreen.takeIf { it >= 0 },
+            initialDesignsActivityFilter = pendingDesignsActivityFilter,
+            onInitialDesignsActivityConsumed = {
+                pendingCreationsScreen = -1
+                pendingDesignsActivityFilter = null
+            },
             onSwitchToShop = { switchCreatorMode(toCreator = false) },
             onAccountClick = {
                 if (tokenStore.isLoggedIn()) {
