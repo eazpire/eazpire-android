@@ -842,37 +842,10 @@ fun ProductDetailScreen(
                             )
                         }
                     }
-                    val overlayMsg = tryOnOverlayMessage
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = overlayMsg != null,
-                        enter = fadeIn(tween(220)) + slideInVertically(
-                            initialOffsetY = { it / 5 },
-                            animationSpec = tween(220, easing = FastOutSlowInEasing)
-                        ),
-                        exit = fadeOut(tween(180))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.White.copy(alpha = 0.72f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(28.dp),
-                                    color = Color(0xFF111827),
-                                    strokeWidth = 2.5.dp
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = overlayMsg.orEmpty(),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF111827)
-                                )
-                            }
-                        }
-                    }
+                    PdpTryOnOverlay(
+                        message = tryOnOverlayMessage,
+                        modifier = Modifier.fillMaxSize()
+                    )
                     mockupTryOnInfo?.let {
                         Box(
                             modifier = Modifier
@@ -884,7 +857,7 @@ fun ProductDetailScreen(
                                     if (tryOnActive) Color(0xFF111827)
                                     else Color.White.copy(alpha = 0.92f)
                                 )
-                                .clickable(enabled = overlayMsg == null) {
+                                .clickable(enabled = tryOnOverlayMessage == null) {
                                     val next = !tryOnActive
                                     tryOnOverlayMessage = if (next) {
                                         t("eaz.pdp.try_on_overlay_on", "Putting on your look…")
@@ -1999,6 +1972,44 @@ private fun PdpProductCarouselRow(
                         color = EazColors.TextPrimary
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdpTryOnOverlay(
+    message: String?,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = message != null,
+        enter = fadeIn(tween(220)) + slideInVertically(
+            initialOffsetY = { it / 5 },
+            animationSpec = tween(220, easing = FastOutSlowInEasing)
+        ),
+        exit = fadeOut(tween(180)),
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White.copy(alpha = 0.72f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    color = Color(0xFF111827),
+                    strokeWidth = 2.5.dp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = message.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF111827)
+                )
             }
         }
     }

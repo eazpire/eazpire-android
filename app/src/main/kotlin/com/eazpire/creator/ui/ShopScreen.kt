@@ -266,6 +266,11 @@ fun ShopScreen(
             return
         }
         scope.launch {
+            if (toCreator) {
+                modePixelTransition = CreatorModePixelTransitionState.ShopToCreatorIntro
+                isCreatorMode = true
+                return@launch
+            }
             val snapshot = withContext(Dispatchers.Main) {
                 val w = rootView.width.coerceAtLeast(1)
                 val h = rootView.height.coerceAtLeast(1)
@@ -273,15 +278,8 @@ fun ShopScreen(
                     rootView.draw(AndroidCanvas(bitmap))
                 }
             }
-            modePixelTransition = CreatorModePixelTransitionState(
-                snapshot = snapshot,
-                direction = if (toCreator) {
-                    CreatorModePixelDirection.LeftToRight
-                } else {
-                    CreatorModePixelDirection.RightToLeft
-                },
-            )
-            isCreatorMode = toCreator
+            modePixelTransition = CreatorModePixelTransitionState.CreatorToShop(snapshot)
+            isCreatorMode = false
         }
     }
 
@@ -1182,10 +1180,11 @@ fun ShopScreen(
 
     modePixelTransition?.let { transition ->
         CreatorModePixelTransitionOverlay(
-            snapshot = transition.snapshot,
-            direction = transition.direction,
+            state = transition,
             onFinished = {
-                transition.snapshot.recycle()
+                if (transition is CreatorModePixelTransitionState.CreatorToShop) {
+                    transition.snapshot.recycle()
+                }
                 modePixelTransition = null
             },
             modifier = Modifier
