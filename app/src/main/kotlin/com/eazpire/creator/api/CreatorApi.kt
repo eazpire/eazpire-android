@@ -821,6 +821,10 @@ class CreatorApi(
             mapOf("owner_id" to ownerId)
         )
 
+    /** POST ?op=toggle-auto-mock-display&owner_id=xxx – Body: { enabled } */
+    suspend fun toggleAutoMockDisplay(ownerId: String, enabled: Boolean): JSONObject =
+        postJson("toggle-auto-mock-display", mapOf("enabled" to enabled), mapOf("owner_id" to ownerId))
+
     /** POST ?op=delete-customer-mockup&owner_id=xxx – Body: { mockup_id } */
     suspend fun deleteCustomerMockup(ownerId: String, mockupId: Long): JSONObject =
         postJson("delete-customer-mockup", mapOf("mockup_id" to mockupId), mapOf("owner_id" to ownerId))

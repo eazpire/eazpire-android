@@ -27,12 +27,14 @@ object MockupPreviewPool {
         return if (single > 0) listOf(single) else emptyList()
     }
 
+    fun hasPreviewPool(meta: JSONObject?): Boolean = getPreviewIds(meta).isNotEmpty()
+
     fun isShopPreviewActive(meta: JSONObject?): Boolean {
         if (meta == null) return false
         if (meta.has("shop_preview_enabled") && !meta.optBoolean("shop_preview_enabled", true)) {
             return false
         }
-        return getPreviewIds(meta).isNotEmpty()
+        return hasPreviewPool(meta)
     }
 
     fun pickMockupId(meta: JSONObject?, handle: String, colorIndex: Int): Long? {

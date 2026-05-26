@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -138,10 +139,12 @@ fun AccountMockupsTab(
                 if (!resp.optBoolean("ok", false)) {
                     errorMessage = resp.optString("error", "Upload failed")
                 } else {
-                    reloadCatalog(api, ownerId) { p, g, a ->
+                    reloadCatalog(api, ownerId) { p, g, a, auto, count ->
                         photos = p
                         generated = g
                         available = a
+                        autoMockEnabled = auto
+                        wearingMockCount = count
                     }
                 }
             } catch (e: Exception) {
@@ -159,10 +162,12 @@ fun AccountMockupsTab(
             isLoading = true
             errorMessage = null
             try {
-                reloadCatalog(api, ownerId) { p, g, a ->
+                reloadCatalog(api, ownerId) { p, g, a, auto, count ->
                     photos = p
                     generated = g
                     available = a
+                    autoMockEnabled = auto
+                    wearingMockCount = count
                 }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Failed to load"
@@ -176,10 +181,12 @@ fun AccountMockupsTab(
         if (ownerId.isBlank()) return@LaunchedEffect
         isLoading = true
         try {
-            reloadCatalog(api, ownerId) { p, g, a ->
+            reloadCatalog(api, ownerId) { p, g, a, auto, count ->
                 photos = p
                 generated = g
                 available = a
+                autoMockEnabled = auto
+                wearingMockCount = count
             }
         } catch (e: Exception) {
             errorMessage = e.message
@@ -214,10 +221,12 @@ fun AccountMockupsTab(
                     done = poll.optBoolean("done", false)
                 }
                 CustomerMockPreviewStore.invalidate()
-                reloadCatalog(api, ownerId) { p, g, a ->
+                reloadCatalog(api, ownerId) { p, g, a, auto, count ->
                     photos = p
                     generated = g
                     available = a
+                    autoMockEnabled = auto
+                    wearingMockCount = count
                 }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Generation failed"
@@ -244,30 +253,17 @@ fun AccountMockupsTab(
         }
     }
 
-    fun onToggleShopPreview(product: MockupCatalogProduct) {
-        val enabling = !product.shopPreviewActive
-        if (enabling && product.previewCount == 0) {
-            errorMessage = t(
-                "creator.my_mockups.select_preview_in_modal",
-                "Select at least one mock in the preview to enable shop rendering."
-            )
-            return
-        }
-        generated = generated.map { row ->
-            if (row.productKey == product.productKey) row.copy(shopPreviewEnabled = enabling) else row
-        }
+    fun onToggleAutoMock(enabled: Boolean) {
         scope.launch {
             try {
-                val resp = api.toggleProductShopPreview(ownerId, product.productKey, enabling)
+                val resp = api.toggleAutoMockDisplay(ownerId, enabled)
                 if (resp.optBoolean("ok", false)) {
-                    val count = resp.optInt("preview_count", product.previewCount)
+                    autoMockEnabled = resp.optBoolean("auto_mock_enabled", enabled)
+                    wearingMockCount = resp.optInt("wearing_mock_count", wearingMockCount)
                     generated = generated.map { row ->
-                        if (row.productKey == product.productKey) {
-                            row.copy(
-                                shopPreviewEnabled = resp.optBoolean("shop_preview_enabled", enabling),
-                                previewCount = count
-                            )
-                        } else row
+                        row.copy(
+                            shopPreviewEnabled = autoMockEnabled && row.previewCount > 0
+                        )
                     }
                     CustomerMockPreviewStore.invalidate()
                 } else {
@@ -414,6 +410,12 @@ fun AccountMockupsTab(
             CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.padding(24.dp))
         } else {
             if (generated.isNotEmpty()) {
+                AutoMockControlRow(
+                    enabled = autoMockEnabled,
+                    wearingCount = wearingMockCount,
+                    t = t,
+                    onToggle = { onToggleAutoMock(it) }
+                )
                 Text(
                     t("creator.my_mockups.generated", "My mocks"),
                     style = MaterialTheme.typography.labelLarge,
@@ -421,9 +423,7 @@ fun AccountMockupsTab(
                 )
                 MockupProductGrid(
                     products = generated,
-                    t = t,
                     onOpen = { openLightbox(it) },
-                    onToggleShopPreview = { onToggleShopPreview(it) },
                     onDelete = { deleteConfirm = it }
                 )
             }
@@ -602,11 +602,51 @@ fun AccountMockupsTab(
 }
 
 @Composable
+private fun AutoMockControlRow(
+    enabled: Boolean,
+    wearingCount: Int,
+    t: (String, String) -> String,
+    onToggle: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB))
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                HangerIcon(color = Color(0xFF111827), size = 22.dp)
+                Text(
+                    t("creator.my_mockups.auto_mock_label", "Auto mock"),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color(0xFF111827)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 32.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = wearingCount.toString(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color(0xFF111827)
+                )
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onToggle,
+                    enabled = wearingCount > 0
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun MockupProductGrid(
     products: List<MockupCatalogProduct>,
-    t: (String, String) -> String,
     onOpen: (MockupCatalogProduct) -> Unit,
-    onToggleShopPreview: (MockupCatalogProduct) -> Unit,
     onDelete: (MockupCatalogProduct) -> Unit
 ) {
     products.chunked(2).forEach { row ->
@@ -645,33 +685,9 @@ private fun MockupProductGrid(
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clickable { onToggleShopPreview(product) }
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(
-                                            if (product.shopPreviewActive) Color(0xFF111827) else Color(0xFFF9FAFB),
-                                            RoundedCornerShape(8.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    HangerIcon(
-                                        color = if (product.shopPreviewActive) Color.White else Color(0xFF374151),
-                                        size = 16.dp
-                                    )
-                                }
-                                Text(
-                                    text = product.previewCount.toString(),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = EazColors.TextSecondary
-                                )
-                            }
                             IconButton(onClick = { onDelete(product) }, modifier = Modifier.size(32.dp)) {
                                 Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
                             }
@@ -713,11 +729,15 @@ private suspend fun reloadCatalog(
     val prodResp = api.listMockupProducts(ownerId)
     val generated = mutableListOf<MockupCatalogProduct>()
     val available = mutableListOf<MockupCatalogProduct>()
+    var autoMock = true
+    var wearingCount = 0
     if (prodResp.optBoolean("ok", false)) {
+        autoMock = prodResp.optBoolean("auto_mock_enabled", true)
+        wearingCount = prodResp.optInt("wearing_mock_count", 0)
         parseCatalogProducts(prodResp.optJSONArray("generated"), true, generated, variantsByProduct)
         parseCatalogProducts(prodResp.optJSONArray("available"), false, available, variantsByProduct)
     }
-    onResult(photos, generated, available)
+    onResult(photos, generated, available, autoMock, wearingCount)
 }
 
 private fun parsePhotos(arr: JSONArray?): List<MockupProfilePhoto> {

@@ -181,7 +181,7 @@ fun parseMockupTryOnInfo(
     val info = mockupsObj.optJSONObject(productKey) ?: return null
     if (!info.optBoolean("has_mask", false)) return null
     if (!info.optBoolean("print_area_confirmed", false)) return null
-    if (!MockupPreviewPool.isShopPreviewActive(info)) return null
+    if (!MockupPreviewPool.hasPreviewPool(info)) return null
 
     val previewIds = MockupPreviewPool.getPreviewIds(info)
     val mockupId = MockupPreviewPool.pickMockupId(info, handle, 0)
