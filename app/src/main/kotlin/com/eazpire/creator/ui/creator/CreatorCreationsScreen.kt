@@ -268,7 +268,7 @@ fun CreatorCreationsScreen(
             "designs" -> {
                 designsLoading = true
                 try {
-                    val (designsList, summary) = withContext(Dispatchers.IO) {
+                    val (designsList, summary): Pair<List<CreationDesign>, Map<String, Int>> = withContext(Dispatchers.IO) {
                         if (designsActivityFilter == "inactive") {
                             val genRes = api.listGenerated(ownerId, 100)
                             val generatedItems = (genRes.optJSONArray("items") ?: JSONArray()).let { arr ->
@@ -299,7 +299,7 @@ fun CreatorCreationsScreen(
                                     )
                                 }
                             }
-                            return@withContext generatedItems.sortedByDescending { it.createdAt } to emptyMap()
+                            return@withContext generatedItems.sortedByDescending { it.createdAt } to emptyMap<String, Int>()
                         }
 
                         // Active library designs (saved / uploaded in library)

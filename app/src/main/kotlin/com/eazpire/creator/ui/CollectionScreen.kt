@@ -45,8 +45,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -71,7 +73,12 @@ import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.ui.components.EazProductCardMediaOverlays
+import com.eazpire.creator.ui.components.EazProductCardRotatingImages
+import com.eazpire.creator.ui.components.togglePlpTryOnSession
+import kotlinx.coroutines.launch
 import com.eazpire.creator.api.hasPromoPricingUi
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
