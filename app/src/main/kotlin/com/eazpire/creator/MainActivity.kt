@@ -11,19 +11,15 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
-import com.eazpire.creator.ui.AppSplashOverlay
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.eazpire.creator.auth.SecureTokenStore
@@ -104,39 +100,24 @@ class MainActivity : ComponentActivity() {
         consumeIntentExtras(intent)
         requestNotificationPermissionAndSyncPush()
         playInAppUpdateHelper = PlayInAppUpdateHelper(this, playInAppUpdateLauncher)
-        val coldStart = savedInstanceState == null
         setContent {
             EazpireCreatorTheme {
-                var showSplash by remember { mutableStateOf(coldStart) }
-                Box(Modifier.fillMaxSize()) {
-                    // Shop/WebView only after splash — parallel init + pixel splash caused OOM/crash on cold start.
-                    if (!showSplash) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .systemBarsPadding(),
-                            color = MaterialTheme.colorScheme.background,
-                            tonalElevation = 0.dp,
-                        ) {
-                            ShopScreen(
-                                tokenStore = tokenStore,
-                                pendingDeepLink = pendingDeepLink,
-                                pendingEazyTab = pendingEazyTab,
-                                pendingOpenCart = pendingOpenCart,
-                                pendingOpenShop = pendingOpenShop,
-                                pendingWearPairToken = pendingWearPairToken,
-                                pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
-                            )
-                        }
-                    }
-                    if (showSplash) {
-                        AppSplashOverlay(
-                            onFinished = { showSplash = false },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .zIndex(100f),
-                        )
-                    }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .systemBarsPadding(),
+                    color = MaterialTheme.colorScheme.background,
+                    tonalElevation = 0.dp,
+                ) {
+                    ShopScreen(
+                        tokenStore = tokenStore,
+                        pendingDeepLink = pendingDeepLink,
+                        pendingEazyTab = pendingEazyTab,
+                        pendingOpenCart = pendingOpenCart,
+                        pendingOpenShop = pendingOpenShop,
+                        pendingWearPairToken = pendingWearPairToken,
+                        pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
+                    )
                 }
             }
         }
