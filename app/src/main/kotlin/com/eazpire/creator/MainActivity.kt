@@ -109,22 +109,25 @@ class MainActivity : ComponentActivity() {
             EazpireCreatorTheme {
                 var showSplash by remember { mutableStateOf(coldStart) }
                 Box(Modifier.fillMaxSize()) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .systemBarsPadding(),
-                        color = MaterialTheme.colorScheme.background,
-                        tonalElevation = 0.dp,
-                    ) {
-                        ShopScreen(
-                            tokenStore = tokenStore,
-                            pendingDeepLink = pendingDeepLink,
-                            pendingEazyTab = pendingEazyTab,
-                            pendingOpenCart = pendingOpenCart,
-                            pendingOpenShop = pendingOpenShop,
-                            pendingWearPairToken = pendingWearPairToken,
-                            pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
-                        )
+                    // Shop/WebView only after splash — parallel init + pixel splash caused OOM/crash on cold start.
+                    if (!showSplash) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .systemBarsPadding(),
+                            color = MaterialTheme.colorScheme.background,
+                            tonalElevation = 0.dp,
+                        ) {
+                            ShopScreen(
+                                tokenStore = tokenStore,
+                                pendingDeepLink = pendingDeepLink,
+                                pendingEazyTab = pendingEazyTab,
+                                pendingOpenCart = pendingOpenCart,
+                                pendingOpenShop = pendingOpenShop,
+                                pendingWearPairToken = pendingWearPairToken,
+                                pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
+                            )
+                        }
                     }
                     if (showSplash) {
                         AppSplashOverlay(
