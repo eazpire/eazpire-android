@@ -42,8 +42,8 @@ private const val TAG = "AppSplash"
 private const val CREATOR_LOGO_URL =
     "https://cdn.shopify.com/s/files/1/0739/5203/5098/files/eazpire-creator-logo.png?v=1763666950"
 
-/** Cap off-screen pixel work (~1.2M px) to avoid OOM on high-DPI phones. */
-private const val MAX_SPLASH_PROCESS_PIXELS = 1_200_000L
+/** Cap off-screen pixel work (~800k px) to avoid OOM on high-DPI phones. */
+private const val MAX_SPLASH_PROCESS_PIXELS = 800_000L
 
 private val White = Color.White
 
@@ -208,8 +208,8 @@ private fun buildLogoLayerBitmap(
 
 private fun pixelStepForSize(width: Int, height: Int): Int {
     val minDim = min(width, height)
-    val targetCells = 12_000
-    val approx = sqrt((width.toLong() * height / targetCells).toDouble()).toInt().coerceIn(6, 18)
+    val targetCells = 8_000
+    val approx = sqrt((width.toLong() * height / targetCells).toDouble()).toInt().coerceIn(8, 20)
     return when {
         minDim < 720 -> max(8, approx)
         minDim < 1080 -> max(10, approx)
@@ -325,14 +325,18 @@ private suspend fun buildSplashAssets(context: Context, screenW: Int, screenH: I
         val bgCells = buildBackgroundCells(galaxyBmp, width, height, step)
         val logoCells = buildLogoCells(shopLayer, creatorLayer, layout, width, height, step)
 
+        // ImageBitmap wraps the Android Bitmap — never recycle those sources (instant crash on drawImage).
         val shopImage = shopLogo.asImageBitmap()
-        val creatorImage = creatorLogo.asImageBitmap()
+        val creatorImage =
+            if (creatorLogo === shopLogo) {
+                shopImage
+            } else {
+                creatorLogo.asImageBitmap()
+            }
 
         shopLayer.recycle()
         creatorLayer.recycle()
         if (galaxySrc !== galaxyBmp) galaxySrc.recycle()
-        if (creatorLogo !== shopLogo) creatorLogo.recycle()
-        shopLogo.recycle()
 
         SplashAssets(
             processWidth = width,
