@@ -122,7 +122,13 @@ private fun decodeDrawable(context: Context, @DrawableRes id: Int): Bitmap? {
             inPreferredConfig = Bitmap.Config.ARGB_8888
             inScaled = true
         }
-    return BitmapFactory.decodeResource(context.resources, id, opts)
+    return BitmapFactory.decodeResource(context.resources, id, opts)?.asSoftwareBitmapOrSelf()
+}
+
+/** [Bitmap.getPixel] and [asImageBitmap] require a software bitmap (not [Bitmap.Config.HARDWARE]). */
+private fun Bitmap.asSoftwareBitmapOrSelf(): Bitmap {
+    if (config != Bitmap.Config.HARDWARE) return this
+    return copy(Bitmap.Config.ARGB_8888, false) ?: this
 }
 
 private suspend fun loadCreatorLogoBitmap(context: Context): Bitmap =
@@ -138,7 +144,8 @@ private suspend fun loadCreatorLogoBitmap(context: Context): Bitmap =
             }
         } catch (_: Exception) {
             null
-        } ?: decodeDrawable(context, R.drawable.eazpire_logo)
+        }?.asSoftwareBitmapOrSelf()
+        ?: decodeDrawable(context, R.drawable.eazpire_logo)
         ?: decodeDrawable(context, R.drawable.ic_launcher_foreground)
         ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
     }
@@ -305,6 +312,13 @@ private fun buildLogoCells(
     return cells
 }
 
+/**
+ * Builds splash draw assets.
+ *
+ * Recycle rules (Compose [asImageBitmap] keeps a live reference to the Android [Bitmap]):
+ * - **Never recycle** [shopLogo], [creatorLogo], or [galaxyBmp] after converting them to [ImageBitmap].
+ * - **May recycle** temporary layers [shopLayer], [creatorLayer], and decoded [galaxySrc] once copied to [galaxyBmp].
+ */
 private suspend fun buildSplashAssets(context: Context, screenW: Int, screenH: Int): SplashAssets? {
     val (width, height) = cappedProcessSize(screenW, screenH)
     val drawScaleX = screenW.toFloat() / width
@@ -313,19 +327,23 @@ private suspend fun buildSplashAssets(context: Context, screenW: Int, screenH: I
     val galaxySrc = decodeDrawable(context, R.drawable.galaxy_nebula_bg) ?: return null
     val shopLogo = decodeDrawable(context, R.drawable.eazpire_logo) ?: return null
 
+    var shopLayer: Bitmap? = null
+    var creatorLayer: Bitmap? = null
+
     return try {
         val creatorLogo = loadCreatorLogoBitmap(context)
 
         val step = pixelStepForSize(width, height)
         val layout = computeLogoLayout(width.toFloat(), height.toFloat(), shopLogo, creatorLogo)
         val galaxyBmp = buildGalaxyBitmap(galaxySrc, width, height)
-        val shopLayer = buildLogoLayerBitmap(shopLogo, layout, width, height, layout.shopH)
-        val creatorLayer = buildLogoLayerBitmap(creatorLogo, layout, width, height, layout.creatorH)
+        shopLayer = buildLogoLayerBitmap(shopLogo, layout, width, height, layout.shopH)
+        creatorLayer = buildLogoLayerBitmap(creatorLogo, layout, width, height, layout.creatorH)
 
         val bgCells = buildBackgroundCells(galaxyBmp, width, height, step)
-        val logoCells = buildLogoCells(shopLayer, creatorLayer, layout, width, height, step)
+        val sl = requireNotNull(shopLayer)
+        val cl = requireNotNull(creatorLayer)
+        val logoCells = buildLogoCells(sl, cl, layout, width, height, step)
 
-        // ImageBitmap wraps the Android Bitmap — never recycle those sources (instant crash on drawImage).
         val shopImage = shopLogo.asImageBitmap()
         val creatorImage =
             if (creatorLogo === shopLogo) {
@@ -333,10 +351,7 @@ private suspend fun buildSplashAssets(context: Context, screenW: Int, screenH: I
             } else {
                 creatorLogo.asImageBitmap()
             }
-
-        shopLayer.recycle()
-        creatorLayer.recycle()
-        if (galaxySrc !== galaxyBmp) galaxySrc.recycle()
+        val galaxyImage = galaxyBmp.asImageBitmap()
 
         SplashAssets(
             processWidth = width,
@@ -344,7 +359,7 @@ private suspend fun buildSplashAssets(context: Context, screenW: Int, screenH: I
             drawScaleX = drawScaleX,
             drawScaleY = drawScaleY,
             logoLayout = layout,
-            galaxyImage = galaxyBmp.asImageBitmap(),
+            galaxyImage = galaxyImage,
             shopLogo = shopImage,
             creatorLogo = creatorImage,
             bgCells = bgCells,
@@ -356,6 +371,11 @@ private suspend fun buildSplashAssets(context: Context, screenW: Int, screenH: I
     } catch (e: Exception) {
         Log.e(TAG, "Splash build failed", e)
         null
+    } finally {
+        shopLayer?.recycle()
+        creatorLayer?.recycle()
+        // Decoded source only — [galaxyBmp] (ImageBitmap backing) is never recycled.
+        galaxySrc.recycle()
     }
 }
 
