@@ -86,9 +86,13 @@ class MainActivity : ComponentActivity() {
         val tokenStore = SecureTokenStore(this)
         AuthDebugLog.d("[TOKEN] App start ${tokenStore.sessionDebugSummary()}")
         // Refresh zuerst (z. B. leerer access_token nach Update), JWT-Session nie beim Start löschen.
-        runBlocking {
-            ShopSessionGuard.refreshAccessTokenIfNeeded(this@MainActivity, tokenStore)
-            ShopSessionGuard.validateLegacyShopifySessionIfNeeded(this@MainActivity, tokenStore)
+        try {
+            runBlocking {
+                ShopSessionGuard.refreshAccessTokenIfNeeded(this@MainActivity, tokenStore)
+                ShopSessionGuard.validateLegacyShopifySessionIfNeeded(this@MainActivity, tokenStore)
+            }
+        } catch (e: Exception) {
+            AuthDebugLog.d("[TOKEN] Session guard skipped on start: ${e.message}")
         }
         AuthDebugLog.d("[TOKEN] After session guard ${tokenStore.sessionDebugSummary()}")
 

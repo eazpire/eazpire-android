@@ -4,8 +4,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas as AndroidCanvas
+import android.util.Log
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,7 +24,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
@@ -33,9 +36,14 @@ import java.net.URL
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sqrt
 
+private const val TAG = "AppSplash"
 private const val CREATOR_LOGO_URL =
     "https://cdn.shopify.com/s/files/1/0739/5203/5098/files/eazpire-creator-logo.png?v=1763666950"
+
+/** Cap off-screen pixel work (~1.2M px) to avoid OOM on high-DPI phones. */
+private const val MAX_SPLASH_PROCESS_PIXELS = 1_200_000L
 
 private val White = Color.White
 
@@ -77,8 +85,10 @@ private data class SplashLogoCell(
 )
 
 private data class SplashAssets(
-    val width: Int,
-    val height: Int,
+    val processWidth: Int,
+    val processHeight: Int,
+    val drawScaleX: Float,
+    val drawScaleY: Float,
     val logoLayout: SharedLogoLayout,
     val galaxyImage: androidx.compose.ui.graphics.ImageBitmap,
     val shopLogo: androidx.compose.ui.graphics.ImageBitmap,
@@ -96,16 +106,42 @@ private fun smoothstep(t: Float): Float {
     return x * x * (3f - 2f * x)
 }
 
-private suspend fun loadCreatorLogoBitmap(context: Context): Bitmap = withContext(Dispatchers.IO) {
-    try {
-        val conn = URL(CREATOR_LOGO_URL).openConnection()
-        conn.connectTimeout = 8000
-        conn.readTimeout = 8000
-        conn.getInputStream().use { BitmapFactory.decodeStream(it) }
-    } catch (_: Exception) {
-        BitmapFactory.decodeResource(context.resources, R.drawable.eazpire_logo)
-    }
+/** Smaller bitmap for splash prep — keeps memory predictable on 1440p+ devices. */
+private fun cappedProcessSize(screenW: Int, screenH: Int): Pair<Int, Int> {
+    val w = screenW.coerceAtLeast(1)
+    val h = screenH.coerceAtLeast(1)
+    val pixels = w.toLong() * h
+    if (pixels <= MAX_SPLASH_PROCESS_PIXELS) return w to h
+    val scale = sqrt(MAX_SPLASH_PROCESS_PIXELS.toDouble() / pixels).toFloat()
+    return max(320, (w * scale).toInt()) to max(480, (h * scale).toInt())
 }
+
+private fun decodeDrawable(context: Context, @DrawableRes id: Int): Bitmap? {
+    val opts =
+        BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inScaled = true
+        }
+    return BitmapFactory.decodeResource(context.resources, id, opts)
+}
+
+private suspend fun loadCreatorLogoBitmap(context: Context): Bitmap =
+    withContext(Dispatchers.IO) {
+        try {
+            val conn = URL(CREATOR_LOGO_URL).openConnection()
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 5_000
+            conn.getInputStream().use { stream ->
+                BitmapFactory.decodeStream(stream, null, BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                })
+            }
+        } catch (_: Exception) {
+            null
+        } ?: decodeDrawable(context, R.drawable.eazpire_logo)
+        ?: decodeDrawable(context, R.drawable.ic_launcher_foreground)
+        ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+    }
 
 private fun computeLogoLayout(
     width: Float,
@@ -135,14 +171,19 @@ private fun buildGalaxyBitmap(galaxy: Bitmap, width: Int, height: Int): Bitmap {
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = AndroidCanvas(bitmap)
     canvas.drawBitmap(galaxy, null, android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()), null)
-    val paint = android.graphics.Paint().apply {
-        shader = android.graphics.LinearGradient(
-            0f, 0f, 0f, height.toFloat(),
-            intArrayOf(0x660A0514.toInt(), 0x9905020F.toInt()),
-            floatArrayOf(0f, 1f),
-            android.graphics.Shader.TileMode.CLAMP,
-        )
-    }
+    val paint =
+        android.graphics.Paint().apply {
+            shader =
+                android.graphics.LinearGradient(
+                    0f,
+                    0f,
+                    0f,
+                    height.toFloat(),
+                    intArrayOf(0x660A0514.toInt(), 0x9905020F.toInt()),
+                    floatArrayOf(0f, 1f),
+                    android.graphics.Shader.TileMode.CLAMP,
+                )
+        }
     canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
     return bitmap
 }
@@ -165,6 +206,17 @@ private fun buildLogoLayerBitmap(
     return bitmap
 }
 
+private fun pixelStepForSize(width: Int, height: Int): Int {
+    val minDim = min(width, height)
+    val targetCells = 12_000
+    val approx = sqrt((width.toLong() * height / targetCells).toDouble()).toInt().coerceIn(6, 18)
+    return when {
+        minDim < 720 -> max(8, approx)
+        minDim < 1080 -> max(10, approx)
+        else -> max(12, approx)
+    }
+}
+
 private fun buildBackgroundCells(galaxyBmp: Bitmap, width: Int, height: Int, step: Int): List<SplashBgCell> {
     val cells = ArrayList<SplashBgCell>(4096)
     val size = (step + 1).toFloat()
@@ -180,12 +232,13 @@ private fun buildBackgroundCells(galaxyBmp: Bitmap, width: Int, height: Int, ste
                     y = y.toFloat(),
                     size = size,
                     reveal = y / hMax,
-                    color = Color(
-                        red = (px shr 16 and 0xFF) / 255f,
-                        green = (px shr 8 and 0xFF) / 255f,
-                        blue = (px and 0xFF) / 255f,
-                        alpha = (px ushr 24 and 0xFF) / 255f,
-                    ),
+                    color =
+                        Color(
+                            red = (px shr 16 and 0xFF) / 255f,
+                            green = (px shr 8 and 0xFF) / 255f,
+                            blue = (px and 0xFF) / 255f,
+                            alpha = (px ushr 24 and 0xFF) / 255f,
+                        ),
                 ),
             )
             x += step
@@ -228,16 +281,18 @@ private fun buildLogoCells(
                         y = py.toFloat(),
                         size = size,
                         reveal = py / hMax,
-                        shopColor = Color(
-                            red = (shopPx shr 16 and 0xFF) / 255f,
-                            green = (shopPx shr 8 and 0xFF) / 255f,
-                            blue = (shopPx and 0xFF) / 255f,
-                        ),
-                        creatorColor = Color(
-                            red = (creatorPx shr 16 and 0xFF) / 255f,
-                            green = (creatorPx shr 8 and 0xFF) / 255f,
-                            blue = (creatorPx and 0xFF) / 255f,
-                        ),
+                        shopColor =
+                            Color(
+                                red = (shopPx shr 16 and 0xFF) / 255f,
+                                green = (shopPx shr 8 and 0xFF) / 255f,
+                                blue = (shopPx and 0xFF) / 255f,
+                            ),
+                        creatorColor =
+                            Color(
+                                red = (creatorPx shr 16 and 0xFF) / 255f,
+                                green = (creatorPx shr 8 and 0xFF) / 255f,
+                                blue = (creatorPx and 0xFF) / 255f,
+                            ),
                         shopAlpha = shopA,
                         creatorAlpha = creatorA,
                     ),
@@ -250,37 +305,54 @@ private fun buildLogoCells(
     return cells
 }
 
-private suspend fun buildSplashAssets(context: Context, width: Int, height: Int): SplashAssets {
-    val galaxySrc = BitmapFactory.decodeResource(context.resources, R.drawable.galaxy_nebula_bg)
-    val shopLogo = BitmapFactory.decodeResource(context.resources, R.drawable.eazpire_logo)
-    val creatorLogo = loadCreatorLogoBitmap(context)
-    val step = when {
-        min(width, height) < 720 -> 8
-        min(width, height) < 1080 -> 10
-        else -> 12
+private suspend fun buildSplashAssets(context: Context, screenW: Int, screenH: Int): SplashAssets? {
+    val (width, height) = cappedProcessSize(screenW, screenH)
+    val drawScaleX = screenW.toFloat() / width
+    val drawScaleY = screenH.toFloat() / height
+
+    val galaxySrc = decodeDrawable(context, R.drawable.galaxy_nebula_bg) ?: return null
+    val shopLogo = decodeDrawable(context, R.drawable.eazpire_logo) ?: return null
+
+    return try {
+        val creatorLogo = loadCreatorLogoBitmap(context)
+
+        val step = pixelStepForSize(width, height)
+        val layout = computeLogoLayout(width.toFloat(), height.toFloat(), shopLogo, creatorLogo)
+        val galaxyBmp = buildGalaxyBitmap(galaxySrc, width, height)
+        val shopLayer = buildLogoLayerBitmap(shopLogo, layout, width, height, layout.shopH)
+        val creatorLayer = buildLogoLayerBitmap(creatorLogo, layout, width, height, layout.creatorH)
+
+        val bgCells = buildBackgroundCells(galaxyBmp, width, height, step)
+        val logoCells = buildLogoCells(shopLayer, creatorLayer, layout, width, height, step)
+
+        val shopImage = shopLogo.asImageBitmap()
+        val creatorImage = creatorLogo.asImageBitmap()
+
+        shopLayer.recycle()
+        creatorLayer.recycle()
+        if (galaxySrc !== galaxyBmp) galaxySrc.recycle()
+        if (creatorLogo !== shopLogo) creatorLogo.recycle()
+        shopLogo.recycle()
+
+        SplashAssets(
+            processWidth = width,
+            processHeight = height,
+            drawScaleX = drawScaleX,
+            drawScaleY = drawScaleY,
+            logoLayout = layout,
+            galaxyImage = galaxyBmp.asImageBitmap(),
+            shopLogo = shopImage,
+            creatorLogo = creatorImage,
+            bgCells = bgCells,
+            logoCells = logoCells,
+        )
+    } catch (e: OutOfMemoryError) {
+        Log.e(TAG, "Splash OOM at ${width}x$height", e)
+        null
+    } catch (e: Exception) {
+        Log.e(TAG, "Splash build failed", e)
+        null
     }
-
-    val layout = computeLogoLayout(width.toFloat(), height.toFloat(), shopLogo, creatorLogo)
-    val galaxyBmp = buildGalaxyBitmap(galaxySrc, width, height)
-    val shopLayer = buildLogoLayerBitmap(shopLogo, layout, width, height, layout.shopH)
-    val creatorLayer = buildLogoLayerBitmap(creatorLogo, layout, width, height, layout.creatorH)
-
-    val bgCells = buildBackgroundCells(galaxyBmp, width, height, step)
-    val logoCells = buildLogoCells(shopLayer, creatorLayer, layout, width, height, step)
-
-    shopLayer.recycle()
-    creatorLayer.recycle()
-
-    return SplashAssets(
-        width = width,
-        height = height,
-        logoLayout = layout,
-        galaxyImage = galaxyBmp.asImageBitmap(),
-        shopLogo = shopLogo.asImageBitmap(),
-        creatorLogo = creatorLogo.asImageBitmap(),
-        bgCells = bgCells,
-        logoCells = logoCells,
-    )
 }
 
 /**
@@ -295,12 +367,22 @@ fun AppSplashOverlay(
     val context = LocalContext.current
     var assets by remember { mutableStateOf<SplashAssets?>(null) }
     var elapsedMs by remember { mutableFloatStateOf(0f) }
+    var skipped by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val dm = context.resources.displayMetrics
-        val w = dm.widthPixels.coerceAtLeast(1)
-        val h = dm.heightPixels.coerceAtLeast(1)
-        assets = buildSplashAssets(context, w, h)
+        val screenW = dm.widthPixels.coerceAtLeast(1)
+        val screenH = dm.heightPixels.coerceAtLeast(1)
+        val built =
+            withContext(Dispatchers.Default) {
+                buildSplashAssets(context, screenW, screenH)
+            }
+        if (built == null) {
+            skipped = true
+            onFinished()
+            return@LaunchedEffect
+        }
+        assets = built
         val start = System.currentTimeMillis()
         val total = SplashTimings.totalMs
         while (true) {
@@ -311,14 +393,29 @@ fun AppSplashOverlay(
         onFinished()
     }
 
-    val a = assets ?: return
+    if (skipped) return
+
+    val a = assets
+    if (a == null) {
+        Box(
+            modifier =
+                modifier
+                    .fillMaxSize()
+                    .background(White),
+        )
+        return
+    }
+
+    val sx = a.drawScaleX
+    val sy = a.drawScaleY
 
     Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures { /* block touches during splash */ }
-            },
+        modifier =
+            modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures { /* block touches during splash */ }
+                },
     ) {
         val w = size.width
         val h = size.height
@@ -329,8 +426,8 @@ fun AppSplashOverlay(
             val l = a.logoLayout
             drawImage(
                 image = a.shopLogo,
-                dstOffset = IntOffset(l.x.toInt(), l.y.toInt()),
-                dstSize = IntSize(l.w.toInt(), l.shopH.toInt()),
+                dstOffset = IntOffset((l.x * sx).toInt(), (l.y * sy).toInt()),
+                dstSize = IntSize((l.w * sx).toInt(), (l.shopH * sy).toInt()),
                 filterQuality = FilterQuality.High,
             )
             return@Canvas
@@ -360,10 +457,11 @@ fun AppSplashOverlay(
                 if (local <= 0f) continue
                 val mix = local * pixelAlpha
                 if (mix <= 0f) continue
+                val pos = Offset(cell.x * sx, cell.y * sy)
                 drawRect(
                     color = cell.color.copy(alpha = cell.color.alpha * mix),
-                    topLeft = Offset(cell.x, cell.y),
-                    size = Size(cell.size, cell.size),
+                    topLeft = pos,
+                    size = Size(cell.size * sx, cell.size * sy),
                 )
             }
 
@@ -382,8 +480,8 @@ fun AppSplashOverlay(
                 }
                 drawRect(
                     color = color.copy(alpha = alpha),
-                    topLeft = Offset(cell.x, cell.y),
-                    size = Size(cell.size, cell.size),
+                    topLeft = Offset(cell.x * sx, cell.y * sy),
+                    size = Size(cell.size * sx, cell.size * sy),
                 )
             }
         }
@@ -392,8 +490,8 @@ fun AppSplashOverlay(
             val l = a.logoLayout
             drawImage(
                 image = a.creatorLogo,
-                dstOffset = IntOffset(l.x.toInt(), l.y.toInt()),
-                dstSize = IntSize(l.w.toInt(), l.creatorH.toInt()),
+                dstOffset = IntOffset((l.x * sx).toInt(), (l.y * sy).toInt()),
+                dstSize = IntSize((l.w * sx).toInt(), (l.creatorH * sy).toInt()),
                 alpha = sharp,
                 filterQuality = FilterQuality.High,
             )
@@ -406,8 +504,8 @@ fun AppSplashOverlay(
             val l = a.logoLayout
             drawImage(
                 image = a.creatorLogo,
-                dstOffset = IntOffset(l.x.toInt(), l.y.toInt()),
-                dstSize = IntSize(l.w.toInt(), l.creatorH.toInt()),
+                dstOffset = IntOffset((l.x * sx).toInt(), (l.y * sy).toInt()),
+                dstSize = IntSize((l.w * sx).toInt(), (l.creatorH * sy).toInt()),
                 filterQuality = FilterQuality.High,
             )
         }
