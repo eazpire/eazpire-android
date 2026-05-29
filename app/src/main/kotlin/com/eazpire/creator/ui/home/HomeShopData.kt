@@ -57,6 +57,17 @@ private val CHIP_COLLECTION_CANDIDATES: Map<String, List<String?>> = mapOf(
     "home-living" to listOf("home-living", "home-&-living"),
 )
 
+/** Fast path: products for the default home chip only (shown first). */
+suspend fun loadHomeSectionForChip(
+    api: ShopifyProductsApi,
+    baseCollectionHandle: String?,
+    maxProducts: Int,
+    chipId: String = "all",
+): List<ShopifyProductsApi.ProductItem> = withContext(Dispatchers.IO) {
+    val handles = CHIP_COLLECTION_CANDIDATES[chipId] ?: listOf(null)
+    loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts)
+}
+
 suspend fun loadHomeCategoryPools(
     api: ShopifyProductsApi,
     baseCollectionHandle: String?,
@@ -70,6 +81,22 @@ suspend fun loadHomeCategoryPools(
             }
         }.awaitAll().toMap()
     }
+}
+
+/** Fills chip pools not yet loaded (e.g. after initial "all"-only pass). */
+suspend fun loadHomeCategoryPoolsMissingChips(
+    api: ShopifyProductsApi,
+    baseCollectionHandle: String?,
+    maxProducts: Int,
+    existing: HomeCategoryPools,
+): HomeCategoryPools = withContext(Dispatchers.IO) {
+    val out = existing.toMutableMap()
+    CHIP_COLLECTION_CANDIDATES.keys.forEach { chipId ->
+        if (!out[chipId].isNullOrEmpty()) return@forEach
+        val handles = CHIP_COLLECTION_CANDIDATES[chipId] ?: listOf(null)
+        out[chipId] = loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts)
+    }
+    out
 }
 
 private suspend fun loadProductsForChip(

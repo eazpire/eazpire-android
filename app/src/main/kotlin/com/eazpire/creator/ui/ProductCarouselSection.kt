@@ -29,12 +29,11 @@ import com.eazpire.creator.ui.home.HOME_PRODUCT_SECTIONS
 import com.eazpire.creator.ui.home.HomeCategoryPools
 import com.eazpire.creator.ui.home.HomeCategoryStrip
 import com.eazpire.creator.ui.home.HomeCreatorsCarousel
-import com.eazpire.creator.ui.home.loadHomeCategoryPools
+import com.eazpire.creator.ui.home.loadHomeCategoryPoolsMissingChips
+import com.eazpire.creator.ui.home.loadHomeSectionForChip
 import com.eazpire.creator.ui.home.matchesHomeCategory
 import com.eazpire.creator.ui.home.toHomeProductItem
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
@@ -73,71 +72,69 @@ fun ProductCarouselSection(
     var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     var sectionPools by remember { mutableStateOf<Map<String, HomeCategoryPools>>(emptyMap()) }
     var createScratchCatalog by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
-    var homeLoading by remember { mutableStateOf(true) }
+    /** Creators load only after promo + product carousels (top → bottom). */
+    var loadCreatorsSection by remember { mutableStateOf(false) }
 
     LaunchedEffect(region) {
-        homeLoading = true
-        withContext(Dispatchers.IO) {
-            coroutineScope {
-                val promoDeferred = async {
-                    runCatching {
-                        val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
-                        ShopifyProductsApi.parseActivePromotionProductsResponse(j)
-                    }.getOrElse { emptyList() }
-                }
-                val sectionsDeferred = async {
-                    HOME_PRODUCT_SECTIONS.associate { def ->
-                        def.id to loadHomeCategoryPools(api, def.baseCollectionHandle, def.maxProducts)
-                    }
-                }
-                val catalogDeferred = async {
-                    runCatching {
-                        val data = creatorApi.getShopCreateProductCatalog(region)
-                        if (!data.optBoolean("ok", false)) return@runCatching emptyList()
-                        val arr = data.optJSONArray("products") ?: JSONArray()
-                        val list = mutableListOf<CatalogProduct>()
-                        for (i in 0 until arr.length()) {
-                            val o = arr.optJSONObject(i) ?: continue
-                            val pk = o.optString("product_key", "").trim()
-                            if (pk.isEmpty()) continue
-                            val availability = o.optString("catalog_availability", "").trim()
-                            val active = o.optInt("catalog_is_active", 0)
-                            val online =
-                                availability == "available" || active == 2 ||
-                                    (availability.isBlank() && active != 1)
-                            if (!online) continue
-                            val urls = mutableListOf<String>()
-                            val mu = o.optJSONArray("mock_urls")
-                            if (mu != null) {
-                                for (j in 0 until mu.length()) {
-                                    val u = mu.optString(j, "").trim()
-                                    if (u.isNotEmpty()) urls.add(u)
-                                }
-                            }
-                            if (urls.isEmpty()) {
-                                o.optString("preview_image_url", "").trim().takeIf { it.isNotEmpty() }?.let { urls.add(it) }
-                            }
-                            list.add(
-                                CatalogProduct(
-                                    productKey = pk,
-                                    title = o.optString("title", pk).ifBlank { pk },
-                                    mockUrls = urls,
-                                    categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
-                                    categoryKey = o.optString("category_key", "").trim().ifBlank { null },
-                                    categoryGroup = o.optString("category_group", "").trim().ifBlank { null },
-                                    audience = parseCatalogAudience(o.optJSONArray("audience")),
-                                ),
-                            )
-                        }
-                        list
-                    }.getOrElse { emptyList() }
-                }
-                promoProducts = promoDeferred.await()
-                sectionPools = sectionsDeferred.await()
-                createScratchCatalog = catalogDeferred.await()
-            }
+        loadCreatorsSection = false
+        promoProducts = emptyList()
+        sectionPools = emptyMap()
+        createScratchCatalog = emptyList()
+
+        promoProducts = withContext(Dispatchers.IO) {
+            runCatching {
+                val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
+                ShopifyProductsApi.parseActivePromotionProductsResponse(j)
+            }.getOrElse { emptyList() }
         }
-        homeLoading = false
+
+        val pools = mutableMapOf<String, HomeCategoryPools>()
+        for (def in HOME_PRODUCT_SECTIONS) {
+            val allProducts = withContext(Dispatchers.IO) {
+                loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = "all")
+            }
+            pools[def.id] = mapOf("all" to allProducts)
+            sectionPools = pools.toMap()
+        }
+
+        createScratchCatalog = withContext(Dispatchers.IO) { loadCreateScratchCatalog(creatorApi, region) }
+
+        loadCreatorsSection = true
+
+        val fullPools = mutableMapOf<String, HomeCategoryPools>()
+        for (def in HOME_PRODUCT_SECTIONS) {
+            fullPools[def.id] = withContext(Dispatchers.IO) {
+                loadHomeCategoryPoolsMissingChips(
+                    api,
+                    def.baseCollectionHandle,
+                    def.maxProducts,
+                    pools[def.id].orEmpty(),
+                )
+            }
+            sectionPools = fullPools.toMap()
+        }
+    }
+
+    LaunchedEffect(selectedCategory, sectionPools, region) {
+        if (selectedCategory == "all") return@LaunchedEffect
+        val needsLoad = HOME_PRODUCT_SECTIONS.any { def ->
+            sectionPools[def.id]?.get(selectedCategory).isNullOrEmpty()
+        }
+        if (!needsLoad) return@LaunchedEffect
+        val updated = sectionPools.toMutableMap()
+        var changed = false
+        for (def in HOME_PRODUCT_SECTIONS) {
+            if (!updated[def.id]?.get(selectedCategory).isNullOrEmpty()) continue
+            val products = withContext(Dispatchers.IO) {
+                loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = selectedCategory)
+            }
+            if (products.isEmpty()) continue
+            val chipMap = updated[def.id].orEmpty().toMutableMap()
+            chipMap[selectedCategory] = products
+            updated[def.id] = chipMap
+            changed = true
+        }
+        if (changed) sectionPools = updated
     }
 
     val listState = rememberLazyListState()
@@ -251,22 +248,12 @@ fun ProductCarouselSection(
             }
         }
 
-        item(key = "creators") {
-            if (onCreatorClick != null) {
+        if (loadCreatorsSection && onCreatorClick != null) {
+            item(key = "creators") {
                 HomeCreatorsCarousel(
                     creatorApi = creatorApi,
                     labelForKey = t,
                     onCreatorClick = onCreatorClick,
-                )
-            }
-        }
-
-        if (homeLoading) {
-            item(key = "loading_spacer") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
                 )
             }
         }
@@ -285,6 +272,48 @@ fun ProductCarouselSection(
         }
     }
 }
+
+private suspend fun loadCreateScratchCatalog(creatorApi: CreatorApi, region: String): List<CatalogProduct> =
+    runCatching {
+        val data = creatorApi.getShopCreateProductCatalog(region)
+        if (!data.optBoolean("ok", false)) return@runCatching emptyList()
+        val arr = data.optJSONArray("products") ?: JSONArray()
+        val list = mutableListOf<CatalogProduct>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val pk = o.optString("product_key", "").trim()
+            if (pk.isEmpty()) continue
+            val availability = o.optString("catalog_availability", "").trim()
+            val active = o.optInt("catalog_is_active", 0)
+            val online =
+                availability == "available" || active == 2 ||
+                    (availability.isBlank() && active != 1)
+            if (!online) continue
+            val urls = mutableListOf<String>()
+            val mu = o.optJSONArray("mock_urls")
+            if (mu != null) {
+                for (j in 0 until mu.length()) {
+                    val u = mu.optString(j, "").trim()
+                    if (u.isNotEmpty()) urls.add(u)
+                }
+            }
+            if (urls.isEmpty()) {
+                o.optString("preview_image_url", "").trim().takeIf { it.isNotEmpty() }?.let { urls.add(it) }
+            }
+            list.add(
+                CatalogProduct(
+                    productKey = pk,
+                    title = o.optString("title", pk).ifBlank { pk },
+                    mockUrls = urls,
+                    categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
+                    categoryKey = o.optString("category_key", "").trim().ifBlank { null },
+                    categoryGroup = o.optString("category_group", "").trim().ifBlank { null },
+                    audience = parseCatalogAudience(o.optJSONArray("audience")),
+                ),
+            )
+        }
+        list
+    }.getOrElse { emptyList() }
 
 private fun parseCatalogAudience(arr: JSONArray?): List<String> {
     if (arr == null) return emptyList()
