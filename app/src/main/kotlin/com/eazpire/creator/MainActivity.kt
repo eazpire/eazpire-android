@@ -29,11 +29,12 @@ import com.eazpire.creator.debug.initDebugLog
 import com.eazpire.creator.debug.initLangSwitchDebug
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.push.PushTokenRegistrar
+import androidx.lifecycle.lifecycleScope
 import com.eazpire.creator.ui.ShopScreen
 import com.eazpire.creator.update.PlayInAppUpdateHelper
 import com.eazpire.creator.api.WearPairApi
 import com.eazpire.creator.wear.sync.WearAuthSync
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -81,16 +82,16 @@ class MainActivity : ComponentActivity() {
         initLangSwitchDebug(this)
         val tokenStore = SecureTokenStore(this)
         AuthDebugLog.d("[TOKEN] App start ${tokenStore.sessionDebugSummary()}")
-        // Refresh zuerst (z. B. leerer access_token nach Update), JWT-Session nie beim Start löschen.
-        try {
-            runBlocking {
+        // Session refresh off main thread — avoids ANR/crash on slow network at cold start.
+        lifecycleScope.launch {
+            try {
                 ShopSessionGuard.refreshAccessTokenIfNeeded(this@MainActivity, tokenStore)
                 ShopSessionGuard.validateLegacyShopifySessionIfNeeded(this@MainActivity, tokenStore)
+                AuthDebugLog.d("[TOKEN] After session guard ${tokenStore.sessionDebugSummary()}")
+            } catch (e: Exception) {
+                AuthDebugLog.d("[TOKEN] Session guard skipped on start: ${e.message}")
             }
-        } catch (e: Exception) {
-            AuthDebugLog.d("[TOKEN] Session guard skipped on start: ${e.message}")
         }
-        AuthDebugLog.d("[TOKEN] After session guard ${tokenStore.sessionDebugSummary()}")
 
         if (!tokenStore.getJwt().isNullOrBlank()) {
             WearAuthSync.push(this, tokenStore)

@@ -21,15 +21,24 @@ class SecureTokenStore(context: Context) {
         ensureSessionHydrated(p)
     }
 
+    private val usingPlaintextFallback: Boolean
+        get() = prefs === backupPrefs
+
     private fun openEncryptedPrefs(context: Context): SharedPreferences {
         return try {
             createEncryptedPrefs(context)
         } catch (e: Exception) {
             AuthDebugLog.w("[TOKEN] Encrypted prefs open failed; recreating and restoring backup", e)
-            context.deleteSharedPreferences(ENCRYPTED_PREFS_NAME)
-            val restored = createEncryptedPrefs(context)
-            restoreFromBackup(restored)
-            restored
+            try {
+                context.deleteSharedPreferences(ENCRYPTED_PREFS_NAME)
+                val restored = createEncryptedPrefs(context)
+                restoreFromBackup(restored)
+                restored
+            } catch (e2: Exception) {
+                // Keystore can stay broken after OEM updates — never crash cold start.
+                AuthDebugLog.w("[TOKEN] Encrypted prefs unavailable; using backup mirror only", e2)
+                backupPrefs
+            }
         }
     }
 
@@ -226,7 +235,7 @@ class SecureTokenStore(context: Context) {
         val bakJwt = readNonBlank(backupPrefs, KEY_JWT) != null
         val hasRefresh = getRefreshToken() != null
         val hasAccess = !getAccessToken().isNullOrBlank()
-        return "loggedIn=${isLoggedIn()} encJwt=$encJwt bakJwt=$bakJwt hasRefresh=$hasRefresh hasAccess=$hasAccess ownerId=${!getOwnerId().isNullOrBlank()}"
+        return "loggedIn=${isLoggedIn()} encJwt=$encJwt bakJwt=$bakJwt plaintextFallback=$usingPlaintextFallback hasRefresh=$hasRefresh hasAccess=$hasAccess ownerId=${!getOwnerId().isNullOrBlank()}"
     }
 
     companion object {
