@@ -1331,6 +1331,16 @@ class CreatorApi(
     suspend fun listPromotions(ownerId: String): JSONObject =
         call("list-promotions", mapOf("owner_id" to ownerId))
 
+    /** GET ?op=list-shop-creators&sort=recommend|new&limit=24 — public homepage creators carousel */
+    suspend fun listShopCreators(sort: String = "recommend", limit: Int = 20): JSONObject =
+        call(
+            "list-shop-creators",
+            mapOf(
+                "sort" to sort.lowercase(),
+                "limit" to limit.coerceIn(4, 30).toString(),
+            ),
+        )
+
     /** GET ?op=list-active-shop-promotion-products — storefront (no JWT); active creator bundle promos; optional country for 4h slot display */
     suspend fun listActiveShopPromotionProducts(countryCode: String? = null): JSONObject {
         val params = mutableMapOf<String, String>()

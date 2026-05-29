@@ -795,6 +795,16 @@ fun ShopScreen(
                 else -> ProductCarouselSection(
                     modifier = Modifier.fillMaxSize(),
                     onCurrentPageChange = { currentPagePath = it },
+                    onCreatorClick = { name ->
+                        selectedCreatorName = name
+                        selectedProductHandle = null
+                        shopSearchQuery = null
+                        selectedCollection = null
+                    },
+                    onCreateScratchClick = { catalogProduct ->
+                        shopCreateActive = true
+                        shopCreateStudioPhase = ShopCreateProductPhase.Mode(catalogProduct)
+                    },
                     onCategoryClick = { title, h ->
                         productModalHandleState.value = null
                         selectedProductHandle = null

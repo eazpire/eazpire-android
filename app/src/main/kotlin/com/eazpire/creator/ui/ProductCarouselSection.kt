@@ -1,59 +1,42 @@
 package com.eazpire.creator.ui
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
-import androidx.compose.runtime.mutableIntStateOf
-import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.ui.home.HOME_PRODUCT_SECTIONS
+import com.eazpire.creator.ui.home.HomeCategoryPools
+import com.eazpire.creator.ui.home.HomeCategoryStrip
+import com.eazpire.creator.ui.home.HomeCreatorsCarousel
+import com.eazpire.creator.ui.home.loadHomeCategoryPools
+import com.eazpire.creator.ui.home.matchesHomeCategory
+import com.eazpire.creator.ui.home.toHomeProductItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import kotlin.random.Random
-
-/** Home-Sektion: New Arrivals (neueste Produkte). Kategorien: zufällig gemischt. */
-private data class HomeSectionData(
-    val id: String,
-    val titleKey: String,
-    val collectionHandle: String?,
-    val maxProducts: Int = 10
-)
-
-private val HOME_SECTION_DEFAULTS = mapOf(
-    "newcomer" to "New Arrivals"
-)
-private val HOME_SECTIONS = listOf(
-    HomeSectionData("newcomer", "home.newcomer", null, 10)
-)
-
-val CAROUSEL_CATEGORIES = listOf(
-    "Women" to "women",
-    "Men" to "men",
-    "Kids" to "kids",
-    "Toddler" to "toddler",
-    "Home & Living" to "home-living",
-)
-private val CAROUSEL_TITLE_KEYS = mapOf(
-    "Women" to "sidebar.women", "Men" to "sidebar.men", "Kids" to "sidebar.kids",
-    "Toddler" to "eaz.header.toddler", "Home & Living" to "menu.home-living"
-)
+import org.json.JSONArray
 
 @Composable
 fun ProductCarouselSection(
@@ -61,9 +44,11 @@ fun ProductCarouselSection(
     onCategoryClick: ((title: String, handle: String) -> Unit)? = null,
     onProductClick: ((ProductClickWithCollection) -> Unit)? = null,
     onHotspotProductClick: ((String) -> Unit)? = null,
+    onCreatorClick: ((String) -> Unit)? = null,
+    onCreateScratchClick: ((CatalogProduct) -> Unit)? = null,
     productModalHandleState: MutableState<String?>? = null,
     scrollToTopTrigger: Int = 0,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = LocalTranslationStore.current
@@ -73,6 +58,9 @@ fun ProductCarouselSection(
     val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }
+    val localeStore = remember { LocaleStore(context) }
+    val region = remember { localeStore.getRegionCodeSync() }
+
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
     LaunchedEffect(ownerId) {
         if (ownerId.isNotBlank()) {
@@ -80,120 +68,227 @@ fun ProductCarouselSection(
             mockPreviewRevision = CustomerMockPreviewStore.revision
         }
     }
-    val localeStore = remember { LocaleStore(context) }
-    var productsByHomeSection by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
-    var productsByCategory by remember { mutableStateOf<Map<String, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
-    var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
 
-    LaunchedEffect(Unit) {
+    var selectedCategory by remember { mutableStateOf("all") }
+    var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
+    var sectionPools by remember { mutableStateOf<Map<String, HomeCategoryPools>>(emptyMap()) }
+    var createScratchCatalog by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
+    var homeLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(region) {
+        homeLoading = true
         withContext(Dispatchers.IO) {
             coroutineScope {
                 val promoDeferred = async {
-                    try {
+                    runCatching {
                         val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
                         ShopifyProductsApi.parseActivePromotionProductsResponse(j)
-                    } catch (_: Exception) {
-                        emptyList()
+                    }.getOrElse { emptyList() }
+                }
+                val sectionsDeferred = async {
+                    HOME_PRODUCT_SECTIONS.associate { def ->
+                        def.id to loadHomeCategoryPools(api, def.baseCollectionHandle, def.maxProducts)
                     }
                 }
-                val homeDeferred = async {
-                    HOME_SECTIONS.associate { section ->
-                        val result = api.getProducts(
-                            collectionHandle = section.collectionHandle,
-                            limit = section.maxProducts * 2
-                        )
-                        val list = if (result.products.isEmpty()) {
-                            api.getProducts(limit = section.maxProducts * 2).products
-                        } else result.products
-                        val sorted = list
-                            .sortedByDescending { it.createdAt.ifBlank { "0" } }
-                            .take(section.maxProducts)
-                        section.id to sorted
-                    }
-                }
-                val catDeferred = async {
-                    val raw = api.getProductsByCategories(CAROUSEL_CATEGORIES, limitPerCategory = 12)
-                    raw.mapValues { (_, products) ->
-                        products.shuffled(Random.Default)
-                    }
+                val catalogDeferred = async {
+                    runCatching {
+                        val data = creatorApi.getShopCreateProductCatalog(region)
+                        if (!data.optBoolean("ok", false)) return@runCatching emptyList()
+                        val arr = data.optJSONArray("products") ?: JSONArray()
+                        val list = mutableListOf<CatalogProduct>()
+                        for (i in 0 until arr.length()) {
+                            val o = arr.optJSONObject(i) ?: continue
+                            val pk = o.optString("product_key", "").trim()
+                            if (pk.isEmpty()) continue
+                            val availability = o.optString("catalog_availability", "").trim()
+                            val active = o.optInt("catalog_is_active", 0)
+                            val online =
+                                availability == "available" || active == 2 ||
+                                    (availability.isBlank() && active != 1)
+                            if (!online) continue
+                            val urls = mutableListOf<String>()
+                            val mu = o.optJSONArray("mock_urls")
+                            if (mu != null) {
+                                for (j in 0 until mu.length()) {
+                                    val u = mu.optString(j, "").trim()
+                                    if (u.isNotEmpty()) urls.add(u)
+                                }
+                            }
+                            if (urls.isEmpty()) {
+                                o.optString("preview_image_url", "").trim().takeIf { it.isNotEmpty() }?.let { urls.add(it) }
+                            }
+                            list.add(
+                                CatalogProduct(
+                                    productKey = pk,
+                                    title = o.optString("title", pk).ifBlank { pk },
+                                    mockUrls = urls,
+                                    categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
+                                    categoryKey = o.optString("category_key", "").trim().ifBlank { null },
+                                    categoryGroup = o.optString("category_group", "").trim().ifBlank { null },
+                                    audience = parseCatalogAudience(o.optJSONArray("audience")),
+                                ),
+                            )
+                        }
+                        list
+                    }.getOrElse { emptyList() }
                 }
                 promoProducts = promoDeferred.await()
-                productsByHomeSection = homeDeferred.await()
-                productsByCategory = catDeferred.await()
+                sectionPools = sectionsDeferred.await()
+                createScratchCatalog = catalogDeferred.await()
             }
         }
+        homeLoading = false
     }
 
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
+    val pinCategoryStrip by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 }
+    }
     LaunchedEffect(scrollToTopTrigger) {
-        if (scrollToTopTrigger > 0) scrollState.animateScrollTo(0)
+        if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-    ) {
-        HeroCarousel(
-            onProductClick = onProductClick?.let { callback ->
-                { handle -> callback(ProductClickWithCollection(handle, null, null)) }
-            },
-            onHotspotProductClick = onHotspotProductClick,
-            productModalHandleState = productModalHandleState,
-            fallbackProductHandle = productsByHomeSection["newcomer"]?.firstOrNull()?.handle
-                ?: productsByCategory["women"]?.firstOrNull()?.handle
-        )
-        val promoTitle = t("eaz.shop.promotions_title", "Promotions")
-        val promoEmpty = t("eaz.shop.promotions_empty", "No promotional products at the moment.")
-        ProductCarousel(
-            title = promoTitle,
-            products = promoProducts.take(12),
-            collectionHandle = EAZ_PROMOTIONS_COLLECTION_HANDLE,
-            onTitleClick = onCategoryClick?.let { cb ->
-                { cb(promoTitle, EAZ_PROMOTIONS_COLLECTION_HANDLE) }
-            },
-            onProductClick = onProductClick,
-            modifier = Modifier.padding(bottom = 6.dp),
-            emptyStateMessage = promoEmpty,
-            promoProductLayout = true,
-            promoEndsPrefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
-            promoEndedLabel = t("eaz.shop.promo_countdown_ended", "Ended"),
-            promoNextDiscountPrefix = t("eaz.shop.promo_next_discount_prefix", "Discount in"),
-            promoNextPriceHintPrefix = t("eaz.shop.promo_next_price_hint_prefix", "Promo from"),
-            ownerId = ownerId,
-            creatorApi = creatorApi,
-            mockPreviewRevision = mockPreviewRevision
-        )
-        HOME_SECTIONS.forEach { section ->
-            val products = productsByHomeSection[section.id].orEmpty()
-            val displayTitle = t(section.titleKey, HOME_SECTION_DEFAULTS[section.id] ?: section.id)
-            ProductCarousel(
-                title = displayTitle,
-                products = products,
-                collectionHandle = section.collectionHandle,
-                onTitleClick = null,
-                onProductClick = onProductClick,
-                modifier = Modifier.padding(bottom = 6.dp),
-                ownerId = ownerId,
-                creatorApi = creatorApi,
-                mockPreviewRevision = mockPreviewRevision
+    val createScratchProducts = remember(createScratchCatalog, selectedCategory) {
+        createScratchCatalog
+            .filter { it.matchesHomeCategory(selectedCategory) }
+            .take(16)
+            .map { it.toHomeProductItem() }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item(key = "hero") {
+                HeroCarousel(
+                    onProductClick = onProductClick?.let { callback ->
+                        { handle -> callback(ProductClickWithCollection(handle, null, null)) }
+                    },
+                    onHotspotProductClick = onHotspotProductClick,
+                    productModalHandleState = productModalHandleState,
+                    fallbackProductHandle = sectionPools["new_arrivals"]?.get("all")?.firstOrNull()?.handle
+                        ?: sectionPools["bestseller"]?.get("women")?.firstOrNull()?.handle,
+                )
+            }
+
+            item(key = "category_strip") {
+                HomeCategoryStrip(
+                    selectedCategory = selectedCategory,
+                    onCategorySelected = { selectedCategory = it },
+                    labelForKey = t,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+        if (promoProducts.isNotEmpty()) {
+            item(key = "promotions") {
+                val promoTitle = t("eaz.shop.promotions_title", "Promotions")
+                ProductCarousel(
+                    title = promoTitle,
+                    products = promoProducts,
+                    collectionHandle = EAZ_PROMOTIONS_COLLECTION_HANDLE,
+                    onTitleClick = onCategoryClick?.let { cb -> { cb(promoTitle, EAZ_PROMOTIONS_COLLECTION_HANDLE) } },
+                    onProductClick = onProductClick,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    promoProductLayout = true,
+                    promoEndsPrefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
+                    promoEndedLabel = t("eaz.shop.promo_countdown_ended", "Ended"),
+                    promoNextDiscountPrefix = t("eaz.shop.promo_next_discount_prefix", "Discount in"),
+                    promoNextPriceHintPrefix = t("eaz.shop.promo_next_price_hint_prefix", "Promo from"),
+                    ownerId = ownerId,
+                    creatorApi = creatorApi,
+                    mockPreviewRevision = mockPreviewRevision,
+                )
+            }
+        }
+
+        HOME_PRODUCT_SECTIONS.forEach { def ->
+            val products = sectionPools[def.id]?.get(selectedCategory).orEmpty()
+            if (products.isNotEmpty()) {
+                item(key = "section_${def.id}") {
+                    val displayTitle = t(def.titleKey, def.titleDefault)
+                    ProductCarousel(
+                        title = displayTitle,
+                        products = products,
+                        collectionHandle = def.viewAllHandle,
+                        onTitleClick = def.viewAllHandle?.let { h ->
+                            onCategoryClick?.let { cb -> { cb(displayTitle, h) } }
+                        },
+                        onProductClick = onProductClick,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                        ownerId = ownerId,
+                        creatorApi = creatorApi,
+                        mockPreviewRevision = mockPreviewRevision,
+                    )
+                }
+            }
+        }
+
+        if (createScratchProducts.isNotEmpty()) {
+            item(key = "create_scratch") {
+                val title = t("eaz.home.create_from_scratch", "Create from Scratch")
+                ProductCarousel(
+                    title = title,
+                    products = createScratchProducts,
+                    collectionHandle = null,
+                    onTitleClick = onCategoryClick?.let { cb ->
+                        { cb(title, "shop-create-catalog") }
+                    },
+                    onProductClick = { click ->
+                        val cat = createScratchCatalog.find { it.productKey == click.handle }
+                        if (cat != null) {
+                            onCreateScratchClick?.invoke(cat)
+                        } else {
+                            onProductClick?.invoke(click)
+                        }
+                    },
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    ownerId = ownerId,
+                    creatorApi = creatorApi,
+                    mockPreviewRevision = mockPreviewRevision,
+                )
+            }
+        }
+
+        item(key = "creators") {
+            if (onCreatorClick != null) {
+                HomeCreatorsCarousel(
+                    creatorApi = creatorApi,
+                    labelForKey = t,
+                    onCreatorClick = onCreatorClick,
+                )
+            }
+        }
+
+        if (homeLoading) {
+            item(key = "loading_spacer") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                )
+            }
+        }
+        }
+
+        if (pinCategoryStrip) {
+            HomeCategoryStrip(
+                selectedCategory = selectedCategory,
+                onCategorySelected = { selectedCategory = it },
+                labelForKey = t,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .zIndex(2f),
             )
         }
-        CAROUSEL_CATEGORIES.forEachIndexed { index, (title, handle) ->
-            val products = productsByCategory[handle].orEmpty()
-            val isLast = index == CAROUSEL_CATEGORIES.lastIndex
-            val displayTitle = t(CAROUSEL_TITLE_KEYS[title] ?: title, title)
-            ProductCarousel(
-                title = displayTitle,
-                products = products,
-                collectionHandle = handle,
-                onTitleClick = onCategoryClick?.let { { it(title, handle) } },
-                onProductClick = onProductClick,
-                modifier = Modifier.padding(bottom = if (isLast) 24.dp else 6.dp),
-                ownerId = ownerId,
-                creatorApi = creatorApi,
-                mockPreviewRevision = mockPreviewRevision
-            )
-        }
+    }
+}
+
+private fun parseCatalogAudience(arr: JSONArray?): List<String> {
+    if (arr == null) return emptyList()
+    return (0 until arr.length()).mapNotNull { i ->
+        arr.optString(i, "").trim().takeIf { it.isNotEmpty() }
     }
 }
