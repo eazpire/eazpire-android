@@ -74,6 +74,13 @@ object CustomerMockPreviewStore {
             .apply()
     }
 
+    /** Cached map without network — use after [loadMap] on home. */
+    fun peekMap(ownerId: String): JSONObject? {
+        if (ownerId.isBlank() || mapOwnerId != ownerId) return null
+        if (System.currentTimeMillis() - mapLoadedAt >= MAP_TTL_MS) return null
+        return mapCache
+    }
+
     suspend fun loadMap(api: CreatorApi, ownerId: String, force: Boolean = false): JSONObject? =
         withContext(Dispatchers.IO) {
             if (ownerId.isBlank()) return@withContext null

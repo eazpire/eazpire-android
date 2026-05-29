@@ -56,8 +56,10 @@ import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.ui.components.EazProductCardMediaOverlays
 import com.eazpire.creator.ui.components.EazProductCardRotatingImages
 import com.eazpire.creator.ui.components.togglePlpTryOnSession
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import java.text.NumberFormat
@@ -96,7 +98,9 @@ fun ProductCarousel(
     promoNextPriceHintPrefix: String = "",
     ownerId: String = "",
     creatorApi: CreatorApi? = null,
-    mockPreviewRevision: Int = 0
+    mockPreviewRevision: Int = 0,
+    /** Smaller Coil decode + single visible frame on home rows. */
+    lazyCardImages: Boolean = false,
 ) {
     if (products.isEmpty()) {
         if (emptyStateMessage == null) return
@@ -164,6 +168,7 @@ fun ProductCarousel(
                         ownerId = ownerId,
                         creatorApi = creatorApi,
                         mockPreviewRevision = mockPreviewRevision,
+                        lazyCardImages = lazyCardImages,
                         promoStyle = promoProductLayout || product.hasPromoPricingUi(),
                         promoEndsPrefix = promoEndsPrefix,
                         promoEndedLabel = promoEndedLabel,
@@ -291,6 +296,7 @@ private fun ProductCard(
     ownerId: String = "",
     creatorApi: CreatorApi? = null,
     mockPreviewRevision: Int = 0,
+    lazyCardImages: Boolean = false,
     promoStyle: Boolean = false,
     promoEndsPrefix: String = "",
     promoEndedLabel: String = "",
@@ -302,7 +308,10 @@ private fun ProductCard(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val shopImages = product.variantImages.ifEmpty { product.images }
-    var images by remember(product.id) { mutableStateOf(shopImages) }
+    val displayImages = remember(product.id, lazyCardImages, shopImages) {
+        if (lazyCardImages && shopImages.size > 1) listOf(shopImages.first()) else shopImages
+    }
+    var images by remember(product.id) { mutableStateOf(displayImages) }
     var imageReload by remember(product.id) { mutableIntStateOf(0) }
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle))
@@ -310,13 +319,14 @@ private fun ProductCard(
     var showTryOn by remember(product.id) { mutableStateOf(false) }
     var tryOnLoading by remember(product.id) { mutableStateOf(false) }
 
-    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
+    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload, lazyCardImages) {
         if (ownerId.isBlank() || creatorApi == null) {
-            images = shopImages
+            images = displayImages
             showTryOn = false
             return@LaunchedEffect
         }
-        val map = CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+        val map = CustomerMockPreviewStore.peekMap(ownerId)
+            ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
         val info = CustomerMockPreviewStore.tryOnInfo(
             map,
             product.handle,
@@ -332,15 +342,19 @@ private fun ProductCard(
         )
         tryOnActive =
             CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle) || autoActive
-        images = CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
-    }
-
-    LaunchedEffect(product.id, images) {
-        images.forEach { url ->
-            context.imageLoader.enqueue(
-                ImageRequest.Builder(context).data(url).build()
-            )
+        if (lazyCardImages && !tryOnActive && info == null) {
+            images = displayImages
+            return@LaunchedEffect
         }
+        val resolved = withContext(Dispatchers.IO) {
+            CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
+        }
+        images =
+            if (lazyCardImages && !tryOnActive && resolved.size > 1) {
+                listOf(resolved.first())
+            } else {
+                resolved
+            }
     }
 
     Column(
@@ -365,7 +379,10 @@ private fun ProductCard(
                     productId = product.id.toString(),
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
-                    rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS
+                    rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
+                    lazyLoadImages = lazyCardImages,
+                    targetWidthPx = 280,
+                    autoRotate = !lazyCardImages || images.size > 1,
                 )
             }
             EazProductCardMediaOverlays(

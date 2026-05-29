@@ -34,6 +34,8 @@ import com.eazpire.creator.ui.home.loadHomeSectionForChip
 import com.eazpire.creator.ui.home.matchesHomeCategory
 import com.eazpire.creator.ui.home.toHomeProductItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
@@ -81,20 +83,33 @@ fun ProductCarouselSection(
         sectionPools = emptyMap()
         createScratchCatalog = emptyList()
 
-        promoProducts = withContext(Dispatchers.IO) {
-            runCatching {
-                val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
-                ShopifyProductsApi.parseActivePromotionProductsResponse(j)
-            }.getOrElse { emptyList() }
-        }
-
         val pools = mutableMapOf<String, HomeCategoryPools>()
-        for (def in HOME_PRODUCT_SECTIONS) {
-            val allProducts = withContext(Dispatchers.IO) {
-                loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = "all")
+        coroutineScope {
+            val promoDeferred = async(Dispatchers.IO) {
+                runCatching {
+                    val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
+                    ShopifyProductsApi.parseActivePromotionProductsResponse(j)
+                }.getOrElse { emptyList() }
             }
-            pools[def.id] = mapOf("all" to allProducts)
-            sectionPools = pools.toMap()
+            val sectionDefs = HOME_PRODUCT_SECTIONS
+            val firstDef = sectionDefs.firstOrNull()
+            val firstDeferred = firstDef?.let { def ->
+                async(Dispatchers.IO) {
+                    loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = "all")
+                }
+            }
+            promoProducts = promoDeferred.await()
+            if (firstDef != null && firstDeferred != null) {
+                pools[firstDef.id] = mapOf("all" to firstDeferred.await())
+                sectionPools = pools.toMap()
+            }
+            for (def in sectionDefs.drop(1)) {
+                val allProducts = withContext(Dispatchers.IO) {
+                    loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = "all")
+                }
+                pools[def.id] = mapOf("all" to allProducts)
+                sectionPools = pools.toMap()
+            }
         }
 
         createScratchCatalog = withContext(Dispatchers.IO) { loadCreateScratchCatalog(creatorApi, region) }
@@ -196,6 +211,7 @@ fun ProductCarouselSection(
                     ownerId = ownerId,
                     creatorApi = creatorApi,
                     mockPreviewRevision = mockPreviewRevision,
+                    lazyCardImages = true,
                 )
             }
         }
@@ -217,6 +233,7 @@ fun ProductCarouselSection(
                         ownerId = ownerId,
                         creatorApi = creatorApi,
                         mockPreviewRevision = mockPreviewRevision,
+                        lazyCardImages = true,
                     )
                 }
             }
@@ -244,6 +261,7 @@ fun ProductCarouselSection(
                     ownerId = ownerId,
                     creatorApi = creatorApi,
                     mockPreviewRevision = mockPreviewRevision,
+                    lazyCardImages = true,
                 )
             }
         }

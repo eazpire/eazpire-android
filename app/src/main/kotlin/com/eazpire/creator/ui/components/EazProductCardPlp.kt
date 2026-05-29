@@ -34,7 +34,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
+import coil.size.Size
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import kotlinx.coroutines.delay
@@ -48,6 +51,43 @@ fun plpRotationStartIndex(productId: String, count: Int): Int {
 fun plpRotationJitterMs(productId: String): Long =
     (productId.hashCode() and 0x3FF).toLong()
 
+/** Home / carousel: downscaled Coil request + placeholder (no decode full Shopify originals). */
+@Composable
+fun EazLazyProductImage(
+    url: String,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Fit,
+    targetWidthPx: Int = 320,
+) {
+    val context = LocalContext.current
+    val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
+    SubcomposeAsyncImage(
+        model = ImageRequest.Builder(context)
+            .data(url)
+            .size(Size(targetWidthPx, targetWidthPx))
+            .crossfade(200)
+            .build(),
+        contentDescription = contentDescription,
+        contentScale = contentScale,
+        modifier = modifier,
+        loading = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(placeholderColor),
+            )
+        },
+        error = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(placeholderColor),
+            )
+        },
+    )
+}
+
 @Composable
 fun EazProductCardRotatingImages(
     imageUrls: List<String>,
@@ -56,6 +96,9 @@ fun EazProductCardRotatingImages(
     modifier: Modifier = Modifier,
     rotateIntervalMs: Long = 1800L,
     autoRotate: Boolean = true,
+    /** Home carousels: load only the visible frame (+ optional next), not every variant URL. */
+    lazyLoadImages: Boolean = false,
+    targetWidthPx: Int = 320,
 ) {
     val urls = remember(imageUrls) { imageUrls.filter { it.isNotBlank() }.distinct() }
     var currentIndex by remember(productId, urls.size) {
@@ -73,6 +116,30 @@ fun EazProductCardRotatingImages(
 
     Box(modifier = modifier) {
         if (urls.isEmpty()) return@Box
+        if (lazyLoadImages) {
+            val activeUrl = urls[currentIndex]
+            val nextIndex = (currentIndex + 1) % urls.size
+            val nextUrl = if (urls.size > 1) urls[nextIndex] else null
+            EazLazyProductImage(
+                url = activeUrl,
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                targetWidthPx = targetWidthPx,
+            )
+            if (nextUrl != null && nextUrl != activeUrl) {
+                // Warm cache for the upcoming frame only (not the full variant list).
+                val context = LocalContext.current
+                LaunchedEffect(nextUrl) {
+                    context.imageLoader.enqueue(
+                        ImageRequest.Builder(context)
+                            .data(nextUrl)
+                            .size(Size(targetWidthPx, targetWidthPx))
+                            .build(),
+                    )
+                }
+            }
+            return@Box
+        }
         urls.forEachIndexed { index, url ->
             val isActive = index == currentIndex
             val alpha by animateFloatAsState(
@@ -83,6 +150,7 @@ fun EazProductCardRotatingImages(
                 ),
                 label = "plpCardImageAlpha"
             )
+            if (!isActive && alpha <= 0.01f) return@forEachIndexed
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -92,6 +160,7 @@ fun EazProductCardRotatingImages(
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(url)
+                        .size(Size(targetWidthPx, targetWidthPx))
                         .crossfade(0)
                         .build(),
                     contentDescription = contentDescription,

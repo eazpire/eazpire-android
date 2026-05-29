@@ -36,7 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import com.eazpire.creator.ui.components.EazLazyProductImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import kotlinx.coroutines.Dispatchers
@@ -201,13 +201,14 @@ private fun CreatorHomeCard(
         ) {
             val img = creator.profileImageUrl
             if (!img.isNullOrBlank()) {
-                AsyncImage(
-                    model = img,
+                EazLazyProductImage(
+                    url = img,
                     contentDescription = null,
                     modifier = Modifier
                         .size(72.dp)
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop,
+                    targetWidthPx = 144,
                 )
             } else {
                 Text(
