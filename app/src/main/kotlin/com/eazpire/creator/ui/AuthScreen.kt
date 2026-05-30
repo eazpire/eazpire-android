@@ -182,16 +182,20 @@ fun AuthScreen(
                 )
                 AuthDebugLog.d("[CALLBACK] Login success; saved jwt ownerId=${result.ownerId}")
                 withContext(Dispatchers.IO) {
-                    NotificationPreferencesRepository(context).syncFromServer(
-                        CreatorApi(jwt = tokenStore.getJwt())
-                    )
-                }
-                PushTokenRegistrar.syncIfLoggedIn(context)
-                WearAuthSync.push(context, tokenStore)
-                val cartId = storefrontCartStore.cartId
-                if (cartId != null && tokens.accessToken.isNotBlank()) {
-                    withContext(Dispatchers.IO) {
-                        storefrontCartApi.updateBuyerIdentity(cartId, tokens.accessToken)
+                    runCatching {
+                        NotificationPreferencesRepository(context).syncFromServer(
+                            CreatorApi(jwt = tokenStore.getJwt())
+                        )
+                    }.onFailure { AuthDebugLog.e("[CALLBACK] syncFromServer failed (non-fatal)", it) }
+                    runCatching { PushTokenRegistrar.syncIfLoggedIn(context) }
+                        .onFailure { AuthDebugLog.e("[CALLBACK] push sync failed (non-fatal)", it) }
+                    runCatching { WearAuthSync.push(context, tokenStore) }
+                        .onFailure { AuthDebugLog.e("[CALLBACK] wear sync failed (non-fatal)", it) }
+                    val cartId = storefrontCartStore.cartId
+                    if (cartId != null && tokens.accessToken.isNotBlank()) {
+                        runCatching {
+                            storefrontCartApi.updateBuyerIdentity(cartId, tokens.accessToken)
+                        }.onFailure { AuthDebugLog.e("[CALLBACK] cart buyer identity failed (non-fatal)", it) }
                     }
                 }
                 codeVerifier = null

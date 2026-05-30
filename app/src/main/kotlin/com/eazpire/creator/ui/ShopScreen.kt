@@ -129,8 +129,27 @@ fun ShopScreen(
     }
 
     CompositionLocalProvider(LocalTranslationStore provides translationStore) {
-        /** Outside [key(sessionEpoch)] so hotspots / modal survive translation-driven re-key. */
+        /** Outside [key(sessionEpoch)] — OAuth callback + login UI survive session refresh re-key. */
         val productModalHandleState = remember { mutableStateOf<String?>(null) }
+        var showLoginOptions by remember { mutableStateOf(false) }
+        var showAuthScreen by remember { mutableStateOf(false) }
+        var authAutoStartOAuth by remember { mutableStateOf(false) }
+        var authLoginMethod by remember { mutableStateOf(AuthLoginMethod.EMAIL) }
+        val oauthCallbackForAuth = remember { mutableStateOf<String?>(null) }
+
+        // OAuth return must be handled before/without losing state to [key(sessionEpoch)] re-key.
+        LaunchedEffect(pendingDeepLink?.value) {
+            val uri = pendingDeepLink?.value ?: return@LaunchedEffect
+            if (uri.scheme?.startsWith("shop.") == true && uri.host == "callback" &&
+                uri.getQueryParameter("code") != null
+            ) {
+                oauthCallbackForAuth.value = uri.toString()
+                pendingDeepLink.value = null
+                authAutoStartOAuth = false
+                showAuthScreen = true
+            }
+        }
+
     key(sessionEpoch) {
     // Recomposition trigger: when translations load, UI must update
     val translations by translationStore.translations.collectAsState(initial = emptyMap())
@@ -140,13 +159,6 @@ fun ShopScreen(
     }
     // #endregion
     var accountModalVisible by remember { mutableStateOf(false) }
-    var showLoginOptions by remember { mutableStateOf(false) }
-    var showAuthScreen by remember { mutableStateOf(false) }
-    /** Nach „Mit Shopify fortfahren“: OAuth-Tab sofort öffnen (ohne zweiten Tap). */
-    var authAutoStartOAuth by remember { mutableStateOf(false) }
-    var authLoginMethod by remember { mutableStateOf(AuthLoginMethod.EMAIL) }
-    /** OAuth redirect shop.*://callback?code=… (Chrome Custom Tab) → MainActivity / pendingDeepLink → AuthScreen */
-    val oauthCallbackForAuth = remember { mutableStateOf<String?>(null) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
     var favoritesModalVisible by remember { mutableStateOf(false) }
@@ -449,14 +461,10 @@ fun ShopScreen(
 
     LaunchedEffect(pendingDeepLink?.value) {
         val uri = pendingDeepLink?.value ?: return@LaunchedEffect
-        // Shopify OAuth callback (e.g. after Google sign-in in Chrome Custom Tab)
+        // OAuth handled outside [key(sessionEpoch)] — see LaunchedEffect above CompositionLocalProvider key.
         if (uri.scheme?.startsWith("shop.") == true && uri.host == "callback" &&
             uri.getQueryParameter("code") != null
         ) {
-            oauthCallbackForAuth.value = uri.toString()
-            pendingDeepLink.value = null
-            authAutoStartOAuth = false
-            showAuthScreen = true
             return@LaunchedEffect
         }
         pendingDeepLink.value = null
@@ -1138,19 +1146,6 @@ fun ShopScreen(
         )
     }
 
-    if (showLoginOptions) {
-        LoginOptionsModal(
-            onDismiss = { showLoginOptions = false },
-            onLoginClick = { method ->
-                showLoginOptions = false
-                productModalHandleState.value = null
-                authLoginMethod = method
-                authAutoStartOAuth = true
-                showAuthScreen = true
-            }
-        )
-    }
-
     val modalHandle = productModalHandleState.value
     // #region agent log
     debugLog("ShopScreen.kt:232", "ShopScreen rendering modal block", mapOf("modalHandle" to modalHandle), "H2")
@@ -1182,6 +1177,21 @@ fun ShopScreen(
         }
     }
 
+    }
+
+    if (showLoginOptions) {
+        LoginOptionsModal(
+            onDismiss = { showLoginOptions = false },
+            onLoginClick = { method ->
+                showLoginOptions = false
+                productModalHandleState.value = null
+                authLoginMethod = method
+                authAutoStartOAuth = true
+                showAuthScreen = true
+            }
+        )
+    }
+
     if (showAuthScreen) {
         Box(
             modifier = Modifier
@@ -1207,6 +1217,5 @@ fun ShopScreen(
         }
     }
 
-    }
     }
 }
