@@ -213,7 +213,7 @@ private fun ShopSearchProductCard(
             return@LaunchedEffect
         }
         val resolved = withContext(Dispatchers.IO) {
-            CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
+            CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, map)
         }
         val shopFirst = shopImages.firstOrNull()
         val mockFirst = resolved.firstOrNull()
