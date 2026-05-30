@@ -55,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -72,9 +73,14 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.core.text.HtmlCompat
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyPredictiveSearchApi
+import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun HeaderSearch(
@@ -85,6 +91,9 @@ fun HeaderSearch(
     onSubmitSearchQuery: (String) -> Unit,
     /** Product URLs from predictive list — open native PDP */
     onNavigateToUrl: (String) -> Unit,
+    ownerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0,
     placeholder: String = "Search...",
     modifier: Modifier = Modifier
 ) {
@@ -360,7 +369,13 @@ fun HeaderSearch(
                                             .background(Color(0xFFF5F5F5))
                                             .clickable { onNavigateToUrl(p.url) }
                                     ) {
-                                        PredictiveMockImageGridCell(urls = p.images)
+                                        PredictiveMockImageGridCell(
+                                            handle = p.handle,
+                                            shopUrls = p.images,
+                                            ownerId = ownerId,
+                                            creatorApi = creatorApi,
+                                            mockPreviewRevision = mockPreviewRevision
+                                        )
                                     }
                                 }
                             }
@@ -396,30 +411,76 @@ private fun SearchSuggestionBadge(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PredictiveMockImageGridCell(urls: List<String>) {
+private fun PredictiveMockImageGridCell(
+    handle: String,
+    shopUrls: List<String>,
+    ownerId: String = "",
+    creatorApi: CreatorApi? = null,
+    mockPreviewRevision: Int = 0
+) {
+    val context = LocalContext.current
+    var images by remember(handle, mockPreviewRevision) { mutableStateOf(shopUrls) }
+    LaunchedEffect(handle, shopUrls, ownerId, mockPreviewRevision) {
+        if (ownerId.isBlank() || creatorApi == null || handle.isBlank()) {
+            images = shopUrls
+            return@LaunchedEffect
+        }
+        val product = ShopifyProductsApi.ProductItem(
+            id = 0L,
+            title = handle,
+            handle = handle,
+            images = shopUrls,
+            variantImages = shopUrls,
+            url = ""
+        )
+        val map = CustomerMockPreviewStore.peekMap(ownerId)
+            ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+        val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(map, handle, null, null)
+        val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(context, handle)
+        val useMock = sessionActive || autoActive
+        if (!useMock && CustomerMockPreviewStore.tryOnInfo(map, handle, null, null) == null) {
+            images = shopUrls
+            return@LaunchedEffect
+        }
+        val resolved = withContext(Dispatchers.IO) {
+            CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
+        }
+        val shopFirst = shopUrls.firstOrNull()
+        val mockFirst = resolved.firstOrNull()
+        if (useMock && mockFirst != null && mockFirst != shopFirst) {
+            images = listOf(mockFirst)
+            return@LaunchedEffect
+        }
+        if (useMock && resolved.isNotEmpty()) {
+            images = resolved.take(4)
+            return@LaunchedEffect
+        }
+        images = if (resolved.isNotEmpty()) resolved else shopUrls
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF5F5F5))
     ) {
         when {
-            urls.isEmpty() -> Unit
-            urls.size == 1 -> {
+            images.isEmpty() -> Unit
+            images.size == 1 -> {
                 AsyncImage(
-                    model = urls[0],
+                    model = images[0],
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
             }
             else -> {
-                val state = rememberPagerState(pageCount = { urls.size })
+                val state = rememberPagerState(pageCount = { images.size })
                 HorizontalPager(
                     state = state,
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     AsyncImage(
-                        model = urls[page],
+                        model = images[page],
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop

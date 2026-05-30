@@ -5,8 +5,6 @@ import android.graphics.Color as AndroidColor
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -43,7 +41,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -110,7 +107,6 @@ fun ShopScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val focusManager = LocalFocusManager.current
     val localeStore = remember { LocaleStore(context) }
     val translationStore = remember { TranslationStore(context) }
     val languageCode by localeStore.languageCode.collectAsState(initial = java.util.Locale.getDefault().language.lowercase())
@@ -590,15 +586,8 @@ fun ShopScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            key(languageCode, translations.size) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { focusManager.clearFocus() }
-            ) {
+            key(languageCode) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 MainHeader(
                     localeStore = localeStore,
                     tokenStore = tokenStore,
@@ -745,7 +734,7 @@ fun ShopScreen(
         },
         bottomBar = {
             if (selectedProductHandle == null) {
-                key(languageCode, translations.size) {
+                key(languageCode) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         SubFooter(
                             localeStore = localeStore,
@@ -759,7 +748,7 @@ fun ShopScreen(
             }
         }
     ) { padding ->
-        key(languageCode, translations.size) {
+        key(languageCode) {
         Box(
             modifier = Modifier
                 .fillMaxSize()

@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -57,6 +58,7 @@ import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -123,6 +125,13 @@ fun MainHeader(
     val jwt = tokenStore?.getJwt()
     val ownerId = tokenStore?.getOwnerId().orEmpty()
     val api = remember(jwt, ownerId) { CreatorApi(jwt = jwt) }
+    var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
+    LaunchedEffect(ownerId) {
+        if (ownerId.isNotBlank()) {
+            CustomerMockPreviewStore.loadMap(api, ownerId)
+            mockPreviewRevision = CustomerMockPreviewStore.revision
+        }
+    }
     val favoritesRefreshTick = FavoritesRefreshTrigger.value
     var shareUrl by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
@@ -266,9 +275,11 @@ fun MainHeader(
                     onSearchQuerySubmit(q)
                 },
                 onNavigateToUrl = onSearchNavigate,
+                ownerId = ownerId,
+                creatorApi = api,
+                mockPreviewRevision = mockPreviewRevision,
                 placeholder = run {
                     val store = LocalTranslationStore.current
-                    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
                     store?.t("search.placeholder", "Search...") ?: "Search..."
                 },
                 modifier = Modifier.weight(1f)

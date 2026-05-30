@@ -187,7 +187,50 @@ private fun ShopSearchProductCard(
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
     }
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
-        if (!mockDisplayLocked) images = shopImages
+        if (ownerId.isBlank() || creatorApi == null) {
+            if (!mockDisplayLocked) images = shopImages
+            return@LaunchedEffect
+        }
+        val map = CustomerMockPreviewStore.peekMap(ownerId)
+            ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+        val info = CustomerMockPreviewStore.tryOnInfo(
+            map,
+            product.handle,
+            product.metaProductKey,
+            product.designId
+        )
+        val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
+            map,
+            product.handle,
+            product.metaProductKey,
+            product.designId
+        )
+        val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle)
+        tryOnActive = sessionActive || autoActive
+        val useMock = tryOnActive || autoActive
+        if (!useMock && info == null) {
+            if (!mockDisplayLocked) images = shopImages
+            return@LaunchedEffect
+        }
+        val resolved = withContext(Dispatchers.IO) {
+            CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
+        }
+        val shopFirst = shopImages.firstOrNull()
+        val mockFirst = resolved.firstOrNull()
+        val hasMock = mockFirst != null && mockFirst != shopFirst
+        if (useMock && hasMock) {
+            mockDisplayLocked = true
+            images = listOf(mockFirst!!)
+            return@LaunchedEffect
+        }
+        if (useMock && resolved.isNotEmpty()) {
+            mockDisplayLocked = true
+            images = resolved.take(4)
+            return@LaunchedEffect
+        }
+        if (!mockDisplayLocked) {
+            images = if (resolved.isNotEmpty()) resolved else shopImages
+        }
     }
 
     Column(
