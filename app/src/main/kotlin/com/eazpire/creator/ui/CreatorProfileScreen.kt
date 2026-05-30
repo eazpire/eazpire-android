@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.formatCountLabel
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import android.util.Log
@@ -584,8 +585,10 @@ private fun CreatorProfileHero(
                 )
                 if (productCount > 0) {
                     Text(
-                        text = t("eaz.creator_profile.products_count", "{{ count }} products")
-                            .replace("{{ count }}", productCount.toString()),
+                        text = formatCountLabel(
+                            t("eaz.creator_profile.products_count", "{{ count }} products"),
+                            productCount,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.9f),
                         modifier = Modifier.padding(top = 2.dp)

@@ -7,6 +7,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /** Per global home category chip — product lists for one carousel row. */
 typealias HomeCategoryPools = Map<String, List<ShopifyProductsApi.ProductItem>>
@@ -19,6 +20,12 @@ data class HomeCarouselSectionDef(
     val baseCollectionHandle: String?,
     val maxProducts: Int = 12,
 )
+
+/** Fast first paint on home: show this many products per carousel row, then fill in background. */
+const val HOME_INITIAL_PRODUCTS = 10
+
+/** Creators carousel: first paint count before loading the full set. */
+const val HOME_INITIAL_CREATORS = 7
 
 val HOME_PRODUCT_SECTIONS: List<HomeCarouselSectionDef> = listOf(
     HomeCarouselSectionDef(
@@ -108,20 +115,49 @@ private suspend fun loadProductsForChip(
 ): List<ShopifyProductsApi.ProductItem> {
     if (chipId == "all") {
         val handle = baseCollectionHandle
-        val result = api.getProducts(collectionHandle = handle, limit = maxProducts * 3)
+        val fetchLimit = (maxProducts * 3).coerceAtMost(36)
+        val result = api.getProducts(collectionHandle = handle, limit = fetchLimit)
         return result.products
             .sortedByDescending { it.createdAt.ifBlank { "0" } }
             .take(maxProducts)
     }
     for (handle in handles) {
         if (handle.isNullOrBlank()) continue
-        val result = api.getProducts(collectionHandle = handle, limit = maxProducts * 2)
+        val fetchLimit = (maxProducts * 2).coerceAtMost(24)
+        val result = api.getProducts(collectionHandle = handle, limit = fetchLimit)
         if (result.products.isNotEmpty()) {
             return result.products.take(maxProducts)
         }
     }
     return emptyList()
 }
+
+fun catalogPreviewUrlsFromJson(o: JSONObject): List<String> {
+    val imagesArr = o.optJSONArray("images")
+    if (imagesArr != null && imagesArr.length() > 0) {
+        val first = imagesArr.optString(0, "").trim()
+        if (first.isNotEmpty()) return listOf(first)
+    }
+    val preview = o.optString("preview_image_url", "").trim()
+    if (preview.isNotEmpty()) return listOf(preview)
+    val mocks = o.optJSONArray("mock_urls")
+    if (mocks != null && mocks.length() > 0) {
+        val first = mocks.optString(0, "").trim()
+        if (first.isNotEmpty()) return listOf(first)
+    }
+    return emptyList()
+}
+
+/** Matches web `catalogAvailabilityOf` in eaz-shop-create-catalog-page.js */
+fun catalogAvailabilityFromJson(o: JSONObject): String {
+    if (o.optString("catalog_availability", "").trim().equals("coming_soon", ignoreCase = true)) {
+        return "coming_soon"
+    }
+    if (o.optInt("catalog_is_active", 0) == 1) return "coming_soon"
+    return "available"
+}
+
+fun CatalogProduct.isCatalogAvailable(): Boolean = catalogAvailability != "coming_soon"
 
 fun CatalogProduct.homeCategoryFilterKey(): String {
     val group = (categoryGroup ?: categoryKey ?: "")

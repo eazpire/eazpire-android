@@ -187,32 +187,7 @@ private fun ShopSearchProductCard(
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
     }
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
-        if (ownerId.isBlank() || creatorApi == null) {
-            if (!mockDisplayLocked) images = shopImages
-            return@LaunchedEffect
-        }
-        val map = CustomerMockPreviewStore.peekMap(ownerId)
-            ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
-        val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
-            map,
-            product.handle,
-            product.metaProductKey,
-            product.designId
-        )
-        tryOnActive =
-            CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle) || autoActive
-        val useMock = tryOnActive || autoActive
-        val resolved = withContext(Dispatchers.IO) {
-            CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, map)
-        }
-        val shopFirst = shopImages.firstOrNull()
-        val mockFirst = resolved.firstOrNull()
-        if (useMock && mockFirst != null && mockFirst != shopFirst) {
-            mockDisplayLocked = true
-            images = listOf(mockFirst)
-            return@LaunchedEffect
-        }
-        if (!mockDisplayLocked) images = if (resolved.isNotEmpty()) resolved else shopImages
+        if (!mockDisplayLocked) images = shopImages
     }
 
     Column(
@@ -223,7 +198,7 @@ private fun ShopSearchProductCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .aspectRatio(4f / 5f)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFFF5F5F5))
         ) {

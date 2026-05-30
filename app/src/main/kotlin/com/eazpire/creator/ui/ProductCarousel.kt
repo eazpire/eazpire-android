@@ -101,6 +101,8 @@ fun ProductCarousel(
     mockPreviewRevision: Int = 0,
     /** Smaller Coil decode + single visible frame on home rows. */
     lazyCardImages: Boolean = false,
+    /** When true, never swap in customer mock / try-on images (home + PLP listings). */
+    skipPersonalizedMock: Boolean = false,
 ) {
     if (products.isEmpty()) {
         if (emptyStateMessage == null) return
@@ -169,6 +171,7 @@ fun ProductCarousel(
                         creatorApi = creatorApi,
                         mockPreviewRevision = mockPreviewRevision,
                         lazyCardImages = lazyCardImages,
+                        skipPersonalizedMock = skipPersonalizedMock,
                         promoStyle = promoProductLayout || product.hasPromoPricingUi(),
                         promoEndsPrefix = promoEndsPrefix,
                         promoEndedLabel = promoEndedLabel,
@@ -297,6 +300,7 @@ private fun ProductCard(
     creatorApi: CreatorApi? = null,
     mockPreviewRevision: Int = 0,
     lazyCardImages: Boolean = false,
+    skipPersonalizedMock: Boolean = false,
     promoStyle: Boolean = false,
     promoEndsPrefix: String = "",
     promoEndedLabel: String = "",
@@ -317,8 +321,8 @@ private fun ProductCard(
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle))
     }
-    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload, lazyCardImages) {
-        if (ownerId.isBlank() || creatorApi == null) {
+    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload, lazyCardImages, skipPersonalizedMock) {
+        if (skipPersonalizedMock || ownerId.isBlank() || creatorApi == null) {
             if (!mockDisplayLocked) images = displayImages
             return@LaunchedEffect
         }
@@ -376,7 +380,7 @@ private fun ProductCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .aspectRatio(4f / 5f)
                 .clip(RoundedCornerShape(8.dp))
                 .then(
                     if (images.isEmpty()) Modifier.background(MaterialTheme.colorScheme.surfaceVariant)

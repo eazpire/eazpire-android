@@ -99,6 +99,7 @@ import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
+import com.eazpire.creator.i18n.formatCountLabel
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.share.buildShareUrl
@@ -831,8 +832,10 @@ fun ProductDetailScreen(
                 val ratingAvg = p.ratingAvg
                 val ratingCount = p.ratingCount ?: 0
                 if (ratingAvg != null && ratingCount > 0) {
-                    val reviewsLabel = t("eaz.common.rating_reviews", "{{ count }} reviews")
-                        .replace("{{ count }}", ratingCount.toString())
+                    val reviewsLabel = formatCountLabel(
+                        t("eaz.common.rating_reviews", "{{ count }} reviews"),
+                        ratingCount,
+                    )
                     ProductPdpRatingRow(
                         rating = ratingAvg,
                         reviewsLabel = reviewsLabel,

@@ -25,17 +25,21 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.ui.home.HOME_INITIAL_PRODUCTS
 import com.eazpire.creator.ui.home.HOME_PRODUCT_SECTIONS
 import com.eazpire.creator.ui.home.HomeCategoryPools
 import com.eazpire.creator.ui.home.HomeCategoryStrip
+import com.eazpire.creator.ui.home.HomeCreateScratchCarousel
 import com.eazpire.creator.ui.home.HomeCreatorsCarousel
+import com.eazpire.creator.ui.home.catalogAvailabilityFromJson
+import com.eazpire.creator.ui.home.catalogPreviewUrlsFromJson
 import com.eazpire.creator.ui.home.loadHomeCategoryPoolsMissingChips
 import com.eazpire.creator.ui.home.loadHomeSectionForChip
 import com.eazpire.creator.ui.home.matchesHomeCategory
-import com.eazpire.creator.ui.home.toHomeProductItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
@@ -91,11 +95,15 @@ fun ProductCarouselSection(
                     ShopifyProductsApi.parseActivePromotionProductsResponse(j)
                 }.getOrElse { emptyList() }
             }
-            val sectionDefs = HOME_PRODUCT_SECTIONS
-            val firstDef = sectionDefs.firstOrNull()
+            val firstDef = HOME_PRODUCT_SECTIONS.firstOrNull()
             val firstDeferred = firstDef?.let { def ->
                 async(Dispatchers.IO) {
-                    loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = "all")
+                    loadHomeSectionForChip(
+                        api,
+                        def.baseCollectionHandle,
+                        HOME_INITIAL_PRODUCTS,
+                        chipId = "all",
+                    )
                 }
             }
             promoProducts = promoDeferred.await()
@@ -103,30 +111,37 @@ fun ProductCarouselSection(
                 pools[firstDef.id] = mapOf("all" to firstDeferred.await())
                 sectionPools = pools.toMap()
             }
-            for (def in sectionDefs.drop(1)) {
-                val allProducts = withContext(Dispatchers.IO) {
-                    loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = "all")
-                }
-                pools[def.id] = mapOf("all" to allProducts)
-                sectionPools = pools.toMap()
-            }
         }
-
-        createScratchCatalog = withContext(Dispatchers.IO) { loadCreateScratchCatalog(creatorApi, region) }
 
         loadCreatorsSection = true
 
-        val fullPools = mutableMapOf<String, HomeCategoryPools>()
-        for (def in HOME_PRODUCT_SECTIONS) {
-            fullPools[def.id] = withContext(Dispatchers.IO) {
-                loadHomeCategoryPoolsMissingChips(
-                    api,
-                    def.baseCollectionHandle,
-                    def.maxProducts,
-                    pools[def.id].orEmpty(),
-                )
+        coroutineScope {
+            launch(Dispatchers.IO) {
+                val updated = sectionPools.toMutableMap()
+                for (def in HOME_PRODUCT_SECTIONS) {
+                    val fullProducts = loadHomeSectionForChip(
+                        api,
+                        def.baseCollectionHandle,
+                        def.maxProducts,
+                        chipId = "all",
+                    )
+                    updated[def.id] = mapOf("all" to fullProducts)
+                    sectionPools = updated.toMap()
+                }
+                for (def in HOME_PRODUCT_SECTIONS) {
+                    val fullPools = loadHomeCategoryPoolsMissingChips(
+                        api,
+                        def.baseCollectionHandle,
+                        def.maxProducts,
+                        updated[def.id].orEmpty(),
+                    )
+                    updated[def.id] = fullPools
+                    sectionPools = updated.toMap()
+                }
             }
-            sectionPools = fullPools.toMap()
+            launch(Dispatchers.IO) {
+                createScratchCatalog = loadCreateScratchCatalog(creatorApi, region)
+            }
         }
     }
 
@@ -164,7 +179,6 @@ fun ProductCarouselSection(
         createScratchCatalog
             .filter { it.matchesHomeCategory(selectedCategory) }
             .take(16)
-            .map { it.toHomeProductItem() }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -212,6 +226,7 @@ fun ProductCarouselSection(
                     creatorApi = creatorApi,
                     mockPreviewRevision = mockPreviewRevision,
                     lazyCardImages = true,
+                    skipPersonalizedMock = true,
                 )
             }
         }
@@ -234,6 +249,7 @@ fun ProductCarouselSection(
                         creatorApi = creatorApi,
                         mockPreviewRevision = mockPreviewRevision,
                         lazyCardImages = true,
+                        skipPersonalizedMock = true,
                     )
                 }
             }
@@ -242,26 +258,14 @@ fun ProductCarouselSection(
         if (createScratchProducts.isNotEmpty()) {
             item(key = "create_scratch") {
                 val title = t("eaz.home.create_from_scratch", "Create from Scratch")
-                ProductCarousel(
+                HomeCreateScratchCarousel(
                     title = title,
                     products = createScratchProducts,
-                    collectionHandle = null,
                     onTitleClick = onCategoryClick?.let { cb ->
                         { cb(title, "shop-create-catalog") }
                     },
-                    onProductClick = { click ->
-                        val cat = createScratchCatalog.find { it.productKey == click.handle }
-                        if (cat != null) {
-                            onCreateScratchClick?.invoke(cat)
-                        } else {
-                            onProductClick?.invoke(click)
-                        }
-                    },
+                    onProductClick = { cat -> onCreateScratchClick?.invoke(cat) },
                     modifier = Modifier.padding(bottom = 6.dp),
-                    ownerId = ownerId,
-                    creatorApi = creatorApi,
-                    mockPreviewRevision = mockPreviewRevision,
-                    lazyCardImages = true,
                 )
             }
         }
@@ -301,28 +305,14 @@ private suspend fun loadCreateScratchCatalog(creatorApi: CreatorApi, region: Str
             val o = arr.optJSONObject(i) ?: continue
             val pk = o.optString("product_key", "").trim()
             if (pk.isEmpty()) continue
-            val availability = o.optString("catalog_availability", "").trim()
-            val active = o.optInt("catalog_is_active", 0)
-            val online =
-                availability == "available" || active == 2 ||
-                    (availability.isBlank() && active != 1)
-            if (!online) continue
-            val urls = mutableListOf<String>()
-            val mu = o.optJSONArray("mock_urls")
-            if (mu != null) {
-                for (j in 0 until mu.length()) {
-                    val u = mu.optString(j, "").trim()
-                    if (u.isNotEmpty()) urls.add(u)
-                }
-            }
-            if (urls.isEmpty()) {
-                o.optString("preview_image_url", "").trim().takeIf { it.isNotEmpty() }?.let { urls.add(it) }
-            }
+            val availability = catalogAvailabilityFromJson(o)
+            if (availability != "available") continue
             list.add(
                 CatalogProduct(
                     productKey = pk,
                     title = o.optString("title", pk).ifBlank { pk },
-                    mockUrls = urls,
+                    mockUrls = catalogPreviewUrlsFromJson(o),
+                    catalogAvailability = availability,
                     categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
                     categoryKey = o.optString("category_key", "").trim().ifBlank { null },
                     categoryGroup = o.optString("category_group", "").trim().ifBlank { null },

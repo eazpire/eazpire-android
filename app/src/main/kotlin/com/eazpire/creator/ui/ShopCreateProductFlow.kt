@@ -28,9 +28,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -67,6 +66,12 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import com.eazpire.creator.ui.home.catalogAvailabilityFromJson
+import com.eazpire.creator.ui.home.catalogPreviewUrlsFromJson
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +90,7 @@ data class CatalogProduct(
     val productKey: String,
     val title: String,
     val mockUrls: List<String>,
+    val catalogAvailability: String = "available",
     val categoryLeaf: String? = null,
     val categoryKey: String? = null,
     val categoryGroup: String? = null,
@@ -289,22 +295,12 @@ fun ShopCreateCollectionScreen(
                     val o = arr.optJSONObject(i) ?: continue
                     val pk = o.optString("product_key", "").trim()
                     if (pk.isEmpty()) continue
-                    val urls = mutableListOf<String>()
-                    val mu = o.optJSONArray("mock_urls")
-                    if (mu != null) {
-                        for (j in 0 until mu.length()) {
-                            val u = mu.optString(j, "").trim()
-                            if (u.isNotEmpty()) urls.add(u)
-                        }
-                    }
-                    if (urls.isEmpty()) {
-                        o.optString("preview_image_url", "").trim().takeIf { it.isNotEmpty() }?.let { urls.add(it) }
-                    }
                     list.add(
                         CatalogProduct(
                             productKey = pk,
                             title = o.optString("title", pk).ifBlank { pk },
-                            mockUrls = urls,
+                            mockUrls = catalogPreviewUrlsFromJson(o),
+                            catalogAvailability = catalogAvailabilityFromJson(o),
                             categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
                             categoryKey = o.optString("category_key", "").trim().ifBlank { null },
                             categoryGroup = o.optString("category_group", "").trim().ifBlank { null },
@@ -557,6 +553,12 @@ private fun ShopCreateCatalogGrid(
     var sortSheetVisible by remember { mutableStateOf(false) }
     val filtered = remember(products, facetSel) { filterCatalogProductsTri(products, facetSel) }
     val sorted = remember(filtered, sortBy) { sortCatalogProducts(filtered, sortBy) }
+    val availableProducts = remember(sorted) { sorted.filter { it.catalogAvailability != "coming_soon" } }
+    val comingSoonProducts = remember(sorted) { sorted.filter { it.catalogAvailability == "coming_soon" } }
+    var availableExpanded by remember { mutableStateOf(true) }
+    var comingSoonExpanded by remember(availableProducts.size, comingSoonProducts.size) {
+        mutableStateOf(availableProducts.isEmpty() && comingSoonProducts.isNotEmpty())
+    }
     val currentSortLabel = SHOP_CREATE_SORT_OPTIONS.find { it.value == sortBy }?.label?.let {
         t("collection.sort_$sortBy", it)
     } ?: t("collection.sort_by", "Sort by")
@@ -590,15 +592,59 @@ private fun ShopCreateCatalogGrid(
                     onFilterClick = { filterDrawerVisible = true },
                     onSortClick = { sortSheetVisible = true }
                 )
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                LazyColumn(
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    contentPadding = PaddingValues(bottom = 16.dp),
                 ) {
-                    items(sorted, key = { it.productKey }) { p ->
-                        CatalogProductCard(product = p, onClick = { onProductClick(p) })
+                    if (availableProducts.isNotEmpty()) {
+                        item(key = "section_available_header") {
+                            ShopCreateAvailabilityHeader(
+                                title = t(
+                                    "creator.shop_create_product.catalog_section_available",
+                                    "Available",
+                                ),
+                                count = availableProducts.size,
+                                expanded = availableExpanded,
+                                onToggle = { availableExpanded = !availableExpanded },
+                            )
+                        }
+                        if (availableExpanded) {
+                            items(
+                                availableProducts.chunked(2),
+                                key = { row -> row.joinToString("-") { it.productKey } },
+                            ) { row ->
+                                ShopCreateCatalogProductRow(
+                                    row = row,
+                                    t = t,
+                                    onProductClick = onProductClick,
+                                )
+                            }
+                        }
+                    }
+                    if (comingSoonProducts.isNotEmpty()) {
+                        item(key = "section_coming_soon_header") {
+                            ShopCreateAvailabilityHeader(
+                                title = t(
+                                    "creator.shop_create_product.catalog_section_coming_soon",
+                                    "Coming soon",
+                                ),
+                                count = comingSoonProducts.size,
+                                expanded = comingSoonExpanded,
+                                onToggle = { comingSoonExpanded = !comingSoonExpanded },
+                            )
+                        }
+                        if (comingSoonExpanded) {
+                            items(
+                                comingSoonProducts.chunked(2),
+                                key = { row -> row.joinToString("-") { it.productKey } },
+                            ) { row ->
+                                ShopCreateCatalogProductRow(
+                                    row = row,
+                                    t = t,
+                                    onProductClick = onProductClick,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -918,47 +964,119 @@ private fun ModeStep(
 }
 
 @Composable
-private fun CatalogProductCard(
-    product: CatalogProduct,
-    onClick: () -> Unit
+private fun ShopCreateAvailabilityHeader(
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
 ) {
-    var urlIndex by remember(product.productKey) { mutableIntStateOf(0) }
-    val urls = product.mockUrls
-
-    LaunchedEffect(product.productKey, urls.size) {
-        if (urls.size < 2) return@LaunchedEffect
-        while (isActive) {
-            delay(CATALOG_ROTATION_MS)
-            urlIndex = (urlIndex + 1) % urls.size
-        }
-    }
-
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(onClick = onToggle)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "$title ($count)",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Icon(
+            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+        )
+    }
+}
+
+@Composable
+private fun ShopCreateCatalogProductRow(
+    row: List<CatalogProduct>,
+    t: (String, String) -> String,
+    onProductClick: (CatalogProduct) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        row.forEach { product ->
+            CatalogProductCard(
+                product = product,
+                t = t,
+                onClick = { onProductClick(product) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (row.size == 1) {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun CatalogProductCard(
+    product: CatalogProduct,
+    t: (String, String) -> String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val previewUrl = product.mockUrls.firstOrNull().orEmpty()
+    val isComingSoon = product.catalogAvailability == "coming_soon"
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (isComingSoon) Modifier
+                else Modifier.clickable(onClick = onClick),
+            ),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .aspectRatio(4f / 5f)
                 .clip(RoundedCornerShape(8.dp))
-        ) {
-            Crossfade(
-                targetState = urlIndex,
-                animationSpec = tween(
-                    durationMillis = CATALOG_CROSSFADE_MS,
-                    easing = FastOutSlowInEasing
+                .then(
+                    if (isComingSoon) {
+                        Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    } else {
+                        Modifier
+                    },
                 ),
-                label = "catalog_thumb"
-            ) { idx ->
-                val u = urls.getOrNull(idx % urls.size.coerceAtLeast(1)).orEmpty()
-                if (u.isNotEmpty()) {
-                    AsyncImage(
-                        model = u,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth()
+        ) {
+            if (previewUrl.isNotEmpty()) {
+                AsyncImage(
+                    model = previewUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (isComingSoon) Modifier else Modifier),
+                    alpha = if (isComingSoon) 0.72f else 1f,
+                )
+            }
+            if (isComingSoon) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF6B7280))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = t(
+                            "creator.shop_create_product.catalog_badge_coming_soon",
+                            "Coming soon",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
                     )
                 }
             }
@@ -967,7 +1085,13 @@ private fun CatalogProductCard(
             product.title,
             style = MaterialTheme.typography.labelSmall,
             maxLines = 2,
-            modifier = Modifier.padding(top = 4.dp)
+            overflow = TextOverflow.Ellipsis,
+            color = if (isComingSoon) {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            modifier = Modifier.padding(top = 4.dp),
         )
     }
 }

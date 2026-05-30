@@ -45,6 +45,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+import com.eazpire.creator.i18n.formatCountLabel
+import com.eazpire.creator.ui.home.HOME_INITIAL_CREATORS
+
 data class ShopCreatorCard(
     val name: String,
     val slug: String,
@@ -77,10 +80,22 @@ fun HomeCreatorsCarousel(
         loading = true
         creators = withContext(Dispatchers.IO) {
             runCatching {
-                parseShopCreators(creatorApi.listShopCreators(sort = sortTab, limit = 20))
+                parseShopCreators(creatorApi.listShopCreators(sort = sortTab, limit = HOME_INITIAL_CREATORS))
             }.getOrElse { emptyList() }
         }
         loading = false
+
+        val fullLimit = 20
+        if (creators.size < fullLimit) {
+            val full = withContext(Dispatchers.IO) {
+                runCatching {
+                    parseShopCreators(creatorApi.listShopCreators(sort = sortTab, limit = fullLimit))
+                }.getOrElse { emptyList() }
+            }
+            if (full.size > creators.size) {
+                creators = full
+            }
+        }
     }
 
     Column(
@@ -170,12 +185,14 @@ fun HomeCreatorsCarousel(
                     creators.forEach { c ->
                         CreatorHomeCard(
                             creator = c,
-                            reviewsLabel = labelForKey("eaz.common.rating_reviews", "__COUNT__ reviews")
-                                .replace("__COUNT__", c.ratingCount.toString()),
-                            productsLabel = labelForKey(
-                                "content.search_results_resource_products_count.other",
-                                "__COUNT__ products",
-                            ).replace("__COUNT__", c.productCount.toString()),
+                            reviewsLabel = formatCountLabel(
+                                labelForKey("eaz.common.rating_reviews", "{{ count }} reviews"),
+                                c.ratingCount,
+                            ),
+                            productsLabel = formatCountLabel(
+                                labelForKey("eaz.creator_profile.products_count", "{{ count }} products"),
+                                c.productCount,
+                            ),
                             onClick = { onCreatorClick(c.name) },
                         )
                     }
