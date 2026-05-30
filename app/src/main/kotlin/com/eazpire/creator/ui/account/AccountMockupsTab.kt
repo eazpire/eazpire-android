@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -36,6 +37,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -120,8 +123,7 @@ fun AccountMockupsTab(
     var lightboxVariants by remember { mutableStateOf<List<MockupVariant>>(emptyList()) }
     var lightboxIndex by remember { mutableStateOf(0) }
     var deleteConfirm by remember { mutableStateOf<MockupCatalogProduct?>(null) }
-    var autoMockEnabled by remember { mutableStateOf(true) }
-    var wearingMockCount by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
     val scope = rememberCoroutineScope()
@@ -142,12 +144,10 @@ fun AccountMockupsTab(
                 if (!resp.optBoolean("ok", false)) {
                     errorMessage = resp.optString("error", "Upload failed")
                 } else {
-                    reloadCatalog(api, ownerId) { p, g, a, auto, count ->
+                    reloadCatalog(api, ownerId) { p, g, a ->
                         photos = p
                         generated = g
                         available = a
-                        autoMockEnabled = auto
-                        wearingMockCount = count
                     }
                 }
             } catch (e: Exception) {
@@ -165,12 +165,10 @@ fun AccountMockupsTab(
             isLoading = true
             errorMessage = null
             try {
-                reloadCatalog(api, ownerId) { p, g, a, auto, count ->
+                reloadCatalog(api, ownerId) { p, g, a ->
                     photos = p
                     generated = g
                     available = a
-                    autoMockEnabled = auto
-                    wearingMockCount = count
                 }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Failed to load"
@@ -184,12 +182,10 @@ fun AccountMockupsTab(
         if (ownerId.isBlank()) return@LaunchedEffect
         isLoading = true
         try {
-            reloadCatalog(api, ownerId) { p, g, a, auto, count ->
+            reloadCatalog(api, ownerId) { p, g, a ->
                 photos = p
                 generated = g
                 available = a
-                autoMockEnabled = auto
-                wearingMockCount = count
             }
         } catch (e: Exception) {
             errorMessage = e.message
@@ -224,12 +220,10 @@ fun AccountMockupsTab(
                     done = poll.optBoolean("done", false)
                 }
                 CustomerMockPreviewStore.invalidate()
-                reloadCatalog(api, ownerId) { p, g, a, auto, count ->
+                reloadCatalog(api, ownerId) { p, g, a ->
                     photos = p
                     generated = g
                     available = a
-                    autoMockEnabled = auto
-                    wearingMockCount = count
                 }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Generation failed"
@@ -256,17 +250,20 @@ fun AccountMockupsTab(
         }
     }
 
-    fun onToggleAutoMock(enabled: Boolean) {
+    fun onToggleProductShopPreview(productKey: String, enabled: Boolean) {
         scope.launch {
             try {
-                val resp = api.toggleAutoMockDisplay(ownerId, enabled)
+                val resp = api.toggleProductShopPreview(ownerId, productKey, enabled)
                 if (resp.optBoolean("ok", false)) {
-                    autoMockEnabled = resp.optBoolean("auto_mock_enabled", enabled)
-                    wearingMockCount = resp.optInt("wearing_mock_count", wearingMockCount)
+                    val shopEnabled = resp.optBoolean("shop_preview_enabled", enabled)
+                    val count = resp.optInt("preview_count", 0)
                     generated = generated.map { row ->
-                        row.copy(
-                            shopPreviewEnabled = autoMockEnabled && row.previewCount > 0
-                        )
+                        if (row.productKey == productKey) {
+                            row.copy(
+                                previewCount = count,
+                                shopPreviewEnabled = shopEnabled && count > 0
+                            )
+                        } else row
                     }
                     CustomerMockPreviewStore.invalidate()
                 } else {
@@ -381,104 +378,120 @@ fun AccountMockupsTab(
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
 
-        Text(t("creator.my_mockups.photos", "Profile photos"), style = MaterialTheme.typography.labelLarge)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            photos.forEach { photo ->
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                ) {
-                    AsyncImage(
-                        model = photo.url,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-            }
-            OutlinedButton(onClick = { photoPicker.launch("image/*") }) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(t("creator.my_mockups.add_photo", "Add photo"))
+        val tabLabels = listOf(
+            t("size_ai.tab_reference_images", "Reference Images"),
+            t("size_ai.tab_generated_mockups", "Generated Mockups"),
+            t("size_ai.tab_available_products", "Available Products")
+        )
+        TabRow(selectedTabIndex = selectedTab) {
+            tabLabels.forEachIndexed { index, label ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelSmall) }
+                )
             }
         }
 
-        if (isLoading) {
-            CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.padding(24.dp))
-        } else {
-            if (generated.isNotEmpty()) {
-                AutoMockControlRow(
-                    enabled = autoMockEnabled,
-                    wearingCount = wearingMockCount,
-                    t = t,
-                    onToggle = { onToggleAutoMock(it) }
-                )
-                Text(
-                    t("creator.my_mockups.generated", "My mocks"),
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                MockupProductGrid(
-                    products = generated,
-                    onOpen = { openLightbox(it) },
-                    onDelete = { deleteConfirm = it }
-                )
-            }
-            if (available.isNotEmpty()) {
-                Text(
-                    t("creator.my_mockups.available", "Available products"),
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    available.forEach { product ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        when (selectedTab) {
+            0 -> {
+                Text(t("creator.my_mockups.photos", "Profile photos"), style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    photos.forEach { photo ->
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(8.dp))
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            AsyncImage(
+                                model = photo.url,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                    }
+                    OutlinedButton(onClick = { photoPicker.launch("image/*") }) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(t("creator.my_mockups.add_photo", "Add photo"))
+                    }
+                }
+            }
+            1 -> {
+                if (isLoading) {
+                    CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.padding(24.dp))
+                } else if (generated.isEmpty()) {
+                    Text(
+                        t("size_ai.no_mockups_yet", "No mockups yet"),
+                        color = EazColors.TextSecondary
+                    )
+                } else {
+                    MockupProductGrid(
+                        products = generated,
+                        showAutoMock = true,
+                        canGenerate = !isGenerating && photos.isNotEmpty(),
+                        t = t,
+                        onOpen = { openLightbox(it) },
+                        onGenerate = { onGenerateProduct(it) },
+                        onToggleAutoMock = { product, enabled ->
+                            onToggleProductShopPreview(product.productKey, enabled)
+                        }
+                    )
+                }
+            }
+            else -> {
+                if (isLoading) {
+                    CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.padding(24.dp))
+                } else if (available.isEmpty()) {
+                    Text(
+                        t("size_ai.no_available_products", "No products available for mockup generation"),
+                        color = EazColors.TextSecondary
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        available.forEach { product ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                             ) {
-                                AsyncImage(
-                                    model = product.templateUrl ?: product.mockupUrl,
-                                    contentDescription = null,
+                                Row(
                                     modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                                Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                                    Text(
-                                        product.productName,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 2
-                                    )
-                                }
-                                Button(
-                                    onClick = { onGenerateProduct(product) },
-                                    enabled = !isGenerating && photos.isNotEmpty()
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(t("creator.my_mockups.generate", "Generate"))
+                                    AsyncImage(
+                                        model = product.templateUrl ?: product.mockupUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(RoundedCornerShape(8.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                                        Text(
+                                            product.productName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 2
+                                        )
+                                    }
+                                    Button(
+                                        onClick = { onGenerateProduct(product) },
+                                        enabled = !isGenerating && photos.isNotEmpty()
+                                    ) {
+                                        Text(t("creator.my_mockups.generate", "Generate"))
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-            if (generated.isEmpty() && available.isEmpty()) {
-                Text(
-                    t("creator.my_mockups.empty", "No products in catalog."),
-                    color = EazColors.TextSecondary
-                )
             }
         }
     }
@@ -605,52 +618,14 @@ fun AccountMockupsTab(
 }
 
 @Composable
-private fun AutoMockControlRow(
-    enabled: Boolean,
-    wearingCount: Int,
-    t: (String, String) -> String,
-    onToggle: (Boolean) -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB))
-    ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HangerIcon(color = Color(0xFF111827), size = 22.dp)
-                Text(
-                    t("creator.my_mockups.auto_mock_label", "Auto mock"),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color(0xFF111827)
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 32.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = wearingCount.toString(),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color(0xFF111827)
-                )
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = onToggle,
-                    enabled = wearingCount > 0
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun MockupProductGrid(
     products: List<MockupCatalogProduct>,
+    showAutoMock: Boolean,
+    canGenerate: Boolean,
+    t: (String, String) -> String,
     onOpen: (MockupCatalogProduct) -> Unit,
-    onDelete: (MockupCatalogProduct) -> Unit
+    onGenerate: (MockupCatalogProduct) -> Unit,
+    onToggleAutoMock: (MockupCatalogProduct, Boolean) -> Unit
 ) {
     products.chunked(2).forEach { row ->
         Row(
@@ -661,12 +636,16 @@ private fun MockupProductGrid(
                 Card(
                     modifier = Modifier
                         .weight(1f)
-                        .aspectRatio(0.85f)
-                        .clickable { onOpen(product) },
+                        .aspectRatio(0.85f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Column {
-                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .clickable { onOpen(product) }
+                        ) {
                             val url = product.mockupUrl ?: product.templateUrl
                             if (!url.isNullOrBlank()) {
                                 AsyncImage(
@@ -686,13 +665,43 @@ private fun MockupProductGrid(
                                 }
                             }
                         }
+                        Text(
+                            product.productName,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 2,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(6.dp),
-                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = { onDelete(product) }, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
+                            Button(
+                                onClick = { onGenerate(product) },
+                                enabled = canGenerate,
+                                modifier = Modifier.height(36.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp)
+                            ) {
+                                Text(t("creator.my_mockups.generate", "Generate"), style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (showAutoMock) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        product.previewCount.toString(),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = Color(0xFF111827)
+                                    )
+                                    Switch(
+                                        checked = product.shopPreviewEnabled,
+                                        onCheckedChange = { onToggleAutoMock(product, it) },
+                                        enabled = product.previewCount > 0
+                                    )
+                                }
                             }
                         }
                     }
@@ -709,9 +718,7 @@ private suspend fun reloadCatalog(
     onResult: (
         List<MockupProfilePhoto>,
         List<MockupCatalogProduct>,
-        List<MockupCatalogProduct>,
-        Boolean,
-        Int
+        List<MockupCatalogProduct>
     ) -> Unit
 ) {
     val photosResp = api.listMockupPhotos(ownerId)
@@ -738,15 +745,11 @@ private suspend fun reloadCatalog(
     val prodResp = api.listMockupProducts(ownerId)
     val generated = mutableListOf<MockupCatalogProduct>()
     val available = mutableListOf<MockupCatalogProduct>()
-    var autoMock = true
-    var wearingCount = 0
     if (prodResp.optBoolean("ok", false)) {
-        autoMock = prodResp.optBoolean("auto_mock_enabled", true)
-        wearingCount = prodResp.optInt("wearing_mock_count", 0)
         parseCatalogProducts(prodResp.optJSONArray("generated"), true, generated, variantsByProduct)
         parseCatalogProducts(prodResp.optJSONArray("available"), false, available, variantsByProduct)
     }
-    onResult(photos, generated, available, autoMock, wearingCount)
+    onResult(photos, generated, available)
 }
 
 private fun parsePhotos(arr: JSONArray?): List<MockupProfilePhoto> {
