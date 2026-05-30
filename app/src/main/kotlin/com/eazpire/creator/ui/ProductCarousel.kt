@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -158,7 +160,8 @@ fun ProductCarousel(
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
-        Box(modifier = Modifier.fillMaxWidth()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val carouselCardWidth = ((maxWidth - 32.dp - 12.dp) / 2).coerceIn(140.dp, 200.dp)
             LazyRow(
                 state = listState,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
@@ -168,6 +171,7 @@ fun ProductCarousel(
                 itemsIndexed(infiniteProducts, key = { index, p -> "${p.id}-$index" }) { index, product ->
                     ProductCard(
                         product = product,
+                        cardWidth = carouselCardWidth,
                         ownerId = ownerId,
                         creatorApi = creatorApi,
                         mockPreviewRevision = mockPreviewRevision,
@@ -325,6 +329,7 @@ private fun ProductCard(
     promoNextPriceHintPrefix: String = "",
     onClick: () -> Unit,
     onCartClick: () -> Unit = onClick,
+    cardWidth: Dp = 140.dp,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -391,7 +396,7 @@ private fun ProductCard(
 
     Column(
         modifier = modifier
-            .width(140.dp)
+            .width(cardWidth)
             .heightIn(min = 220.dp)
             .clickable(onClick = onClick)
     ) {
@@ -414,6 +419,7 @@ private fun ProductCard(
                     rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
                     lazyLoadImages = lazyCardImages,
                     targetWidthPx = 280,
+                    fullResolution = mockDisplayLocked || tryOnActive,
                     autoRotate = !tryOnActive && (!lazyCardImages || images.size > 1),
                 )
             }

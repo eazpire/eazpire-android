@@ -71,13 +71,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.text.HtmlCompat
-import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyPredictiveSearchApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.ui.components.EazLazyProductImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -307,7 +307,7 @@ fun HeaderSearch(
                         result != null -> {
                             val r = result!!
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Fixed(2),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(max = maxH),
@@ -319,7 +319,7 @@ fun HeaderSearch(
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 if (r.queries.isNotEmpty()) {
-                                    item(span = { GridItemSpan(3) }) {
+                                    item(span = { GridItemSpan(2) }) {
                                         Column {
                                             Text(
                                                 text = suggestionsLabel,
@@ -341,7 +341,7 @@ fun HeaderSearch(
                                     }
                                 }
                                 if (r.products.isNotEmpty() || r.sectionStillLoading) {
-                                    item(span = { GridItemSpan(3) }) {
+                                    item(span = { GridItemSpan(2) }) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
@@ -420,7 +420,9 @@ private fun PredictiveMockImageGridCell(
 ) {
     val context = LocalContext.current
     var images by remember(handle, mockPreviewRevision) { mutableStateOf(shopUrls) }
+    var showingMock by remember(handle) { mutableStateOf(false) }
     LaunchedEffect(handle, shopUrls, ownerId, mockPreviewRevision) {
+        showingMock = false
         if (ownerId.isBlank() || creatorApi == null || handle.isBlank()) {
             images = shopUrls
             return@LaunchedEffect
@@ -448,14 +450,21 @@ private fun PredictiveMockImageGridCell(
         val shopFirst = shopUrls.firstOrNull()
         val mockFirst = resolved.firstOrNull()
         if (useMock && mockFirst != null && mockFirst != shopFirst) {
+            showingMock = true
             images = listOf(mockFirst)
             return@LaunchedEffect
         }
         if (useMock && resolved.isNotEmpty()) {
+            showingMock = true
             images = resolved.take(4)
             return@LaunchedEffect
         }
-        images = if (resolved.isNotEmpty()) resolved else shopUrls
+        if (resolved.isNotEmpty() && resolved != shopUrls) {
+            showingMock = true
+            images = resolved
+        } else {
+            images = shopUrls
+        }
     }
 
     Box(
@@ -466,11 +475,13 @@ private fun PredictiveMockImageGridCell(
         when {
             images.isEmpty() -> Unit
             images.size == 1 -> {
-                AsyncImage(
-                    model = images[0],
+                EazLazyProductImage(
+                    url = images[0],
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    targetWidthPx = 400,
+                    fullResolution = showingMock,
                 )
             }
             else -> {
@@ -479,11 +490,13 @@ private fun PredictiveMockImageGridCell(
                     state = state,
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
-                    AsyncImage(
-                        model = images[page],
+                    EazLazyProductImage(
+                        url = images[page],
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Crop,
+                        targetWidthPx = 400,
+                        fullResolution = showingMock,
                     )
                 }
             }

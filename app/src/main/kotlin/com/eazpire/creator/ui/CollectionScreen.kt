@@ -1227,7 +1227,8 @@ private fun CollectionProductCard(
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
                     rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
-                    autoRotate = !tryOnActive && images.size > 1
+                    autoRotate = !tryOnActive && images.size > 1,
+                    fullResolution = mockDisplayLocked || tryOnActive,
                 )
             }
             EazProductCardMediaOverlays(

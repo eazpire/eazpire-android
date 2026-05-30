@@ -254,7 +254,8 @@ private fun ShopSearchProductCard(
                     productId = product.id.toString(),
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
-                    autoRotate = !tryOnActive && images.size > 1
+                    autoRotate = !tryOnActive && images.size > 1,
+                    fullResolution = mockDisplayLocked || tryOnActive,
                 )
             }
             com.eazpire.creator.ui.components.EazProductCardMediaOverlays(

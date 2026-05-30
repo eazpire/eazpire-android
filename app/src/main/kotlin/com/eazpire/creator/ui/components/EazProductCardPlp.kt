@@ -59,13 +59,17 @@ fun EazLazyProductImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
     targetWidthPx: Int = 320,
+    /** Skip Coil downscale — use for pre-rendered mock URLs (R2). */
+    fullResolution: Boolean = false,
 ) {
     val context = LocalContext.current
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
     SubcomposeAsyncImage(
         model = ImageRequest.Builder(context)
             .data(url)
-            .size(Size(targetWidthPx, targetWidthPx))
+            .apply {
+                if (!fullResolution) size(Size(targetWidthPx, targetWidthPx))
+            }
             .crossfade(200)
             .build(),
         contentDescription = contentDescription,
@@ -99,6 +103,7 @@ fun EazProductCardRotatingImages(
     /** Home carousels: load only the visible frame (+ optional next), not every variant URL. */
     lazyLoadImages: Boolean = false,
     targetWidthPx: Int = 320,
+    fullResolution: Boolean = false,
 ) {
     val urls = remember(imageUrls) { imageUrls.filter { it.isNotBlank() }.distinct() }
     var currentIndex by remember(productId, urls.size) {
@@ -125,6 +130,7 @@ fun EazProductCardRotatingImages(
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 targetWidthPx = targetWidthPx,
+                fullResolution = fullResolution,
             )
             if (nextUrl != null && nextUrl != activeUrl) {
                 // Warm cache for the upcoming frame only (not the full variant list).
@@ -133,7 +139,9 @@ fun EazProductCardRotatingImages(
                     context.imageLoader.enqueue(
                         ImageRequest.Builder(context)
                             .data(nextUrl)
-                            .size(Size(targetWidthPx, targetWidthPx))
+                            .apply {
+                                if (!fullResolution) size(Size(targetWidthPx, targetWidthPx))
+                            }
                             .build(),
                     )
                 }
@@ -160,7 +168,9 @@ fun EazProductCardRotatingImages(
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(url)
-                        .size(Size(targetWidthPx, targetWidthPx))
+                        .apply {
+                            if (!fullResolution) size(Size(targetWidthPx, targetWidthPx))
+                        }
                         .crossfade(0)
                         .build(),
                     contentDescription = contentDescription,
