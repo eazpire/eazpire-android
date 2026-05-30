@@ -275,6 +275,29 @@ private val RENDER_RETRY_DELAYS_MS = longArrayOf(0L, 8000L, 12000L, 18000L)
 /**
  * Resolve a loadable mockup image URL (cached variant first, then on-demand render with retries).
  */
+/** Up to [maxViews] mock preview URLs for PDP thumbs / gallery (parity with web preview pool). */
+suspend fun buildMockGalleryUrlsForColor(
+    info: MockupTryOnInfo,
+    handle: String,
+    colorName: String,
+    ownerId: String,
+    productColorMap: Map<String, String> = emptyMap(),
+    maxViews: Int = 4
+): List<String> {
+    if (maxViews <= 0) return emptyList()
+    val out = linkedSetOf<String>()
+    for (i in 0 until maxViews) {
+        val slice = info.forColorIndex(handle, i)
+        val cached = slice.cachedByColor.values.firstOrNull { it.isNotBlank() }
+            ?: slice.cachedByColor[resolveProductColorHex(colorName, productColorMap)]
+        when {
+            !cached.isNullOrBlank() -> out.add(cached)
+            else -> resolveMockupImageUrl(slice, colorName, ownerId, productColorMap)?.let { out.add(it) }
+        }
+    }
+    return out.toList()
+}
+
 suspend fun resolveMockupImageUrl(
     info: MockupTryOnInfo,
     colorName: String,

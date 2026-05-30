@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +55,7 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pets
@@ -90,6 +93,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.SolidColor
@@ -98,6 +102,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
@@ -115,6 +120,20 @@ import org.json.JSONObject
 enum class EazySidebarTab { Chat, Notifications, Jobs, Settings, Games, Functions, Mascot }
 
 enum class EazyChatContext { Shop, Creator }
+
+private val EazyChatSidebarGradient = Brush.verticalGradient(
+    colors = listOf(Color(0xFFF97316), Color(0xFFEA580C))
+)
+
+private fun sidebarTabLabel(tab: EazySidebarTab, t: (String, String) -> String): String = when (tab) {
+    EazySidebarTab.Chat -> t("eazy_chat.ui_chat_title", "eazy")
+    EazySidebarTab.Notifications -> t("creator.notifications.notifications_tab", "Notifications")
+    EazySidebarTab.Jobs -> t("creator.notifications.active_jobs", "Active Jobs")
+    EazySidebarTab.Settings -> t("eazy_chat.ui_settings_tab", "Settings")
+    EazySidebarTab.Games -> t("eazy_chat.ui_games_tab", "Games")
+    EazySidebarTab.Functions -> t("eazy_chat.ui_functions_tab", "Functions")
+    EazySidebarTab.Mascot -> t("eazy_chat.ui_mascot_tab", "Mascot")
+}
 
 private fun formatResetTime(seconds: Int): String {
     val m = seconds / 60
@@ -481,25 +500,16 @@ fun EazyChatModal(
     val pagePath = if (chatContext == EazyChatContext.Creator) "/creator" else "/shop"
     val ownerId = tokenStore?.getOwnerId()
 
-    val sidebarTabs = remember(chatContext) {
-        when (chatContext) {
-            EazyChatContext.Shop -> listOf(
-                EazySidebarTab.Chat to Icons.Default.Chat,
-                EazySidebarTab.Notifications to Icons.Default.Notifications,
-                EazySidebarTab.Settings to Icons.Default.Settings,
-                EazySidebarTab.Games to Icons.Default.SportsEsports,
-                EazySidebarTab.Functions to Icons.Default.Build
-            )
-            EazyChatContext.Creator -> listOf(
-                EazySidebarTab.Chat to Icons.Default.Chat,
-                EazySidebarTab.Notifications to Icons.Default.Notifications,
-                EazySidebarTab.Jobs to Icons.Default.Bolt,
-                EazySidebarTab.Settings to Icons.Default.Settings,
-                EazySidebarTab.Games to Icons.Default.SportsEsports,
-                EazySidebarTab.Functions to Icons.Default.Build,
-                EazySidebarTab.Mascot to Icons.Default.Pets
-            )
-        }
+    val sidebarTabs = remember {
+        listOf(
+            EazySidebarTab.Chat to Icons.Default.Chat,
+            EazySidebarTab.Notifications to Icons.Default.Notifications,
+            EazySidebarTab.Jobs to Icons.Default.Bolt,
+            EazySidebarTab.Settings to Icons.Default.Settings,
+            EazySidebarTab.Games to Icons.Default.SportsEsports,
+            EazySidebarTab.Functions to Icons.Default.Build,
+            EazySidebarTab.Mascot to Icons.Default.Pets
+        )
     }
 
     var selectedTab by remember { mutableStateOf(EazySidebarTab.Chat) }
@@ -534,24 +544,9 @@ fun EazyChatModal(
     val tabListState = rememberLazyListState()
     val carouselScroll = rememberScrollState()
 
-    LaunchedEffect(visible, startTab, chatContext) {
+    LaunchedEffect(visible, startTab) {
         if (visible) {
-            selectedTab = if (chatContext == EazyChatContext.Shop) {
-                when (startTab) {
-                    EazySidebarTab.Jobs, EazySidebarTab.Mascot -> EazySidebarTab.Chat
-                    else -> startTab
-                }
-            } else {
-                startTab
-            }
-        }
-    }
-
-    LaunchedEffect(chatContext) {
-        if (chatContext == EazyChatContext.Shop) {
-            if (selectedTab == EazySidebarTab.Jobs || selectedTab == EazySidebarTab.Mascot) {
-                selectedTab = EazySidebarTab.Chat
-            }
+            selectedTab = startTab
         }
     }
 
@@ -621,11 +616,11 @@ fun EazyChatModal(
         }
     }
 
-    LaunchedEffect(visible, selectedTab, ownerId, jobsFeedScope) {
-        if (!visible || selectedTab != EazySidebarTab.Jobs || ownerId == null) return@LaunchedEffect
+    LaunchedEffect(visible, ownerId, selectedTab, jobsFeedScope) {
+        if (!visible || ownerId == null) return@LaunchedEffect
         val oid = ownerId ?: return@LaunchedEffect
         suspend fun loadOnce() {
-            if (jobsFeedScope == "system") {
+            if (selectedTab == EazySidebarTab.Jobs && jobsFeedScope == "system") {
                 val r1 = withContext(Dispatchers.IO) { api.listSystemJobs(oid, "creator", 50) }
                 val r2 = withContext(Dispatchers.IO) { api.listSystemJobs(oid, "shop", 50) }
                 val items1 = if (r1.optBoolean("ok", false)) parseSystemJobs(r1.optJSONArray("items") ?: JSONArray()) else emptyList()
@@ -636,14 +631,13 @@ fun EazyChatModal(
                 val r = withContext(Dispatchers.IO) { api.listJobs(oid, 50) }
                 if (r.optBoolean("ok", false)) {
                     userKvJobs = parseKvJobs(r.optJSONArray("items") ?: JSONArray())
-                    systemJobs = emptyList()
                 } else {
                     userKvJobs = emptyList()
-                    systemJobs = emptyList()
                 }
+                systemJobs = emptyList()
             }
         }
-        loadingJobs = true
+        loadingJobs = selectedTab == EazySidebarTab.Jobs
         try {
             try {
                 loadOnce()
@@ -662,6 +656,16 @@ fun EazyChatModal(
                 throw e
             } catch (_: Exception) {
             }
+        }
+    }
+
+    val jobsBadgeCount = remember(userKvJobs, systemJobs, heroJob, videoJob, selectedTab, jobsFeedScope) {
+        val heroActive = if (heroJob?.isActive == true) 1 else 0
+        val videoActive = if (videoJob?.isActive == true) 1 else 0
+        if (selectedTab == EazySidebarTab.Jobs && jobsFeedScope == "system") {
+            systemJobs.size
+        } else {
+            userKvJobs.size + heroActive + videoActive
         }
     }
 
@@ -707,110 +711,65 @@ fun EazyChatModal(
         )
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            Column(
+            val isWideLayout = maxWidth > 600.dp
+            var sidebarOpen by remember(isWideLayout) { mutableStateOf(isWideLayout) }
+            LaunchedEffect(isWideLayout) {
+                sidebarOpen = isWideLayout
+            }
+
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .systemBarsPadding()
                     .imePadding()
                     .background(LocalEazyModalPalette.current.bg)
             ) {
-                Row(modifier = Modifier.fillMaxSize()) {
-                    Column(
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
                         modifier = Modifier
-                            .width(56.dp)
-                            .fillMaxSize()
-                            .background(LocalEazyModalPalette.current.headerSecondary)
-                            .border(1.dp, LocalEazyModalPalette.current.muted.copy(alpha = 0.3f))
+                            .fillMaxWidth()
+                            .background(LocalEazyModalPalette.current.header)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        sidebarTabs.forEach { (tab, icon) ->
-                            val unreadCount = totalUnreadNotifs
-                            Box {
-                                IconButton(
-                                    onClick = { selectedTab = tab },
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .then(
-                                            if (selectedTab == tab) Modifier.background(LocalEazyModalPalette.current.accent.copy(alpha = 0.2f))
-                                            else Modifier
-                                        )
-                                ) {
-                                    Icon(icon, contentDescription = tab.name, tint = if (selectedTab == tab) LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted)
-                                }
-                                if (tab == EazySidebarTab.Notifications && unreadCount > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(4.dp)
-                                            .size(16.dp)
-                                            .clip(CircleShape)
-                                            .background(LocalEazyModalPalette.current.accent),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = if (unreadCount > 99) "99+" else "$unreadCount",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Column(modifier = Modifier.weight(1f).fillMaxSize().background(LocalEazyModalPalette.current.bg)) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(LocalEazyModalPalette.current.header)
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (selectedTab == EazySidebarTab.Jobs) {
-                                Box(
-                                    modifier = Modifier.width(40.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Default.Bolt,
-                                        contentDescription = null,
-                                        tint = LocalEazyModalPalette.current.accent,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            } else {
-                                Spacer(modifier = Modifier.width(40.dp))
-                            }
-                            Text(
-                                text = when (selectedTab) {
-                                    EazySidebarTab.Chat -> t("eazy_chat.ui_chat_title", "eazy")
-                                    EazySidebarTab.Notifications -> t("creator.notifications.notifications_tab", "Notifications")
-                                    EazySidebarTab.Jobs -> t("creator.notifications.active_jobs", "Active Jobs")
-                                    EazySidebarTab.Settings -> t("eazy_chat.ui_settings_tab", "Settings")
-                                    EazySidebarTab.Games -> t("eazy_chat.ui_games_tab", "Games")
-                                    EazySidebarTab.Functions -> t("eazy_chat.ui_functions_tab", "Functions")
-                                    EazySidebarTab.Mascot -> t("eazy_chat.ui_mascot_tab", "Mascot")
-                                },
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = LocalEazyModalPalette.current.text,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        if (!sidebarOpen) {
                             IconButton(
-                                onClick = onDismiss,
+                                onClick = { sidebarOpen = true },
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = t("eazy_chat.ui_close_chat", "Close"),
-                                    tint = LocalEazyModalPalette.current.text,
+                                    Icons.Default.Menu,
+                                    contentDescription = t("eazy_chat.ui_open_sidebar", "Open menu"),
+                                    tint = LocalEazyModalPalette.current.text.copy(alpha = 0.8f),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
+                        } else {
+                            Spacer(modifier = Modifier.width(36.dp))
                         }
+                        Text(
+                            text = sidebarTabLabel(selectedTab, t),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = LocalEazyModalPalette.current.text,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = t("eazy_chat.ui_close_chat", "Close"),
+                                tint = LocalEazyModalPalette.current.text,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
 
-                        when (selectedTab) {
+                    when (selectedTab) {
                             EazySidebarTab.Chat -> {
                                 if (!isLoggedIn) {
                                     Column(
@@ -1453,7 +1412,35 @@ fun EazyChatModal(
                                 t = t
                             )
                         }
-                    }
+                }
+
+                if (sidebarOpen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) { sidebarOpen = false }
+                            .zIndex(19f)
+                    )
+                    EazyChatSidebarOverlay(
+                        tabs = sidebarTabs,
+                        selectedTab = selectedTab,
+                        isWideLayout = isWideLayout,
+                        unreadCount = totalUnreadNotifs,
+                        jobsBadgeCount = jobsBadgeCount,
+                        tabLabel = { tab -> sidebarTabLabel(tab, t) },
+                        onTabSelected = { tab ->
+                            selectedTab = tab
+                            if (!isWideLayout) sidebarOpen = false
+                        },
+                        onClose = { sidebarOpen = false },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .zIndex(20f)
+                    )
                 }
             }
         }
@@ -1816,6 +1803,142 @@ private fun EazyFunctionsGrid(
             style = MaterialTheme.typography.labelSmall,
             color = LocalEazyModalPalette.current.muted
         )
+    }
+}
+
+@Composable
+private fun EazyChatSidebarOverlay(
+    tabs: List<Pair<EazySidebarTab, ImageVector>>,
+    selectedTab: EazySidebarTab,
+    isWideLayout: Boolean,
+    unreadCount: Int,
+    jobsBadgeCount: Int,
+    tabLabel: (EazySidebarTab) -> String,
+    onTabSelected: (EazySidebarTab) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val sidebarWidth = if (isWideLayout) 48.dp else 200.dp
+    Column(
+        modifier = modifier
+            .width(sidebarWidth)
+            .fillMaxHeight()
+            .background(EazyChatSidebarGradient)
+            .border(1.dp, Color.White.copy(alpha = 0.15f))
+            .padding(vertical = if (isWideLayout) 8.dp else 12.dp, horizontal = if (isWideLayout) 0.dp else 8.dp),
+        horizontalAlignment = if (isWideLayout) Alignment.CenterHorizontally else Alignment.Start
+    ) {
+        if (!isWideLayout) {
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .size(36.dp)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        tabs.forEach { (tab, icon) ->
+            val active = selectedTab == tab
+            val inactiveTint = Color.White.copy(alpha = 0.7f)
+            val activeTint = Color.White
+            Box(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (isWideLayout) Modifier.height(40.dp) else Modifier)
+                        .clip(
+                            if (isWideLayout) {
+                                RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)
+                            } else {
+                                RoundedCornerShape(8.dp)
+                            }
+                        )
+                        .then(
+                            if (active) Modifier.background(Color.White.copy(alpha = 0.2f)) else Modifier
+                        )
+                        .clickable { onTabSelected(tab) }
+                        .padding(
+                            horizontal = if (isWideLayout) 0.dp else 12.dp,
+                            vertical = if (isWideLayout) 0.dp else 10.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (isWideLayout) Arrangement.Center else Arrangement.Start
+                ) {
+                    if (isWideLayout && active) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .fillMaxHeight()
+                                .background(Color.White)
+                        )
+                    }
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = tab.name,
+                        tint = if (active) activeTint else inactiveTint,
+                        modifier = Modifier
+                            .size(if (isWideLayout) 22.dp else 20.dp)
+                            .then(if (!isWideLayout) Modifier.padding(end = 10.dp) else Modifier)
+                    )
+                    if (!isWideLayout) {
+                        Text(
+                            text = tabLabel(tab),
+                            color = if (active) activeTint else inactiveTint.copy(alpha = 0.85f),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (tab == EazySidebarTab.Notifications && unreadCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 2.dp, end = if (isWideLayout) 2.dp else 8.dp)
+                            .height(16.dp)
+                            .widthIn(min = 16.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (unreadCount > 99) "99+" else "$unreadCount",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = LocalEazyModalPalette.current.accent
+                        )
+                    }
+                }
+                if (tab == EazySidebarTab.Jobs && jobsBadgeCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 2.dp, end = if (isWideLayout) 2.dp else 8.dp)
+                            .height(16.dp)
+                            .widthIn(min = 16.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (jobsBadgeCount > 99) "99+" else "$jobsBadgeCount",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = LocalEazyModalPalette.current.accent
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+        }
     }
 }
 

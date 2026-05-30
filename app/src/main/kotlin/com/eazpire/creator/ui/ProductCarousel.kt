@@ -311,14 +311,15 @@ private fun ProductCard(
     val displayImages = remember(product.id, lazyCardImages, shopImages) {
         if (lazyCardImages && shopImages.size > 1) listOf(shopImages.first()) else shopImages
     }
-    var images by remember(product.id) { mutableStateOf(displayImages) }
+    var images by remember(product.id, mockPreviewRevision) { mutableStateOf(displayImages) }
     var imageReload by remember(product.id) { mutableIntStateOf(0) }
+    var mockDisplayLocked by remember(product.handle) { mutableStateOf(false) }
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle))
     }
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload, lazyCardImages) {
         if (ownerId.isBlank() || creatorApi == null) {
-            images = displayImages
+            if (!mockDisplayLocked) images = displayImages
             return@LaunchedEffect
         }
         val map = CustomerMockPreviewStore.peekMap(ownerId)
@@ -335,21 +336,35 @@ private fun ProductCard(
             product.metaProductKey,
             product.designId
         )
-        tryOnActive =
-            CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle) || autoActive
-        if (lazyCardImages && !tryOnActive && info == null) {
-            images = displayImages
+        val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle)
+        tryOnActive = sessionActive || autoActive
+        val useMock = tryOnActive || autoActive
+        if (!useMock && info == null) {
+            if (!mockDisplayLocked) images = displayImages
             return@LaunchedEffect
         }
         val resolved = withContext(Dispatchers.IO) {
             CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
         }
-        images =
-            if (lazyCardImages && !tryOnActive && resolved.size > 1) {
-                listOf(resolved.first())
-            } else {
-                resolved
-            }
+        val shopFirst = shopImages.firstOrNull()
+        val mockFirst = resolved.firstOrNull()
+        val hasMock = mockFirst != null && mockFirst != shopFirst
+        if (useMock && hasMock) {
+            mockDisplayLocked = true
+            images = listOf(mockFirst!!)
+            return@LaunchedEffect
+        }
+        if (useMock && resolved.isNotEmpty()) {
+            mockDisplayLocked = true
+            images = resolved.take(4)
+            return@LaunchedEffect
+        }
+        if (!mockDisplayLocked) {
+            images =
+                if (lazyCardImages && resolved.size > 1) listOf(resolved.first())
+                else if (resolved.isNotEmpty()) resolved
+                else displayImages
+        }
     }
 
     Column(
@@ -377,7 +392,7 @@ private fun ProductCard(
                     rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
                     lazyLoadImages = lazyCardImages,
                     targetWidthPx = 280,
-                    autoRotate = !lazyCardImages || images.size > 1,
+                    autoRotate = !tryOnActive && (!lazyCardImages || images.size > 1),
                 )
             }
             EazProductCardMediaOverlays(

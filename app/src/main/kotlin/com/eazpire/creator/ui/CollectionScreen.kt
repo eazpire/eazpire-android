@@ -1151,25 +1151,21 @@ private fun CollectionProductCard(
     modifier: Modifier = Modifier
 ) {
     val shopImages = product.variantImages.ifEmpty { product.images }
-    var images by remember(product.id) { mutableStateOf(shopImages) }
+    var images by remember(product.id, mockPreviewRevision) { mutableStateOf(shopImages) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var imageReload by remember(product.id) { mutableIntStateOf(0) }
+    var mockDisplayLocked by remember(product.handle) { mutableStateOf(false) }
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
     }
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
         if (ownerId.isBlank() || creatorApi == null) {
-            images = shopImages
+            if (!mockDisplayLocked) images = shopImages
             return@LaunchedEffect
         }
-        val map = CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
-        val info = CustomerMockPreviewStore.tryOnInfo(
-            map,
-            product.handle,
-            product.metaProductKey,
-            product.designId
-        )
+        val map = CustomerMockPreviewStore.peekMap(ownerId)
+            ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
         val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
             map,
             product.handle,
@@ -1178,7 +1174,18 @@ private fun CollectionProductCard(
         )
         tryOnActive =
             CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle) || autoActive
-        images = CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, map)
+        val useMock = tryOnActive || autoActive
+        val resolved = withContext(Dispatchers.IO) {
+            CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, map)
+        }
+        val shopFirst = shopImages.firstOrNull()
+        val mockFirst = resolved.firstOrNull()
+        if (useMock && mockFirst != null && mockFirst != shopFirst) {
+            mockDisplayLocked = true
+            images = listOf(mockFirst)
+            return@LaunchedEffect
+        }
+        if (!mockDisplayLocked) images = if (resolved.isNotEmpty()) resolved else shopImages
     }
 
     Column(
@@ -1198,7 +1205,8 @@ private fun CollectionProductCard(
                     productId = product.id.toString(),
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
-                    rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS
+                    rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
+                    autoRotate = !tryOnActive && images.size > 1
                 )
             }
             EazProductCardMediaOverlays(

@@ -157,7 +157,7 @@ private fun getMediaForColor(
     allImages: List<ShopifyProductsApi.ProductImage>,
     variants: List<ShopifyProductsApi.ProductDetail.ProductVariant>
 ): List<String> {
-    val fallback = allImages.take(5).map { it.src }
+    val fallback = allImages.take(4).map { it.src }
     if (variants.isEmpty() || allImages.isEmpty()) return fallback
 
     val variantForColor = variants.find { v ->
@@ -178,7 +178,7 @@ private fun getMediaForColor(
         key.isNotBlank() && key == selectedColorKey
     }
     if (matched.isNotEmpty()) {
-        return sortMediaForColorGallery(matched, featuredSrc).map { it.src }.take(5)
+        return sortMediaForColorGallery(matched, featuredSrc).map { it.src }.take(4)
     }
 
     // 2) Contiguous images from anchor forward (same color key or no conflict)
@@ -192,7 +192,7 @@ private fun getMediaForColor(
                 continue
             }
             contiguous.add(img)
-            if (contiguous.size >= 5) break
+            if (contiguous.size >= 4) break
         }
         if (contiguous.isNotEmpty()) {
             return sortMediaForColorGallery(contiguous, featuredSrc).map { it.src }
@@ -255,49 +255,99 @@ private fun splitProductTitle(title: String, productType: String, productKey: St
     return designTitle to productTypeTitle
 }
 
-private fun normalizeDesignKey(title: String): String {
-    val t = title.replace(" — ", " | ").replace(" – ", " | ").replace(" - ", " | ")
-    return t.split(" | ").firstOrNull()?.trim()?.lowercase() ?: title.trim().lowercase()
+private fun normalizeTitleParts(title: String): List<String> {
+    val norm = title
+        .replace(" — ", " | ")
+        .replace(" – ", " | ")
+        .replace(" - ", " | ")
+        .replace("‐", " | ")
+        .replace("‑", " | ")
+    return norm.split(" | ").map { it.trim() }.filter { it.isNotBlank() }
 }
 
-private fun creatorKeyItem(it: ShopifyProductsApi.ProductItem): String =
-    it.creator.ifBlank { it.vendor }.trim().lowercase()
+private fun normalizeDesignKey(title: String): String {
+    return normalizeTitleParts(title).firstOrNull()?.lowercase() ?: title.trim().lowercase()
+}
 
+private fun productLineKey(title: String, productType: String, productKey: String?): String {
+    val parts = normalizeTitleParts(title)
+    val fromTitle = parts.getOrNull(1)?.trim()?.lowercase().orEmpty()
+    if (fromTitle.isNotBlank()) return fromTitle
+    val (_, typeTitle) = splitProductTitle(title, productType, productKey)
+    return typeTitle.trim().lowercase()
+}
+
+private fun handleizeKey(value: String): String =
+    value.lowercase()
+        .replace(Regex("[^a-z0-9]+"), "-")
+        .trim('-')
+
+private fun productLineMatches(
+    seedPk: String,
+    seedLine: String,
+    candidatePk: String,
+    candidateLine: String
+): Boolean {
+    if (seedLine.isBlank()) return true
+    if (seedPk.isNotBlank() && candidatePk.isNotBlank() && seedPk == candidatePk) return true
+    if (candidateLine.isBlank()) return false
+    val s = handleizeKey(seedLine)
+    val c = handleizeKey(candidateLine)
+    return c == s || candidateLine == seedLine
+}
+
+/** Shop-wide carousel: same product line + different design (web eaz-pdp-creator-carousels). */
 private fun buildPdpCarouselSameType(
     p: ShopifyProductsApi.ProductDetail,
     catalog: List<ShopifyProductsApi.ProductItem>
 ): List<ShopifyProductsApi.ProductItem> {
-    val pk = p.productKey?.takeIf { it.isNotBlank() }.orEmpty()
-    val seedDesign = normalizeDesignKey(p.title)
-    val ck = p.creatorDisplay.trim().lowercase()
-    return catalog.filter { o ->
-        if (o.id == p.id) return@filter false
-        if (creatorKeyItem(o) != ck) return@filter false
-        val typeMatch = if (pk.isNotBlank()) o.metaProductKey == pk
-        else o.productType.isNotBlank() && o.productType == p.productType
-        typeMatch && normalizeDesignKey(o.title) != seedDesign
-    }.take(50)
+    val seedPk = p.productKey?.takeIf { it.isNotBlank() }.orEmpty()
+    val seedDh = handleizeKey(normalizeDesignKey(p.title))
+    val seedLine = productLineKey(p.title, p.productType, p.productKey)
+    val seen = linkedSetOf<Long>()
+    val out = mutableListOf<ShopifyProductsApi.ProductItem>()
+    for (o in catalog) {
+        if (o.id == p.id || !seen.add(o.id)) continue
+        val cDh = handleizeKey(normalizeDesignKey(o.title))
+        if (cDh == seedDh) continue
+        if (!productLineMatches(seedPk, seedLine, o.metaProductKey, productLineKey(o.title, o.productType, o.metaProductKey))) {
+            continue
+        }
+        val typeMatch = when {
+            seedPk.isNotBlank() -> o.metaProductKey == seedPk
+            p.productType.isNotBlank() -> o.productType == p.productType
+            seedLine.isNotBlank() -> productLineKey(o.title, o.productType, o.metaProductKey) == seedLine
+            else -> false
+        }
+        if (typeMatch) {
+            out.add(o)
+            if (out.size >= 20) break
+        }
+    }
+    return out.distinctBy { it.handle }
 }
 
+/** Shop-wide carousel: all products with the same design_id / design title (web car2). */
 private fun buildPdpCarouselSameDesign(
     p: ShopifyProductsApi.ProductDetail,
     catalog: List<ShopifyProductsApi.ProductItem>
 ): List<ShopifyProductsApi.ProductItem> {
-    val pk = p.productKey?.takeIf { it.isNotBlank() }.orEmpty()
-    val seedDesign = normalizeDesignKey(p.title)
-    val ck = p.creatorDisplay.trim().lowercase()
+    val seedDh = handleizeKey(normalizeDesignKey(p.title))
     val seedDid = p.designIdMeta?.takeIf { it.isNotBlank() }
-    return catalog.filter { o ->
-        if (o.id == p.id) return@filter false
-        if (creatorKeyItem(o) != ck) return@filter false
-        val designMatch = if (seedDid != null && o.designId.isNotBlank()) o.designId == seedDid
-        else normalizeDesignKey(o.title) == seedDesign
-        val diffType = when {
-            pk.isNotBlank() -> o.metaProductKey != pk
-            else -> o.productType.isNotBlank() && o.productType != p.productType
+    val seen = linkedSetOf<Long>()
+    val out = mutableListOf<ShopifyProductsApi.ProductItem>()
+    for (o in catalog) {
+        if (o.id == p.id || !seen.add(o.id)) continue
+        val designMatch = when {
+            seedDid != null && o.designId.isNotBlank() -> o.designId == seedDid
+            else -> handleizeKey(normalizeDesignKey(o.title)) == seedDh
         }
-        designMatch && diffType
-    }.take(50)
+        if (designMatch) {
+            out.add(o)
+            if (out.size >= 50) break
+        }
+    }
+    return out.distinctBy { it.handle }
 }
 
 /**
@@ -420,6 +470,7 @@ fun ProductDetailScreen(
     var productColorHexMap by remember(productHandle) { mutableStateOf<Map<String, String>>(emptyMap()) }
     var tryOnActive by remember(productHandle) { mutableStateOf(false) }
     var tryOnImageUrl by remember(productHandle) { mutableStateOf<String?>(null) }
+    var mockGalleryUrls by remember(productHandle) { mutableStateOf<List<String>>(emptyList()) }
     var tryOnLoading by remember(productHandle) { mutableStateOf(false) }
     var tryOnOverlayMessage by remember(productHandle) { mutableStateOf<String?>(null) }
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
@@ -446,6 +497,7 @@ fun ProductDetailScreen(
         productColorHexMap = emptyMap()
         tryOnActive = false
         tryOnImageUrl = null
+        mockGalleryUrls = emptyList()
         tryOnLoading = false
         val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val prod = product ?: return@LaunchedEffect
@@ -574,16 +626,21 @@ fun ProductDetailScreen(
     /** Storefront cart needs a real Shopify variant id (>0). */
     val variantIdForCart = (selectedVariant?.id ?: 0L).takeIf { it > 0L }
     // Images for selected variant only – same logic as web getMediaForColor (eaz-redesign-pdp.js)
-    val images = remember(selectedColor, selectedVariant, p.images, p.variants) {
+    val shopImages = remember(selectedColor, selectedVariant, p.images, p.variants) {
         getMediaForColor(selectedColor, selectedVariant, p.images, p.variants)
     }
-    LaunchedEffect(selectedColor, selectedVariant?.id) {
+    val images = remember(shopImages, tryOnActive, mockGalleryUrls) {
+        if (tryOnActive && mockGalleryUrls.isNotEmpty()) mockGalleryUrls
+        else shopImages
+    }
+    LaunchedEffect(selectedColor, selectedVariant?.id, tryOnActive) {
         selectedImageIndex = 0
     }
 
     LaunchedEffect(tryOnActive, selectedColor, mockupTryOnInfo, productColorHexMap) {
         if (!tryOnActive) {
             tryOnImageUrl = null
+            mockGalleryUrls = emptyList()
             tryOnLoading = false
             if (tryOnOverlayMessage != null) {
                 kotlinx.coroutines.delay(280)
@@ -605,16 +662,33 @@ fun ProductDetailScreen(
             tryOnOverlayMessage = t("eaz.pdp.try_on_overlay_on", "Putting on your look…")
         }
         tryOnLoading = true
-        val url = withContext(Dispatchers.IO) {
-            resolveMockupImageUrl(info, selectedColor, ownerId, productColorHexMap)
+        val gallery = withContext(Dispatchers.IO) {
+            buildMockGalleryUrlsForColor(
+                info = info,
+                handle = productHandle,
+                colorName = selectedColor,
+                ownerId = ownerId,
+                productColorMap = productColorHexMap,
+                maxViews = 4
+            )
         }
         tryOnLoading = false
         tryOnOverlayMessage = null
-        if (url.isNullOrBlank()) {
-            tryOnActive = false
-            tryOnImageUrl = null
+        if (gallery.isEmpty()) {
+            val single = withContext(Dispatchers.IO) {
+                resolveMockupImageUrl(info, selectedColor, ownerId, productColorHexMap)
+            }
+            if (single.isNullOrBlank()) {
+                tryOnActive = false
+                tryOnImageUrl = null
+                mockGalleryUrls = emptyList()
+            } else {
+                tryOnImageUrl = single
+                mockGalleryUrls = listOf(single)
+            }
         } else {
-            tryOnImageUrl = url
+            mockGalleryUrls = gallery
+            tryOnImageUrl = gallery.first()
         }
     }
     LaunchedEffect(showCartToast) { if (showCartToast) { kotlinx.coroutines.delay(1500); showCartToast = false } }
@@ -840,11 +914,7 @@ fun ProductDetailScreen(
                 ) {
                     if (images.isNotEmpty()) {
                         val imgIdx = selectedImageIndex.coerceIn(0, (imageCount - 1).coerceAtLeast(0))
-                        val displayUrl = if (tryOnActive && !tryOnImageUrl.isNullOrBlank()) {
-                            tryOnImageUrl!!
-                        } else {
-                            images[imgIdx]
-                        }
+                        val displayUrl = images[imgIdx]
                         Crossfade(
                             targetState = displayUrl,
                             animationSpec = tween(280),
@@ -1028,97 +1098,59 @@ fun ProductDetailScreen(
                     .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(14.dp))
                     .padding(16.dp)
             ) {
-                if (carSameType.isNotEmpty() || carSameDesign.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.Top
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    CreatorAvatarCircle(
+                        name = creatorLabel,
+                        avatarUrl = creatorPreview?.avatarUrl,
+                        size = 56.dp,
+                        onClick = openCreatorProfile
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.widthIn(max = 140.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            CreatorAvatarCircle(
-                                name = creatorLabel,
-                                avatarUrl = creatorPreview?.avatarUrl,
-                                size = 56.dp,
-                                onClick = openCreatorProfile
-                            )
-                            Column(
-                                modifier = Modifier.weight(1f, fill = false),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Text(
-                                    text = creatorLabel,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = EazColors.TextPrimary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.clickable(onClick = openCreatorProfile),
-                                )
-                                if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
-                                    CreatorRatingRow(
-                                        avg = creatorPreview!!.ratingAvg!!,
-                                        count = creatorPreview!!.ratingCount!!,
-                                    )
-                                }
-                            }
-                        }
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            if (carSameType.isNotEmpty()) {
-                                PdpInfiniteProductCarouselRow(
-                                    title = t("eaz.pdp.carousel_same_type_designs", "More designs on this product"),
-                                    products = carSameType,
-                                    ownerId = ownerIdForMocks,
-                                    creatorApi = creatorApi,
-                                    mockPreviewRevision = mockPreviewRevision,
-                                    onProductClick = openRelated
-                                )
-                            }
-                            if (carSameDesign.isNotEmpty()) {
-                                PdpInfiniteProductCarouselRow(
-                                    title = t("eaz.pdp.carousel_same_design_products", "More products with this design"),
-                                    products = carSameDesign,
-                                    ownerId = ownerIdForMocks,
-                                    creatorApi = creatorApi,
-                                    mockPreviewRevision = mockPreviewRevision,
-                                    onProductClick = openRelated
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        CreatorAvatarCircle(
-                            name = creatorLabel,
-                            avatarUrl = creatorPreview?.avatarUrl,
-                            size = 56.dp,
-                            onClick = openCreatorProfile
+                        Text(
+                            text = creatorLabel,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = EazColors.TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable(onClick = openCreatorProfile),
                         )
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = creatorLabel,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = EazColors.TextPrimary,
-                                modifier = Modifier.clickable(onClick = openCreatorProfile)
+                        if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
+                            CreatorRatingRow(
+                                avg = creatorPreview!!.ratingAvg!!,
+                                count = creatorPreview!!.ratingCount!!,
                             )
-                            if (creatorPreview?.ratingAvg != null && creatorPreview?.ratingCount != null) {
-                                CreatorRatingRow(
-                                    avg = creatorPreview!!.ratingAvg!!,
-                                    count = creatorPreview!!.ratingCount!!
-                                )
-                            }
                         }
                     }
+                }
+                if (carSameType.isNotEmpty()) {
+                    PdpInfiniteProductCarouselRow(
+                        title = t("eaz.pdp.carousel_same_type_designs", "More designs on this product"),
+                        products = carSameType,
+                        ownerId = ownerIdForMocks,
+                        creatorApi = creatorApi,
+                        mockPreviewRevision = mockPreviewRevision,
+                        onProductClick = openRelated,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
+                if (carSameDesign.isNotEmpty()) {
+                    PdpInfiniteProductCarouselRow(
+                        title = t("eaz.pdp.carousel_same_design_products", "More products with this design"),
+                        products = carSameDesign,
+                        ownerId = ownerIdForMocks,
+                        creatorApi = creatorApi,
+                        mockPreviewRevision = mockPreviewRevision,
+                        onProductClick = openRelated,
+                        modifier = Modifier.padding(top = if (carSameType.isNotEmpty()) 10.dp else 12.dp)
+                    )
                 }
             }
             }
@@ -1897,17 +1929,21 @@ private fun PdpMockAwareProductThumb(
             displayUrl = shopImages.firstOrNull()
             return@LaunchedEffect
         }
-        val map = withContext(Dispatchers.IO) {
-            CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+        val map = CustomerMockPreviewStore.peekMap(ownerId)
+            ?: withContext(Dispatchers.IO) { CustomerMockPreviewStore.loadMap(creatorApi, ownerId) }
+        val mockUrl = withContext(Dispatchers.IO) {
+            CustomerMockPreviewStore.resolveSingleImageUrl(
+                context = context,
+                api = creatorApi,
+                ownerId = ownerId,
+                handle = product.handle,
+                productKey = product.metaProductKey,
+                designId = product.designId,
+                fallbackUrl = shopImages.firstOrNull(),
+                colorName = "White"
+            )
         }
-        val resolved = CustomerMockPreviewStore.resolveCardImages(
-            context,
-            creatorApi,
-            ownerId,
-            product,
-            map
-        )
-        displayUrl = resolved.firstOrNull() ?: shopImages.firstOrNull()
+        displayUrl = mockUrl ?: shopImages.firstOrNull()
     }
     val url = displayUrl
     if (url != null) {
@@ -1927,16 +1963,20 @@ private fun PdpInfiniteProductCarouselRow(
     ownerId: String = "",
     creatorApi: CreatorApi? = null,
     mockPreviewRevision: Int = 0,
-    onProductClick: (String) -> Unit
+    onProductClick: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val base = products.take(50)
     if (base.isEmpty()) return
-    val ctx = LocalContext.current
     val repeated = remember(base) {
-        List(base.size * 40) { idx -> base[idx % base.size] }
+        if (base.size <= 1) base
+        else List(base.size * 40) { idx -> base[idx % base.size] }
     }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = base.size * 20)
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = if (base.size <= 1) 0 else base.size * 20
+    )
+    Column(modifier = modifier.fillMaxWidth().padding(top = 4.dp)) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
@@ -1976,7 +2016,7 @@ private fun PdpInfiniteProductCarouselRow(
                         val fallback = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
                         if (fallback != null) {
                             AsyncImage(
-                                model = ImageRequest.Builder(ctx).data(fallback).build(),
+                                model = ImageRequest.Builder(context).data(fallback).build(),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2009,7 +2049,7 @@ private fun PdpProductCarouselRow(
     onProductClick: (String) -> Unit
 ) {
     if (products.isEmpty()) return
-    val ctx = LocalContext.current
+    val context = LocalContext.current
     Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
         Text(
             text = title,
@@ -2048,7 +2088,7 @@ private fun PdpProductCarouselRow(
                         val fallback = item.variantImages.firstOrNull() ?: item.images.firstOrNull()
                         if (fallback != null) {
                             AsyncImage(
-                                model = ImageRequest.Builder(ctx).data(fallback).build(),
+                                model = ImageRequest.Builder(context).data(fallback).build(),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .fillMaxWidth()

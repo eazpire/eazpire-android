@@ -22,7 +22,7 @@ object CustomerMockPreviewStore {
     private const val TAG = "EazMockPreview"
     private const val PREFS = "eaz_mock_preview"
     private const val KEY_TRYON_HANDLES = "tryon_handles"
-    private const val MAP_TTL_MS = 60_000L
+    private const val MAP_TTL_MS = 300_000L
 
     @Volatile
     private var mapCache: JSONObject? = null

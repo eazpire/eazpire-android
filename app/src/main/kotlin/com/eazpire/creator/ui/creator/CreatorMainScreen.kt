@@ -50,7 +50,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.R
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.audio.CreatorAudioAutoplayPrefs
 import com.eazpire.creator.audio.CreatorAudioStore
 import com.eazpire.creator.creatorcodes.CreatorCodeAvailableHintStore
 import com.eazpire.creator.i18n.TranslationStore
@@ -129,7 +128,6 @@ fun CreatorMainScreen(
     var pendingMarketingHero by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
     val audioStore = remember { CreatorAudioStore(appContext) }
-    val autoplayPrefs = remember { CreatorAudioAutoplayPrefs(appContext) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
@@ -251,11 +249,7 @@ fun CreatorMainScreen(
                         ownerId = ownerId,
                         coverUrl = null
                     )
-                    if (autoplayPrefs.isAutoplaySuppressed(ownerId)) {
-                        audioStore.armRemoteTrack(item)
-                    } else {
-                        audioStore.play(item, fromSessionBootstrap = true)
-                    }
+                    audioStore.armRemoteTrack(item)
                 }
             }
         } catch (_: Exception) {}
