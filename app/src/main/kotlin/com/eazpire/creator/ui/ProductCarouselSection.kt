@@ -53,6 +53,7 @@ fun ProductCarouselSection(
     onCreateScratchClick: ((CatalogProduct) -> Unit)? = null,
     productModalHandleState: MutableState<String?>? = null,
     scrollToTopTrigger: Int = 0,
+    reloadTrigger: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -67,9 +68,9 @@ fun ProductCarouselSection(
     val region = remember { localeStore.getRegionCodeSync() }
 
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
-    LaunchedEffect(ownerId) {
+    LaunchedEffect(ownerId, reloadTrigger) {
         if (ownerId.isNotBlank()) {
-            CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+            CustomerMockPreviewStore.loadMap(creatorApi, ownerId, force = reloadTrigger > 0)
             mockPreviewRevision = CustomerMockPreviewStore.revision
         }
     }
@@ -81,7 +82,7 @@ fun ProductCarouselSection(
     /** Creators load only after promo + product carousels (top → bottom). */
     var loadCreatorsSection by remember { mutableStateOf(false) }
 
-    LaunchedEffect(region) {
+    LaunchedEffect(region, reloadTrigger) {
         loadCreatorsSection = false
         promoProducts = emptyList()
         sectionPools = emptyMap()
@@ -226,7 +227,9 @@ fun ProductCarouselSection(
                     creatorApi = creatorApi,
                     mockPreviewRevision = mockPreviewRevision,
                     lazyCardImages = true,
-                    skipPersonalizedMock = true,
+                    onCartClick = { params ->
+                        productModalHandleState?.value = params.handle
+                    },
                 )
             }
         }
@@ -249,7 +252,9 @@ fun ProductCarouselSection(
                         creatorApi = creatorApi,
                         mockPreviewRevision = mockPreviewRevision,
                         lazyCardImages = true,
-                        skipPersonalizedMock = true,
+                        onCartClick = { params ->
+                            productModalHandleState?.value = params.handle
+                        },
                     )
                 }
             }

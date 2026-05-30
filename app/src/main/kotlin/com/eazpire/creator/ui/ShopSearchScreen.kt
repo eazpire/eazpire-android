@@ -58,6 +58,8 @@ fun ShopSearchScreen(
     searchQuery: String,
     onBack: () -> Unit,
     onProductClick: (ShopifyProductsApi.ProductItem) -> Unit,
+    onCartClick: (ShopifyProductsApi.ProductItem) -> Unit = onProductClick,
+    reloadTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val store = LocalTranslationStore.current
@@ -76,16 +78,16 @@ fun ShopSearchScreen(
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
-    LaunchedEffect(ownerId) {
+    LaunchedEffect(ownerId, reloadTrigger) {
         if (ownerId.isNotBlank()) {
-            CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+            CustomerMockPreviewStore.loadMap(creatorApi, ownerId, force = reloadTrigger > 0)
             mockPreviewRevision = CustomerMockPreviewStore.revision
         }
     }
     var products by remember(searchQuery) { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     var loading by remember(searchQuery) { mutableStateOf(true) }
 
-    LaunchedEffect(searchQuery) {
+    LaunchedEffect(searchQuery, reloadTrigger) {
         loading = true
         products = emptyList()
         val r = withContext(Dispatchers.IO) {
@@ -158,7 +160,8 @@ fun ShopSearchScreen(
                             ownerId = ownerId,
                             creatorApi = creatorApi,
                             mockPreviewRevision = mockPreviewRevision,
-                            onClick = { onProductClick(p) }
+                            onClick = { onProductClick(p) },
+                            onCartClick = { onCartClick(p) }
                         )
                     }
                 }

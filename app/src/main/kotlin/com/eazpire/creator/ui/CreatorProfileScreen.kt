@@ -135,6 +135,7 @@ fun CreatorProfileScreen(
     viewerOwnerId: String = "",
     onBack: () -> Unit,
     onProductClick: (String) -> Unit,
+    onCartClick: (String) -> Unit = onProductClick,
     modifier: Modifier = Modifier
 ) {
     val store = LocalTranslationStore.current
@@ -451,7 +452,7 @@ fun CreatorProfileScreen(
                                             creatorApi = api,
                                             modifier = Modifier.weight(1f),
                                             onClick = { onProductClick(item.handle) },
-                                            onCartClick = { onProductClick(item.handle) }
+                                            onCartClick = { onCartClick(item.handle) }
                                         )
                                     }
                                     if (rowItems.size == 1) {

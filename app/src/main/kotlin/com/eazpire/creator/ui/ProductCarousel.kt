@@ -101,8 +101,9 @@ fun ProductCarousel(
     mockPreviewRevision: Int = 0,
     /** Smaller Coil decode + single visible frame on home rows. */
     lazyCardImages: Boolean = false,
-    /** When true, never swap in customer mock / try-on images (home + PLP listings). */
+    /** When true, never swap in customer mock / try-on images (e.g. create-from-scratch catalog). */
     skipPersonalizedMock: Boolean = false,
+    onCartClick: ((ProductClickWithCollection) -> Unit)? = null,
 ) {
     if (products.isEmpty()) {
         if (emptyStateMessage == null) return
@@ -186,6 +187,22 @@ fun ProductCarousel(
                                         collectionHandle = collectionHandle
                                     )
                                 )
+                            } else {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(product.url)))
+                                } catch (_: Exception) {}
+                            }
+                        },
+                        onCartClick = {
+                            val payload = ProductClickWithCollection(
+                                handle = product.handle,
+                                collectionTitle = title.takeIf { collectionHandle != null },
+                                collectionHandle = collectionHandle
+                            )
+                            if (onCartClick != null) {
+                                onCartClick(payload)
+                            } else if (onProductClick != null) {
+                                onProductClick(payload)
                             } else {
                                 try {
                                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(product.url)))
@@ -307,6 +324,7 @@ private fun ProductCard(
     promoNextDiscountPrefix: String = "",
     promoNextPriceHintPrefix: String = "",
     onClick: () -> Unit,
+    onCartClick: () -> Unit = onClick,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -417,7 +435,7 @@ private fun ProductCard(
                         }
                     }
                 },
-                onCartClick = onClick,
+                onCartClick = onCartClick,
             )
         }
         val (designTitle, productTypeTitle) = remember(product.title, product.productType) {

@@ -1,6 +1,6 @@
 package com.eazpire.creator.ui
 
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -70,35 +70,58 @@ fun rememberShopNavHistoryController(): ShopNavHistoryController =
     remember { ShopNavHistoryController() }
 
 /**
- * Swipe from the left screen edge → previous page; from the right edge → next page.
+ * Edge gestures: left → back, right → forward, top pull → refresh.
  * Edge-only so horizontal carousels and collection paging keep working in the content area.
  */
-fun Modifier.shopNavEdgeSwipe(
+fun Modifier.shopNavEdgeGestures(
     enabled: Boolean,
     onSwipeBack: () -> Unit,
     onSwipeForward: () -> Unit,
+    onPullRefresh: () -> Unit = {},
 ): Modifier {
     if (!enabled) return this
     return this.then(
         Modifier.pointerInput(Unit) {
             val edgePx = with(density) { 40.dp.toPx() }
+            val topEdgePx = with(density) { 56.dp.toPx() }
             val thresholdPx = with(density) { 72.dp.toPx() }
             var startX = 0f
-            var totalDrag = 0f
-            detectHorizontalDragGestures(
+            var startY = 0f
+            var totalDragX = 0f
+            var totalDragY = 0f
+            detectDragGestures(
                 onDragStart = { offset ->
                     startX = offset.x
-                    totalDrag = 0f
+                    startY = offset.y
+                    totalDragX = 0f
+                    totalDragY = 0f
                 },
-                onHorizontalDrag = { _, amount -> totalDrag += amount },
+                onDrag = { _, dragAmount ->
+                    totalDragX += dragAmount.x
+                    totalDragY += dragAmount.y
+                },
                 onDragEnd = {
                     val width = size.width.toFloat()
+                    val absX = kotlin.math.abs(totalDragX)
+                    val absY = kotlin.math.abs(totalDragY)
                     when {
-                        startX <= edgePx && totalDrag >= thresholdPx -> onSwipeBack()
-                        startX >= width - edgePx && totalDrag <= -thresholdPx -> onSwipeForward()
+                        startX <= edgePx && totalDragX >= thresholdPx && absX > absY -> onSwipeBack()
+                        startX >= width - edgePx && totalDragX <= -thresholdPx && absX > absY -> onSwipeForward()
+                        startY <= topEdgePx && totalDragY >= thresholdPx && absY > absX -> onPullRefresh()
                     }
                 },
             )
         },
     )
 }
+
+/** @deprecated Use [shopNavEdgeGestures] */
+fun Modifier.shopNavEdgeSwipe(
+    enabled: Boolean,
+    onSwipeBack: () -> Unit,
+    onSwipeForward: () -> Unit,
+): Modifier = shopNavEdgeGestures(
+    enabled = enabled,
+    onSwipeBack = onSwipeBack,
+    onSwipeForward = onSwipeForward,
+)

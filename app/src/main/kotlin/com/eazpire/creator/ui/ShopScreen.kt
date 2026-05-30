@@ -5,6 +5,7 @@ import android.graphics.Color as AndroidColor
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.creatorcodes.CreatorCodeAvailableHintStore
 import com.eazpire.creator.chat.EazyChatContext
@@ -177,6 +179,7 @@ fun ShopScreen(
     var accountModalVisible by remember { mutableStateOf(false) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
+    var shopContentReloadNonce by remember { mutableIntStateOf(0) }
     var favoritesModalVisible by remember { mutableStateOf(false) }
     var eazyChatVisible by remember { mutableStateOf(false) }
     var eazyStartTab by remember { mutableStateOf(EazySidebarTab.Chat) }
@@ -468,7 +471,45 @@ fun ShopScreen(
             productModalHandleState.value = null
             return
         }
+        if (selectedProductHandle != null) {
+            selectedProductHandle = null
+            return
+        }
+        if (shopSearchQuery != null) {
+            shopSearchQuery = null
+            return
+        }
+        if (selectedCreatorName != null) {
+            selectedCreatorName = null
+            return
+        }
+        if (selectedCollection != null) {
+            selectedCollection = null
+            return
+        }
+        if (shopCreateActive) {
+            shopCreateActive = false
+            shopCreateStudioPhase = null
+            return
+        }
         shopNavHistory.goBack()?.let { applyShopNavSnapshot(it) }
+    }
+
+    fun refreshShopContent() {
+        shopContentReloadNonce++
+        CustomerMockPreviewStore.invalidate()
+        scope.launch {
+            val ownerId = tokenStore.getOwnerId().orEmpty()
+            if (ownerId.isNotBlank()) {
+                withContext(Dispatchers.IO) {
+                    CustomerMockPreviewStore.loadMap(creatorPollApi, ownerId, force = true)
+                }
+            }
+        }
+    }
+
+    BackHandler(enabled = !isCreatorMode && !showAuthScreen) {
+        handleShopNavSwipeBack()
     }
 
     fun handleShopNavSwipeForward() {
@@ -753,10 +794,11 @@ fun ShopScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .shopNavEdgeSwipe(
+                .shopNavEdgeGestures(
                     enabled = shopNavSwipeEnabled,
                     onSwipeBack = { handleShopNavSwipeBack() },
                     onSwipeForward = { handleShopNavSwipeForward() },
+                    onPullRefresh = { refreshShopContent() },
                 )
         ) {
             when {
@@ -769,19 +811,21 @@ fun ShopScreen(
                         shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(p)
                     }
                 )
-                selectedProductHandle != null -> ProductDetailScreen(
-                    productHandle = selectedProductHandle!!,
-                    onBack = {
-                        selectedProductHandle = null
-                    },
-                    tokenStore = tokenStore,
-                    onTermsClick = { termsModalVisible = true },
-                    onNavigateToProduct = { selectedProductHandle = it },
-                    onNavigateToCreator = { name ->
-                        selectedProductHandle = null
-                        selectedCreatorName = name
-                    }
-                )
+                selectedProductHandle != null -> key(selectedProductHandle, shopContentReloadNonce) {
+                    ProductDetailScreen(
+                        productHandle = selectedProductHandle!!,
+                        onBack = {
+                            selectedProductHandle = null
+                        },
+                        tokenStore = tokenStore,
+                        onTermsClick = { termsModalVisible = true },
+                        onNavigateToProduct = { selectedProductHandle = it },
+                        onNavigateToCreator = { name ->
+                            selectedProductHandle = null
+                            selectedCreatorName = name
+                        }
+                    )
+                }
                 selectedCreatorName != null -> CreatorProfileScreen(
                     creatorName = selectedCreatorName!!,
                     api = creatorPollApi,
@@ -790,6 +834,9 @@ fun ShopScreen(
                     onProductClick = { handle ->
                         if (handle.isNotBlank()) selectedProductHandle = handle
                     },
+                    onCartClick = { handle ->
+                        if (handle.isNotBlank()) productModalHandleState.value = handle
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
                 shopSearchQuery != null -> ShopSearchScreen(
@@ -797,7 +844,11 @@ fun ShopScreen(
                     onBack = { shopSearchQuery = null },
                     onProductClick = { p ->
                         selectedProductHandle = p.handle
-                    }
+                    },
+                    onCartClick = { p ->
+                        productModalHandleState.value = p.handle
+                    },
+                    reloadTrigger = shopContentReloadNonce,
                 )
                 selectedCollection != null -> {
                     val (title, handle, productType) = selectedCollection!!
@@ -806,7 +857,9 @@ fun ShopScreen(
                         collectionHandle = handle,
                         initialProductType = productType,
                         onBack = { selectedCollection = null },
-                        onProductClick = { selectedProductHandle = it.handle }
+                        onProductClick = { selectedProductHandle = it.handle },
+                        onCartClick = { productModalHandleState.value = it.handle },
+                        reloadTrigger = shopContentReloadNonce,
                     )
                 }
                 else -> ProductCarouselSection(
@@ -860,7 +913,8 @@ fun ShopScreen(
                         }
                     },
                     productModalHandleState = productModalHandleState,
-                    scrollToTopTrigger = scrollToTopTrigger
+                    scrollToTopTrigger = scrollToTopTrigger,
+                    reloadTrigger = shopContentReloadNonce,
                 )
             }
         }

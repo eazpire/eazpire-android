@@ -282,6 +282,8 @@ fun CollectionScreen(
     initialProductType: String? = null,
     onBack: () -> Unit,
     onProductClick: (ShopifyProductsApi.ProductItem) -> Unit,
+    onCartClick: (ShopifyProductsApi.ProductItem) -> Unit = onProductClick,
+    reloadTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val store = LocalTranslationStore.current
@@ -294,9 +296,9 @@ fun CollectionScreen(
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
-    LaunchedEffect(ownerId) {
+    LaunchedEffect(ownerId, reloadTrigger) {
         if (ownerId.isNotBlank()) {
-            CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+            CustomerMockPreviewStore.loadMap(creatorApi, ownerId, force = reloadTrigger > 0)
             mockPreviewRevision = CustomerMockPreviewStore.revision
         }
     }
@@ -317,7 +319,7 @@ fun CollectionScreen(
     val products = productsByPage[currentPage] ?: emptyList()
     val totalPages = maxOf(1, if (hasNextPage) currentPage + 1 else currentPage)
 
-    LaunchedEffect(collectionHandle, initialProductType) {
+    LaunchedEffect(collectionHandle, initialProductType, reloadTrigger) {
         productsByPage = emptyMap()
         pageCursors = listOf(null)
         hasNextPage = false
@@ -470,7 +472,8 @@ fun CollectionScreen(
                         promoNextDiscountPrefix = t("eaz.shop.promo_next_discount_prefix", "Discount in"),
                         promoNextPriceHintPrefix = t("eaz.shop.promo_next_price_hint_prefix", "Promo from"),
                         promoStartsPrefix = t("eaz.shop.promo_starts_prefix", "Starts in"),
-                        onClick = { onProductClick(product) }
+                        onClick = { onProductClick(product) },
+                        onCartClick = { onCartClick(product) }
                     )
                 }
             }
@@ -1160,7 +1163,50 @@ private fun CollectionProductCard(
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
     }
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
-        if (!mockDisplayLocked) images = shopImages
+        if (ownerId.isBlank() || creatorApi == null) {
+            if (!mockDisplayLocked) images = shopImages
+            return@LaunchedEffect
+        }
+        val map = CustomerMockPreviewStore.peekMap(ownerId)
+            ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+        val info = CustomerMockPreviewStore.tryOnInfo(
+            map,
+            product.handle,
+            product.metaProductKey,
+            product.designId
+        )
+        val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
+            map,
+            product.handle,
+            product.metaProductKey,
+            product.designId
+        )
+        val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle)
+        tryOnActive = sessionActive || autoActive
+        val useMock = tryOnActive || autoActive
+        if (!useMock && info == null) {
+            if (!mockDisplayLocked) images = shopImages
+            return@LaunchedEffect
+        }
+        val resolved = withContext(Dispatchers.IO) {
+            CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, map)
+        }
+        val shopFirst = shopImages.firstOrNull()
+        val mockFirst = resolved.firstOrNull()
+        val hasMock = mockFirst != null && mockFirst != shopFirst
+        if (useMock && hasMock) {
+            mockDisplayLocked = true
+            images = listOf(mockFirst!!)
+            return@LaunchedEffect
+        }
+        if (useMock && resolved.isNotEmpty()) {
+            mockDisplayLocked = true
+            images = resolved.take(4)
+            return@LaunchedEffect
+        }
+        if (!mockDisplayLocked) {
+            images = if (resolved.isNotEmpty()) resolved else shopImages
+        }
     }
 
     Column(

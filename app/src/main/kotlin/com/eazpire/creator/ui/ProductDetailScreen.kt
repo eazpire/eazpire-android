@@ -938,8 +938,7 @@ fun ProductDetailScreen(
                     mockupTryOnInfo?.let {
                         Box(
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 12.dp)
+                                .align(Alignment.Center)
                                 .size(44.dp)
                                 .clip(CircleShape)
                                 .background(
