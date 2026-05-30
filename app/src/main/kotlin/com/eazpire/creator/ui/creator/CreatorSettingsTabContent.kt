@@ -115,11 +115,13 @@ private fun CreatorSettingsProfileContent(
     translationStore: TranslationStore
 ) {
     var saveProfile by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var profileDirty by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth()) {
         AccountProfileTab(
             tokenStore = tokenStore,
             onSaveActionReady = { saveProfile = it },
             onSavingStateChange = null,
+            onDirtyChange = { profileDirty = it },
             onLogout = null,
             modifier = Modifier.fillMaxWidth(),
             translationStore = translationStore,
@@ -129,13 +131,17 @@ private fun CreatorSettingsProfileContent(
         saveProfile?.let { save ->
             Button(
                 onClick = { save() },
+                enabled = profileDirty,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 16.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = EazColors.Orange,
+                    disabledContainerColor = EazColors.Orange.copy(alpha = 0.35f),
+                )
             ) {
                 Text(
-                    translationStore.t("creator.common.save", "Save"),
+                    translationStore.t("creator.settings.profile_save_button", "Save profile settings"),
                     color = Color.Black
                 )
             }

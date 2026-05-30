@@ -15,10 +15,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -26,7 +32,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Female
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Male
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -151,6 +157,7 @@ fun AccountProfileTab(
     tokenStore: SecureTokenStore,
     onSaveActionReady: ((() -> Unit) -> Unit)? = null,
     onSavingStateChange: ((Boolean) -> Unit)? = null,
+    onDirtyChange: ((Boolean) -> Unit)? = null,
     onLogout: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     translationStore: TranslationStore? = null,
@@ -209,7 +216,56 @@ fun AccountProfileTab(
     var showSuccessOverlay by remember { mutableStateOf(false) }
     var addressSuggestions by remember { mutableStateOf<List<AddressSuggestion>>(emptyList()) }
     var showAddressSuggestions by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var profilePictureUrl by remember { mutableStateOf<String?>(null) }
+    var baseline by remember { mutableStateOf<Map<String, String>?>(null) }
     val scope = rememberCoroutineScope()
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null || ownerId.isBlank()) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                } ?: return@launch
+                val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                val ext = when {
+                    mime.contains("png") -> "png"
+                    mime.contains("webp") -> "webp"
+                    else -> "jpg"
+                }
+                val resp = withContext(Dispatchers.IO) {
+                    api.uploadAccountProfilePicture(ownerId, bytes, mime, "avatar.$ext")
+                }
+                if (resp.optBoolean("ok", false)) {
+                    profilePictureUrl = resp.optString("profile_picture_url", "").trim().ifBlank { null }
+                }
+            } catch (e: Exception) {
+                DebugLog.click("Avatar upload error: ${e.message}")
+            }
+        }
+    }
+
+    fun currentSnapshot(): Map<String, String> = mapOf(
+        "first_name" to firstName,
+        "last_name" to lastName,
+        "address_line" to addressLine,
+        "city" to city,
+        "postal_code" to postalCode,
+        "country" to country,
+        "birth_date" to (if (birthDateValue.text.isNotBlank()) displayDateToApi(birthDateValue.text, locale) else birthDateApi),
+        "gender" to gender,
+        "username" to username.trim(),
+        "profile_picture_url" to (profilePictureUrl ?: "")
+    )
+
+    LaunchedEffect(firstName, lastName, addressLine, city, postalCode, country, birthDateValue.text, birthDateApi, gender, username, profilePictureUrl, baseline) {
+        val base = baseline
+        if (base == null) {
+            onDirtyChange?.invoke(false)
+        } else {
+            onDirtyChange?.invoke(currentSnapshot() != base)
+        }
+    }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isBlank()) return@LaunchedEffect
@@ -230,7 +286,12 @@ fun AccountProfileTab(
                     val disp = apiDateToDisplay(birthDateApi, locale)
                     birthDateValue = TextFieldValue(disp, TextRange(disp.length))
                     gender = profile.optString("gender", "")
+                    profilePictureUrl = profile.optString("profile_picture_url", "").trim().ifBlank { null }
                 }
+            }
+            val usernameResp = withContext(Dispatchers.IO) { api.getAccountUsername(ownerId) }
+            if (usernameResp.optBoolean("ok", false)) {
+                username = usernameResp.optString("username", "")
             }
             val emailResp = api.getCustomerEmail(ownerId, AuthConfig.SHOP_DOMAIN)
             if (emailResp.optBoolean("ok", false)) {
@@ -246,6 +307,8 @@ fun AccountProfileTab(
             statusError = true
         } finally {
             isLoading = false
+            baseline = currentSnapshot()
+            onDirtyChange?.invoke(false)
         }
     }
 
@@ -323,6 +386,20 @@ fun AccountProfileTab(
                     )
                 )
                 if (resp.optBoolean("ok", false)) {
+                    val trimmedUsername = username.trim()
+                    val baseUsername = baseline?.get("username") ?: ""
+                    if (trimmedUsername.isNotBlank() && trimmedUsername != baseUsername) {
+                        val uResp = withContext(Dispatchers.IO) {
+                            api.setAccountUsername(ownerId, trimmedUsername)
+                        }
+                        if (!uResp.optBoolean("ok", false)) {
+                            statusMessage = tr("creator.settings.profile_username_save_failed", "Could not save username.")
+                            statusError = true
+                            return@launch
+                        }
+                    }
+                    baseline = currentSnapshot()
+                    onDirtyChange?.invoke(false)
                     statusMessage = tr("creator.settings.profile_saved", "Profile settings saved.")
                     statusError = false
                     showSuccessOverlay = true
@@ -376,6 +453,38 @@ fun AccountProfileTab(
                         style = MaterialTheme.typography.bodySmall,
                         color = textSecondary,
                         modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .padding(vertical = 8.dp)
+                            .align(Alignment.CenterHorizontally)
+                            .size(96.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(1.dp, countryBorder, RoundedCornerShape(16.dp))
+                            .clickable { avatarPicker.launch("image/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!profilePictureUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context).data(profilePictureUrl).crossfade(true).build(),
+                                contentDescription = tr("creator.settings.profile_picture_upload", "Upload profile picture"),
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                modifier = Modifier.size(36.dp),
+                                tint = textSecondary
+                            )
+                        }
+                    }
+                    Text(
+                        text = tr("creator.settings.profile_picture_hint", "Profile picture (1:1, JPG/PNG/WebP)"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
                 Text(
@@ -443,6 +552,16 @@ fun AccountProfileTab(
                         )
                     }
                 } else {
+                    if (useDarkPanel) {
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            label = { Text(tr("creator.settings.profile_username_label", "Username")) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = outlineFieldColors
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)

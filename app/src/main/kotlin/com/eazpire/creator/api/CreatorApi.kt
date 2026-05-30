@@ -293,6 +293,43 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    suspend fun getAccountUsername(ownerId: String): JSONObject =
+        call("get-account-username", mapOf("owner_id" to ownerId))
+
+    suspend fun setAccountUsername(ownerId: String, username: String): JSONObject =
+        postJson("set-account-username", mapOf("username" to username), mapOf("owner_id" to ownerId))
+
+    suspend fun listCreatorCodeRecipients(ownerId: String, query: String? = null): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId, "limit" to "30")
+        query?.trim()?.takeIf { it.length >= 2 }?.let { params["q"] = it }
+        return call("list-creator-code-recipients", params)
+    }
+
+    suspend fun uploadAccountProfilePicture(
+        ownerId: String,
+        imageBytes: ByteArray,
+        mimeType: String,
+        fileName: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/apps/creator-dispatch?op=upload-account-profile-picture&owner_id=$ownerId&_t=${System.currentTimeMillis()}"
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "photo",
+                fileName,
+                okhttp3.RequestBody.create(mimeType.toMediaType(), imageBytes),
+            )
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
+
     /**
      * GET ?op=get-customer-gift-cards&customer_id=xxx&shop=xxx
      * Returns { ok: true, gift_cards: [...] }
