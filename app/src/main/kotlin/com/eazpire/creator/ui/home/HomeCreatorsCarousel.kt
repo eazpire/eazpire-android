@@ -1,6 +1,7 @@
 package com.eazpire.creator.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -52,27 +54,13 @@ data class ShopCreatorCard(
     val productCount: Int,
 )
 
-private fun parseShopCreators(json: JSONObject): List<ShopCreatorCard> {
-    if (!json.optBoolean("ok", false)) return emptyList()
-    val arr = json.optJSONArray("creators") ?: return emptyList()
-    val out = ArrayList<ShopCreatorCard>()
-    for (i in 0 until arr.length()) {
-        val o = arr.optJSONObject(i) ?: continue
-        val name = o.optString("creator_name", "").trim()
-        if (name.isBlank()) continue
-        out.add(
-            ShopCreatorCard(
-                name = name,
-                slug = o.optString("slug", "").trim(),
-                profileImageUrl = o.optString("profile_image_url", "").trim().ifBlank { null },
-                ratingAvg = o.optDouble("rating_avg", 0.0),
-                ratingCount = o.optInt("rating_count", 0),
-                productCount = o.optInt("product_count", 0),
-            ),
-        )
-    }
-    return out
-}
+private val HomeCreatorsPanelGradient = Brush.linearGradient(
+    colors = listOf(
+        Color(0xD134343C),
+        Color(0xC744424E),
+        Color(0xCC4E3E30),
+    ),
+)
 
 @Composable
 fun HomeCreatorsCarousel(
@@ -98,34 +86,54 @@ fun HomeCreatorsCarousel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 24.dp),
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 24.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(HomeCreatorsPanelGradient)
+            .border(1.dp, Color(0x38F97316), RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 18.dp),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(EazColors.Orange.copy(alpha = 0.35f))
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = labelForKey("eaz.home.creators", "Creators"),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color.White.copy(alpha = 0.1f))
+                    .border(1.dp, Color(0x40F97316), RoundedCornerShape(999.dp))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 listOf("recommend" to "eaz.home.recommended", "new" to "eaz.product_card.new").forEach { (sort, key) ->
                     val active = sortTab == sort
                     Text(
                         text = labelForKey(key, if (sort == "recommend") "Recommended" else "New"),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (active) Color.White else Color.Transparent)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(
+                                if (active) {
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFFF97316), Color(0xFFFB923C)),
+                                    )
+                                } else {
+                                    Brush.linearGradient(
+                                        colors = listOf(Color.Transparent, Color.Transparent),
+                                    )
+                                },
+                            )
                             .clickable { sortTab = sort }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
                         fontSize = 13.sp,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                        color = if (active) EazColors.Orange else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (active) Color.White else Color.White.copy(alpha = 0.75f),
                     )
                 }
             }
@@ -136,7 +144,7 @@ fun HomeCreatorsCarousel(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.size(28.dp))
@@ -145,9 +153,9 @@ fun HomeCreatorsCarousel(
             creators.isEmpty() -> {
                 Text(
                     text = labelForKey("eaz.home.no_recommended_products", "No creators to show right now."),
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(top = 16.dp),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.7f),
                 )
             }
             else -> {
@@ -156,7 +164,7 @@ fun HomeCreatorsCarousel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(scroll)
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                        .padding(top = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     creators.forEach { c ->
@@ -186,17 +194,20 @@ private fun CreatorHomeCard(
 ) {
     Column(
         modifier = Modifier
-            .width(120.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .width(148.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.12f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
-            .padding(8.dp),
+            .padding(horizontal = 12.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
                 .size(72.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFFFF5ED)),
+                .background(Color.White.copy(alpha = 0.92f))
+                .border(2.dp, Color(0x73F97316), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             val img = creator.profileImageUrl
@@ -221,26 +232,86 @@ private fun CreatorHomeCard(
         }
         Text(
             text = creator.name,
-            modifier = Modifier.padding(top = 8.dp),
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 13.sp,
+            modifier = Modifier.padding(top = 10.dp),
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            color = Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(top = 4.dp),
-        ) {
-            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(14.dp))
+        CreatorRatingStars(
+            rating = creator.ratingAvg,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Text(
+            text = reviewsLabel,
+            fontSize = 11.sp,
+            color = Color.White.copy(alpha = 0.65f),
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = productsLabel,
+            fontSize = 11.sp,
+            color = Color(0xD9FFEDD5),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun CreatorRatingStars(rating: Double, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val full = rating.toInt().coerceIn(0, 5)
+        val hasHalf = rating - full >= 0.25 && full < 5
+        repeat(5) { index ->
+            val tint = when {
+                index < full -> Color(0xFFFB923C)
+                index == full && hasHalf -> Color(0xFFFB923C).copy(alpha = 0.55f)
+                else -> Color.White.copy(alpha = 0.25f)
+            }
+            Icon(
+                Icons.Default.Star,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(12.dp),
+            )
+        }
+        if (rating > 0) {
             Text(
-                text = if (creator.ratingAvg > 0) "%.1f".format(creator.ratingAvg) else "—",
+                text = "%.1f".format(rating),
                 fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White.copy(alpha = 0.9f),
                 modifier = Modifier.padding(start = 4.dp),
             )
         }
-        Text(text = reviewsLabel, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(text = productsLabel, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+private fun parseShopCreators(json: JSONObject): List<ShopCreatorCard> {
+    if (!json.optBoolean("ok", false)) return emptyList()
+    val arr = json.optJSONArray("creators") ?: return emptyList()
+    val out = ArrayList<ShopCreatorCard>()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        val name = o.optString("creator_name", "").trim()
+        if (name.isBlank()) continue
+        out.add(
+            ShopCreatorCard(
+                name = name,
+                slug = o.optString("slug", "").trim(),
+                profileImageUrl = o.optString("profile_image_url", "").trim().ifBlank { null },
+                ratingAvg = o.optDouble("rating_avg", 0.0),
+                ratingCount = o.optInt("rating_count", 0),
+                productCount = o.optInt("product_count", 0),
+            ),
+        )
+    }
+    return out
 }

@@ -2154,7 +2154,7 @@ private fun SidebarGutscheineInline(
                 )
             } else {
                 val visibleCards = if (expanded) giftCards else giftCards.take(1)
-                visibleCards.forEach { gc ->
+                visibleCards.forEachIndexed { index, gc ->
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -2185,7 +2185,7 @@ private fun SidebarGutscheineInline(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        if (!expanded && giftCards.size > 1) {
+                        if (!expanded && index == 0 && giftCards.size > 1) {
                             Text(
                                 text =
                                     t("eaz.sidebar.show_more_gift_cards", "Show all ({count})")
@@ -2195,16 +2195,19 @@ private fun SidebarGutscheineInline(
                                 color = EazColors.Orange,
                                 modifier = Modifier.clickable { expanded = true },
                             )
-                        } else if (expanded && giftCards.size > 1) {
-                            Text(
-                                text = t("eaz.sidebar.show_less_gift_cards", "Show less"),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = EazColors.Orange,
-                                modifier = Modifier.clickable { expanded = false },
-                            )
                         }
                     }
+                }
+                if (expanded && giftCards.size > 1) {
+                    Text(
+                        text = t("eaz.sidebar.show_less_gift_cards", "Show less"),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = EazColors.Orange,
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .clickable { expanded = false },
+                    )
                 }
             }
         } else {

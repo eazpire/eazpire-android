@@ -167,6 +167,8 @@ fun CreatorCreationsScreen(
     onRequestGeneratorPrefill: (GeneratorPrefillRequest) -> Unit = {},
     initialDesignsActivityFilter: String? = null,
     onInitialDesignsActivityConsumed: () -> Unit = {},
+    initialCreationsTab: String? = null,
+    onInitialCreationsTabConsumed: () -> Unit = {},
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
@@ -199,6 +201,14 @@ fun CreatorCreationsScreen(
             designsActivityFilter = f
             designsRefreshTrigger++
             onInitialDesignsActivityConsumed()
+        }
+    }
+
+    LaunchedEffect(initialCreationsTab) {
+        val tab = initialCreationsTab?.trim()?.lowercase().orEmpty()
+        if (tab == "designs" || tab == "products") {
+            currentTab = tab
+            onInitialCreationsTabConsumed()
         }
     }
 

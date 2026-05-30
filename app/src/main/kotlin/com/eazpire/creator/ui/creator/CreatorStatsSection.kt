@@ -42,6 +42,9 @@ fun CreatorStatsSection(
     ownerId: String?,
     isLoggedIn: Boolean,
     onOpenSalesModal: () -> Unit,
+    onNavigateToDesigns: () -> Unit = {},
+    onNavigateToProducts: () -> Unit = {},
+    onNavigateToHeroImages: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var salesEazpire by remember { mutableStateOf("–") }
@@ -162,7 +165,7 @@ fun CreatorStatsSection(
                         primaryValue = designsGenerated,
                         secondaryLabel = translationStore.t("creator.overview.designs_uploaded", "Uploaded"),
                         secondaryValue = designsUploaded,
-                        onClick = null,
+                        onClick = onNavigateToDesigns,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -177,7 +180,7 @@ fun CreatorStatsSection(
                         primaryValue = productsOnline,
                         secondaryLabel = translationStore.t("creator.overview.products_offline", "Offline"),
                         secondaryValue = productsOffline,
-                        onClick = null,
+                        onClick = onNavigateToProducts,
                         modifier = Modifier.weight(1f)
                     )
                     CreatorStatCard(
@@ -187,7 +190,7 @@ fun CreatorStatsSection(
                         primaryValue = heroesGenerated,
                         secondaryLabel = translationStore.t("creator.overview.products_online", "Online"),
                         secondaryValue = heroesOnline,
-                        onClick = null,
+                        onClick = onNavigateToHeroImages,
                         modifier = Modifier.weight(1f)
                     )
                 }

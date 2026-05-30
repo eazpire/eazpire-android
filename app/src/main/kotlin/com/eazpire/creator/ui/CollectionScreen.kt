@@ -1158,13 +1158,9 @@ private fun CollectionProductCard(
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
     }
-    var showTryOn by remember(product.id) { mutableStateOf(false) }
-    var tryOnLoading by remember(product.id) { mutableStateOf(false) }
-
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
         if (ownerId.isBlank() || creatorApi == null) {
             images = shopImages
-            showTryOn = false
             return@LaunchedEffect
         }
         val map = CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
@@ -1174,7 +1170,6 @@ private fun CollectionProductCard(
             product.metaProductKey,
             product.designId
         )
-        showTryOn = info != null
         val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
             map,
             product.handle,
@@ -1207,9 +1202,8 @@ private fun CollectionProductCard(
                 )
             }
             EazProductCardMediaOverlays(
-                showTryOn = showTryOn,
+                showTryOn = false,
                 isTryOnActive = tryOnActive,
-                tryOnLoading = tryOnLoading,
                 onFavoriteClick = {
                     if (ownerId.isBlank() || creatorApi == null) return@EazProductCardMediaOverlays
                     scope.launch {
@@ -1226,17 +1220,6 @@ private fun CollectionProductCard(
                     }
                 },
                 onCartClick = onCartClick,
-                onTryOnClick = {
-                    if (ownerId.isBlank()) return@EazProductCardMediaOverlays
-                    scope.launch {
-                        tryOnLoading = true
-                        val next = !tryOnActive
-                        togglePlpTryOnSession(ctx, product.handle, next)
-                        tryOnActive = next
-                        imageReload++
-                        tryOnLoading = false
-                    }
-                }
             )
         }
         val (designTitle, productTypeTitle) = remember(product.title, product.productType) {

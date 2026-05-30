@@ -125,6 +125,8 @@ fun CreatorMainScreen(
     var marketingTitleOverride by remember { mutableStateOf<String?>(null) }
     var automationsTitleOverride by remember { mutableStateOf<String?>(null) }
     var marketingSessionKey by remember { mutableIntStateOf(0) }
+    var pendingCreationsTab by remember { mutableStateOf<String?>(null) }
+    var pendingMarketingHero by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
     val audioStore = remember { CreatorAudioStore(appContext) }
     val autoplayPrefs = remember { CreatorAudioAutoplayPrefs(appContext) }
@@ -409,6 +411,20 @@ fun CreatorMainScreen(
                             translationStore = translationStore,
                             onOpenSalesModal = { salesModalVisible = true },
                             onLoginClick = onAccountClick,
+                            onNavigateToGenerator = { currentScreen = 1 },
+                            onNavigateToDesigns = {
+                                pendingCreationsTab = "designs"
+                                currentScreen = 2
+                            },
+                            onNavigateToProducts = {
+                                pendingCreationsTab = "products"
+                                currentScreen = 2
+                            },
+                            onNavigateToMarketingHero = {
+                                pendingMarketingHero = true
+                                currentScreen = 3
+                            },
+                            onNavigateToAutomations = { currentScreen = 4 },
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -436,6 +452,8 @@ fun CreatorMainScreen(
                             translationStore = translationStore,
                             initialDesignsActivityFilter = initialDesignsActivityFilter,
                             onInitialDesignsActivityConsumed = onInitialDesignsActivityConsumed,
+                            initialCreationsTab = pendingCreationsTab,
+                            onInitialCreationsTabConsumed = { pendingCreationsTab = null },
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize(),
                             onRequestGeneratorPrefill = { req ->
@@ -448,6 +466,8 @@ fun CreatorMainScreen(
                             translationStore = translationStore,
                             onHeaderTitleChange = { marketingTitleOverride = it },
                             sessionKey = marketingSessionKey,
+                            initialOpenHeroImages = pendingMarketingHero,
+                            onInitialOpenHeroImagesConsumed = { pendingMarketingHero = false },
                             maxHeight = contentMaxHeight,
                             onEazyChatOpen = onEazyChatOpen,
                             onHeroJobStarted = onHeroJobStarted,

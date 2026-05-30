@@ -877,6 +877,12 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=list-redeemed-codes&owner_id=xxx */
+    suspend fun listRedeemedCreatorCodes(ownerId: String, limit: Int = 20): JSONObject = call(
+        "list-redeemed-codes",
+        mapOf("owner_id" to ownerId, "limit" to limit.toString()),
+    )
+
     /** GET ?op=list-interests → { ok, categories: [{ key, interests: [{ id, name }] }] } */
     suspend fun listInterests(): JSONObject = call("list-interests")
 

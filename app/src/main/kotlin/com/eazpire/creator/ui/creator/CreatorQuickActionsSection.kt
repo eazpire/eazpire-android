@@ -1,6 +1,7 @@
 package com.eazpire.creator.ui.creator
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
@@ -20,6 +22,13 @@ import com.eazpire.creator.i18n.TranslationStore
 fun CreatorQuickActionsSection(
     translationStore: TranslationStore,
     isLoggedIn: Boolean,
+    onGeneratorClick: () -> Unit = {},
+    onDesignsClick: () -> Unit = {},
+    onContentClick: () -> Unit = {},
+    onProductsClick: () -> Unit = {},
+    onAutomationsClick: () -> Unit = {},
+    onLoginClick: () -> Unit = {},
+    onRegisterClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Text(
@@ -33,35 +42,47 @@ fun CreatorQuickActionsSection(
         CreatorQuickActionItem(
             icon = "🎨",
             title = translationStore.t("creator.overview.action_generator_title", "Design Generator"),
-            desc = translationStore.t("creator.overview.action_generator_desc", "Create designs with AI")
+            desc = translationStore.t("creator.overview.action_generator_desc", "Create designs with AI"),
+            onClick = onGeneratorClick,
         )
         CreatorQuickActionItem(
             icon = "📤",
             title = translationStore.t("creator.overview.action_designs_title", "My Designs"),
-            desc = translationStore.t("creator.overview.action_designs_desc", "View and manage designs")
+            desc = translationStore.t("creator.overview.action_designs_desc", "View and manage designs"),
+            onClick = onDesignsClick,
         )
         CreatorQuickActionItem(
             icon = "🖼️",
             title = translationStore.t("creator.overview.action_content_title", "Content Creation"),
-            desc = translationStore.t("creator.overview.action_content_desc", "Hero images & more")
+            desc = translationStore.t("creator.overview.action_content_desc", "Hero images & more"),
+            onClick = onContentClick,
         )
         CreatorQuickActionItem(
             icon = "📊",
             title = translationStore.t("creator.overview.action_products_title", "My Products"),
-            desc = translationStore.t("creator.overview.action_products_desc", "Manage your products")
+            desc = translationStore.t("creator.overview.action_products_desc", "Manage your products"),
+            onClick = onProductsClick,
+        )
+        CreatorQuickActionItem(
+            icon = "⚙️",
+            title = translationStore.t("creator.overview.action_automations_title", "Automations"),
+            desc = translationStore.t("creator.overview.action_automations_desc", "Automate your workflow"),
+            onClick = onAutomationsClick,
         )
         if (!isLoggedIn) {
             CreatorQuickActionItem(
                 icon = "🔐",
                 title = translationStore.t("creator.overview.action_login_title", "Log in"),
                 desc = translationStore.t("creator.overview.action_login_desc", "Sign in to unlock full features"),
-                highlight = true
+                highlight = true,
+                onClick = onLoginClick,
             )
             CreatorQuickActionItem(
                 icon = "🎉",
                 title = translationStore.t("creator.overview.action_register_title", "Register"),
                 desc = translationStore.t("creator.overview.action_register_desc", "Create an account"),
-                highlight = true
+                highlight = true,
+                onClick = onRegisterClick,
             )
         }
     }
@@ -73,12 +94,15 @@ private fun CreatorQuickActionItem(
     title: String,
     desc: String,
     highlight: Boolean = false,
+    onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
             .background(
                 color = if (highlight) EazColors.Orange.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.06f),
                 shape = RoundedCornerShape(12.dp)

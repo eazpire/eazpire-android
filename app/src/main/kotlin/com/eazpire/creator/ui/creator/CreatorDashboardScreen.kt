@@ -25,6 +25,11 @@ fun CreatorDashboardScreen(
     translationStore: TranslationStore,
     onOpenSalesModal: () -> Unit,
     onLoginClick: () -> Unit = {},
+    onNavigateToGenerator: () -> Unit = {},
+    onNavigateToDesigns: () -> Unit = {},
+    onNavigateToProducts: () -> Unit = {},
+    onNavigateToMarketingHero: () -> Unit = {},
+    onNavigateToAutomations: () -> Unit = {},
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier
 ) {
@@ -53,11 +58,21 @@ fun CreatorDashboardScreen(
             tokenStore = tokenStore,
             ownerId = tokenStore.getOwnerId(),
             isLoggedIn = tokenStore.isLoggedIn(),
-            onOpenSalesModal = onOpenSalesModal
+            onOpenSalesModal = onOpenSalesModal,
+            onNavigateToDesigns = onNavigateToDesigns,
+            onNavigateToProducts = onNavigateToProducts,
+            onNavigateToHeroImages = onNavigateToMarketingHero,
         )
         CreatorQuickActionsSection(
             translationStore = translationStore,
-            isLoggedIn = tokenStore.isLoggedIn()
+            isLoggedIn = tokenStore.isLoggedIn(),
+            onGeneratorClick = onNavigateToGenerator,
+            onDesignsClick = onNavigateToDesigns,
+            onContentClick = onNavigateToMarketingHero,
+            onProductsClick = onNavigateToProducts,
+            onAutomationsClick = onNavigateToAutomations,
+            onLoginClick = onLoginClick,
+            onRegisterClick = onLoginClick,
         )
     }
 }

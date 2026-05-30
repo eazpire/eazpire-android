@@ -105,11 +105,21 @@ fun MarketingScreen(
     videoDockedComposeLoading: Boolean = false,
     onVideoDockedComposeStart: () -> Unit = {},
     onMarketingTabVisibility: (heroContentTabVisible: Boolean, videoContentTabVisible: Boolean) -> Unit = { _, _ -> },
+    initialOpenHeroImages: Boolean = false,
+    onInitialOpenHeroImagesConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     var currentSubTab by remember { mutableStateOf<MarketingSubTab>(SUBTAB_CONTENT_CREATION) }
     var currentContentTab by remember { mutableStateOf<MarketingContentTab>(CONTENT_HERO_IMAGES) }
+
+    LaunchedEffect(initialOpenHeroImages) {
+        if (initialOpenHeroImages) {
+            currentSubTab = SUBTAB_CONTENT_CREATION
+            currentContentTab = CONTENT_HERO_IMAGES
+            onInitialOpenHeroImagesConsumed()
+        }
+    }
 
     fun updateHeaderTitle() {
         val labels = mapOf(

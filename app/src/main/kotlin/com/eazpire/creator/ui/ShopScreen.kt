@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -42,6 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
@@ -118,7 +123,22 @@ fun ShopScreen(
         ShopSessionGuard.validateLegacyShopifySessionIfNeeded(context, tokenStore)
         PushTokenRegistrar.syncIfLoggedIn(context)
         AuthDebugLog.d("[TOKEN] ShopScreen ready ${tokenStore.sessionDebugSummary()}")
-        sessionEpoch++
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val sessionRefreshScope = rememberCoroutineScope()
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                sessionRefreshScope.launch {
+                    ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
+                    ShopSessionGuard.validateLegacyShopifySessionIfNeeded(context, tokenStore)
+                    PushTokenRegistrar.syncIfLoggedIn(context)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(languageCode) {
@@ -256,17 +276,17 @@ fun ShopScreen(
     var eazySnapModeActive by remember { mutableStateOf(false) }
     val slotBoundsState = remember { mutableStateOf<Rect?>(null) }
     val scope = rememberCoroutineScope()
-    var currentPagePath by remember { mutableStateOf("/") }
+    var currentPagePath by rememberSaveable { mutableStateOf("/") }
     var scrollToTopTrigger by remember { mutableStateOf(0) }
     var selectedCollection by remember { mutableStateOf<Triple<String, String, String?>?>(null) }
     var shopSearchQuery by remember { mutableStateOf<String?>(null) }
     var shopCreateActive by remember { mutableStateOf(false) }
     var shopCreateStudioPhase by remember { mutableStateOf<ShopCreateProductPhase?>(null) }
     var shopCreateCatalogProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
-    var selectedProductHandle by remember { mutableStateOf<String?>(null) }
-    var selectedCreatorName by remember { mutableStateOf<String?>(null) }
+    var selectedProductHandle by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCreatorName by rememberSaveable { mutableStateOf<String?>(null) }
     val shopNavHistory = rememberShopNavHistoryController()
-    var isCreatorMode by remember { mutableStateOf(false) }
+    var isCreatorMode by rememberSaveable { mutableStateOf(false) }
 
     fun switchCreatorMode(toCreator: Boolean, @Suppress("UNUSED_PARAMETER") animate: Boolean = false) {
         if (toCreator == isCreatorMode) return
@@ -1133,7 +1153,7 @@ fun ShopScreen(
     if (termsModalVisible) {
         TermsModal(
             visible = true,
-            baseUrl = "https://allyoucanpink.com",
+            baseUrl = "https://www.eazpire.com",
             translationStore = translationStore,
             onDismiss = { termsModalVisible = false }
         )

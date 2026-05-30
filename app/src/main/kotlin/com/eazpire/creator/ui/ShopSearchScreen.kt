@@ -185,13 +185,9 @@ private fun ShopSearchProductCard(
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
     }
-    var showTryOn by remember(product.id) { mutableStateOf(false) }
-    var tryOnLoading by remember(product.id) { mutableStateOf(false) }
-
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
         if (ownerId.isBlank() || creatorApi == null) {
             images = shopImages
-            showTryOn = false
             return@LaunchedEffect
         }
         val map = CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
@@ -201,7 +197,6 @@ private fun ShopSearchProductCard(
             product.metaProductKey,
             product.designId
         )
-        showTryOn = info != null
         val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
             map,
             product.handle,
@@ -234,9 +229,8 @@ private fun ShopSearchProductCard(
                 )
             }
             com.eazpire.creator.ui.components.EazProductCardMediaOverlays(
-                showTryOn = showTryOn,
+                showTryOn = false,
                 isTryOnActive = tryOnActive,
-                tryOnLoading = tryOnLoading,
                 onFavoriteClick = {
                     if (ownerId.isBlank() || creatorApi == null) return@EazProductCardMediaOverlays
                     scope.launch {
@@ -253,17 +247,6 @@ private fun ShopSearchProductCard(
                     }
                 },
                 onCartClick = onCartClick,
-                onTryOnClick = {
-                    if (ownerId.isBlank()) return@EazProductCardMediaOverlays
-                    scope.launch {
-                        tryOnLoading = true
-                        val next = !tryOnActive
-                        com.eazpire.creator.ui.components.togglePlpTryOnSession(ctx, product.handle, next)
-                        tryOnActive = next
-                        imageReload++
-                        tryOnLoading = false
-                    }
-                }
             )
         }
         Text(
