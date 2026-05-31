@@ -89,8 +89,6 @@ fun MainHeader(
     creatorCodeProfileHintActive: Boolean = false,
     onSearchNavigate: (String) -> Unit = {},
     onSearchQuerySubmit: (String) -> Unit = {},
-    onFavoriteProductClick: ((String) -> Unit)? = null,
-    onFavoriteEdit: ((FavoriteEditContext) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -318,17 +316,5 @@ fun MainHeader(
                 onDismiss = { checkoutUrl = null }
             )
         }
-        FavoritesModal(
-            visible = favoritesModalVisible,
-            customerId = ownerId.ifBlank { null },
-            api = api,
-            tokenStore = tokenStore,
-            onDismiss = { onFavoritesModalChangeActual(false) },
-            onCountChange = { count ->
-                favoritesCount = count
-            },
-            onProductClick = onFavoriteProductClick,
-            onEditFavorite = onFavoriteEdit,
-        )
     }
 }

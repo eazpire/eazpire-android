@@ -74,7 +74,9 @@ import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.creator.CreatorHeaderEazyStartBubble
 import com.eazpire.creator.ui.creator.CreatorMainScreen
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
+import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.ui.header.FavoriteEditContext
+import com.eazpire.creator.ui.header.FavoritesModal
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
@@ -696,27 +698,6 @@ fun ShopScreen(
                             scrollToTopTrigger++
                         }
                     },
-                    onFavoriteProductClick = { handle ->
-                        if (handle.isNotBlank()) {
-                            favoritesModalVisible = false
-                            favoriteEditContext = null
-                            productModalHandleState.value = handle
-                        }
-                    },
-                    onFavoriteEdit = { ctx ->
-                        favoritesModalVisible = false
-                        favoriteEditContext = ctx.copy(
-                            onSaved = {
-                                ctx.onSaved()
-                                favoriteEditContext = null
-                            },
-                            onDismiss = {
-                                favoriteEditContext = null
-                                productModalHandleState.value = null
-                            },
-                        )
-                        productModalHandleState.value = ctx.productHandle
-                    },
                     onAccountClick = {
                         if (tokenStore.isLoggedIn()) {
                             accountModalVisible = true
@@ -1260,6 +1241,38 @@ fun ShopScreen(
         AccountModalSheet(
             tokenStore = tokenStore,
             onDismiss = { accountModalVisible = false }
+        )
+    }
+
+    if (favoritesModalVisible) {
+        FavoritesModal(
+            visible = true,
+            customerId = ownerId.ifBlank { null },
+            api = eazySyncApi,
+            tokenStore = tokenStore,
+            onDismiss = { favoritesModalVisible = false },
+            onCountChange = { FavoritesRefreshTrigger.trigger() },
+            onProductClick = { handle ->
+                if (handle.isNotBlank()) {
+                    favoritesModalVisible = false
+                    favoriteEditContext = null
+                    productModalHandleState.value = handle
+                }
+            },
+            onEditFavorite = { ctx ->
+                favoritesModalVisible = false
+                favoriteEditContext = ctx.copy(
+                    onSaved = {
+                        ctx.onSaved()
+                        favoriteEditContext = null
+                    },
+                    onDismiss = {
+                        favoriteEditContext = null
+                        productModalHandleState.value = null
+                    },
+                )
+                productModalHandleState.value = ctx.productHandle
+            },
         )
     }
 
