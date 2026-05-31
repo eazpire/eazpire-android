@@ -161,14 +161,14 @@ private fun getMediaForColor(
     allImages: List<ShopifyProductsApi.ProductImage>,
     variants: List<ShopifyProductsApi.ProductDetail.ProductVariant>
 ): List<String> {
-    val fallback = allImages.take(4).map { it.src }
-    if (variants.isEmpty() || allImages.isEmpty()) return fallback
-
-    val variantForColor = variants.find { v ->
+    val variantForMedia = selectedVariant ?: variants.find { v ->
         v.option1.equals(selectedColor, true) || v.option2.equals(selectedColor, true) || v.option3.equals(selectedColor, true)
-    } ?: selectedVariant ?: return fallback
+    }
+    if (variantForMedia == null || allImages.isEmpty()) {
+        return listOfNotNull(allImages.firstOrNull()?.src)
+    }
 
-    val featuredSrc = variantForColor.featuredImageSrc
+    val featuredSrc = variantForMedia.featuredImageSrc
     val featuredImage = featuredSrc?.let { src -> allImages.find { it.src == src } }
     val selectedColorKey = when {
         featuredImage != null -> getMediaAltColorKey(featuredImage).ifBlank { normalizeColorKey(selectedColor) }
@@ -182,7 +182,7 @@ private fun getMediaForColor(
         key.isNotBlank() && key == selectedColorKey
     }
     if (matched.isNotEmpty()) {
-        return sortMediaForColorGallery(matched, featuredSrc).map { it.src }.take(4)
+        return sortMediaForColorGallery(matched, featuredSrc).map { it.src }.take(5)
     }
 
     // 2) Contiguous images from anchor forward (same color key or no conflict)
@@ -196,7 +196,7 @@ private fun getMediaForColor(
                 continue
             }
             contiguous.add(img)
-            if (contiguous.size >= 4) break
+            if (contiguous.size >= 5) break
         }
         if (contiguous.isNotEmpty()) {
             return sortMediaForColorGallery(contiguous, featuredSrc).map { it.src }
@@ -204,7 +204,7 @@ private fun getMediaForColor(
     }
 
     // 3) variant_ids fallback — only images tied to this variant and matching color alt when present
-    val vid = variantForColor.id
+    val vid = variantForMedia.id
     if (vid != 0L) {
         val byVariant = allImages.filter { img ->
             val key = getMediaAltColorKey(img)
@@ -216,7 +216,7 @@ private fun getMediaForColor(
         }
     }
 
-    return featuredSrc?.let { listOf(it) } ?: fallback.ifEmpty { emptyList() }
+    return listOfNotNull(featuredSrc ?: allImages.firstOrNull()?.src)
 }
 
 private fun normalizeColorKey(value: String): String =
@@ -545,9 +545,6 @@ fun ProductDetailScreen(
                 if (colorsResp.optBoolean("ok", false)) {
                     productColorHexMap = parseProductColorHexMap(colorsResp)
                 }
-            } else if (info.cachedByColor.isEmpty()) {
-                mockupTryOnInfo = null
-                return@LaunchedEffect
             }
             val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
                 map,
@@ -679,7 +676,18 @@ fun ProductDetailScreen(
         selectedImageIndex = 0
     }
 
-    LaunchedEffect(tryOnActive, selectedColor, mockupTryOnInfo, productColorHexMap) {
+    /** Auto-advance gallery views (front/back/detail) for the selected color — like web slideshow. */
+    LaunchedEffect(shopImages, tryOnActive, mockGalleryUrls) {
+        val count = if (tryOnActive && mockGalleryUrls.isNotEmpty()) mockGalleryUrls.size else shopImages.size
+        if (tryOnActive || count <= 1) return@LaunchedEffect
+        delay(1800)
+        while (true) {
+            delay(1800)
+            selectedImageIndex = (selectedImageIndex + 1) % count
+        }
+    }
+
+    LaunchedEffect(tryOnActive, selectedColor, selectedVariant?.id, mockupTryOnInfo, productColorHexMap) {
         if (!tryOnActive) {
             tryOnImageUrl = null
             mockGalleryUrls = emptyList()
@@ -700,7 +708,7 @@ fun ProductDetailScreen(
             tryOnOverlayMessage = null
             return@LaunchedEffect
         }
-        val cacheKey = selectedColor.trim().lowercase()
+        val cacheKey = "${selectedVariant?.id ?: 0}|${selectedColor.trim().lowercase()}"
         mockGalleryCache[cacheKey]?.let { cached ->
             if (cached.isNotEmpty()) {
                 mockGalleryUrls = cached
@@ -714,11 +722,14 @@ fun ProductDetailScreen(
             tryOnOverlayMessage = t("eaz.pdp.try_on_overlay_on", "Putting on your look…")
         }
         tryOnLoading = true
+        val colorForMock = selectedColor.ifBlank {
+            colorOption?.values?.firstOrNull().orEmpty().ifBlank { "White" }
+        }
         val gallery = withContext(Dispatchers.IO) {
             buildMockGalleryUrlsForColor(
                 info = info,
                 handle = productHandle,
-                colorName = selectedColor,
+                colorName = colorForMock,
                 ownerId = ownerId,
                 productColorMap = productColorHexMap,
                 maxViews = 4
@@ -728,7 +739,7 @@ fun ProductDetailScreen(
         tryOnOverlayMessage = null
         if (gallery.isEmpty()) {
             val single = withContext(Dispatchers.IO) {
-                resolveMockupImageUrl(info, selectedColor, ownerId, productColorHexMap)
+                resolveMockupImageUrl(info, colorForMock, ownerId, productColorHexMap)
             }
             if (single.isNullOrBlank()) {
                 tryOnActive = false
@@ -993,7 +1004,14 @@ fun ProductDetailScreen(
                             label = "pdpImageCrossfade"
                         ) { url ->
                             AsyncImage(
-                                model = ImageRequest.Builder(context).data(url).build(),
+                                model = ImageRequest.Builder(context)
+                                    .data(url)
+                                    .apply {
+                                        if (tryOnActive && mockGalleryUrls.isNotEmpty()) {
+                                            size(coil.size.Size.ORIGINAL)
+                                        }
+                                    }
+                                    .build(),
                                 contentDescription = p.title,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = if (tryOnActive && mockGalleryUrls.isNotEmpty()) {
@@ -1008,7 +1026,7 @@ fun ProductDetailScreen(
                         message = tryOnOverlayMessage,
                         modifier = Modifier.fillMaxSize()
                     )
-                    mockupTryOnInfo?.let {
+                    mockupTryOnInfo?.let { _ ->
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -1019,7 +1037,7 @@ fun ProductDetailScreen(
                                     if (tryOnActive) Color(0xFF111827)
                                     else Color.White.copy(alpha = 0.92f)
                                 )
-                                .clickable(enabled = tryOnOverlayMessage == null) {
+                                .clickable(enabled = tryOnOverlayMessage == null && !tryOnLoading) {
                                     val next = !tryOnActive
                                     tryOnOverlayMessage = if (next) {
                                         t("eaz.pdp.try_on_overlay_on", "Putting on your look…")
@@ -1491,12 +1509,20 @@ fun ProductDetailScreen(
                     .widthIn(min = 80.dp)
             ) {
                 Text(
-                    "CHF %.2f".format(unitPriceAfterDiscount),
+                    "CHF %.2f".format(lineEstimate.afterDiscount),
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
                     fontWeight = FontWeight.Bold,
                     color = EazColors.TextPrimary,
                     maxLines = 1,
                 )
+                if (quantity > 1) {
+                    Text(
+                        "CHF %.2f each".format(unitPriceAfterDiscount),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = EazColors.TextSecondary,
+                        maxLines = 1,
+                    )
+                }
                 promoOverlay?.let { po ->
                     val ends = po.promotionEndsAtMs
                     val nextSlot = po.promoCampaignStartsAtMs ?: po.promoNextWindowStartsAtMs
