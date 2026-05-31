@@ -99,6 +99,7 @@ import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
+import com.eazpire.creator.ui.header.FavoriteEditContext
 import com.eazpire.creator.i18n.formatCountLabel
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
@@ -427,6 +428,22 @@ private fun PdpPromoCountdownLine(endsAtMs: Long, prefix: String, endedLabel: St
     )
 }
 
+private fun buildPdpVariantSelectionLabel(
+    selectedColor: String,
+    selectedSize: String,
+    colorOption: ShopifyProductsApi.ProductDetail.ProductOption?,
+    sizeOption: ShopifyProductsApi.ProductDetail.ProductOption?,
+    selectedVariant: ShopifyProductsApi.ProductDetail.ProductVariant?,
+): String {
+    val parts = mutableListOf<String>()
+    if (colorOption != null && selectedColor.isNotBlank()) parts.add(selectedColor)
+    if (sizeOption != null && selectedSize.isNotBlank()) parts.add(selectedSize)
+    if (parts.isNotEmpty()) return parts.joinToString(" · ")
+    return listOfNotNull(selectedVariant?.option1, selectedVariant?.option2, selectedVariant?.option3)
+        .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+        .joinToString(" · ")
+}
+
 /**
  * Product Detail Screen – 1:1 wie Web Mobile PDP (eaz-pdp-main.liquid, eaz-redesign-pdp.css).
  * Layout: Info oben, Gallery, Mobile Options (Color/Size), Footer mit Qty + Add to Cart.
@@ -441,6 +458,7 @@ fun ProductDetailScreen(
     onTermsClick: (() -> Unit)? = null,
     onNavigateToProduct: ((String) -> Unit)? = null,
     onNavigateToCreator: ((String) -> Unit)? = null,
+    favoriteEdit: FavoriteEditContext? = null,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
@@ -579,12 +597,26 @@ fun ProductDetailScreen(
     val sizeOption = p.options.find { it.name.equals("Size", ignoreCase = true) || it.name.equals("Größe", ignoreCase = true) || it.name.equals("Groesse", ignoreCase = true) }
     var selectedColor by remember { mutableStateOf(colorOption?.values?.firstOrNull() ?: "") }
     var selectedSize by remember { mutableStateOf(sizeOption?.values?.firstOrNull() ?: "") }
+    var initialVariantApplied by remember(productHandle, favoriteEdit?.initialVariantId) { mutableStateOf(false) }
     var userOverrodeSize by remember(productHandle) { mutableStateOf(false) }
     var sizeAiHint by remember(productHandle) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(productHandle) {
         userOverrodeSize = false
         sizeAiHint = null
+        initialVariantApplied = false
+    }
+
+    LaunchedEffect(p.id, favoriteEdit?.initialVariantId, initialVariantApplied) {
+        if (favoriteEdit == null || initialVariantApplied) return@LaunchedEffect
+        val vid = favoriteEdit.initialVariantId?.trim()?.takeIf { it.isNotBlank() && !it.equals("null", true) }?.toLongOrNull()
+            ?: return@LaunchedEffect
+        val variant = p.variants.find { it.id == vid } ?: return@LaunchedEffect
+        val optionValues = listOfNotNull(variant.option1, variant.option2, variant.option3)
+        colorOption?.values?.firstOrNull { ov -> optionValues.any { it.equals(ov, true) } }?.let { selectedColor = it }
+        sizeOption?.values?.firstOrNull { ov -> optionValues.any { it.equals(ov, true) } }?.let { selectedSize = it }
+        initialVariantApplied = true
+        userOverrodeSize = true
     }
 
     LaunchedEffect(
@@ -593,7 +625,7 @@ fun ProductDetailScreen(
         sizeOption?.values?.joinToString(),
         userOverrodeSize
     ) {
-        if (userOverrodeSize) return@LaunchedEffect
+        if (favoriteEdit != null || userOverrodeSize) return@LaunchedEffect
         val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val opt = sizeOption ?: return@LaunchedEffect
         val typeKey = SizeAiProductTypeMapper.resolve(p.productKey, p.productType) ?: return@LaunchedEffect
@@ -820,7 +852,23 @@ fun ProductDetailScreen(
                         Text(t("product.details", "Product Details"), style = MaterialTheme.typography.labelMedium, color = EazColors.TextPrimary)
                     }
                 }
-                if (productTypeTitle.isNotBlank()) {
+                if (favoriteEdit != null) {
+                    val variantLabel = buildPdpVariantSelectionLabel(
+                        selectedColor = selectedColor,
+                        selectedSize = selectedSize,
+                        colorOption = colorOption,
+                        sizeOption = sizeOption,
+                        selectedVariant = selectedVariant
+                    )
+                    if (variantLabel.isNotBlank()) {
+                        Text(
+                            variantLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EazColors.TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                } else if (productTypeTitle.isNotBlank() && !productTypeTitle.equals("null", ignoreCase = true)) {
                     Text(
                         productTypeTitle,
                         style = MaterialTheme.typography.bodySmall,
@@ -1222,6 +1270,74 @@ fun ProductDetailScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
+        if (favoriteEdit != null) {
+            val editCtx = favoriteEdit
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .padding(horizontal = 12.dp, vertical = 12.dp)
+                    .navigationBarsPadding()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    TextButton(
+                        onClick = { editCtx.onDismiss() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(t("actions.discard", "Discard"), color = EazColors.TextSecondary)
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val variantId = selectedVariant?.id?.toString()
+                                val variantTitle = buildPdpVariantSelectionLabel(
+                                    selectedColor, selectedSize, colorOption, sizeOption, selectedVariant
+                                ).takeIf { it.isNotBlank() }
+                                val image = images.firstOrNull()
+                                try {
+                                    if (editCtx.activeView == "pool") {
+                                        editCtx.api.removeFavorite(
+                                            editCtx.customerId,
+                                            editCtx.productId,
+                                            editCtx.initialVariantId
+                                        )
+                                        editCtx.api.addFavorite(
+                                            customerId = editCtx.customerId,
+                                            productId = editCtx.productId,
+                                            variantId = variantId,
+                                            variantTitle = variantTitle,
+                                            productTitle = p.title,
+                                            productImage = image
+                                        )
+                                    } else {
+                                        editCtx.api.updateFavoriteListItem(
+                                            customerId = editCtx.customerId,
+                                            listId = editCtx.activeView.toLong(),
+                                            itemId = editCtx.itemId,
+                                            variantId = variantId,
+                                            variantTitle = variantTitle,
+                                            productTitle = p.title,
+                                            productImage = image
+                                        )
+                                    }
+                                    FavoritesRefreshTrigger.trigger()
+                                    editCtx.onSaved()
+                                    editCtx.onDismiss()
+                                } catch (_: Exception) {
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange, contentColor = Color.White)
+                    ) {
+                        Text(t("actions.save", "Save"))
+                    }
+                }
+            }
+        } else {
         // PDP Sub-Footer – 2 rows like web (Row 1: qty, fav, share, total | Row 2: price, delivery, cart, buy)
         Column(
             modifier = Modifier
@@ -1519,11 +1635,14 @@ fun ProductDetailScreen(
             }
         }
         }
+        }
 
         // Main Footer – flush with screen bottom (root already applies systemBarsPadding)
-        GlobalFooter(
-            onTermsClick = onTermsClick,
-        )
+        if (favoriteEdit == null) {
+            GlobalFooter(
+                onTermsClick = onTermsClick,
+            )
+        }
     }
 
         if (showCloseButton) {

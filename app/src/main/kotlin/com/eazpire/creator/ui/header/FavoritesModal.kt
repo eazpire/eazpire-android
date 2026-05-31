@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -60,6 +63,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.favorites.FavoritesRefreshTrigger
+import com.eazpire.creator.ui.ProductModal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,6 +79,20 @@ private fun normalizeImageUrl(url: String?): String? {
         s.startsWith("/") -> "https://www.eazpire.com$s"
         else -> s
     }
+}
+
+/** JSONObject.optString returns the literal "null" for JSON null values — treat as absent. */
+private fun jsonOptString(obj: JSONObject, key: String): String? {
+    if (!obj.has(key) || obj.isNull(key)) return null
+    val v = obj.optString(key, "").trim()
+    if (v.isBlank() || v.equals("null", ignoreCase = true)) return null
+    return v
+}
+
+private fun displayVariantTitle(raw: String?): String? {
+    val v = raw?.trim().orEmpty()
+    if (v.isBlank() || v.equals("null", ignoreCase = true)) return null
+    return v
 }
 
 /** Favorite item – pool uses product_id|variant_id, list items use id */
@@ -89,12 +109,21 @@ data class FavoriteItem(
 
 data class FavoriteListInfo(val id: Long, val name: String, val description: String, val itemsCount: Int)
 
+private data class ShopPickerProduct(
+    val id: String,
+    val handle: String,
+    val title: String,
+    val image: String?,
+    val price: Double,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FavoritesModal(
     visible: Boolean,
     customerId: String?,
     api: CreatorApi,
+    tokenStore: SecureTokenStore?,
     onDismiss: () -> Unit,
     onCountChange: (Int) -> Unit = {},
     onProductClick: ((String) -> Unit)? = null,
@@ -120,6 +149,60 @@ fun FavoritesModal(
     var editListId by remember { mutableStateOf(0L) }
     var editListName by remember { mutableStateOf("") }
     var editListDescription by remember { mutableStateOf("") }
+    var handleByProductId by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var editingItem by remember { mutableStateOf<FavoriteItem?>(null) }
+    var showProductPicker by remember { mutableStateOf(false) }
+    var shopProducts by remember { mutableStateOf<List<ShopPickerProduct>>(emptyList()) }
+    var shopProductsLoading by remember { mutableStateOf(false) }
+
+    fun mapFavoriteItem(obj: JSONObject, isPool: Boolean): FavoriteItem {
+        val img = jsonOptString(obj, "product_image")
+        val productId = jsonOptString(obj, "product_id") ?: ""
+        val variantId = jsonOptString(obj, "variant_id")
+        val handleFromApi = jsonOptString(obj, "product_handle")
+        val handle = handleFromApi ?: handleByProductId[productId]
+        return FavoriteItem(
+            id = if (isPool) "$productId|${variantId.orEmpty()}" else (jsonOptString(obj, "id") ?: ""),
+            itemId = if (isPool) 0L else obj.optLong("id", 0L),
+            productId = productId,
+            productHandle = handle,
+            variantId = variantId,
+            productTitle = jsonOptString(obj, "product_title") ?: "Product",
+            productImage = normalizeImageUrl(img),
+            variantTitle = displayVariantTitle(jsonOptString(obj, "variant_title"))
+        )
+    }
+
+    fun loadProductHandles() {
+        scope.launch {
+            try {
+                val resp = api.getShopifyProducts(shop = "eazpire.myshopify.com", ownerId = customerId)
+                if (!resp.optBoolean("ok", false)) return@launch
+                val arr = resp.optJSONArray("products") ?: return@launch
+                val map = mutableMapOf<String, String>()
+                val list = mutableListOf<ShopPickerProduct>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val id = jsonOptString(o, "id") ?: continue
+                    val handle = jsonOptString(o, "handle") ?: continue
+                    map[id] = handle
+                    list.add(
+                        ShopPickerProduct(
+                            id = id,
+                            handle = handle,
+                            title = jsonOptString(o, "title") ?: handle,
+                            image = normalizeImageUrl(jsonOptString(o, "image")),
+                            price = o.optDouble("price", 0.0)
+                        )
+                    )
+                }
+                handleByProductId = map
+                shopProducts = list
+                poolItems = poolItems.map { it.copy(productHandle = it.productHandle ?: map[it.productId]) }
+                listItems = listItems.map { it.copy(productHandle = it.productHandle ?: map[it.productId]) }
+            } catch (_: Exception) {}
+        }
+    }
 
     fun loadPool() {
         scope.launch {
@@ -129,18 +212,7 @@ fun FavoritesModal(
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("items") ?: org.json.JSONArray()
                     poolItems = (0 until arr.length()).map { i ->
-                        val obj = arr.optJSONObject(i) ?: JSONObject()
-                        val img = obj.optString("product_image", null).takeIf { it.isNullOrBlank().not() }
-                        FavoriteItem(
-                            id = "${obj.optString("product_id")}|${obj.optString("variant_id", "")}",
-                            itemId = 0L,
-                            productId = obj.optString("product_id", ""),
-                            productHandle = obj.optString("product_handle", "").trim().ifBlank { null },
-                            variantId = obj.optString("variant_id", null).takeIf { it.isNullOrBlank().not() },
-                            productTitle = obj.optString("product_title", "Product"),
-                            productImage = normalizeImageUrl(img),
-                            variantTitle = obj.optString("variant_title", null).takeIf { it.isNullOrBlank().not() }
-                        )
+                        mapFavoriteItem(arr.optJSONObject(i) ?: JSONObject(), isPool = true)
                     }
                     onCountChange(poolItems.size)
                 }
@@ -181,18 +253,7 @@ fun FavoritesModal(
                     listName = listObj?.optString("name", "") ?: ""
                     val arr = resp.optJSONArray("items") ?: org.json.JSONArray()
                     listItems = (0 until arr.length()).map { i ->
-                        val obj = arr.optJSONObject(i) ?: JSONObject()
-                        val img = obj.optString("product_image", null).takeIf { it.isNullOrBlank().not() }
-                        FavoriteItem(
-                            id = obj.optString("id", ""),
-                            itemId = obj.optLong("id", 0L),
-                            productId = obj.optString("product_id", ""),
-                            productHandle = obj.optString("product_handle", "").trim().ifBlank { null },
-                            variantId = obj.optString("variant_id", null).takeIf { it.isNullOrBlank().not() },
-                            productTitle = obj.optString("product_title", "Product"),
-                            productImage = normalizeImageUrl(img),
-                            variantTitle = obj.optString("variant_title", null).takeIf { it.isNullOrBlank().not() }
-                        )
+                        mapFavoriteItem(arr.optJSONObject(i) ?: JSONObject(), isPool = false)
                     }
                     val token = listObj?.optString("share_token", null).takeIf { it.isNullOrBlank().not() }
                     if (token != null) {
@@ -219,6 +280,7 @@ fun FavoritesModal(
         }
         loading = true
         try {
+            loadProductHandles()
             loadPool()
             loadLists()
             if (activeView != "pool" && activeView.toLongOrNull() != null) {
@@ -326,27 +388,46 @@ fun FavoritesModal(
                             item {
                                 AddProductPlaceholderCard(
                                     onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.eazpire.com"))
-                                        context.startActivity(Intent.createChooser(intent, "Open shop"))
+                                        if (shopProducts.isEmpty() && !shopProductsLoading) {
+                                            shopProductsLoading = true
+                                            loadProductHandles()
+                                            shopProductsLoading = false
+                                        }
+                                        showProductPicker = true
                                     }
                                 )
                             }
-                            items(items) { item ->
+                            items(items, key = { it.id }) { item ->
                                 FavoriteGridCard(
                                     item = item,
                                     onClick = {
                                         val handle = item.productHandle?.trim().orEmpty()
-                                        if (handle.isNotBlank()) onProductClick?.invoke(handle)
+                                        if (handle.isNotBlank() && tokenStore != null) {
+                                            editingItem = item
+                                        } else if (handle.isNotBlank()) {
+                                            onProductClick?.invoke(handle)
+                                        }
                                     },
                                     onRemove = {
+                                        if (activeView == "pool") {
+                                            poolItems = poolItems.filter { it.id != item.id }
+                                            onCountChange(poolItems.size)
+                                        } else {
+                                            listItems = listItems.filter { it.id != item.id }
+                                        }
                                         scope.launch {
-                                            if (activeView == "pool") {
-                                                api.removeFavorite(customerId!!, item.productId, item.variantId)
-                                                loadPool()
-                                            } else {
-                                                api.removeFromFavoriteList(customerId!!, activeView.toLong(), item.itemId)
-                                                loadListItems(activeView.toLong())
-                                                loadLists()
+                                            try {
+                                                if (activeView == "pool") {
+                                                    api.removeFavorite(customerId!!, item.productId, item.variantId)
+                                                    FavoritesRefreshTrigger.trigger()
+                                                    loadPool()
+                                                } else {
+                                                    api.removeFromFavoriteList(customerId!!, activeView.toLong(), item.itemId)
+                                                    loadListItems(activeView.toLong())
+                                                    loadLists()
+                                                }
+                                            } catch (_: Exception) {
+                                                if (activeView == "pool") loadPool() else loadListItems(activeView.toLong())
                                             }
                                         }
                                     }
@@ -464,6 +545,64 @@ fun FavoritesModal(
                 title = "Edit list"
             )
         }
+        val editItem = editingItem
+        val editHandle = editItem?.productHandle?.trim().orEmpty()
+        if (editItem != null && editHandle.isNotBlank() && tokenStore != null) {
+            ProductModal(
+                productHandle = editHandle,
+                onDismiss = { editingItem = null },
+                tokenStore = tokenStore,
+                favoriteEdit = FavoriteEditContext(
+                    customerId = customerId!!,
+                    api = api,
+                    productId = editItem.productId,
+                    initialVariantId = editItem.variantId,
+                    activeView = activeView,
+                    itemId = editItem.itemId,
+                    onSaved = {
+                        if (activeView == "pool") loadPool() else loadListItems(activeView.toLong())
+                        loadLists()
+                    },
+                    onDismiss = { editingItem = null }
+                )
+            )
+        }
+
+        if (showProductPicker) {
+            FavoriteProductPickerSheet(
+                products = shopProducts,
+                loading = shopProductsLoading,
+                onDismiss = { showProductPicker = false },
+                onSelect = { product ->
+                    showProductPicker = false
+                    scope.launch {
+                        try {
+                            if (activeView == "pool") {
+                                api.addFavorite(
+                                    customerId = customerId!!,
+                                    productId = product.id,
+                                    productTitle = product.title,
+                                    productImage = product.image
+                                )
+                                loadPool()
+                            } else {
+                                api.addToFavoriteList(
+                                    customerId = customerId!!,
+                                    listId = activeView.toLong(),
+                                    productId = product.id,
+                                    productTitle = product.title,
+                                    productImage = product.image
+                                )
+                                loadListItems(activeView.toLong())
+                                loadLists()
+                            }
+                            FavoritesRefreshTrigger.trigger()
+                        } catch (_: Exception) {}
+                    }
+                }
+            )
+        }
+
         if (showClearConfirm) {
             androidx.compose.ui.window.Dialog(onDismissRequest = { showClearConfirm = false }) {
                 Column(
@@ -598,7 +737,6 @@ private fun FavoriteGridCard(
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, EazColors.Orange.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
             .background(Color.White)
-            .clickable(onClick = onClick)
     ) {
         Column {
             Box(
@@ -607,6 +745,7 @@ private fun FavoriteGridCard(
                     .height(140.dp)
                     .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
                     .background(EazColors.OrangeBg.copy(alpha = 0.3f))
+                    .clickable(onClick = onClick)
             ) {
                 if (!item.productImage.isNullOrBlank()) {
                     AsyncImage(
@@ -631,7 +770,11 @@ private fun FavoriteGridCard(
                     Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                 }
             }
-            Column(modifier = Modifier.padding(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .clickable(onClick = onClick)
+            ) {
                 Text(
                     item.productTitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -639,9 +782,9 @@ private fun FavoriteGridCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (!item.variantTitle.isNullOrBlank()) {
+                item.variantTitle?.let { vt ->
                     Text(
-                        item.variantTitle!!,
+                        vt,
                         style = MaterialTheme.typography.labelSmall,
                         color = EazColors.TextSecondary,
                         maxLines = 1,
@@ -649,6 +792,73 @@ private fun FavoriteGridCard(
                     )
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FavoriteProductPickerSheet(
+    products: List<ShopPickerProduct>,
+    loading: Boolean,
+    onDismiss: () -> Unit,
+    onSelect: (ShopPickerProduct) -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Text("Add product", style = MaterialTheme.typography.titleLarge, color = EazColors.TextPrimary)
+            Spacer(Modifier.height(12.dp))
+            if (loading) {
+                Text("Loading…", color = EazColors.TextSecondary)
+            } else if (products.isEmpty()) {
+                Text("No products found", color = EazColors.TextSecondary)
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(products, key = { it.id }) { product ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, EazColors.Orange.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                .clickable { onSelect(product) }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(EazColors.OrangeBg.copy(alpha = 0.3f))
+                            ) {
+                                if (!product.image.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = product.image,
+                                        contentDescription = product.title,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(product.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (product.price > 0) {
+                                    Text("CHF %.2f".format(product.price), style = MaterialTheme.typography.labelSmall, color = EazColors.Orange)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
         }
     }
 }

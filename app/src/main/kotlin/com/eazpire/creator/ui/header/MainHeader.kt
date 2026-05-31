@@ -321,6 +321,7 @@ fun MainHeader(
             visible = favoritesModalVisible,
             customerId = ownerId.ifBlank { null },
             api = api,
+            tokenStore = tokenStore,
             onDismiss = { onFavoritesModalChangeActual(false) },
             onCountChange = { count ->
                 favoritesCount = count

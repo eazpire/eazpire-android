@@ -1945,6 +1945,7 @@ class CreatorApi(
         customerId: String,
         productId: String,
         variantId: String? = null,
+        variantTitle: String? = null,
         productTitle: String? = null,
         productImage: String? = null
     ): JSONObject = postJson(
@@ -1953,6 +1954,29 @@ class CreatorApi(
             "customer_id" to customerId,
             "product_id" to productId,
             "variant_id" to variantId,
+            "variant_title" to variantTitle,
+            "product_title" to productTitle,
+            "product_image" to productImage
+        )
+    )
+
+    /** POST ?op=update-favorite-list-item */
+    suspend fun updateFavoriteListItem(
+        customerId: String,
+        listId: Long,
+        itemId: Long,
+        variantId: String? = null,
+        variantTitle: String? = null,
+        productTitle: String? = null,
+        productImage: String? = null
+    ): JSONObject = postJson(
+        "update-favorite-list-item",
+        mapOf(
+            "customer_id" to customerId,
+            "list_id" to listId,
+            "item_id" to itemId,
+            "variant_id" to variantId,
+            "variant_title" to variantTitle,
             "product_title" to productTitle,
             "product_image" to productImage
         )

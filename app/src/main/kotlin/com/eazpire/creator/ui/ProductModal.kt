@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.debug.debugLog
+import com.eazpire.creator.ui.header.FavoriteEditContext
 
 /**
  * Produkt-Modal für Hero-Hotspot-Klicks.
@@ -29,6 +30,7 @@ fun ProductModal(
     onTermsClick: (() -> Unit)? = null,
     onNavigateToCreator: ((String) -> Unit)? = null,
     onNavigateToProduct: ((String) -> Unit)? = null,
+    favoriteEdit: FavoriteEditContext? = null,
     modifier: Modifier = Modifier
 ) {
     // #region agent log
@@ -56,6 +58,7 @@ fun ProductModal(
                 onTermsClick = onTermsClick,
                 onNavigateToCreator = onNavigateToCreator,
                 onNavigateToProduct = onNavigateToProduct,
+                favoriteEdit = favoriteEdit,
                 modifier = Modifier.fillMaxSize()
             )
         }
