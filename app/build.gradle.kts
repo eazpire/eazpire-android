@@ -65,6 +65,8 @@ android {
         compose = true
         buildConfig = true
     }
+    // NDK r28+ aligns ELF segments for 16 KB page-size devices (Play Console requirement).
+    ndkVersion = "28.0.12433566"
 }
 
 dependencies {
@@ -115,10 +117,11 @@ dependencies {
     // Wear OS: sync JWT to companion watch app
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
 
-    // Wear QR pairing scanner
-    implementation("androidx.camera:camera-camera2:1.3.4")
-    implementation("androidx.camera:camera-lifecycle:1.3.4")
-    implementation("androidx.camera:camera-view:1.3.4")
+    // Wear QR pairing scanner (CameraX 1.4.2+ ships 16 KB-aligned libimage_processing_util_jni.so)
+    val cameraxVersion = "1.4.2"
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     testImplementation("junit:junit:4.13.2")
