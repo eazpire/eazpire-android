@@ -51,6 +51,7 @@ class ShopifyAuthService {
         state: String,
     ): String {
         val codeChallenge = PkceUtils.generateCodeChallenge(codeVerifier)
+        val nonce = PkceUtils.generateState()
         val built = buildString {
             append(authorizationEndpoint)
             append("?client_id=").append(java.net.URLEncoder.encode(AuthConfig.CLIENT_ID, "UTF-8"))
@@ -58,6 +59,7 @@ class ShopifyAuthService {
             append("&redirect_uri=").append(java.net.URLEncoder.encode(AuthConfig.REDIRECT_URI, "UTF-8"))
             append("&scope=").append(java.net.URLEncoder.encode(AuthConfig.SCOPE, "UTF-8"))
             append("&state=").append(java.net.URLEncoder.encode(state, "UTF-8"))
+            append("&nonce=").append(java.net.URLEncoder.encode(nonce, "UTF-8"))
             append("&code_challenge=").append(java.net.URLEncoder.encode(codeChallenge, "UTF-8"))
             append("&code_challenge_method=S256")
         }

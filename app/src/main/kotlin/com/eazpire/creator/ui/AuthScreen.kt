@@ -2,21 +2,15 @@ package com.eazpire.creator.ui
 
 import android.net.Uri
 import android.webkit.CookieManager
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -33,9 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.AuthLoginMethod
@@ -56,8 +47,9 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
- * Shopify Customer Account OAuth (PKCE) — unified in-app WebView flow (stable 2026-05-18 behavior).
- * [loginMethod] is UI-only; Shop / Google / Email all use the same OAuth navigation.
+ * Shopify Customer Account OAuth (PKCE) via Chrome Custom Tab.
+ * account.eazpire.com (myshopify discovery) — required for Google OAuth and reliable
+ * shop.{id}.eazpire://callback deep links after email OTP.
  */
 @Composable
 fun AuthScreen(
@@ -80,18 +72,11 @@ fun AuthScreen(
     var savedState by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
-    var oauthWebViewUrl by remember { mutableStateOf<String?>(null) }
-    var webViewProgress by remember { mutableStateOf(0) }
+    var awaitingOAuthCallback by remember { mutableStateOf(false) }
     var callbackHandled by remember { mutableStateOf(false) }
-    var oauthWebViewLoadDone by remember(oauthWebViewUrl) { mutableStateOf(false) }
 
     LaunchedEffect(loginMethod) {
-        AuthDebugLog.d("[AUTHSCREEN] loginMethod=$loginMethod uses unified WebView OAuth flow")
-    }
-
-    fun isShopCallbackUri(uri: Uri?): Boolean {
-        val sch = uri?.scheme ?: return false
-        return sch.startsWith("shop.") && uri.host == "callback"
+        AuthDebugLog.d("[AUTHSCREEN] loginMethod=$loginMethod usesCustomTab=true")
     }
 
     suspend fun clearCookiesForLogin() = suspendCancellableCoroutine { cont ->
@@ -102,15 +87,27 @@ fun AuthScreen(
         }
     }
 
+    fun launchOAuthCustomTab(url: String) {
+        AuthDebugLog.d("[CUSTOM TAB] launch url=$url")
+        val tabsIntent = CustomTabsIntent.Builder()
+            .setShowTitle(true)
+            .build()
+        tabsIntent.launchUrl(context, Uri.parse(url))
+        awaitingOAuthCallback = true
+    }
+
     fun handleCallback(url: String) {
         if (callbackHandled) return
         AuthDebugLog.d("[CALLBACK] Received callback url=$url")
         val uri = Uri.parse(url)
         val code = uri.getQueryParameter("code")
         val state = uri.getQueryParameter("state")
-        if (code == null || state == null) return
+        if (code == null || state == null) {
+            AuthDebugLog.e("[CALLBACK] Missing code or state in url=$url")
+            return
+        }
         callbackHandled = true
-        oauthWebViewUrl = null
+        awaitingOAuthCallback = false
         val verifier = when {
             state == savedState && codeVerifier != null -> {
                 OAuthPkceStore.clear(appCtx)
@@ -120,6 +117,7 @@ fun AuthScreen(
         } ?: run {
             error = "Invalid state"
             callbackHandled = false
+            AuthDebugLog.e("[CALLBACK] Invalid state saved=$savedState callback=$state")
             return
         }
         scope.launch {
@@ -185,6 +183,7 @@ fun AuthScreen(
             isLoading = true
             error = null
             callbackHandled = false
+            awaitingOAuthCallback = false
             try {
                 clearCookiesForLogin()
                 val endpoints = authService.discoverEndpoints()
@@ -198,10 +197,8 @@ fun AuthScreen(
                     verifier,
                     state
                 )
-                AuthDebugLog.d("[START LOGIN] unified WebView OAuth url=$url method=$loginMethod")
-                oauthWebViewUrl = url
-                webViewProgress = 0
-                oauthWebViewLoadDone = false
+                AuthDebugLog.d("[START LOGIN] Custom Tab OAuth url=$url method=$loginMethod")
+                launchOAuthCustomTab(url)
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
                 AuthDebugLog.e("[START LOGIN] Failed: ${e.message}", e)
@@ -225,200 +222,77 @@ fun AuthScreen(
         }
     }
 
-    if (oauthWebViewUrl != null) {
-        Dialog(
-            onDismissRequest = {
-                oauthWebViewUrl = null
-                callbackHandled = false
-            },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (webViewProgress in 1..99) {
-                    LinearProgressIndicator(
-                        progress = webViewProgress / 100f,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                setBackgroundColor(android.graphics.Color.WHITE)
-                                CookieManager.getInstance().setAcceptCookie(true)
-                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.cacheMode = WebSettings.LOAD_DEFAULT
-                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                                val def = WebSettings.getDefaultUserAgent(ctx)
-                                settings.userAgentString =
-                                    def.replace("; wv", "") + " Chrome/120.0.0.0 Mobile Safari/537.36"
-                                webChromeClient = object : android.webkit.WebChromeClient() {
-                                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                        view?.post { webViewProgress = newProgress }
-                                    }
-                                }
-                                webViewClient = object : WebViewClient() {
-                                    private fun handleNavigation(view: WebView?, u: Uri): Boolean {
-                                        if (isShopCallbackUri(u)) {
-                                            view?.stopLoading()
-                                            handleCallback(u.toString())
-                                            return true
-                                        }
-                                        return false
-                                    }
-
-                                    override fun shouldOverrideUrlLoading(
-                                        view: WebView?,
-                                        request: WebResourceRequest?
-                                    ): Boolean {
-                                        val u = request?.url ?: return false
-                                        return handleNavigation(view, u)
-                                    }
-
-                                    @Deprecated("Deprecated in Java")
-                                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                                        val u = url?.let { Uri.parse(it) } ?: return false
-                                        return handleNavigation(view, u)
-                                    }
-
-                                    override fun onPageStarted(
-                                        view: WebView?,
-                                        url: String?,
-                                        favicon: android.graphics.Bitmap?
-                                    ) {
-                                        url ?: return
-                                        try {
-                                            val u = Uri.parse(url)
-                                            if (isShopCallbackUri(u)) {
-                                                view?.stopLoading()
-                                                handleCallback(url)
-                                            }
-                                        } catch (_: Exception) {
-                                        }
-                                    }
-
-                                    override fun onReceivedError(
-                                        view: WebView?,
-                                        request: WebResourceRequest?,
-                                        errorResource: android.webkit.WebResourceError?
-                                    ) {
-                                        super.onReceivedError(view, request, errorResource)
-                                        if (request?.isForMainFrame == true) {
-                                            val description = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                                                errorResource?.description?.toString()
-                                            } else {
-                                                null
-                                            } ?: "Unknown WebView error"
-                                            AuthDebugLog.e(
-                                                "[WEBVIEW ERROR] mainFrame url=${request.url} description=$description"
-                                            )
-                                            error = "Login-Seite konnte nicht geladen werden: $description"
-                                        }
-                                    }
-
-                                    override fun onReceivedHttpError(
-                                        view: WebView?,
-                                        request: WebResourceRequest?,
-                                        errorResponse: android.webkit.WebResourceResponse?
-                                    ) {
-                                        super.onReceivedHttpError(view, request, errorResponse)
-                                        if (request?.isForMainFrame == true) {
-                                            val status = errorResponse?.statusCode ?: 0
-                                            val reason = errorResponse?.reasonPhrase ?: "HTTP error"
-                                            AuthDebugLog.e(
-                                                "[WEBVIEW HTTP ERROR] mainFrame url=${request.url} status=$status reason=$reason"
-                                            )
-                                            error = "Login-Seite konnte nicht geladen werden: HTTP $status $reason"
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        update = { wv ->
-                            val target = oauthWebViewUrl
-                            if (target != null && !oauthWebViewLoadDone && !callbackHandled) {
-                                wv.loadUrl(target)
-                                oauthWebViewLoadDone = true
-                            }
-                        }
-                    )
-                }
-                TextButton(
-                    onClick = {
-                        oauthWebViewUrl = null
-                        callbackHandled = false
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp)
-                ) {
-                    Text("Abbrechen")
-                }
-            }
-        }
-    } else {
-        Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "eazpire",
-                    style = MaterialTheme.typography.headlineMedium
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = when (loginMethod) {
-                        AuthLoginMethod.SHOP -> "Shop app Login"
-                        AuthLoginMethod.GOOGLE -> "Google Login"
-                        AuthLoginMethod.EMAIL -> "Email Login"
-                    },
-                    style = MaterialTheme.typography.labelSmall
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Mit deinem Shopify-Konto anmelden",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(modifier = Modifier.height(32.dp))
-                if (isLoading && oauthWebViewUrl == null) {
+            Text(
+                text = "eazpire",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = when (loginMethod) {
+                    AuthLoginMethod.SHOP -> "Shop app Login"
+                    AuthLoginMethod.GOOGLE -> "Google Login"
+                    AuthLoginMethod.EMAIL -> "Email Login"
+                },
+                style = MaterialTheme.typography.labelSmall
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Mit deinem Shopify-Konto anmelden",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            when {
+                isLoading -> CircularProgressIndicator()
+                awaitingOAuthCallback -> {
                     CircularProgressIndicator()
-                } else {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Melde dich im Browser-Tab an und kehre dann zur App zurück.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { startLogin() }) {
+                        Text("Anmeldung erneut öffnen")
+                    }
+                }
+                else -> {
                     Button(onClick = { startLogin() }) {
                         Text(if (error != null) "Erneut versuchen" else "Anmelden")
                     }
                 }
-                error?.let { msg ->
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = msg,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                onCheckUpdate?.let { check ->
-                    Spacer(modifier = Modifier.height(24.dp))
-                    TextButton(onClick = check) {
-                        Text("Nach Updates suchen")
-                    }
-                }
+            }
+            error?.let { msg ->
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = msg,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            onCheckUpdate?.let { check ->
                 Spacer(modifier = Modifier.height(24.dp))
-                TextButton(
-                    onClick = {
-                        oauthWebViewUrl = null
-                        OAuthPkceStore.clear(appCtx)
-                        onDismiss()
-                    }
-                ) {
-                    Text("Abbrechen")
+                TextButton(onClick = check) {
+                    Text("Nach Updates suchen")
                 }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            TextButton(
+                onClick = {
+                    awaitingOAuthCallback = false
+                    OAuthPkceStore.clear(appCtx)
+                    onDismiss()
+                }
+            ) {
+                Text("Abbrechen")
             }
         }
     }

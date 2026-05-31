@@ -119,12 +119,16 @@ fun HeaderSearch(
     var loading by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ShopifyPredictiveSearchApi.PredictiveSearchState?>(null) }
 
-    fun dismissSearch() {
+    fun hideResultsPanel() {
+        focused = false
+        focusManager.clearFocus()
+    }
+
+    fun clearSearch() {
         onQueryChange("")
         result = null
         loading = false
-        focused = false
-        focusManager.clearFocus()
+        hideResultsPanel()
     }
 
     LaunchedEffect(query) {
@@ -134,22 +138,23 @@ fun HeaderSearch(
             loading = false
             return@LaunchedEffect
         }
-        delay(300)
         loading = true
         result = null
+        delay(300)
+        if (query.trim() != q) return@LaunchedEffect
         try {
             api.collectPredictiveSearch(q) { state ->
-                result = state
-                loading = false
+                if (query.trim() == q) {
+                    result = state
+                    loading = false
+                }
             }
-        } finally {
-            loading = false
+        } catch (_: Exception) {
+            if (query.trim() == q) loading = false
         }
     }
 
-    val showPanel = focused &&
-        query.trim().length >= 2 &&
-        (loading || result != null)
+    val showPanel = focused && query.trim().length >= 2
 
     Box(modifier = modifier.fillMaxWidth()) {
         Column {
@@ -215,11 +220,12 @@ fun HeaderSearch(
             Popup(
                 alignment = Alignment.TopStart,
                 offset = IntOffset(0, fieldHeightPx),
-                onDismissRequest = { dismissSearch() },
+                onDismissRequest = { hideResultsPanel() },
                 properties = PopupProperties(
                     focusable = false,
                     dismissOnBackPress = true,
-                    dismissOnClickOutside = true,
+                    // Text field sits outside the popup; outside clicks must not wipe the query.
+                    dismissOnClickOutside = false,
                     clippingEnabled = false
                 )
             ) {
@@ -234,7 +240,7 @@ fun HeaderSearch(
                 ) {
                     Box(Modifier.fillMaxWidth()) {
                         IconButton(
-                            onClick = { dismissSearch() },
+                            onClick = { clearSearch() },
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(top = 4.dp, end = 4.dp)
