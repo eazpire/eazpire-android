@@ -90,6 +90,7 @@ fun MainHeader(
     onSearchNavigate: (String) -> Unit = {},
     onSearchQuerySubmit: (String) -> Unit = {},
     onFavoriteProductClick: ((String) -> Unit)? = null,
+    onFavoriteEdit: ((FavoriteEditContext) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -327,6 +328,7 @@ fun MainHeader(
                 favoritesCount = count
             },
             onProductClick = onFavoriteProductClick,
+            onEditFavorite = onFavoriteEdit,
         )
     }
 }

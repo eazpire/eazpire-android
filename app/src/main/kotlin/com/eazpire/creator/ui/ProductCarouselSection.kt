@@ -80,13 +80,9 @@ fun ProductCarouselSection(
     var filterModalVisible by remember { mutableStateOf(false) }
     var productFilters by remember { mutableStateOf(ProductFilters()) }
     var withinSearchQuery by remember { mutableStateOf("") }
+    var loadingCategories by remember { mutableStateOf(setOf<String>()) }
     val autoScrollPaused =
         (productModalHandleState?.value != null) || filterModalVisible
-
-    LaunchedEffect(selectedCategory) {
-        productFilters = ProductFilters()
-        withinSearchQuery = ""
-    }
 
     fun filterCarouselProducts(list: List<ShopifyProductsApi.ProductItem>): List<ShopifyProductsApi.ProductItem> {
         return applyCollectionWithinSearchFilter(
@@ -179,23 +175,22 @@ fun ProductCarouselSection(
     LaunchedEffect(selectedCategory, sectionPools, region) {
         if (selectedCategory == "all") return@LaunchedEffect
         val needsLoad = HOME_PRODUCT_SECTIONS.any { def ->
-            sectionPools[def.id]?.get(selectedCategory).isNullOrEmpty()
+            !sectionPools[def.id].orEmpty().containsKey(selectedCategory)
         }
         if (!needsLoad) return@LaunchedEffect
+        loadingCategories = loadingCategories + selectedCategory
         val updated = sectionPools.toMutableMap()
-        var changed = false
         for (def in HOME_PRODUCT_SECTIONS) {
-            if (!updated[def.id]?.get(selectedCategory).isNullOrEmpty()) continue
+            if (updated[def.id].orEmpty().containsKey(selectedCategory)) continue
             val products = withContext(Dispatchers.IO) {
                 loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = selectedCategory)
             }
-            if (products.isEmpty()) continue
             val chipMap = updated[def.id].orEmpty().toMutableMap()
             chipMap[selectedCategory] = products
             updated[def.id] = chipMap
-            changed = true
         }
-        if (changed) sectionPools = updated
+        sectionPools = updated
+        loadingCategories = loadingCategories - selectedCategory
     }
 
     val listState = rememberLazyListState()
@@ -273,28 +268,30 @@ fun ProductCarouselSection(
         HOME_PRODUCT_SECTIONS.forEach { def ->
             val products = sectionPools[def.id]?.get(selectedCategory).orEmpty()
             val visibleProducts = filterCarouselProducts(products)
-            if (visibleProducts.isNotEmpty()) {
-                item(key = "section_${def.id}") {
-                    val displayTitle = t(def.titleKey, def.titleDefault)
-                    ProductCarousel(
-                        title = displayTitle,
-                        products = visibleProducts,
-                        collectionHandle = def.viewAllHandle,
-                        onTitleClick = def.viewAllHandle?.let { h ->
-                            onCategoryClick?.let { cb -> { cb(displayTitle, h) } }
-                        },
-                        onProductClick = onProductClick,
-                        modifier = Modifier.padding(bottom = 6.dp),
-                        ownerId = ownerId,
-                        creatorApi = creatorApi,
-                        mockPreviewRevision = mockPreviewRevision,
-                        lazyCardImages = true,
-                        onCartClick = { params ->
-                            productModalHandleState?.value = params.handle
-                        },
-                        autoScrollPaused = autoScrollPaused,
-                    )
-                }
+            val sectionLoading = selectedCategory != "all" &&
+                loadingCategories.contains(selectedCategory) &&
+                !sectionPools[def.id].orEmpty().containsKey(selectedCategory)
+            item(key = "section_${def.id}") {
+                val displayTitle = t(def.titleKey, def.titleDefault)
+                ProductCarousel(
+                    title = displayTitle,
+                    products = visibleProducts,
+                    collectionHandle = def.viewAllHandle,
+                    onTitleClick = def.viewAllHandle?.let { h ->
+                        onCategoryClick?.let { cb -> { cb(displayTitle, h) } }
+                    },
+                    onProductClick = onProductClick,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    ownerId = ownerId,
+                    creatorApi = creatorApi,
+                    mockPreviewRevision = mockPreviewRevision,
+                    lazyCardImages = true,
+                    productsLoading = sectionLoading,
+                    onCartClick = { params ->
+                        productModalHandleState?.value = params.handle
+                    },
+                    autoScrollPaused = autoScrollPaused,
+                )
             }
         }
 

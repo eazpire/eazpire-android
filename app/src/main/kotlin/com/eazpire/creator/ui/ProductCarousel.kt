@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -108,11 +109,13 @@ fun ProductCarousel(
     onCartClick: ((ProductClickWithCollection) -> Unit)? = null,
     /** Pause auto-scroll while a modal (product detail, filter, etc.) is open. */
     autoScrollPaused: Boolean = false,
+    /** Show title row with loading indicator while products for this chip are loading. */
+    productsLoading: Boolean = false,
     /** Called when auto/manual scroll nears the end of the loaded product list. */
     onNearEnd: (() -> Unit)? = null,
 ) {
     if (products.isEmpty()) {
-        if (emptyStateMessage == null) return
+        if (emptyStateMessage == null && !productsLoading) return
         Column(modifier = modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
@@ -131,12 +134,27 @@ fun ProductCarousel(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            Text(
-                text = emptyStateMessage,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-            )
+            if (productsLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = EazColors.Orange.copy(alpha = 0.7f)
+                    )
+                }
+            } else if (emptyStateMessage != null) {
+                Text(
+                    text = emptyStateMessage,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                )
+            }
         }
         return
     }
@@ -349,10 +367,8 @@ private fun ProductCard(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val shopImages = product.variantImages.ifEmpty { product.images }
-    val displayImages = remember(product.id, lazyCardImages, shopImages) {
-        if (lazyCardImages && shopImages.size > 1) listOf(shopImages.first()) else shopImages
-    }
-    var images by remember(product.id) { mutableStateOf(displayImages) }
+    /** Full variant URL list for rotation; lazyLoadImages only defers Coil decode, not auto-rotate. */
+    var images by remember(product.id) { mutableStateOf(shopImages) }
     var imageReload by remember(product.id) { mutableIntStateOf(0) }
     var mockDisplayLocked by remember(product.handle) { mutableStateOf(false) }
     var tryOnActive by remember(product.handle) {
@@ -360,7 +376,7 @@ private fun ProductCard(
     }
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload, lazyCardImages, skipPersonalizedMock) {
         if (skipPersonalizedMock || ownerId.isBlank() || creatorApi == null) {
-            if (!mockDisplayLocked) images = displayImages
+            if (!mockDisplayLocked) images = shopImages
             return@LaunchedEffect
         }
         if (mockDisplayLocked) return@LaunchedEffect
@@ -382,7 +398,7 @@ private fun ProductCard(
         tryOnActive = sessionActive || autoActive
         val useMock = tryOnActive || autoActive
         if (!useMock && info == null) {
-            if (!mockDisplayLocked) images = displayImages
+            if (!mockDisplayLocked) images = shopImages
             return@LaunchedEffect
         }
         val resolved = withContext(Dispatchers.IO) {
@@ -402,10 +418,7 @@ private fun ProductCard(
             return@LaunchedEffect
         }
         if (!mockDisplayLocked) {
-            images =
-                if (lazyCardImages && resolved.size > 1) listOf(resolved.first())
-                else if (resolved.isNotEmpty()) resolved
-                else displayImages
+            images = if (resolved.isNotEmpty()) resolved else shopImages
         }
     }
 
@@ -435,7 +448,7 @@ private fun ProductCard(
                     lazyLoadImages = lazyCardImages,
                     targetWidthPx = 280,
                     fullResolution = mockDisplayLocked || tryOnActive,
-                    autoRotate = !tryOnActive && (!lazyCardImages || images.size > 1),
+                    autoRotate = !tryOnActive && !mockDisplayLocked && images.size > 1,
                 )
             }
             EazProductCardMediaOverlays(

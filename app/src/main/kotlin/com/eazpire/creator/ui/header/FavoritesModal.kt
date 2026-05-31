@@ -65,7 +65,6 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
-import com.eazpire.creator.ui.ProductModal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -127,6 +126,7 @@ fun FavoritesModal(
     onDismiss: () -> Unit,
     onCountChange: (Int) -> Unit = {},
     onProductClick: ((String) -> Unit)? = null,
+    onEditFavorite: ((FavoriteEditContext) -> Unit)? = null,
 ) {
     if (!visible) return
 
@@ -150,7 +150,6 @@ fun FavoritesModal(
     var editListName by remember { mutableStateOf("") }
     var editListDescription by remember { mutableStateOf("") }
     var handleByProductId by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var editingItem by remember { mutableStateOf<FavoriteItem?>(null) }
     var showProductPicker by remember { mutableStateOf(false) }
     var shopProducts by remember { mutableStateOf<List<ShopPickerProduct>>(emptyList()) }
     var shopProductsLoading by remember { mutableStateOf(false) }
@@ -402,8 +401,23 @@ fun FavoritesModal(
                                     item = item,
                                     onClick = {
                                         val handle = item.productHandle?.trim().orEmpty()
-                                        if (handle.isNotBlank() && tokenStore != null) {
-                                            editingItem = item
+                                        if (handle.isNotBlank() && tokenStore != null && !customerId.isNullOrBlank() && onEditFavorite != null) {
+                                            onEditFavorite(
+                                                FavoriteEditContext(
+                                                    productHandle = handle,
+                                                    customerId = customerId,
+                                                    api = api,
+                                                    productId = item.productId,
+                                                    initialVariantId = item.variantId,
+                                                    activeView = activeView,
+                                                    itemId = item.itemId,
+                                                    onSaved = {
+                                                        if (activeView == "pool") loadPool() else loadListItems(activeView.toLong())
+                                                        loadLists()
+                                                    },
+                                                    onDismiss = {},
+                                                )
+                                            )
                                         } else if (handle.isNotBlank()) {
                                             onProductClick?.invoke(handle)
                                         }
@@ -545,29 +559,6 @@ fun FavoritesModal(
                 title = "Edit list"
             )
         }
-        val editItem = editingItem
-        val editHandle = editItem?.productHandle?.trim().orEmpty()
-        if (editItem != null && editHandle.isNotBlank() && tokenStore != null) {
-            ProductModal(
-                productHandle = editHandle,
-                onDismiss = { editingItem = null },
-                tokenStore = tokenStore,
-                favoriteEdit = FavoriteEditContext(
-                    customerId = customerId!!,
-                    api = api,
-                    productId = editItem.productId,
-                    initialVariantId = editItem.variantId,
-                    activeView = activeView,
-                    itemId = editItem.itemId,
-                    onSaved = {
-                        if (activeView == "pool") loadPool() else loadListItems(activeView.toLong())
-                        loadLists()
-                    },
-                    onDismiss = { editingItem = null }
-                )
-            )
-        }
-
         if (showProductPicker) {
             FavoriteProductPickerSheet(
                 products = shopProducts,

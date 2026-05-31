@@ -70,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -95,6 +96,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
@@ -482,7 +484,6 @@ fun ProductDetailScreen(
     val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
     val localeStore = remember { LocaleStore(context) }
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
-    val accessToken = tokenStore.getAccessToken()
 
     var promoOverlay by remember(productHandle) { mutableStateOf<ShopifyProductsApi.ProductItem?>(null) }
     var mockupTryOnInfo by remember(productHandle) { mutableStateOf<MockupTryOnInfo?>(null) }
@@ -490,6 +491,7 @@ fun ProductDetailScreen(
     var tryOnActive by remember(productHandle) { mutableStateOf(false) }
     var tryOnImageUrl by remember(productHandle) { mutableStateOf<String?>(null) }
     var mockGalleryUrls by remember(productHandle) { mutableStateOf<List<String>>(emptyList()) }
+    val mockGalleryCache = remember(productHandle) { mutableMapOf<String, List<String>>() }
     var tryOnLoading by remember(productHandle) { mutableStateOf(false) }
     var tryOnOverlayMessage by remember(productHandle) { mutableStateOf<String?>(null) }
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
@@ -507,8 +509,13 @@ fun ProductDetailScreen(
     LaunchedEffect(productHandle) {
         isLoading = true
         product = withContext(Dispatchers.IO) { api.getProductByHandle(productHandle) }
-        catalogProducts = withContext(Dispatchers.IO) { api.getProductsWithFullMetafields(250).products }
         isLoading = false
+    }
+
+    LaunchedEffect(productHandle) {
+        catalogProducts = withContext(Dispatchers.IO) {
+            api.getProductsWithFullMetafields(250).products
+        }
     }
 
     LaunchedEffect(productHandle, product?.productKey, product?.designIdMeta) {
@@ -530,15 +537,15 @@ fun ProductDetailScreen(
                 productKeyMeta = prod.productKey,
                 designIdMeta = prod.designIdMeta
             )
-            val info = mockupTryOnInfo
-            if (info != null && isTryOnApparelProduct(info.productKey)) {
+            val info = mockupTryOnInfo ?: return@LaunchedEffect
+            if (isTryOnApparelProduct(info.productKey)) {
                 val colorsResp = withContext(Dispatchers.IO) {
                     creatorApi.getColorVariants(info.productKey)
                 }
                 if (colorsResp.optBoolean("ok", false)) {
                     productColorHexMap = parseProductColorHexMap(colorsResp)
                 }
-            } else {
+            } else if (info.cachedByColor.isEmpty()) {
                 mockupTryOnInfo = null
                 return@LaunchedEffect
             }
@@ -651,7 +658,9 @@ fun ProductDetailScreen(
             matchColor && matchSize
         } ?: p.variants.firstOrNull()
     }
-    val price = selectedVariant?.price ?: 0.0
+    val price = selectedVariant?.price?.takeIf { it > 0.0 }
+        ?: p.variants.firstOrNull { it.price > 0.0 }?.price
+        ?: 0.0
     val comparePrice = selectedVariant?.compareAtPrice
     val available = selectedVariant?.available ?: true
     val lineEstimate = remember(price, quantity) { QuantityDiscount.estimateLineTotals(price, quantity) }
@@ -691,6 +700,16 @@ fun ProductDetailScreen(
             tryOnOverlayMessage = null
             return@LaunchedEffect
         }
+        val cacheKey = selectedColor.trim().lowercase()
+        mockGalleryCache[cacheKey]?.let { cached ->
+            if (cached.isNotEmpty()) {
+                mockGalleryUrls = cached
+                tryOnImageUrl = cached.first()
+                tryOnLoading = false
+                tryOnOverlayMessage = null
+                return@LaunchedEffect
+            }
+        }
         if (tryOnOverlayMessage.isNullOrBlank()) {
             tryOnOverlayMessage = t("eaz.pdp.try_on_overlay_on", "Putting on your look…")
         }
@@ -718,10 +737,12 @@ fun ProductDetailScreen(
             } else {
                 tryOnImageUrl = single
                 mockGalleryUrls = listOf(single)
+                mockGalleryCache[cacheKey] = listOf(single)
             }
         } else {
             mockGalleryUrls = gallery
             tryOnImageUrl = gallery.first()
+            mockGalleryCache[cacheKey] = gallery
         }
     }
     LaunchedEffect(showCartToast) { if (showCartToast) { kotlinx.coroutines.delay(1500); showCartToast = false } }
@@ -975,7 +996,11 @@ fun ProductDetailScreen(
                                 model = ImageRequest.Builder(context).data(url).build(),
                                 contentDescription = p.title,
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Fit
+                                contentScale = if (tryOnActive && mockGalleryUrls.isNotEmpty()) {
+                                    ContentScale.Crop
+                                } else {
+                                    ContentScale.Fit
+                                }
                             )
                         }
                     }
@@ -986,7 +1011,8 @@ fun ProductDetailScreen(
                     mockupTryOnInfo?.let {
                         Box(
                             modifier = Modifier
-                                .align(Alignment.Center)
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 12.dp)
                                 .size(44.dp)
                                 .clip(CircleShape)
                                 .background(
@@ -1448,7 +1474,7 @@ fun ProductDetailScreen(
                 maxLines = 1,
             )
         }
-        // Row 2: Price, Delivery, Cart, Buy now
+        // Row 2: Price + delivery, Cart, Buy now
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1457,7 +1483,13 @@ fun ProductDetailScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            val deliveryDate = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMAN)
+                .format(java.util.Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .widthIn(min = 80.dp)
+            ) {
                 Text(
                     "CHF %.2f".format(unitPriceAfterDiscount),
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
@@ -1486,24 +1518,33 @@ fun ProductDetailScreen(
                         else -> {}
                     }
                 }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(top = 2.dp),
+                ) {
+                    Icon(
+                        Icons.Default.LocalShipping,
+                        contentDescription = null,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        "ca. $deliveryDate",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = EazColors.TextSecondary,
+                        maxLines = 1,
+                    )
+                }
+                if (comparePrice != null && comparePrice > price) {
+                    Text(
+                        "CHF %.2f".format(comparePrice),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = EazColors.TextSecondary,
+                        textDecoration = TextDecoration.LineThrough,
+                    )
+                }
             }
-            val deliveryDate = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMAN).format(java.util.Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Icon(
-                    Icons.Default.LocalShipping,
-                    contentDescription = null,
-                    tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(14.dp),
-                )
-                Text("ca. $deliveryDate", style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary, maxLines = 1)
-            }
-            if (comparePrice != null && comparePrice > price) {
-                Text("CHF %.2f".format(comparePrice), style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
-            }
-            Spacer(modifier = Modifier.weight(1f))
             Box(
                 contentAlignment = Alignment.Center
             ) {
@@ -1520,10 +1561,11 @@ fun ProductDetailScreen(
                             return@Button
                         }
                         scope.launch {
+                            val customerToken = resolveValidCustomerAccessToken(context, tokenStore)
                             val cartId = storefrontCartStore.cartId
                             if (cartId != null) {
                                 val result = withContext(Dispatchers.IO) {
-                                    storefrontCartApi.addLine(cartId, vid, quantity, accessToken)
+                                    storefrontCartApi.addLine(cartId, vid, quantity, customerToken)
                                 }
                                 if (result.ok && result.cart != null) {
                                     storefrontCartStore.cartId = result.cart.cartId
@@ -1539,7 +1581,7 @@ fun ProductDetailScreen(
                                 }
                             } else {
                                 val result = withContext(Dispatchers.IO) {
-                                    storefrontCartApi.createCart(listOf(vid to quantity), accessToken, countryCode)
+                                    storefrontCartApi.createCart(listOf(vid to quantity), customerToken, countryCode)
                                 }
                                 if (result.ok && result.cartId != null) {
                                     storefrontCartStore.cartId = result.cartId
@@ -1577,10 +1619,11 @@ fun ProductDetailScreen(
                         return@Button
                     }
                     scope.launch {
+                        val customerToken = resolveValidCustomerAccessToken(context, tokenStore)
                         val cartId = storefrontCartStore.cartId
                         val url = if (cartId != null) {
                             val result = withContext(Dispatchers.IO) {
-                                storefrontCartApi.addLine(cartId, vid, quantity, accessToken)
+                                storefrontCartApi.addLine(cartId, vid, quantity, customerToken)
                             }
                             if (result.ok && result.cart != null) {
                                 storefrontCartStore.cartId = result.cart.cartId
@@ -1597,7 +1640,7 @@ fun ProductDetailScreen(
                             }
                         } else {
                             val result = withContext(Dispatchers.IO) {
-                                storefrontCartApi.createCart(listOf(vid to quantity), accessToken, countryCode)
+                                storefrontCartApi.createCart(listOf(vid to quantity), customerToken, countryCode)
                             }
                             if (result.ok && result.cartId != null && result.checkoutUrl != null) {
                                 storefrontCartStore.cartId = result.cartId
@@ -2295,6 +2338,21 @@ private fun PdpPlusOneLabel(
             fontSize = 13.sp
         )
     }
+}
+
+private suspend fun resolveValidCustomerAccessToken(
+    context: android.content.Context,
+    tokenStore: SecureTokenStore,
+): String? {
+    withContext(Dispatchers.IO) {
+        ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
+    }
+    val token = tokenStore.getAccessToken()?.trim().orEmpty()
+    if (token.isBlank()) return null
+    val exp = tokenStore.getShopifyAccessExpiresAtEpochMs()
+    val bufferMs = 5L * 60L * 1000L
+    if (exp > 0L && System.currentTimeMillis() >= exp - bufferMs) return null
+    return token
 }
 
 private fun colorForName(name: String): Color {

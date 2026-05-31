@@ -39,7 +39,7 @@ val HOME_PRODUCT_SECTIONS: List<HomeCarouselSectionDef> = listOf(
         titleKey = "eaz.nav.new-arrivals",
         titleDefault = "New Arrivals",
         viewAllHandle = "new-arrivals",
-        baseCollectionHandle = null,
+        baseCollectionHandle = "new-arrivals",
         maxProducts = HOME_MAX_PRODUCTS,
     ),
     HomeCarouselSectionDef(
@@ -105,7 +105,7 @@ suspend fun loadHomeCategoryPoolsMissingChips(
 ): HomeCategoryPools = withContext(Dispatchers.IO) {
     val out = existing.toMutableMap()
     CHIP_COLLECTION_CANDIDATES.keys.forEach { chipId ->
-        if (!out[chipId].isNullOrEmpty()) return@forEach
+        if (out.containsKey(chipId)) return@forEach
         val handles = CHIP_COLLECTION_CANDIDATES[chipId] ?: listOf(null)
         out[chipId] = loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts)
     }

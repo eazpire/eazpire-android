@@ -74,6 +74,7 @@ import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.creator.CreatorHeaderEazyStartBubble
 import com.eazpire.creator.ui.creator.CreatorMainScreen
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
+import com.eazpire.creator.ui.header.FavoriteEditContext
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
@@ -181,6 +182,7 @@ fun ShopScreen(
     var cartDrawerVisible by remember { mutableStateOf(false) }
     var shopContentReloadNonce by remember { mutableIntStateOf(0) }
     var favoritesModalVisible by remember { mutableStateOf(false) }
+    var favoriteEditContext by remember { mutableStateOf<FavoriteEditContext?>(null) }
     var eazyChatVisible by remember { mutableStateOf(false) }
     var eazyStartTab by remember { mutableStateOf(EazySidebarTab.Chat) }
 
@@ -666,8 +668,23 @@ fun ShopScreen(
                     onFavoriteProductClick = { handle ->
                         if (handle.isNotBlank()) {
                             favoritesModalVisible = false
+                            favoriteEditContext = null
                             productModalHandleState.value = handle
                         }
+                    },
+                    onFavoriteEdit = { ctx ->
+                        favoritesModalVisible = false
+                        favoriteEditContext = ctx.copy(
+                            onSaved = {
+                                ctx.onSaved()
+                                favoriteEditContext = null
+                            },
+                            onDismiss = {
+                                favoriteEditContext = null
+                                productModalHandleState.value = null
+                            },
+                        )
+                        productModalHandleState.value = ctx.productHandle
                     },
                     onAccountClick = {
                         if (tokenStore.isLoggedIn()) {
@@ -1233,17 +1250,25 @@ fun ShopScreen(
             key(modalHandle) {
                 ProductModal(
                     productHandle = modalHandle,
-                    onDismiss = { productModalHandleState.value = null },
+                    onDismiss = {
+                        favoriteEditContext = null
+                        productModalHandleState.value = null
+                    },
                     tokenStore = tokenStore,
                     onTermsClick = { termsModalVisible = true },
                     onNavigateToCreator = { name ->
+                        favoriteEditContext = null
                         productModalHandleState.value = null
                         selectedProductHandle = null
                         selectedCreatorName = name
                     },
                     onNavigateToProduct = { handle ->
-                        if (handle.isNotBlank()) productModalHandleState.value = handle
-                    }
+                        if (handle.isNotBlank()) {
+                            favoriteEditContext = null
+                            productModalHandleState.value = handle
+                        }
+                    },
+                    favoriteEdit = favoriteEditContext,
                 )
             }
         }
