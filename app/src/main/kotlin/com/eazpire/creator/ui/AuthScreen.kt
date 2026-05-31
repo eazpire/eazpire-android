@@ -111,7 +111,9 @@ fun AuthScreen(
     }
 
     fun launchOAuthCustomTab(url: String) {
-        AuthDebugLog.d("[CUSTOM TAB] launch url=$url attempt=$loginAttemptId")
+        var launchUrl = AuthConfig.normalizeOAuthEndpoint(url)
+        AuthConfig.rewriteAccountHostUri(Uri.parse(launchUrl))?.toString()?.let { launchUrl = it }
+        AuthDebugLog.d("[CUSTOM TAB] launch url=$launchUrl attempt=$loginAttemptId")
         oauthWebViewUrl = null
         val tabsIntent = CustomTabsIntent.Builder()
             .setShowTitle(true)
@@ -120,7 +122,7 @@ fun AuthScreen(
             Browser.EXTRA_HEADERS,
             Bundle().apply { putString("Accept", AuthConfig.SHOPIFY_HTML_ACCEPT) }
         )
-        tabsIntent.launchUrl(context, Uri.parse(url))
+        tabsIntent.launchUrl(context, Uri.parse(launchUrl))
         awaitingOAuthCallback = true
     }
 
@@ -314,6 +316,11 @@ fun AuthScreen(
                                             AuthDebugLog.d("[WEBVIEW CALLBACK DETECTED handleNavigation] attempt=$loginAttemptId url=$u")
                                             view?.stopLoading()
                                             handleCallback(u.toString())
+                                            return true
+                                        }
+                                        AuthConfig.rewriteAccountHostUri(u)?.toString()?.let { rewritten ->
+                                            AuthDebugLog.d("[WEBVIEW ACCOUNT HOST REWRITE] attempt=$loginAttemptId $u -> $rewritten")
+                                            view?.loadUrl(rewritten)
                                             return true
                                         }
                                         if (isGoogleOAuthUri(u)) {
