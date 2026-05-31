@@ -33,7 +33,7 @@ import com.eazpire.creator.R
 
 /**
  * Same choices as web login modal: Shop app, Google, Email.
- * All options use the same in-app WebView Shopify Customer Account OAuth (PKCE).
+ * Shopify login in WebView; Google OAuth continues in Chrome Custom Tab.
  */
 @Composable
 fun LoginOptionsModal(
@@ -109,7 +109,7 @@ fun LoginOptionsModal(
                 }
 
                 Text(
-                    text = "Shop and email sign in inside the app. Google opens in your browser.",
+                    text = "Shop and email sign in inside the app. Google opens the Shopify login first, then your browser.",
                     style = MaterialTheme.typography.labelSmall,
                     color = EazColors.TextSecondary,
                     modifier = Modifier.padding(top = 14.dp)

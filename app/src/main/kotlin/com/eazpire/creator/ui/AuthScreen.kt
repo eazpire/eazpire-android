@@ -65,8 +65,8 @@ import kotlin.coroutines.resume
 
 /**
  * Shopify Customer Account OAuth (PKCE).
- * - **Google** → Chrome Custom Tab (Google blocks OAuth inside WebView).
- * - **Shop / Email** → in-app WebView.
+ * - **Shopify login page** → in-app WebView (Custom Tabs send Accept */* → Shopify 406 blank page).
+ * - **Google OAuth** → Chrome Custom Tab when WebView navigates to accounts.google.com.
  */
 @Composable
 fun AuthScreen(
@@ -98,10 +98,14 @@ fun AuthScreen(
     var awaitingOAuthCallback by remember { mutableStateOf(false) }
 
     LaunchedEffect(loginMethod) {
-        AuthDebugLog.d(
-            "[AUTHSCREEN] loginMethod=$loginMethod " +
-                if (loginMethod == AuthLoginMethod.GOOGLE) "usesCustomTab=true" else "usesWebView=true"
-        )
+        AuthDebugLog.d("[AUTHSCREEN] loginMethod=$loginMethod usesWebViewForShopify=true")
+    }
+
+    fun openShopifyOAuthInWebView(url: String) {
+        oauthWebViewUrl = url
+        webViewProgress = 0
+        oauthWebViewLoadDone = false
+        awaitingOAuthCallback = false
     }
 
     fun isGoogleOAuthUri(uri: Uri): Boolean {
@@ -226,7 +230,7 @@ fun AuthScreen(
             awaitingOAuthCallback = false
             loginAttemptId += 1
             val attempt = loginAttemptId
-            AuthDebugLog.d("[LOGIN#$attempt] START method=$loginMethod customTab=${loginMethod == AuthLoginMethod.GOOGLE}")
+            AuthDebugLog.d("[LOGIN#$attempt] START method=$loginMethod")
             try {
                 clearCookiesForLogin()
                 val endpoints = authService.discoverEndpoints()
@@ -243,14 +247,8 @@ fun AuthScreen(
                 )
                 lastAuthUrl = url
                 AuthDebugLog.d("[LOGIN#$attempt] AUTH_URL $url")
-                when (loginMethod) {
-                    AuthLoginMethod.GOOGLE -> launchOAuthCustomTab(url)
-                    AuthLoginMethod.SHOP, AuthLoginMethod.EMAIL -> {
-                        oauthWebViewUrl = url
-                        webViewProgress = 0
-                        oauthWebViewLoadDone = false
-                    }
-                }
+                // All methods: WebView for Shopify (avoids Custom Tab 406 on shopify.com). Google handoff in WebViewClient.
+                openShopifyOAuthInWebView(url)
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
                 AuthDebugLog.e("[LOGIN#$attempt] Failed: ${e.message}", e)
@@ -362,6 +360,11 @@ fun AuthScreen(
                                                 handleCallback(url)
                                                 return
                                             }
+                                            if (isGoogleOAuthUri(u)) {
+                                                AuthDebugLog.d("[WEBVIEW GOOGLE REDIRECT onPageStarted] opening Custom Tab attempt=$loginAttemptId url=$url")
+                                                view?.stopLoading()
+                                                launchOAuthCustomTab(u.toString())
+                                            }
                                         } catch (e: Exception) {
                                             AuthDebugLog.w("[WEBVIEW PAGE STARTED] Failed to parse url=$url", e)
                                         }
@@ -431,7 +434,10 @@ fun AuthScreen(
                             val target = oauthWebViewUrl
                             if (target != null && !oauthWebViewLoadDone && !callbackHandled) {
                                 AuthDebugLog.d("[WEBVIEW LOAD INITIAL] attempt=$loginAttemptId target=$target")
-                                wv.loadUrl(target)
+                                wv.loadUrl(
+                                    target,
+                                    mapOf("Accept" to AuthConfig.SHOPIFY_HTML_ACCEPT),
+                                )
                                 oauthWebViewLoadDone = true
                             }
                         }
@@ -486,7 +492,7 @@ fun AuthScreen(
                 Text(
                     text = when (loginMethod) {
                         AuthLoginMethod.SHOP -> "Shop app Login"
-                        AuthLoginMethod.GOOGLE -> "Google Login (Browser)"
+                        AuthLoginMethod.GOOGLE -> "Google Login"
                         AuthLoginMethod.EMAIL -> "Email Login"
                     },
                     style = MaterialTheme.typography.labelSmall
@@ -495,7 +501,7 @@ fun AuthScreen(
                 Text(
                     text = when (loginMethod) {
                         AuthLoginMethod.GOOGLE ->
-                            "Google sign-in opens in your browser (required by Google)."
+                            "Pick Google on the Shopify screen; Google sign-in opens in your browser."
                         else -> "Mit deinem Shopify-Konto anmelden"
                     },
                     style = MaterialTheme.typography.bodyLarge
