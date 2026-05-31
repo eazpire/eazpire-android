@@ -66,6 +66,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 private fun normalizeImageUrl(url: String?): String? {
