@@ -45,6 +45,9 @@ class EazyChatStore(private val context: Context) {
     private val _videoJobState = MutableStateFlow<VideoJobState?>(null)
     val videoJobState: StateFlow<VideoJobState?> = _videoJobState.asStateFlow()
 
+    private val _designJobState = MutableStateFlow<DesignJobState?>(null)
+    val designJobState: StateFlow<DesignJobState?> = _designJobState.asStateFlow()
+
     /** Mirrors web localStorage eazy_fn_visibility: feature id → false = hidden in carousel. */
     private val _fnVisibility = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val fnVisibility: StateFlow<Map<String, Boolean>> = _fnVisibility.asStateFlow()
@@ -140,6 +143,25 @@ class EazyChatStore(private val context: Context) {
         _videoJobState.value = null
     }
 
+    fun startDesignJob(jobId: String, summary: String) {
+        _designJobState.value = DesignJobState(jobId = jobId, summary = summary, progress = 0, message = null)
+    }
+
+    fun updateDesignJobPoll(progress: Int, message: String?) {
+        val cur = _designJobState.value ?: return
+        if (cur.terminal) return
+        _designJobState.value = cur.copy(progress = progress.coerceIn(0, 100), message = message)
+    }
+
+    fun clearDesignJob() {
+        _designJobState.value = null
+    }
+
+    fun failDesignJob(message: String) {
+        val cur = _designJobState.value ?: return
+        _designJobState.value = cur.copy(failed = true, errorMessage = message)
+    }
+
     suspend fun getUserId(customerId: String?): String {
         val realId = customerId?.takeIf { it.isNotBlank() }
         if (realId != null) {
@@ -217,6 +239,20 @@ data class VideoJobState(
     val completed: Boolean = false,
     val failed: Boolean = false,
     val resultVideoUrl: String? = null,
+    val errorMessage: String? = null
+) {
+    val isActive: Boolean get() = !completed && !failed
+    val terminal: Boolean get() = completed || failed
+}
+
+/** Async design-generate job (design generator) in Eazy → Active Jobs. */
+data class DesignJobState(
+    val jobId: String,
+    val summary: String,
+    val progress: Int = 0,
+    val message: String? = null,
+    val completed: Boolean = false,
+    val failed: Boolean = false,
     val errorMessage: String? = null
 ) {
     val isActive: Boolean get() = !completed && !failed

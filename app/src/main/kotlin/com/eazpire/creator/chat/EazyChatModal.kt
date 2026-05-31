@@ -369,6 +369,22 @@ private fun mergeSystemJobRows(a: List<EazySystemJobRow>, b: List<EazySystemJobR
     return (a + b).filter { seen.add(it.sessionId) }
 }
 
+/** Avoid duplicate rows when the same job_id is shown in the local async overlay (hero/video/design). */
+private fun filterKvJobsForLocalOverlay(
+    jobs: List<EazyKvJobRow>,
+    hero: HeroJobState?,
+    video: VideoJobState?,
+    design: DesignJobState?,
+): List<EazyKvJobRow> {
+    val exclude = buildSet {
+        hero?.takeIf { it.isActive }?.jobId?.let { add(it) }
+        video?.takeIf { it.isActive }?.jobId?.let { add(it) }
+        design?.takeIf { it.isActive }?.jobId?.let { add(it) }
+    }
+    if (exclude.isEmpty()) return jobs
+    return jobs.filter { it.id !in exclude }
+}
+
 private fun isUsableTabText(s: String?): Boolean {
     val t = s?.trim() ?: return false
     if (t.isEmpty()) return false
@@ -496,6 +512,7 @@ fun EazyChatModal(
     val rateLimit by chatStore.rateLimit.collectAsState()
     val heroJob by chatStore.heroJobState.collectAsState()
     val videoJob by chatStore.videoJobState.collectAsState()
+    val designJob by chatStore.designJobState.collectAsState()
     val isLoggedIn = tokenStore?.isLoggedIn() == true
     val pagePath = if (chatContext == EazyChatContext.Creator) "/creator" else "/shop"
     val ownerId = tokenStore?.getOwnerId()
@@ -659,13 +676,18 @@ fun EazyChatModal(
         }
     }
 
-    val jobsBadgeCount = remember(userKvJobs, systemJobs, heroJob, videoJob, selectedTab, jobsFeedScope) {
+    val userKvJobsForDisplay = remember(userKvJobs, heroJob, videoJob, designJob) {
+        filterKvJobsForLocalOverlay(userKvJobs, heroJob, videoJob, designJob)
+    }
+
+    val jobsBadgeCount = remember(userKvJobsForDisplay, systemJobs, heroJob, videoJob, designJob, selectedTab, jobsFeedScope) {
         val heroActive = if (heroJob?.isActive == true) 1 else 0
         val videoActive = if (videoJob?.isActive == true) 1 else 0
+        val designActive = if (designJob?.isActive == true) 1 else 0
         if (selectedTab == EazySidebarTab.Jobs && jobsFeedScope == "system") {
             systemJobs.size
         } else {
-            userKvJobs.size + heroActive + videoActive
+            userKvJobsForDisplay.size + heroActive + videoActive + designActive
         }
     }
 
@@ -1298,9 +1320,10 @@ fun EazyChatModal(
                             EazySidebarTab.Jobs -> EazyJobsCombinedPanel(
                                 hero = heroJob,
                                 video = videoJob,
+                                design = designJob,
                                 jobsFeedScope = jobsFeedScope,
                                 onJobsFeedScopeChange = { jobsFeedScope = it },
-                                userKvJobs = userKvJobs,
+                                userKvJobs = userKvJobsForDisplay,
                                 systemJobs = systemJobs,
                                 loadingJobs = loadingJobs,
                                 t = t
@@ -1952,6 +1975,7 @@ private fun systemJobKindUiLabel(jobKind: String, t: (String, String) -> String)
 private fun EazyJobsCombinedPanel(
     hero: HeroJobState?,
     video: VideoJobState?,
+    design: DesignJobState?,
     jobsFeedScope: String,
     onJobsFeedScopeChange: (String) -> Unit,
     userKvJobs: List<EazyKvJobRow>,
@@ -2052,7 +2076,13 @@ private fun EazyJobsCombinedPanel(
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    EazyHeroJobsPanel(hero, video, hasKvJobs = userKvJobs.isNotEmpty(), t = t)
+                    EazyLocalAsyncJobsPanel(
+                        hero = hero,
+                        video = video,
+                        design = design,
+                        hasKvJobs = userKvJobs.isNotEmpty(),
+                        t = t
+                    )
                     if (userKvJobs.isNotEmpty()) {
                         Text(
                             t("creator.notifications.active_jobs", "Active Jobs"),
@@ -2111,9 +2141,10 @@ private fun EazyJobsCombinedPanel(
 }
 
 @Composable
-private fun EazyHeroJobsPanel(
+private fun EazyLocalAsyncJobsPanel(
     hero: HeroJobState?,
     video: VideoJobState?,
+    design: DesignJobState?,
     hasKvJobs: Boolean = false,
     t: (String, String) -> String
 ) {
@@ -2123,8 +2154,35 @@ private fun EazyHeroJobsPanel(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        val activeDesign = design?.takeIf { it.isActive }
         val activeHero = hero?.takeIf { it.isActive }
         val activeVideo = video?.takeIf { it.isActive }
+        if (activeDesign != null) {
+            Text(
+                text = t("creator.generator_eazy.job_summary_title", "Design generation"),
+                style = MaterialTheme.typography.labelMedium,
+                color = LocalEazyModalPalette.current.muted
+            )
+            Text(
+                text = activeDesign.summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = LocalEazyModalPalette.current.text
+            )
+            LinearProgressIndicator(
+                progress = activeDesign.progress.coerceIn(0, 100) / 100f,
+                modifier = Modifier.fillMaxWidth(),
+                color = LocalEazyModalPalette.current.accent,
+                trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
+            )
+            Text(
+                text = t("creator.notifications.generate_design", "Generate Design"),
+                style = MaterialTheme.typography.labelSmall,
+                color = LocalEazyModalPalette.current.muted
+            )
+            activeDesign.message?.takeIf { it.isNotBlank() }?.let { msg ->
+                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
+            }
+        }
         if (activeHero != null) {
             Text(
                 text = t("creator.hero_eazy.job_summary_title", "Hero image generation"),
@@ -2167,7 +2225,7 @@ private fun EazyHeroJobsPanel(
                 Text(text = msg, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
             }
         }
-        if (activeHero == null && activeVideo == null && !hasKvJobs) {
+        if (activeDesign == null && activeHero == null && activeVideo == null && !hasKvJobs) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,

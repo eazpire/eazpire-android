@@ -192,6 +192,7 @@ fun ShopScreen(
     val creatorPollApi = remember(pollJwt) { CreatorApi(jwt = pollJwt) }
     val heroJobForPoll by eazyChatStore.heroJobState.collectAsState()
     val videoJobForPoll by eazyChatStore.videoJobState.collectAsState()
+    val designJobForPoll by eazyChatStore.designJobState.collectAsState()
 
     LaunchedEffect(heroJobForPoll?.jobId) {
         val jobId = heroJobForPoll?.jobId ?: return@LaunchedEffect
@@ -262,6 +263,36 @@ fun ShopScreen(
                                 ?: "No video in result"
                         )
                     }
+                }
+                break
+            } catch (_: Exception) {
+                delay(3000)
+            }
+        }
+    }
+
+    LaunchedEffect(designJobForPoll?.jobId) {
+        val jobId = designJobForPoll?.jobId ?: return@LaunchedEffect
+        if (designJobForPoll?.terminal == true) return@LaunchedEffect
+        while (isActive) {
+            try {
+                val r = withContext(Dispatchers.IO) { creatorPollApi.pollJob(jobId) }
+                val done = r.optBoolean("done")
+                val notFound = r.optBoolean("not_found")
+                if (!done) {
+                    val progress = r.optInt("progress", 0)
+                    val msg = r.optString("message", "").takeIf { it.isNotBlank() }
+                    eazyChatStore.updateDesignJobPoll(progress, msg)
+                    delay(2000)
+                    continue
+                }
+                if (notFound) {
+                    eazyChatStore.failDesignJob(
+                        r.optString("message", "").takeIf { it.isNotBlank() } ?: "Job not found"
+                    )
+                } else {
+                    // KV list shows save phase; drop local overlay once generate finishes.
+                    eazyChatStore.clearDesignJob()
                 }
                 break
             } catch (_: Exception) {
@@ -605,7 +636,7 @@ fun ShopScreen(
                 eazyStartTab = EazySidebarTab.Jobs
             },
             onGeneratorJobStarted = { id, summary ->
-                eazyChatStore.startHeroJob(id, summary)
+                eazyChatStore.startDesignJob(id, summary)
                 eazyStartTab = EazySidebarTab.Jobs
             },
             onGeneratorEazyLookLeftChange = { creatorGenEazyLookLeft = it },

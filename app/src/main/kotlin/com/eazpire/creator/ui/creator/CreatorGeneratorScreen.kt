@@ -547,6 +547,26 @@ fun CreatorGeneratorScreen(
         )
     }
 
+    fun resetGeneratorInputsAfterStart() {
+        targetProduct = "all"
+        designType = "classic"
+        ratio = "portrait"
+        contentType = "design-text"
+        selectedStyles = emptyList()
+        languageState = GenLanguageState()
+        colorState = GenColorState()
+        prompt = ""
+        selectedImages = emptyList()
+        showTargetProductModal = false
+        showDesignTypeModal = false
+        showRefSourceModal = false
+        showOptionsModal = false
+        showInspirationModal = false
+        showMyDesignsModal = false
+        showCanvasModal = false
+        showCanvasEditModal = false
+    }
+
     fun runDesignGenerate() {
         if (ownerId.isBlank() || generatingGen) return
         val pTrim = prompt.trim()
@@ -590,6 +610,7 @@ fun CreatorGeneratorScreen(
                     onGeneratorJobStarted(jobId, summary)
                     onOpenEazyChat(EazySidebarTab.Jobs)
                     showGenConfirmDialog = false
+                    resetGeneratorInputsAfterStart()
                 } else {
                     errorMessage = resp.optString("message", "")
                         .ifBlank { resp.optString("error", "") }

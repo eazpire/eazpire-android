@@ -148,6 +148,14 @@ private fun extractShopifyHandle(product: CreationProduct): String? {
     }
 }
 
+/** Matches web `resolveLibraryStatus` — active tab only shows library_status active (or legacy rows with id). */
+private fun resolveLibraryStatus(obj: JSONObject): String {
+    val ls = obj.optString("library_status", "").trim().lowercase()
+    if (ls == "active" || ls == "inactive") return ls
+    val id = obj.optString("id", "").trim()
+    return if (id.isNotBlank()) "active" else "inactive"
+}
+
 /** Same URL list as shop cards: worker product-json → variantImages (or API fallback). */
 private fun creationProductDisplayUrls(
     product: CreationProduct,
@@ -319,6 +327,7 @@ fun CreatorCreationsScreen(
                         val savedItems = (listRes.optJSONArray("items") ?: JSONArray()).let { arr ->
                             (0 until arr.length()).mapNotNull { i ->
                                 val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                                if (resolveLibraryStatus(obj) != "active") return@mapNotNull null
                                 val meta = try {
                                     val m = obj.opt("metadata")
                                     when (m) {
