@@ -8,7 +8,7 @@ import android.net.Uri
  *
  * WICHTIG: In Shopify Admin → Settings → Customer accounts → Customer Account API
  * einen "Public mobile client" mit Callback-URL registrieren:
- *   shop.allyoucanpink.eazpire://callback (Shopify-registered; SHOP_ID numeric for OIDC)
+ *   shop.73952035098.eazpire://callback (shop_id numerisch — Pflichtformat)
  *
  * Die Client ID des Mobile Clients ggf. hier eintragen (falls anders als Admin-App).
  */
@@ -24,7 +24,7 @@ object AuthConfig {
         "https://shopify.com/authentication/$SHOP_ID/.well-known/openid-configuration"
     /** Shop für get-product-image (Storefront API) – Produkte sind auf www.eazpire.com */
     const val STOREFRONT_SHOP = "eazpire.myshopify.com"
-    const val REDIRECT_URI = "shop.allyoucanpink.eazpire://callback"
+    const val REDIRECT_URI = "shop.73952035098.eazpire://callback"
     /**
      * Chrome Custom Tabs send generic Accept (star-slash-star) for HTML navigations;
      * Shopify may respond 406 (empty body).
