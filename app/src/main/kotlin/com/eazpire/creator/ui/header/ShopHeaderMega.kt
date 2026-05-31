@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -88,46 +92,62 @@ fun ShopHeaderMegaPanel(
     columns: List<ShopMegaColumn>,
     t: (String, String) -> String,
     onLinkClick: (title: String, collectionHandle: String, productType: String?) -> Unit,
+    onCollapse: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val scroll = rememberScrollState()
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color.White)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-            .verticalScroll(scroll),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        columns.forEach { col ->
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = col.headerLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = EazColors.TextPrimary,
-                    modifier = Modifier
-                        .padding(bottom = 6.dp)
-                        .clickable {
-                            onLinkClick(
-                                col.headerLabel,
-                                col.links.firstOrNull()?.collectionHandle ?: "home-living",
-                                col.headerProductType
-                            )
-                        }
-                )
-                col.links.forEach { link ->
+    Column(modifier = modifier.fillMaxWidth().background(Color.White)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .verticalScroll(scroll),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            columns.forEach { col ->
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = link.label,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = EazColors.TextSecondary,
+                        text = col.headerLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = EazColors.TextPrimary,
                         modifier = Modifier
-                            .padding(vertical = 4.dp)
+                            .padding(bottom = 6.dp)
                             .clickable {
-                                onLinkClick(link.label, link.collectionHandle, link.productType)
+                                onLinkClick(
+                                    col.headerLabel,
+                                    col.links.firstOrNull()?.collectionHandle ?: "home-living",
+                                    col.headerProductType
+                                )
                             }
                     )
+                    col.links.forEach { link ->
+                        Text(
+                            text = link.label,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EazColors.TextSecondary,
+                            modifier = Modifier
+                                .padding(vertical = 4.dp)
+                                .clickable {
+                                    onLinkClick(link.label, link.collectionHandle, link.productType)
+                                }
+                        )
+                    }
                 }
+            }
+        }
+        if (onCollapse != null) {
+            IconButton(
+                onClick = onCollapse,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ExpandLess,
+                    contentDescription = t("eaz.header.collapse_menu", "Collapse menu"),
+                    tint = EazColors.Orange,
+                )
             }
         }
     }

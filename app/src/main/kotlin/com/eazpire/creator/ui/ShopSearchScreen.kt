@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,7 +52,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val PAGE_SIZE = 48
+private const val SEARCH_INITIAL_BATCH = PRODUCT_LIST_BATCH
 
 @Composable
 fun ShopSearchScreen(
@@ -85,17 +86,72 @@ fun ShopSearchScreen(
         }
     }
     var products by remember(searchQuery) { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
+    var nextCursor by remember(searchQuery) { mutableStateOf<String?>(null) }
+    var hasMore by remember(searchQuery) { mutableStateOf(false) }
     var loading by remember(searchQuery) { mutableStateOf(true) }
+    var loadingMore by remember(searchQuery) { mutableStateOf(false) }
+    var autoLoadPaused by remember(searchQuery) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val gridState = rememberLazyGridState()
+    val nearEnd = rememberProductListNearEnd(gridState)
+    val loadMoreLabel = store?.t("eaz.product_list.load_more", "Load more") ?: "Load more"
+
+    fun loadMore(forceAfterCap: Boolean = false) {
+        if (loadingMore || searchQuery.isBlank()) return
+        if (autoLoadPaused && !forceAfterCap) return
+        if (!forceAfterCap && products.size >= PRODUCT_LIST_MAX_AUTO) {
+            autoLoadPaused = true
+            return
+        }
+        scope.launch {
+            loadingMore = true
+            try {
+                val r = withContext(Dispatchers.IO) {
+                    api.getProducts(searchQuery = searchQuery.trim(), limit = SEARCH_INITIAL_BATCH, cursor = nextCursor)
+                }
+                if (r.products.isEmpty()) {
+                    hasMore = false
+                    return@launch
+                }
+                val merged = linkedMapOf<Long, ShopifyProductsApi.ProductItem>()
+                products.forEach { merged.putIfAbsent(it.id, it) }
+                r.products.forEach { merged.putIfAbsent(it.id, it) }
+                products = merged.values.toList()
+                nextCursor = r.nextCursor
+                hasMore = r.hasNextPage && r.nextCursor != null
+                if (products.size >= PRODUCT_LIST_MAX_AUTO && !forceAfterCap) {
+                    autoLoadPaused = true
+                }
+            } finally {
+                loadingMore = false
+            }
+        }
+    }
 
     LaunchedEffect(searchQuery, reloadTrigger) {
         loading = true
         products = emptyList()
+        nextCursor = null
+        hasMore = false
+        autoLoadPaused = false
         val r = withContext(Dispatchers.IO) {
-            api.getProducts(searchQuery = searchQuery.trim(), limit = PAGE_SIZE, cursor = null)
+            api.getProducts(searchQuery = searchQuery.trim(), limit = SEARCH_INITIAL_BATCH, cursor = null)
         }
         products = r.products
+        nextCursor = r.nextCursor
+        hasMore = r.hasNextPage && r.nextCursor != null
+        if (products.size >= PRODUCT_LIST_MAX_AUTO) autoLoadPaused = true
         loading = false
     }
+
+    ProductListAutoLoadEffect(
+        enabled = !loading && products.isNotEmpty(),
+        nearEnd = nearEnd,
+        autoLoadPaused = autoLoadPaused,
+        hasMore = hasMore,
+        loading = loadingMore,
+        onLoadMore = { loadMore() },
+    )
 
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -146,6 +202,7 @@ fun ShopSearchScreen(
             }
             else -> {
                 LazyVerticalGrid(
+                    state = gridState,
                     columns = GridCells.Fixed(2),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -162,6 +219,15 @@ fun ShopSearchScreen(
                             mockPreviewRevision = mockPreviewRevision,
                             onClick = { onProductClick(p) },
                             onCartClick = { onCartClick(p) }
+                        )
+                    }
+                    item(key = "search-footer") {
+                        ProductListInfiniteFooter(
+                            visible = loadingMore && !autoLoadPaused,
+                            loading = loadingMore,
+                            showLoadMore = autoLoadPaused && hasMore,
+                            loadMoreLabel = loadMoreLabel,
+                            onLoadMore = { loadMore(forceAfterCap = true) },
                         )
                     }
                 }

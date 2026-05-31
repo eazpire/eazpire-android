@@ -210,6 +210,7 @@ fun ShopMenuBar(
                     expandedMegaKey = null
                     onCategoryClick(title, handle, productType)
                 },
+                onCollapse = { expandedMegaKey = null },
                 modifier = Modifier.fillMaxWidth()
             )
         }

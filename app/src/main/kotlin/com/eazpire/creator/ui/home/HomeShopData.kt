@@ -21,8 +21,14 @@ data class HomeCarouselSectionDef(
     val maxProducts: Int = 12,
 )
 
+/** Max products per home carousel row (lazy-loaded in batches). */
+const val HOME_MAX_PRODUCTS = 200
+
 /** Fast first paint on home: show this many products per carousel row, then fill in background. */
-const val HOME_INITIAL_PRODUCTS = 10
+const val HOME_INITIAL_PRODUCTS = 24
+
+/** Batch size when paginating home carousel products. */
+const val HOME_LAZY_BATCH = 24
 
 /** Creators carousel: first paint count before loading the full set. */
 const val HOME_INITIAL_CREATORS = 7
@@ -34,7 +40,7 @@ val HOME_PRODUCT_SECTIONS: List<HomeCarouselSectionDef> = listOf(
         titleDefault = "New Arrivals",
         viewAllHandle = "new-arrivals",
         baseCollectionHandle = null,
-        maxProducts = 12,
+        maxProducts = HOME_MAX_PRODUCTS,
     ),
     HomeCarouselSectionDef(
         id = "bestseller",
@@ -42,7 +48,7 @@ val HOME_PRODUCT_SECTIONS: List<HomeCarouselSectionDef> = listOf(
         titleDefault = "Bestseller",
         viewAllHandle = "bestsellers",
         baseCollectionHandle = "bestsellers",
-        maxProducts = 12,
+        maxProducts = HOME_MAX_PRODUCTS,
     ),
     HomeCarouselSectionDef(
         id = "personalizable",
@@ -50,7 +56,7 @@ val HOME_PRODUCT_SECTIONS: List<HomeCarouselSectionDef> = listOf(
         titleDefault = "Personalizable",
         viewAllHandle = null,
         baseCollectionHandle = null,
-        maxProducts = 12,
+        maxProducts = HOME_MAX_PRODUCTS,
     ),
 )
 
@@ -112,24 +118,55 @@ private suspend fun loadProductsForChip(
     handles: List<String?>,
     baseCollectionHandle: String?,
     maxProducts: Int,
+): List<ShopifyProductsApi.ProductItem> =
+    loadProductsForChipUpTo(api, chipId, handles, baseCollectionHandle, maxProducts, initialOnly = false)
+
+/** Loads up to [maxProducts], optionally stopping after the first batch for fast paint. */
+suspend fun loadProductsForChipUpTo(
+    api: ShopifyProductsApi,
+    chipId: String,
+    handles: List<String?>,
+    baseCollectionHandle: String?,
+    maxProducts: Int,
+    initialOnly: Boolean = false,
 ): List<ShopifyProductsApi.ProductItem> {
+    val cap = maxProducts.coerceIn(1, HOME_MAX_PRODUCTS)
+    val firstBatch = if (initialOnly) HOME_INITIAL_PRODUCTS.coerceAtMost(cap) else cap
+    val merged = linkedMapOf<Long, ShopifyProductsApi.ProductItem>()
+    var cursor: String? = null
+    while (merged.size < firstBatch) {
+        val limit = HOME_LAZY_BATCH.coerceAtMost(firstBatch - merged.size)
+        val page = fetchProductsPage(api, chipId, handles, baseCollectionHandle, limit, cursor)
+        if (page.products.isEmpty()) break
+        page.products.forEach { p -> merged.putIfAbsent(p.id, p) }
+        if (!page.hasNextPage || page.nextCursor.isNullOrBlank()) break
+        cursor = page.nextCursor
+    }
+    val sorted = if (chipId == "all") {
+        merged.values.sortedByDescending { it.createdAt.ifBlank { "0" } }
+    } else {
+        merged.values.toList()
+    }
+    return sorted.take(firstBatch)
+}
+
+private suspend fun fetchProductsPage(
+    api: ShopifyProductsApi,
+    chipId: String,
+    handles: List<String?>,
+    baseCollectionHandle: String?,
+    limit: Int,
+    cursor: String?,
+): ShopifyProductsApi.ProductsResult {
     if (chipId == "all") {
-        val handle = baseCollectionHandle
-        val fetchLimit = (maxProducts * 3).coerceAtMost(36)
-        val result = api.getProducts(collectionHandle = handle, limit = fetchLimit)
-        return result.products
-            .sortedByDescending { it.createdAt.ifBlank { "0" } }
-            .take(maxProducts)
+        return api.getProducts(collectionHandle = baseCollectionHandle, limit = limit, cursor = cursor)
     }
     for (handle in handles) {
         if (handle.isNullOrBlank()) continue
-        val fetchLimit = (maxProducts * 2).coerceAtMost(24)
-        val result = api.getProducts(collectionHandle = handle, limit = fetchLimit)
-        if (result.products.isNotEmpty()) {
-            return result.products.take(maxProducts)
-        }
+        val result = api.getProducts(collectionHandle = handle, limit = limit, cursor = cursor)
+        if (result.products.isNotEmpty()) return result
     }
-    return emptyList()
+    return ShopifyProductsApi.ProductsResult(emptyList(), hasNextPage = false, nextCursor = null)
 }
 
 fun catalogPreviewUrlsFromJson(o: JSONObject): List<String> {

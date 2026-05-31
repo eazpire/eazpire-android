@@ -29,6 +29,7 @@ import com.eazpire.creator.ui.home.HOME_INITIAL_PRODUCTS
 import com.eazpire.creator.ui.home.HOME_PRODUCT_SECTIONS
 import com.eazpire.creator.ui.home.HomeCategoryPools
 import com.eazpire.creator.ui.home.HomeCategoryStrip
+import com.eazpire.creator.ui.home.HomeCarouselFilterModal
 import com.eazpire.creator.ui.home.HomeCreateScratchCarousel
 import com.eazpire.creator.ui.home.HomeCreatorsCarousel
 import com.eazpire.creator.ui.home.catalogAvailabilityFromJson
@@ -76,6 +77,19 @@ fun ProductCarouselSection(
     }
 
     var selectedCategory by remember { mutableStateOf("all") }
+    var filterModalVisible by remember { mutableStateOf(false) }
+    var carouselSearchQuery by remember { mutableStateOf("") }
+    val autoScrollPaused =
+        (productModalHandleState?.value != null) || filterModalVisible
+    fun filterCarouselProducts(list: List<ShopifyProductsApi.ProductItem>): List<ShopifyProductsApi.ProductItem> {
+        val q = carouselSearchQuery.trim()
+        if (q.isBlank()) return list
+        return list.filter { item ->
+            item.title.contains(q, ignoreCase = true) ||
+                item.productType.contains(q, ignoreCase = true) ||
+                item.creator.contains(q, ignoreCase = true)
+        }
+    }
     var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     var sectionPools by remember { mutableStateOf<Map<String, HomeCategoryPools>>(emptyMap()) }
     var createScratchCatalog by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
@@ -204,6 +218,8 @@ fun ProductCarouselSection(
                     selectedCategory = selectedCategory,
                     onCategorySelected = { selectedCategory = it },
                     labelForKey = t,
+                    onFilterClick = { filterModalVisible = true },
+                    filterActive = carouselSearchQuery.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -211,9 +227,11 @@ fun ProductCarouselSection(
         if (promoProducts.isNotEmpty()) {
             item(key = "promotions") {
                 val promoTitle = t("eaz.shop.promotions_title", "Promotions")
+                val visiblePromos = filterCarouselProducts(promoProducts)
+                if (visiblePromos.isNotEmpty()) {
                 ProductCarousel(
                     title = promoTitle,
-                    products = promoProducts,
+                    products = visiblePromos,
                     collectionHandle = EAZ_PROMOTIONS_COLLECTION_HANDLE,
                     onTitleClick = onCategoryClick?.let { cb -> { cb(promoTitle, EAZ_PROMOTIONS_COLLECTION_HANDLE) } },
                     onProductClick = onProductClick,
@@ -230,18 +248,21 @@ fun ProductCarouselSection(
                     onCartClick = { params ->
                         productModalHandleState?.value = params.handle
                     },
+                    autoScrollPaused = autoScrollPaused,
                 )
+                }
             }
         }
 
         HOME_PRODUCT_SECTIONS.forEach { def ->
             val products = sectionPools[def.id]?.get(selectedCategory).orEmpty()
-            if (products.isNotEmpty()) {
+            val visibleProducts = filterCarouselProducts(products)
+            if (visibleProducts.isNotEmpty()) {
                 item(key = "section_${def.id}") {
                     val displayTitle = t(def.titleKey, def.titleDefault)
                     ProductCarousel(
                         title = displayTitle,
-                        products = products,
+                        products = visibleProducts,
                         collectionHandle = def.viewAllHandle,
                         onTitleClick = def.viewAllHandle?.let { h ->
                             onCategoryClick?.let { cb -> { cb(displayTitle, h) } }
@@ -255,6 +276,7 @@ fun ProductCarouselSection(
                         onCartClick = { params ->
                             productModalHandleState?.value = params.handle
                         },
+                        autoScrollPaused = autoScrollPaused,
                     )
                 }
             }
@@ -291,10 +313,21 @@ fun ProductCarouselSection(
                 selectedCategory = selectedCategory,
                 onCategorySelected = { selectedCategory = it },
                 labelForKey = t,
+                onFilterClick = { filterModalVisible = true },
+                filterActive = carouselSearchQuery.isNotBlank(),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .zIndex(2f),
+            )
+        }
+
+        if (filterModalVisible) {
+            HomeCarouselFilterModal(
+                searchQuery = carouselSearchQuery,
+                onSearchQueryChange = { carouselSearchQuery = it },
+                onDismiss = { filterModalVisible = false },
+                labelForKey = t,
             )
         }
     }

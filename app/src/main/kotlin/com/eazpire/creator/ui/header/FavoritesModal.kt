@@ -80,6 +80,7 @@ data class FavoriteItem(
     val id: String,
     val itemId: Long,
     val productId: String,
+    val productHandle: String? = null,
     val variantId: String?,
     val productTitle: String,
     val productImage: String?,
@@ -95,7 +96,8 @@ fun FavoritesModal(
     customerId: String?,
     api: CreatorApi,
     onDismiss: () -> Unit,
-    onCountChange: (Int) -> Unit = {}
+    onCountChange: (Int) -> Unit = {},
+    onProductClick: ((String) -> Unit)? = null,
 ) {
     if (!visible) return
 
@@ -133,6 +135,7 @@ fun FavoritesModal(
                             id = "${obj.optString("product_id")}|${obj.optString("variant_id", "")}",
                             itemId = 0L,
                             productId = obj.optString("product_id", ""),
+                            productHandle = obj.optString("product_handle", "").trim().ifBlank { null },
                             variantId = obj.optString("variant_id", null).takeIf { it.isNullOrBlank().not() },
                             productTitle = obj.optString("product_title", "Product"),
                             productImage = normalizeImageUrl(img),
@@ -184,6 +187,7 @@ fun FavoritesModal(
                             id = obj.optString("id", ""),
                             itemId = obj.optLong("id", 0L),
                             productId = obj.optString("product_id", ""),
+                            productHandle = obj.optString("product_handle", "").trim().ifBlank { null },
                             variantId = obj.optString("variant_id", null).takeIf { it.isNullOrBlank().not() },
                             productTitle = obj.optString("product_title", "Product"),
                             productImage = normalizeImageUrl(img),
@@ -330,6 +334,10 @@ fun FavoritesModal(
                             items(items) { item ->
                                 FavoriteGridCard(
                                     item = item,
+                                    onClick = {
+                                        val handle = item.productHandle?.trim().orEmpty()
+                                        if (handle.isNotBlank()) onProductClick?.invoke(handle)
+                                    },
                                     onRemove = {
                                         scope.launch {
                                             if (activeView == "pool") {
@@ -582,6 +590,7 @@ private fun AddProductPlaceholderCard(onClick: () -> Unit) {
 @Composable
 private fun FavoriteGridCard(
     item: FavoriteItem,
+    onClick: () -> Unit = {},
     onRemove: () -> Unit
 ) {
     Box(
@@ -589,6 +598,7 @@ private fun FavoriteGridCard(
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, EazColors.Orange.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
             .background(Color.White)
+            .clickable(onClick = onClick)
     ) {
         Column {
             Box(

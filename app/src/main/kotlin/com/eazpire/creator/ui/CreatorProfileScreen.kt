@@ -1,9 +1,7 @@
 package com.eazpire.creator.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -150,12 +148,14 @@ fun CreatorProfileScreen(
     var loading by remember(creatorName) { mutableStateOf(true) }
     var error by remember(creatorName) { mutableStateOf<String?>(null) }
     var profile by remember(creatorName) { mutableStateOf<CreatorProfilePreview?>(null) }
-    var productsByPage by remember(creatorName) { mutableStateOf<Map<Int, List<CreatorShopProduct>>>(emptyMap()) }
+    var loadedProducts by remember(creatorName) { mutableStateOf<List<CreatorShopProduct>>(emptyList()) }
+    var nextOffset by remember(creatorName) { mutableStateOf(0) }
     var filterCountProducts by remember(creatorName) { mutableStateOf<List<CreatorShopProduct>>(emptyList()) }
-    var currentPage by remember(creatorName) { mutableStateOf(1) }
     var totalProductCount by remember(creatorName) { mutableStateOf(0) }
     var hasMoreProducts by remember(creatorName) { mutableStateOf(false) }
     var productsLoading by remember(creatorName) { mutableStateOf(false) }
+    var isLoadingMore by remember(creatorName) { mutableStateOf(false) }
+    var autoLoadPaused by remember(creatorName) { mutableStateOf(false) }
     var profileReady by remember(creatorName) { mutableStateOf(false) }
     var sortBy by remember(creatorName) { mutableStateOf("date-desc") }
     var withinSearchQuery by remember(creatorName) { mutableStateOf("") }
@@ -166,13 +166,61 @@ fun CreatorProfileScreen(
     var resolvedCreatorName by remember(creatorName) { mutableStateOf(creatorName) }
     var ownerId by remember(creatorName) { mutableStateOf<String?>(null) }
 
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val nearEnd = rememberLazyListNearEnd(listState)
+    val loadMoreLabel = t("eaz.product_list.load_more", "Load more")
+
+    fun loadMore(forceAfterCap: Boolean = false) {
+        if (isLoadingMore || !profileReady) return
+        if (autoLoadPaused && !forceAfterCap) return
+        if (!forceAfterCap && loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
+            autoLoadPaused = true
+            return
+        }
+        scope.launch {
+            isLoadingMore = true
+            try {
+                val batch = fetchCreatorProductBatch(
+                    api = api,
+                    creatorName = creatorName,
+                    resolvedCreatorName = resolvedCreatorName,
+                    ownerId = ownerId,
+                    countryCode = countryCode,
+                    catalogRegion = catalogRegion,
+                    offset = nextOffset,
+                )
+                if (batch.products.isEmpty()) {
+                    hasMoreProducts = false
+                    return@launch
+                }
+                batch.total?.let {
+                    totalProductCount = it
+                    profile = profile?.copy(productCount = it)
+                }
+                hasMoreProducts = batch.hasMore
+                val merged = linkedMapOf<String, CreatorShopProduct>()
+                loadedProducts.forEach { merged.putIfAbsent(it.handle, it) }
+                batch.products.forEach { merged.putIfAbsent(it.handle, it) }
+                loadedProducts = merged.values.toList()
+                nextOffset += batch.products.size
+                if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO && !forceAfterCap) {
+                    autoLoadPaused = true
+                }
+            } finally {
+                isLoadingMore = false
+            }
+        }
+    }
+
     LaunchedEffect(creatorName, countryCode, catalogRegion) {
         loading = true
         error = null
         profileReady = false
-        productsByPage = emptyMap()
+        loadedProducts = emptyList()
+        nextOffset = 0
+        autoLoadPaused = false
         filterCountProducts = emptyList()
-        currentPage = 1
         totalProductCount = 0
         hasMoreProducts = false
         try {
@@ -217,43 +265,30 @@ fun CreatorProfileScreen(
         }
     }
 
-    LaunchedEffect(creatorName, currentPage, profileReady, resolvedCreatorName, ownerId, countryCode, catalogRegion) {
+    LaunchedEffect(creatorName, profileReady, resolvedCreatorName, ownerId, countryCode, catalogRegion) {
         if (!profileReady || error != null) return@LaunchedEffect
-        if (productsByPage.containsKey(currentPage)) return@LaunchedEffect
+        if (loadedProducts.isNotEmpty()) return@LaunchedEffect
         productsLoading = true
         try {
-            val offset = (currentPage - 1) * CREATOR_PROFILE_PRODUCTS_PER_PAGE
-            val productsJson = withContext(Dispatchers.IO) {
-                api.getCreatorShopProducts(
-                    creatorName = resolvedCreatorName,
-                    creatorSlug = creatorName,
-                    ownerId = ownerId,
-                    country = countryCode,
-                    region = catalogRegion,
-                    limit = CREATOR_PROFILE_PRODUCTS_PER_PAGE,
-                    offset = offset
-                )
+            val batch = fetchCreatorProductBatch(
+                api = api,
+                creatorName = creatorName,
+                resolvedCreatorName = resolvedCreatorName,
+                ownerId = ownerId,
+                countryCode = countryCode,
+                catalogRegion = catalogRegion,
+                offset = 0,
+            )
+            batch.total?.let {
+                totalProductCount = it
+                profile = profile?.copy(productCount = it)
             }
-            val list = mutableListOf<CreatorShopProduct>()
-            if (productsJson.optBoolean("ok", false)) {
-                val arr = productsJson.optJSONArray("products") ?: JSONArray()
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    list.add(parseCreatorShopProduct(o))
-                }
-                val total = productsJson.optInt("total", -1)
-                if (total >= 0) {
-                    totalProductCount = total
-                    profile = profile?.copy(productCount = total)
-                } else {
-                    totalProductCount = maxOf(totalProductCount, offset + list.size)
-                    profile = profile?.copy(productCount = totalProductCount)
-                }
-                hasMoreProducts = productsJson.optBoolean("has_more", list.size >= CREATOR_PROFILE_PRODUCTS_PER_PAGE)
-            }
-            productsByPage = productsByPage + (currentPage to list)
+            hasMoreProducts = batch.hasMore
+            loadedProducts = batch.products
+            nextOffset = batch.products.size
+            if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) autoLoadPaused = true
         } catch (_: Exception) {
-            /* keep prior pages */
+            /* keep empty */
         } finally {
             productsLoading = false
         }
@@ -297,29 +332,22 @@ fun CreatorProfileScreen(
         }
     }
 
-    val allLoadedProducts = remember(productsByPage, filterCountProducts) {
+    val allLoadedProducts = remember(loadedProducts, filterCountProducts) {
         if (filterCountProducts.isNotEmpty()) filterCountProducts
-        else productsByPage.values.flatten()
+        else loadedProducts
     }
     val usesServerPaging = productFilters.isEmpty() && withinSearchQuery.isBlank()
-    val pageProducts = productsByPage[currentPage] ?: emptyList()
 
-    val filteredSortedProducts by remember(allLoadedProducts, pageProducts, sortBy, productFilters, withinSearchQuery, usesServerPaging, currentPage) {
+    val filteredSortedProducts by remember(allLoadedProducts, sortBy, productFilters, withinSearchQuery) {
         derivedStateOf {
-            val source = if (usesServerPaging) pageProducts else allLoadedProducts
-            val items = source.map { it.toFilterProductItem() }
+            val items = allLoadedProducts.map { it.toFilterProductItem() }
             val filtered = applyCollectionProductFilters(items, productFilters)
             val searched = applyCollectionWithinSearchFilter(filtered, withinSearchQuery)
-            val byHandle = source.associateBy { it.handle }
-            val sorted = sortCreatorProducts(
+            val byHandle = allLoadedProducts.associateBy { it.handle }
+            sortCreatorProducts(
                 searched.mapNotNull { byHandle[it.handle] },
                 sortBy
             )
-            if (usesServerPaging) sorted
-            else {
-                val start = (currentPage - 1) * CREATOR_PROFILE_PRODUCTS_PER_PAGE
-                sorted.drop(start).take(CREATOR_PROFILE_PRODUCTS_PER_PAGE)
-            }
         }
     }
 
@@ -336,18 +364,16 @@ fun CreatorProfileScreen(
         }
     }
 
-    val totalPages = remember(filteredTotalCount, hasMoreProducts, currentPage, usesServerPaging, allLoadedProducts, productFilters, withinSearchQuery) {
-        if (!usesServerPaging) {
-            maxOf(1, (filteredTotalCount + CREATOR_PROFILE_PRODUCTS_PER_PAGE - 1) / CREATOR_PROFILE_PRODUCTS_PER_PAGE)
-        } else if (filteredTotalCount > 0) {
-            maxOf(1, (filteredTotalCount + CREATOR_PROFILE_PRODUCTS_PER_PAGE - 1) / CREATOR_PROFILE_PRODUCTS_PER_PAGE)
-        } else {
-            maxOf(1, if (hasMoreProducts) currentPage + 1 else currentPage)
-        }
-    }
+    ProductListAutoLoadEffect(
+        enabled = usesServerPaging && !productsLoading && filteredSortedProducts.isNotEmpty(),
+        nearEnd = nearEnd,
+        autoLoadPaused = autoLoadPaused,
+        hasMore = hasMoreProducts,
+        loading = isLoadingMore,
+        onLoadMore = { loadMore() },
+    )
 
     val sortLabel = CREATOR_PROFILE_SORT_OPTIONS.find { it.value == sortBy }?.label ?: "Date, new to old"
-    val density = LocalDensity.current
 
     Column(
         modifier = modifier
@@ -368,22 +394,8 @@ fun CreatorProfileScreen(
                 val p = profile
                 Column(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .pointerInput(currentPage, totalPages) {
-                                var totalDrag = 0f
-                                val thresholdPx = with(density) { 60.dp.toPx() }
-                                detectHorizontalDragGestures(
-                                    onDragStart = { totalDrag = 0f },
-                                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                                    onDragEnd = {
-                                        when {
-                                            totalDrag > thresholdPx && currentPage > 1 -> currentPage -= 1
-                                            totalDrag < -thresholdPx && currentPage < totalPages -> currentPage += 1
-                                        }
-                                    }
-                                )
-                            },
+                        state = listState,
+                        modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         item {
@@ -460,17 +472,18 @@ fun CreatorProfileScreen(
                                     }
                                 }
                             }
+                            if (usesServerPaging) {
+                                item(key = "creator-profile-footer") {
+                                    ProductListInfiniteFooter(
+                                        visible = isLoadingMore && !autoLoadPaused,
+                                        loading = isLoadingMore,
+                                        showLoadMore = autoLoadPaused && hasMoreProducts,
+                                        loadMoreLabel = loadMoreLabel,
+                                        onLoadMore = { loadMore(forceAfterCap = true) },
+                                    )
+                                }
+                            }
                         }
-                    }
-                    if (totalPages > 1) {
-                        ProductPaginationDots(
-                            totalPages = totalPages,
-                            currentPage = currentPage,
-                            onPageClick = { currentPage = it },
-                            onSwipePrev = { if (currentPage > 1) currentPage -= 1 },
-                            onSwipeNext = { if (currentPage < totalPages) currentPage += 1 },
-                            style = PaginationDotsStyle.Light
-                        )
                     }
                 }
             }
@@ -821,6 +834,45 @@ fun CreatorRatingRow(
             modifier = Modifier.padding(start = 4.dp)
         )
     }
+}
+
+private data class CreatorProductBatchResult(
+    val products: List<CreatorShopProduct>,
+    val total: Int?,
+    val hasMore: Boolean,
+)
+
+private suspend fun fetchCreatorProductBatch(
+    api: CreatorApi,
+    creatorName: String,
+    resolvedCreatorName: String,
+    ownerId: String?,
+    countryCode: String,
+    catalogRegion: String,
+    offset: Int,
+    limit: Int = PRODUCT_LIST_BATCH,
+): CreatorProductBatchResult = withContext(Dispatchers.IO) {
+    val productsJson = api.getCreatorShopProducts(
+        creatorName = resolvedCreatorName,
+        creatorSlug = creatorName,
+        ownerId = ownerId,
+        country = countryCode,
+        region = catalogRegion,
+        limit = limit,
+        offset = offset,
+    )
+    val list = mutableListOf<CreatorShopProduct>()
+    if (!productsJson.optBoolean("ok", false)) {
+        return@withContext CreatorProductBatchResult(emptyList(), null, false)
+    }
+    val arr = productsJson.optJSONArray("products") ?: JSONArray()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        list.add(parseCreatorShopProduct(o))
+    }
+    val total = productsJson.optInt("total", -1).takeIf { it >= 0 }
+    val hasMore = productsJson.optBoolean("has_more", list.size >= limit)
+    CreatorProductBatchResult(list, total, hasMore)
 }
 
 private fun parseCreatorShopProduct(o: JSONObject): CreatorShopProduct {

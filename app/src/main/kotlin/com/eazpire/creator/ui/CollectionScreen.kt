@@ -7,7 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,7 +92,6 @@ import kotlinx.coroutines.withContext
 import androidx.compose.runtime.mutableIntStateOf
 
 private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
-private const val PRODUCTS_PER_PAGE = 24
 
 /** Special [collectionHandle] — load products from worker `list-active-shop-promotion-products`, not a Shopify collection. */
 const val EAZ_PROMOTIONS_COLLECTION_HANDLE = "eaz-promotions"
@@ -261,6 +261,39 @@ internal fun applyCollectionWithinSearchFilter(
     return products.filter { productMatchesWithinSearch(it, query) }
 }
 
+private suspend fun fetchNextCollectionBatch(
+    api: ShopifyProductsApi,
+    creatorApi: CreatorApi,
+    collectionHandle: String,
+    countryCode: String,
+    loadedProducts: List<ShopifyProductsApi.ProductItem>,
+    nextCursor: String?,
+): Triple<List<ShopifyProductsApi.ProductItem>, String?, Boolean> {
+    if (collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE) {
+        return Triple(loadedProducts, null, false)
+    }
+    val result = withContext(Dispatchers.IO) {
+        var r = api.getProducts(
+            collectionHandle = collectionHandle.ifBlank { null },
+            limit = PRODUCT_LIST_BATCH,
+            cursor = nextCursor,
+        )
+        if (r.products.isEmpty() && collectionHandle.isNotBlank() && nextCursor == null) {
+            r = api.getProducts(limit = PRODUCT_LIST_BATCH, cursor = nextCursor)
+        }
+        val merged = api.mergeShopPromotionOverlay(r.products, countryCode, creatorApi)
+        r.copy(products = merged)
+    }
+    if (result.products.isEmpty()) {
+        return Triple(loadedProducts, nextCursor, false)
+    }
+    val mergedMap = linkedMapOf<Long, ShopifyProductsApi.ProductItem>()
+    loadedProducts.forEach { mergedMap.putIfAbsent(it.id, it) }
+    result.products.forEach { mergedMap.putIfAbsent(it.id, it) }
+    val hasMore = result.hasNextPage && result.nextCursor != null
+    return Triple(mergedMap.values.toList(), result.nextCursor, hasMore)
+}
+
 private fun sortProducts(
     products: List<ShopifyProductsApi.ProductItem>,
     sortBy: String
@@ -302,11 +335,12 @@ fun CollectionScreen(
             mockPreviewRevision = CustomerMockPreviewStore.revision
         }
     }
-    var productsByPage by remember { mutableStateOf<Map<Int, List<ShopifyProductsApi.ProductItem>>>(emptyMap()) }
-    var pageCursors by remember { mutableStateOf(listOf<String?>(null)) }
-    var hasNextPage by remember { mutableStateOf(false) }
+    var loadedProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
+    var nextCursor by remember { mutableStateOf<String?>(null) }
+    var hasMoreFromApi by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
-    var currentPage by remember { mutableStateOf(1) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var autoLoadPaused by remember { mutableStateOf(false) }
     var sortBy by remember { mutableStateOf("manual") }
     var sortSheetVisible by remember { mutableStateOf(false) }
     var filterDrawerVisible by remember { mutableStateOf(false) }
@@ -316,14 +350,47 @@ fun CollectionScreen(
     val localeStore = remember { LocaleStore(context) }
     val density = LocalDensity.current
 
-    val products = productsByPage[currentPage] ?: emptyList()
-    val totalPages = maxOf(1, if (hasNextPage) currentPage + 1 else currentPage)
+    val scope = rememberCoroutineScope()
+    val gridState = rememberLazyGridState()
+    val nearEnd = rememberProductListNearEnd(gridState)
+    val usesInfiniteScroll = productFilters.isEmpty() && withinSearchQuery.isBlank()
+
+    fun loadMore(forceAfterCap: Boolean = false) {
+        if (isLoadingMore) return
+        if (autoLoadPaused && !forceAfterCap) return
+        if (!forceAfterCap && loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
+            autoLoadPaused = true
+            return
+        }
+        scope.launch {
+            isLoadingMore = true
+            try {
+                val country = localeStore.getCountryCodeSync()
+                val (nextList, cursor, hasMore) = fetchNextCollectionBatch(
+                    api = api,
+                    creatorApi = creatorApi,
+                    collectionHandle = collectionHandle,
+                    countryCode = country,
+                    loadedProducts = loadedProducts,
+                    nextCursor = nextCursor,
+                )
+                loadedProducts = nextList
+                nextCursor = cursor
+                hasMoreFromApi = hasMore
+                if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO && !forceAfterCap) {
+                    autoLoadPaused = true
+                }
+            } finally {
+                isLoadingMore = false
+            }
+        }
+    }
 
     LaunchedEffect(collectionHandle, initialProductType, reloadTrigger) {
-        productsByPage = emptyMap()
-        pageCursors = listOf(null)
-        hasNextPage = false
-        currentPage = 1
+        loadedProducts = emptyList()
+        nextCursor = null
+        hasMoreFromApi = false
+        autoLoadPaused = false
         filterCountProducts = emptyList()
         withinSearchQuery = ""
         productFilters = if (initialProductType != null) {
@@ -333,12 +400,12 @@ fun CollectionScreen(
         }
     }
 
-    LaunchedEffect(collectionHandle, currentPage) {
-        if (productsByPage.containsKey(currentPage)) {
-            isLoading = false
-            return@LaunchedEffect
-        }
+    LaunchedEffect(collectionHandle, reloadTrigger) {
         isLoading = true
+        loadedProducts = emptyList()
+        nextCursor = null
+        hasMoreFromApi = false
+        autoLoadPaused = false
         if (collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE) {
             val list = withContext(Dispatchers.IO) {
                 try {
@@ -348,49 +415,44 @@ fun CollectionScreen(
                     emptyList()
                 }
             }
-            productsByPage = mapOf(1 to list)
-            pageCursors = listOf(null)
-            hasNextPage = false
+            loadedProducts = list
             filterCountProducts = list
+            hasMoreFromApi = false
             isLoading = false
             return@LaunchedEffect
         }
-        val cursor = pageCursors.getOrNull(currentPage - 1)
-        val result = withContext(Dispatchers.IO) {
-            var r = api.getProducts(
-                collectionHandle = collectionHandle.ifBlank { null },
-                limit = PRODUCTS_PER_PAGE,
-                cursor = cursor
-            )
-            if (r.products.isEmpty() && collectionHandle.isNotBlank()) {
-                r = api.getProducts(limit = PRODUCTS_PER_PAGE, cursor = cursor)
-            }
-            val merged = api.mergeShopPromotionOverlay(r.products, localeStore.getCountryCodeSync(), creatorApi)
-            r.copy(products = merged)
+        val country = localeStore.getCountryCodeSync()
+        val (nextList, cursor, hasMore) = fetchNextCollectionBatch(
+            api = api,
+            creatorApi = creatorApi,
+            collectionHandle = collectionHandle,
+            countryCode = country,
+            loadedProducts = emptyList(),
+            nextCursor = null,
+        )
+        loadedProducts = nextList
+        nextCursor = cursor
+        hasMoreFromApi = hasMore
+        if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
+            autoLoadPaused = true
         }
-        productsByPage = productsByPage + (currentPage to result.products)
-        if (result.hasNextPage && result.nextCursor != null && currentPage >= pageCursors.size) {
-            pageCursors = pageCursors + result.nextCursor
-        }
-        hasNextPage = result.hasNextPage
         isLoading = false
     }
 
-    // Load 250 products for filtering/counts: when drawer opens, filters applied, or collection has products (for total display).
-    LaunchedEffect(collectionHandle, filterDrawerVisible, productFilters.isEmpty(), productsByPage.isEmpty()) {
+    LaunchedEffect(collectionHandle, filterDrawerVisible, productFilters.isEmpty(), loadedProducts.isEmpty()) {
         if (collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE) {
-            if (filterCountProducts.isEmpty() && productsByPage.values.flatten().isNotEmpty()) {
-                filterCountProducts = productsByPage.values.flatten()
+            if (filterCountProducts.isEmpty() && loadedProducts.isNotEmpty()) {
+                filterCountProducts = loadedProducts
             }
             return@LaunchedEffect
         }
-        val needFilterProducts = filterDrawerVisible || !productFilters.isEmpty() || productsByPage.isNotEmpty()
+        val needFilterProducts = filterDrawerVisible || !productFilters.isEmpty() || loadedProducts.isNotEmpty()
         if (needFilterProducts && filterCountProducts.isEmpty()) {
             filterCountProducts = withContext(Dispatchers.IO) {
                 var r = api.getProducts(
                     collectionHandle = collectionHandle.ifBlank { null },
                     limit = 250,
-                    cursor = null
+                    cursor = null,
                 )
                 if (r.products.isEmpty() && collectionHandle.isNotBlank()) {
                     r = api.getProducts(limit = 250, cursor = null)
@@ -400,11 +462,10 @@ fun CollectionScreen(
         }
     }
 
-    val allLoadedProducts = remember(productsByPage) { productsByPage.values.flatten() }
     val productsToFilter = when {
-        productFilters.isEmpty() -> products
+        productFilters.isEmpty() && withinSearchQuery.isBlank() -> loadedProducts
         filterCountProducts.isNotEmpty() -> filterCountProducts
-        else -> allLoadedProducts
+        else -> loadedProducts
     }
     val sortedProducts = remember(productsToFilter, sortBy) { sortProducts(productsToFilter, sortBy) }
     val filteredProducts = remember(sortedProducts, productFilters) {
@@ -414,9 +475,19 @@ fun CollectionScreen(
         applyCollectionWithinSearchFilter(filteredProducts, withinSearchQuery)
     }
     val currentSortLabel = COLLECTION_SORT_OPTIONS.find { it.value == sortBy }?.label?.let { t("collection.sort_$sortBy", it) } ?: t("collection.sort_by", "Sort by")
+    val loadMoreLabel = t("eaz.product_list.load_more", "Load more")
+
+    ProductListAutoLoadEffect(
+        enabled = usesInfiniteScroll && !isLoading,
+        nearEnd = nearEnd,
+        autoLoadPaused = autoLoadPaused,
+        hasMore = hasMoreFromApi,
+        loading = isLoadingMore,
+        onLoadMore = { loadMore() },
+    )
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (isLoading && products.isEmpty()) {
+        if (isLoading && loadedProducts.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -425,7 +496,7 @@ fun CollectionScreen(
             ) {
                 CircularProgressIndicator(color = EazColors.Orange)
             }
-        } else if (products.isEmpty()) {
+        } else if (loadedProducts.isEmpty()) {
             CollectionComingSoon(title = title, onBrowseAll = onBack)
         } else {
             CollectionResultsBar(
@@ -438,28 +509,14 @@ fun CollectionScreen(
                 onSortClick = { sortSheetVisible = true }
             )
             LazyVerticalGrid(
-                modifier = Modifier
-                    .weight(1f)
-                    .pointerInput(currentPage, totalPages) {
-                        var totalDrag = 0f
-                        val thresholdPx = with(density) { 80.dp.toPx() }
-                        detectHorizontalDragGestures(
-                            onDragStart = { totalDrag = 0f },
-                            onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                            onDragEnd = {
-                                when {
-                                    totalDrag > thresholdPx && currentPage > 1 -> currentPage = currentPage - 1
-                                    totalDrag < -thresholdPx && currentPage < totalPages -> currentPage = currentPage + 1
-                                }
-                            }
-                        )
-                    },
+                state = gridState,
+                modifier = Modifier.weight(1f),
                 columns = GridCells.Fixed(2),
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(displayProducts) { product ->
+                items(displayProducts, key = { it.id }) { product ->
                     val showPromoUi = product.hasPromoPricingUi()
                     CollectionProductCard(
                         product = product,
@@ -476,25 +533,24 @@ fun CollectionScreen(
                         onCartClick = { onCartClick(product) }
                     )
                 }
-            }
-            if (totalPages > 1 && productFilters.isEmpty() && withinSearchQuery.isBlank()) {
-                ProductPaginationDots(
-                    totalPages = totalPages,
-                    currentPage = currentPage,
-                    onPageClick = { currentPage = it },
-                    onSwipePrev = { if (currentPage > 1) currentPage = currentPage - 1 },
-                    onSwipeNext = { if (currentPage < totalPages) currentPage = currentPage + 1 },
-                    style = PaginationDotsStyle.Light
-                )
+                if (usesInfiniteScroll) {
+                    item(key = "infinite-footer") {
+                        ProductListInfiniteFooter(
+                            visible = isLoadingMore && !autoLoadPaused,
+                            loading = isLoadingMore,
+                            showLoadMore = autoLoadPaused && hasMoreFromApi,
+                            loadMoreLabel = loadMoreLabel,
+                            onLoadMore = { loadMore(forceAfterCap = true) },
+                        )
+                    }
+                }
             }
         }
     }
 
     if (filterDrawerVisible) {
-        val allLoadedProducts = remember(productsByPage) {
-            productsByPage.values.flatten()
-        }
-        val productsForCounts = if (filterCountProducts.isNotEmpty()) filterCountProducts else allLoadedProducts
+        val filterSource = if (filterCountProducts.isNotEmpty()) filterCountProducts else loadedProducts
+        val productsForCounts = filterSource
         CollectionFilterDrawer(
             filters = productFilters,
             products = productsForCounts,

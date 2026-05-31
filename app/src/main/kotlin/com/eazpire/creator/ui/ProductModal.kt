@@ -28,6 +28,7 @@ fun ProductModal(
     tokenStore: SecureTokenStore,
     onTermsClick: (() -> Unit)? = null,
     onNavigateToCreator: ((String) -> Unit)? = null,
+    onNavigateToProduct: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // #region agent log
@@ -54,6 +55,7 @@ fun ProductModal(
                 showCloseButton = true,
                 onTermsClick = onTermsClick,
                 onNavigateToCreator = onNavigateToCreator,
+                onNavigateToProduct = onNavigateToProduct,
                 modifier = Modifier.fillMaxSize()
             )
         }

@@ -71,7 +71,7 @@ import java.util.Locale
 private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
 private const val IMAGE_FADE_DURATION_MS = 1200
 private const val IMAGE_FADE_CLEANUP_MS = 1250L
-private const val CAROUSEL_SCROLL_PX_PER_SEC = 48f
+private const val CAROUSEL_SCROLL_PX_PER_SEC = 144f
 private const val CAROUSEL_TICK_MS = 50L
 private const val PAUSE_AFTER_MANUAL_SCROLL_MS = 1000L
 
@@ -106,6 +106,10 @@ fun ProductCarousel(
     /** When true, never swap in customer mock / try-on images (e.g. create-from-scratch catalog). */
     skipPersonalizedMock: Boolean = false,
     onCartClick: ((ProductClickWithCollection) -> Unit)? = null,
+    /** Pause auto-scroll while a modal (product detail, filter, etc.) is open. */
+    autoScrollPaused: Boolean = false,
+    /** Called when auto/manual scroll nears the end of the loaded product list. */
+    onNearEnd: (() -> Unit)? = null,
 ) {
     if (products.isEmpty()) {
         if (emptyStateMessage == null) return
@@ -226,12 +230,22 @@ fun ProductCarousel(
             }
             // Web-Logik: scrollBy mit kleinem Intervall (wie CSS animation linear infinite)
             // 48px/Sek, Tick alle 50ms → ~2.4px pro Tick
-            LaunchedEffect(Unit) {
+            LaunchedEffect(listState, products.size, onNearEnd) {
+                snapshotFlow {
+                    listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                }.collect { lastVisible ->
+                    if (products.isEmpty()) return@collect
+                    val threshold = (products.size - 4).coerceAtLeast(0)
+                    if (lastVisible >= threshold) onNearEnd?.invoke()
+                }
+            }
+            LaunchedEffect(autoScrollPaused, listState, products.size) {
                 val scrollPxPerTick = with(density) {
                     (CAROUSEL_SCROLL_PX_PER_SEC * CAROUSEL_TICK_MS / 1000f).toDp().toPx()
                 }
                 while (true) {
                     delay(CAROUSEL_TICK_MS)
+                    if (autoScrollPaused) continue
                     val sinceLastManual = System.currentTimeMillis() - lastManualScrollEnd
                     if (sinceLastManual < PAUSE_AFTER_MANUAL_SCROLL_MS) continue
                     if (listState.isScrollInProgress) continue
@@ -338,7 +352,7 @@ private fun ProductCard(
     val displayImages = remember(product.id, lazyCardImages, shopImages) {
         if (lazyCardImages && shopImages.size > 1) listOf(shopImages.first()) else shopImages
     }
-    var images by remember(product.id, mockPreviewRevision) { mutableStateOf(displayImages) }
+    var images by remember(product.id) { mutableStateOf(displayImages) }
     var imageReload by remember(product.id) { mutableIntStateOf(0) }
     var mockDisplayLocked by remember(product.handle) { mutableStateOf(false) }
     var tryOnActive by remember(product.handle) {
@@ -349,6 +363,7 @@ private fun ProductCard(
             if (!mockDisplayLocked) images = displayImages
             return@LaunchedEffect
         }
+        if (mockDisplayLocked) return@LaunchedEffect
         val map = CustomerMockPreviewStore.peekMap(ownerId)
             ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
         val info = CustomerMockPreviewStore.tryOnInfo(

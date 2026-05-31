@@ -2485,6 +2485,57 @@ class CreatorApi(
     /** POST ?op=end-design-automation body: { id } */
     suspend fun endDesignAutomation(automationId: Long): JSONObject =
         postDispatchJson("end-design-automation", emptyMap(), JSONObject().put("id", automationId))
+
+    /** POST ?op=erase-optional-customer-data */
+    suspend fun eraseOptionalCustomerData(
+        ownerId: String,
+        confirmEmail: String,
+        locale: String,
+        firstName: String,
+        scopeConsent: Boolean,
+        privacyConsent: Boolean,
+    ): JSONObject = postJson(
+        "erase-optional-customer-data",
+        mapOf(
+            "owner_id" to ownerId,
+            "confirm_email" to confirmEmail,
+            "locale" to locale,
+            "first_name" to firstName,
+            "consents" to mapOf(
+                "optional_erase" to mapOf(
+                    "scope" to scopeConsent,
+                    "privacy" to privacyConsent,
+                ),
+            ),
+        ),
+    )
+
+    /** POST ?op=delete-shopify-customer */
+    suspend fun deleteShopifyCustomer(
+        ownerId: String,
+        confirmEmail: String,
+        locale: String,
+        firstName: String,
+        irreversibleConsent: Boolean,
+        retentionConsent: Boolean,
+        publicDesignsConsent: Boolean,
+    ): JSONObject = postJson(
+        "delete-shopify-customer",
+        mapOf(
+            "confirm" to true,
+            "owner_id" to ownerId,
+            "confirm_email" to confirmEmail,
+            "locale" to locale,
+            "first_name" to firstName,
+            "consents" to mapOf(
+                "schedule_account_deletion" to mapOf(
+                    "irreversible" to irreversibleConsent,
+                    "retention" to retentionConsent,
+                    "public_designs_ack" to publicDesignsConsent,
+                ),
+            ),
+        ),
+    )
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)

@@ -89,6 +89,7 @@ fun MainHeader(
     creatorCodeProfileHintActive: Boolean = false,
     onSearchNavigate: (String) -> Unit = {},
     onSearchQuerySubmit: (String) -> Unit = {},
+    onFavoriteProductClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -323,7 +324,8 @@ fun MainHeader(
             onDismiss = { onFavoritesModalChangeActual(false) },
             onCountChange = { count ->
                 favoritesCount = count
-            }
+            },
+            onProductClick = onFavoriteProductClick,
         )
     }
 }

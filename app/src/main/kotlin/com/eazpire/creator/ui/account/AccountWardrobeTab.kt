@@ -90,7 +90,10 @@ import com.eazpire.creator.ui.account.wardrobe.WardrobeFilter
 import com.eazpire.creator.ui.account.wardrobe.WardrobeFigureSvg
 import com.eazpire.creator.ui.account.wardrobe.WardrobeSlot
 import com.eazpire.creator.util.DebugLog
+import androidx.compose.foundation.layout.heightIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /**
@@ -170,6 +173,7 @@ fun AccountWardrobeTab(
     var variantModalProduct by remember { mutableStateOf<WardrobeProduct?>(null) }
     var lightboxUrl by remember { mutableStateOf<String?>(null) }
     var userImageDialogOpen by remember { mutableStateOf(false) }
+    var referencePhotoDialogOpen by remember { mutableStateOf(false) }
     var sidebarOpen by remember { mutableStateOf(false) }
     var saveOutfitDialogOpen by remember { mutableStateOf(false) }
     var saveOutfitName by remember { mutableStateOf("Outfit ${System.currentTimeMillis().toString().takeLast(4)}") }
@@ -709,7 +713,23 @@ fun AccountWardrobeTab(
             WardrobeUserImageDialog(
                 onUpload = { filePicker.launch("image/*") },
                 onMockup = { userImageDialogOpen = false },
+                onReferencePhoto = {
+                    userImageDialogOpen = false
+                    referencePhotoDialogOpen = true
+                },
                 onDismiss = { userImageDialogOpen = false }
+            )
+        }
+
+        if (referencePhotoDialogOpen) {
+            WardrobeReferencePhotoDialog(
+                api = api,
+                ownerId = ownerId,
+                onSelect = { url ->
+                    userImageUrl = url
+                    referencePhotoDialogOpen = false
+                },
+                onDismiss = { referencePhotoDialogOpen = false },
             )
         }
 
@@ -1174,6 +1194,7 @@ private fun WardrobeLightbox(url: String, onDismiss: () -> Unit) {
 private fun WardrobeUserImageDialog(
     onUpload: () -> Unit,
     onMockup: () -> Unit,
+    onReferencePhoto: () -> Unit,
     onDismiss: () -> Unit
 ) {
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
@@ -1185,7 +1206,71 @@ private fun WardrobeUserImageDialog(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(onClick = onMockup, modifier = Modifier.fillMaxWidth()) { Text("Mockup auswählen") }
                 Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = onReferencePhoto, modifier = Modifier.fillMaxWidth()) { Text("My Mockups Referenzfoto") }
+                Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WardrobeReferencePhotoDialog(
+    api: com.eazpire.creator.api.CreatorApi,
+    ownerId: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var photos by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    LaunchedEffect(ownerId) {
+        loading = true
+        photos = withContext(Dispatchers.IO) {
+            runCatching {
+                val resp = api.listMockupPhotos(ownerId)
+                val arr = resp.optJSONArray("photos") ?: return@runCatching emptyList<Pair<String, String>>()
+                (0 until arr.length()).mapNotNull { i ->
+                    val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                    val url = o.optString("url", o.optString("photo_url", "")).trim()
+                    if (url.isBlank()) null else url to o.optString("label", "Reference photo")
+                }
+            }.getOrElse { emptyList() }
+        }
+        loading = false
+    }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(0.92f)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("My Mockups Referenzfoto", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(12.dp))
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                } else if (photos.isEmpty()) {
+                    Text("Keine Referenzfotos in My Mockups.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(100.dp),
+                        modifier = Modifier.heightIn(max = 360.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(photos.size) { idx ->
+                            val (url, label) = photos[idx]
+                            AsyncImage(
+                                model = url,
+                                contentDescription = label,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onSelect(url) },
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Abbrechen") }
             }
         }
     }

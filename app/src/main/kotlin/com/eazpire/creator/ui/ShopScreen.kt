@@ -547,7 +547,7 @@ fun ShopScreen(
             }
             path.startsWith("/products/") -> {
                 val handle = path.removePrefix("/products/").trimEnd('/').substringBefore("?")
-                if (handle.isNotBlank()) selectedProductHandle = handle
+                if (handle.isNotBlank()) productModalHandleState.value = handle
             }
             path.startsWith("/collections/") -> {
                 val handle = path.removePrefix("/collections/").trimEnd('/').substringBefore("?")
@@ -663,6 +663,12 @@ fun ShopScreen(
                             scrollToTopTrigger++
                         }
                     },
+                    onFavoriteProductClick = { handle ->
+                        if (handle.isNotBlank()) {
+                            favoritesModalVisible = false
+                            productModalHandleState.value = handle
+                        }
+                    },
                     onAccountClick = {
                         if (tokenStore.isLoggedIn()) {
                             accountModalVisible = true
@@ -679,7 +685,7 @@ fun ShopScreen(
                                 if (handle.isNotBlank()) {
                                     shopSearchQuery = null
                                     selectedCreatorName = null
-                                    selectedProductHandle = handle
+                                    productModalHandleState.value = handle
                                 }
                             }
                             path.startsWith("/search") -> {
@@ -819,7 +825,7 @@ fun ShopScreen(
                         },
                         tokenStore = tokenStore,
                         onTermsClick = { termsModalVisible = true },
-                        onNavigateToProduct = { selectedProductHandle = it },
+                        onNavigateToProduct = { productModalHandleState.value = it },
                         onNavigateToCreator = { name ->
                             selectedProductHandle = null
                             selectedCreatorName = name
@@ -832,7 +838,7 @@ fun ShopScreen(
                     viewerOwnerId = tokenStore.getOwnerId().orEmpty(),
                     onBack = { selectedCreatorName = null },
                     onProductClick = { handle ->
-                        if (handle.isNotBlank()) selectedProductHandle = handle
+                        if (handle.isNotBlank()) productModalHandleState.value = handle
                     },
                     onCartClick = { handle ->
                         if (handle.isNotBlank()) productModalHandleState.value = handle
@@ -843,7 +849,7 @@ fun ShopScreen(
                     searchQuery = shopSearchQuery!!,
                     onBack = { shopSearchQuery = null },
                     onProductClick = { p ->
-                        selectedProductHandle = p.handle
+                        productModalHandleState.value = p.handle
                     },
                     onCartClick = { p ->
                         productModalHandleState.value = p.handle
@@ -857,7 +863,7 @@ fun ShopScreen(
                         collectionHandle = handle,
                         initialProductType = productType,
                         onBack = { selectedCollection = null },
-                        onProductClick = { selectedProductHandle = it.handle },
+                        onProductClick = { productModalHandleState.value = it.handle },
                         onCartClick = { productModalHandleState.value = it.handle },
                         reloadTrigger = shopContentReloadNonce,
                     )
@@ -885,7 +891,7 @@ fun ShopScreen(
                     onProductClick = { params ->
                         productModalHandleState.value = null
                         shopSearchQuery = null
-                        selectedProductHandle = params.handle
+                        productModalHandleState.value = params.handle
                         selectedCreatorName = null
 
                         if (params.collectionTitle != null && params.collectionHandle != null) {
@@ -1234,6 +1240,9 @@ fun ShopScreen(
                         productModalHandleState.value = null
                         selectedProductHandle = null
                         selectedCreatorName = name
+                    },
+                    onNavigateToProduct = { handle ->
+                        if (handle.isNotBlank()) productModalHandleState.value = handle
                     }
                 )
             }

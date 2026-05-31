@@ -16,6 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,6 +62,8 @@ fun HomeCategoryStrip(
     selectedCategory: String,
     onCategorySelected: (String) -> Unit,
     labelForKey: (String, String) -> String,
+    onFilterClick: (() -> Unit)? = null,
+    filterActive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
@@ -67,14 +74,18 @@ fun HomeCategoryStrip(
             .padding(top = 10.dp, bottom = 12.dp),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(scroll)
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top,
         ) {
-            HOME_CATEGORY_CHIPS.forEach { chip ->
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(scroll)
+                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                HOME_CATEGORY_CHIPS.forEach { chip ->
                 val active = chip.id == selectedCategory
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -135,6 +146,22 @@ fun HomeCategoryStrip(
                         color = if (active) LabelActive else MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+                }
+            }
+            if (onFilterClick != null) {
+                IconButton(
+                    onClick = onFilterClick,
+                    modifier = Modifier
+                        .padding(end = 8.dp, top = 2.dp)
+                        .size(48.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FilterList,
+                        contentDescription = labelForKey("eaz.home.filter_open", "Open filter"),
+                        tint = if (filterActive) LabelActive else IconOrange,
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }

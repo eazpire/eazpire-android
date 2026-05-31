@@ -68,6 +68,10 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.account.wardrobe.WardrobeColors
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.TextButton
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.ui.header.AVAILABLE_COUNTRIES
@@ -842,6 +846,16 @@ fun AccountProfileTab(
             }
         }
 
+        if (onLogout != null) {
+            AccountProfileDeletionPanel(
+                api = api,
+                tokenStore = tokenStore,
+                accountEmail = email,
+                tr = ::tr,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+            )
+        }
+
         if (embedInParentScroll) {
             AnimatedVisibility(
                 visible = showSuccessOverlay,
@@ -924,6 +938,166 @@ fun AccountProfileTab(
             contentColorSecondary = textSecondary,
             fieldContainerColor = if (useDarkPanel) dm.Elevated else Color.White,
             outlineUnfocused = if (useDarkPanel) dm.Border else EazColors.TopbarBorder
+        )
+    }
+}
+
+@Composable
+private fun AccountProfileDeletionPanel(
+    api: CreatorApi,
+    tokenStore: SecureTokenStore,
+    accountEmail: String,
+    tr: (String, String) -> String,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
+    var eraseEmail by remember { mutableStateOf("") }
+    var deleteEmail by remember { mutableStateOf("") }
+    var eraseScopeConsent by remember { mutableStateOf(false) }
+    var erasePrivacyConsent by remember { mutableStateOf(false) }
+    var deleteIrreversible by remember { mutableStateOf(false) }
+    var deleteRetention by remember { mutableStateOf(false) }
+    var deletePublic by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var statusError by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = tr("content.account_erase_optional_title", "Remove optional app data (keep account)"),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        )
+        OutlinedTextField(
+            value = eraseEmail,
+            onValueChange = { eraseEmail = it },
+            label = { Text(tr("content.account_erase_optional_confirm_email_label", "Confirm your account email")) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = eraseScopeConsent, onCheckedChange = { eraseScopeConsent = it })
+            Text(tr("content.account_erase_optional_checkbox_scope", "I understand which data will be removed."), style = MaterialTheme.typography.bodySmall)
+        }
+        OutlinedButton(
+            onClick = {
+                scope.launch {
+                    busy = true
+                    status = null
+                    try {
+                        val resp = withContext(Dispatchers.IO) {
+                            api.eraseOptionalCustomerData(
+                                ownerId = ownerId,
+                                confirmEmail = eraseEmail.trim(),
+                                locale = Locale.getDefault().toLanguageTag(),
+                                firstName = "",
+                                scopeConsent = eraseScopeConsent,
+                                privacyConsent = erasePrivacyConsent,
+                            )
+                        }
+                        status = if (resp.optBoolean("ok", false)) {
+                            statusError = false
+                            tr("content.account_erase_optional_email_sent", "Check your inbox for the confirmation link.")
+                        } else {
+                            statusError = true
+                            resp.optString("error", tr("content.account_erase_optional_error", "Request failed."))
+                        }
+                    } catch (_: Exception) {
+                        statusError = true
+                        status = tr("content.account_erase_optional_error", "Request failed.")
+                    } finally {
+                        busy = false
+                    }
+                }
+            },
+            enabled = !busy && eraseScopeConsent && eraseEmail.trim().equals(accountEmail.trim(), ignoreCase = true),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(tr("content.account_erase_optional_btn", "Email me a confirmation link"))
+        }
+
+        Text(
+            text = tr("content.account_delete_title", "Delete account & data"),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        OutlinedTextField(
+            value = deleteEmail,
+            onValueChange = { deleteEmail = it },
+            label = { Text(tr("content.account_delete_confirm_email_label", "Confirm your account email")) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = deleteIrreversible, onCheckedChange = { deleteIrreversible = it })
+            Text(tr("content.account_delete_checkbox_irreversible", "I understand deletion is irreversible after the grace period."), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = deleteRetention, onCheckedChange = { deleteRetention = it })
+            Text(tr("content.account_delete_checkbox_retention", "I understand legal retention may apply."), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = deletePublic, onCheckedChange = { deletePublic = it })
+            Text(tr("content.account_delete_checkbox_public_kept", "I understand public generated designs may remain."), style = MaterialTheme.typography.bodySmall)
+        }
+        OutlinedButton(
+            onClick = { confirmDelete = true },
+            enabled = !busy &&
+                deleteIrreversible && deleteRetention && deletePublic &&
+                deleteEmail.trim().equals(accountEmail.trim(), ignoreCase = true),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(tr("content.account_delete_btn", "Schedule account deletion"))
+        }
+        status?.let {
+            Text(it, color = if (statusError) MaterialTheme.colorScheme.error else EazColors.Orange, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(tr("content.account_delete_confirm_dialog", "Schedule permanent deletion?")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    scope.launch {
+                        busy = true
+                        try {
+                            val resp = withContext(Dispatchers.IO) {
+                                api.deleteShopifyCustomer(
+                                    ownerId = ownerId,
+                                    confirmEmail = deleteEmail.trim(),
+                                    locale = Locale.getDefault().toLanguageTag(),
+                                    firstName = "",
+                                    irreversibleConsent = deleteIrreversible,
+                                    retentionConsent = deleteRetention,
+                                    publicDesignsConsent = deletePublic,
+                                )
+                            }
+                            if (resp.optBoolean("ok", false)) {
+                                statusError = false
+                                status = tr("content.account_delete_success_scheduled", "Deletion scheduled. Check your email.")
+                                tokenStore.clear()
+                            } else {
+                                statusError = true
+                                status = resp.optString("error", tr("content.account_delete_error", "Delete failed."))
+                            }
+                        } catch (_: Exception) {
+                            statusError = true
+                            status = tr("content.account_delete_error", "Delete failed.")
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }) { Text(tr("creator.common.confirm", "Confirm")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text(tr("creator.common.cancel", "Cancel")) }
+            },
         )
     }
 }
