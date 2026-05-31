@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Share
@@ -71,6 +73,8 @@ fun CreatorSettingsTabContent(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     pendingWearPairToken: String? = null,
+    initialRedeemCode: String? = null,
+    onInitialRedeemCodeConsumed: () -> Unit = {},
     onRequestSettingsTab: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -91,7 +95,13 @@ fun CreatorSettingsTabContent(
                 tokenStore = tokenStore,
                 modifier = Modifier.fillMaxWidth()
             )
-            2 -> CreatorSettingsCreatorCodesContent(ownerId, api, translationStore)
+            2 -> CreatorSettingsCreatorCodesContent(
+                ownerId = ownerId,
+                api = api,
+                translationStore = translationStore,
+                initialRedeemCode = initialRedeemCode,
+                onInitialRedeemCodeConsumed = onInitialRedeemCodeConsumed,
+            )
             3 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
             4 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
             5 -> CreatorSettingsLevelContent(ownerId, api, translationStore)
@@ -153,14 +163,17 @@ private fun CreatorSettingsProfileContent(
 private fun CreatorSettingsCreatorCodesContent(
     ownerId: String,
     api: CreatorApi,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    initialRedeemCode: String? = null,
+    onInitialRedeemCodeConsumed: () -> Unit = {},
 ) {
     var isLoading by remember { mutableStateOf(true) }
     var isCreator by remember { mutableStateOf(false) }
     var canGenerate by remember { mutableStateOf(false) }
     var activeCode by remember { mutableStateOf<String?>(null) }
     var activeCodeId by remember { mutableStateOf<Long?>(null) }
-    var activeCodeCanGift by remember { mutableStateOf(false) }
+    var activeCodeCanShare by remember { mutableStateOf(false) }
+    var activeCodeIsPermanentGift by remember { mutableStateOf(false) }
     var refUrl by remember { mutableStateOf<String?>(null) }
     var pendingSaleId by remember { mutableStateOf<Long?>(null) }
     var pendingPurchaseId by remember { mutableStateOf<Long?>(null) }
@@ -173,8 +186,8 @@ private fun CreatorSettingsCreatorCodesContent(
     var statsRedeemed by remember { mutableStateOf(0) }
     var statsCommunity by remember { mutableStateOf(0) }
     var redeemedHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    var showGiftDialog by remember { mutableStateOf(false) }
-    var giftConfirmed by remember { mutableStateOf(false) }
+    var showUserPickerDialog by remember { mutableStateOf(false) }
+    var showPoolDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -193,11 +206,13 @@ private fun CreatorSettingsCreatorCodesContent(
                 data.optJSONObject("active_code")?.let { ac ->
                     activeCode = ac.optString("code", null).takeIf { it.isNotBlank() }
                     activeCodeId = ac.optLong("id").takeIf { it > 0L }
-                    activeCodeCanGift = ac.optBoolean("can_gift", false)
+                    activeCodeCanShare = ac.optBoolean("can_share", true)
+                    activeCodeIsPermanentGift = ac.optBoolean("is_permanent_gift", false)
                 } ?: run {
                     activeCode = null
                     activeCodeId = null
-                    activeCodeCanGift = false
+                    activeCodeCanShare = false
+                    activeCodeIsPermanentGift = false
                 }
                 refUrl = data.optString("ref_url", null).takeIf { it.isNotBlank() }
                 pendingSaleId = data.optJSONObject("pending_sale")?.optLong("id")?.takeIf { it > 0L }
@@ -240,6 +255,14 @@ private fun CreatorSettingsCreatorCodesContent(
     }
 
     LaunchedEffect(ownerId) { reload() }
+
+    LaunchedEffect(initialRedeemCode) {
+        val code = initialRedeemCode?.trim()?.uppercase().orEmpty()
+        if (code.isNotBlank()) {
+            redeemCode = code
+            onInitialRedeemCodeConsumed()
+        }
+    }
 
     if (isLoading) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -474,7 +497,7 @@ private fun CreatorSettingsCreatorCodesContent(
                         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         cm?.setPrimaryClip(ClipData.newPlainText("code", code))
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
                 ) {
                     Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp), tint = Color.Black)
@@ -484,81 +507,61 @@ private fun CreatorSettingsCreatorCodesContent(
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
-                refUrl?.let { url ->
-                    androidx.compose.material3.Button(
-                        onClick = {
-                            val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(android.content.Intent.EXTRA_TEXT, url)
-                            }
-                            context.startActivity(android.content.Intent.createChooser(share, null))
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
-                    ) {
-                        Icon(Icons.Default.Share, null, Modifier.size(18.dp), tint = Color.Black)
-                        Text(
-                            translationStore.t("creator.settings.creator_codes_share_link_title", "Share"),
-                            color = Color.Black,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                }
             }
-            if (activeCodeCanGift && activeCodeId != null) {
-                OutlinedButton(
-                    onClick = { showGiftDialog = true },
+            if (activeCodeCanShare && activeCodeId != null) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(
-                        translationStore.t("creator.settings.creator_codes_gift_btn", "Gift Creator Code"),
-                        color = EazColors.Orange,
-                    )
+                    OutlinedButton(
+                        onClick = { showUserPickerDialog = true },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.Person, null, Modifier.size(18.dp), tint = EazColors.Orange)
+                        Text(
+                            translationStore.t("creator.settings.creator_codes_send_user_btn", "Send to user"),
+                            color = EazColors.Orange,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { showPoolDialog = true },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.Public, null, Modifier.size(18.dp), tint = EazColors.Orange)
+                        Text(
+                            translationStore.t("creator.settings.creator_codes_eazy_pool_btn", "Eazy pool"),
+                            color = EazColors.Orange,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
                 }
             }
         }
     }
 
-    if (showGiftDialog && activeCodeId != null) {
-        AlertDialog(
-            onDismissRequest = { showGiftDialog = false },
-            title = { Text(translationStore.t("creator.settings.creator_codes_gift_title", "Gift your Creator Code")) },
-            text = {
-                Column {
-                    Text(translationStore.t("creator.settings.creator_codes_gift_benefits", "Recipient becomes a Creator. You lose this code."))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 12.dp)
-                    ) {
-                        Checkbox(checked = giftConfirmed, onCheckedChange = { giftConfirmed = it })
-                        Text(translationStore.t("creator.settings.creator_codes_gift_confirm", "I understand"))
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (!giftConfirmed) return@TextButton
-                        scope.launch {
-                            val resp = withContext(Dispatchers.IO) {
-                                api.giftCreatorCode(ownerId, activeCodeId!!, "eazy_pool")
-                            }
-                            if (resp.optBoolean("ok", false)) {
-                                showGiftDialog = false
-                                giftConfirmed = false
-                                reload()
-                            }
-                        }
-                    }
-                ) { Text(translationStore.t("creator.settings.creator_codes_gift_send_btn", "Gift now")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showGiftDialog = false }) {
-                    Text(translationStore.t("creator.settings.creator_codes_gift_cancel_btn", "Cancel"))
-                }
-            }
+    activeCodeId?.let { codeId ->
+        CreatorCodeUserPickerDialog(
+            visible = showUserPickerDialog,
+            ownerId = ownerId,
+            api = api,
+            codeId = codeId,
+            isPermanentGift = activeCodeIsPermanentGift,
+            translationStore = translationStore,
+            onDismiss = { showUserPickerDialog = false },
+            onSent = { reload() },
+        )
+        CreatorCodePoolConfirmDialog(
+            visible = showPoolDialog,
+            ownerId = ownerId,
+            api = api,
+            codeId = codeId,
+            isPermanentGift = activeCodeIsPermanentGift,
+            translationStore = translationStore,
+            onDismiss = { showPoolDialog = false },
+            onSent = { reload() },
         )
     }
 

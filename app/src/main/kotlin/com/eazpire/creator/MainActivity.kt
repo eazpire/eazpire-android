@@ -46,7 +46,12 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_EAZY_TAB = "eaz_eazy_tab"
         /** Creator → My Creations → Designs → Inactive (Wear upload complete). */
         const val EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS = "eaz_open_creator_inactive_designs"
+        /** Creator Settings → Creator Codes (invite / redeemed push). */
+        const val EXTRA_OPEN_CREATOR_CODES = "eaz_open_creator_codes"
+        const val EXTRA_CREATOR_CODE_PREFILL = "eaz_creator_code_prefill"
     }
+
+    data class PendingCreatorCodesNav(val prefillCode: String? = null)
 
     val pendingDeepLink = mutableStateOf<Uri?>(null)
     /** When non-null, open Eazy chat with this tab (from push / local notification tap). */
@@ -58,6 +63,8 @@ class MainActivity : ComponentActivity() {
     val pendingWearPairToken = mutableStateOf<String?>(null)
     /** Wear upload finished — open Creator creations, inactive designs tab. */
     val pendingCreatorInactiveDesigns = mutableStateOf(false)
+    /** Creator Settings → Creator Codes (from FCM / in-app notification). */
+    val pendingCreatorCodesNav = mutableStateOf<PendingCreatorCodesNav?>(null)
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -118,6 +125,7 @@ class MainActivity : ComponentActivity() {
                         pendingOpenShop = pendingOpenShop,
                         pendingWearPairToken = pendingWearPairToken,
                         pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
+                        pendingCreatorCodesNav = pendingCreatorCodesNav,
                     )
                 }
             }
@@ -182,6 +190,10 @@ class MainActivity : ComponentActivity() {
         }
         if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS, false)) {
             pendingCreatorInactiveDesigns.value = true
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_CODES, false)) {
+            val prefill = intent.getStringExtra(EXTRA_CREATOR_CODE_PREFILL)?.trim()?.takeIf { it.isNotBlank() }
+            pendingCreatorCodesNav.value = PendingCreatorCodesNav(prefillCode = prefill)
         }
     }
 

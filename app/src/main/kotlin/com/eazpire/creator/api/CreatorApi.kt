@@ -896,13 +896,16 @@ class CreatorApi(
     suspend fun revealCreatorCode(ownerId: String, entitlementId: Long): JSONObject =
         postJson("reveal-creator-code", mapOf("entitlement_id" to entitlementId), mapOf("owner_id" to ownerId))
 
-    /** POST ?op=gift-creator-code&owner_id=xxx */
-    suspend fun giftCreatorCode(ownerId: String, codeId: Long, channel: String, target: String? = null): JSONObject =
-        postJson(
-            "gift-creator-code",
-            mapOf("code_id" to codeId, "channel" to channel, "confirmed" to true, "target" to (target ?: "")),
-            mapOf("owner_id" to ownerId)
+    /** POST ?op=gift-creator-code&owner_id=xxx Body: { code_id, channel, target?, confirmed } */
+    suspend fun giftCreatorCode(ownerId: String, codeId: Long, channel: String, target: String? = null): JSONObject {
+        val body = mutableMapOf<String, Any>(
+            "code_id" to codeId,
+            "channel" to channel,
+            "confirmed" to true,
         )
+        target?.trim()?.takeIf { it.isNotBlank() }?.let { body["target"] = it }
+        return postJson("gift-creator-code", body, mapOf("owner_id" to ownerId))
+    }
 
     /** POST ?op=claim-purchase-via-qr&owner_id=xxx */
     suspend fun claimPurchaseViaQr(ownerId: String, qrToken: String): JSONObject =

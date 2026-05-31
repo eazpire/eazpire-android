@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.eazpire.creator.MainActivity
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
@@ -109,6 +110,7 @@ fun ShopScreen(
     pendingOpenShop: MutableState<Boolean>? = null,
     pendingWearPairToken: MutableState<String?>? = null,
     pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
+    pendingCreatorCodesNav: MutableState<MainActivity.PendingCreatorCodesNav?>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -334,6 +336,7 @@ fun ShopScreen(
 
     var pendingCreationsScreen by remember { mutableIntStateOf(-1) }
     var pendingDesignsActivityFilter by remember { mutableStateOf<String?>(null) }
+    var pendingCreatorCodesSettings by remember { mutableStateOf<MainActivity.PendingCreatorCodesNav?>(null) }
 
     LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value) {
         val pt = pendingEazyTab
@@ -364,6 +367,14 @@ fun ShopScreen(
             pendingDesignsActivityFilter = "inactive"
             pin.value = false
         }
+    }
+
+    LaunchedEffect(pendingCreatorCodesNav?.value) {
+        val nav = pendingCreatorCodesNav?.value ?: return@LaunchedEffect
+        switchCreatorMode(toCreator = true, animate = false)
+        eazyChatVisible = false
+        pendingCreatorCodesSettings = nav
+        pendingCreatorCodesNav.value = null
     }
 
     var creatorGenEazyLookLeft by remember { mutableStateOf(false) }
@@ -656,6 +667,8 @@ fun ShopScreen(
             generationBubbleFaceLeft = generationBubbleFaceLeft,
             pendingWearPairToken = pendingWearPair,
             onWearPairTokenConsumed = { pendingWearPairToken?.value = null },
+            pendingCreatorCodesNav = pendingCreatorCodesSettings,
+            onPendingCreatorCodesConsumed = { pendingCreatorCodesSettings = null },
         )
         }
     } else {
@@ -1152,7 +1165,12 @@ fun ShopScreen(
         },
         onResetMascot = { eazyMascotStore.resetSync() },
         chatContext = if (isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop,
-        startTab = eazyStartTab
+        startTab = eazyStartTab,
+        onOpenCreatorCodes = { prefillCode ->
+            eazyChatVisible = false
+            switchCreatorMode(toCreator = true, animate = false)
+            pendingCreatorCodesSettings = MainActivity.PendingCreatorCodesNav(prefillCode = prefillCode)
+        },
     )
 
     EazyGuideOverlay(

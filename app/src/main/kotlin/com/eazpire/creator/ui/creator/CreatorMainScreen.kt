@@ -48,6 +48,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.R
+import com.eazpire.creator.MainActivity
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.audio.CreatorAudioStore
@@ -100,6 +101,8 @@ fun CreatorMainScreen(
     overlayComposeStartKey: Int = 0,
     pendingWearPairToken: String? = null,
     onWearPairTokenConsumed: () -> Unit = {},
+    pendingCreatorCodesNav: MainActivity.PendingCreatorCodesNav? = null,
+    onPendingCreatorCodesConsumed: () -> Unit = {},
     initialScreen: Int? = null,
     initialDesignsActivityFilter: String? = null,
     onInitialDesignsActivityConsumed: () -> Unit = {},
@@ -109,14 +112,25 @@ fun CreatorMainScreen(
     var salesModalVisible by remember { mutableStateOf(false) }
     var creatorSettingsVisible by remember { mutableStateOf(false) }
     var wearPairTokenForSettings by remember { mutableStateOf<String?>(null) }
+    var creatorCodesPrefill by remember { mutableStateOf<String?>(null) }
+    var creatorSettingsInitialTab by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(pendingWearPairToken) {
         val t = pendingWearPairToken?.trim().orEmpty()
         if (t.isNotBlank()) {
             wearPairTokenForSettings = t
+            creatorSettingsInitialTab = 10
             creatorSettingsVisible = true
             onWearPairTokenConsumed()
         }
+    }
+
+    LaunchedEffect(pendingCreatorCodesNav) {
+        val nav = pendingCreatorCodesNav ?: return@LaunchedEffect
+        creatorCodesPrefill = nav.prefillCode?.trim()?.takeIf { it.isNotBlank() }
+        creatorSettingsInitialTab = 2
+        creatorSettingsVisible = true
+        onPendingCreatorCodesConsumed()
     }
     var audioModalVisible by remember { mutableStateOf(false) }
     var languageModalVisible by remember { mutableStateOf(false) }
@@ -298,7 +312,11 @@ fun CreatorMainScreen(
                     translationStore = translationStore,
                     onMenuClick = { drawerVisible = true },
                     onBalanceClick = { salesModalVisible = true },
-                    onAccountClick = { creatorSettingsVisible = true },
+                    onAccountClick = {
+                        creatorSettingsInitialTab = 0
+                        creatorCodesPrefill = null
+                        creatorSettingsVisible = true
+                    },
                     profileHintActive = creatorCodeHintActive,
                     tokenStore = tokenStore,
                     eazyDocked = eazyDocked,
@@ -592,12 +610,16 @@ fun CreatorMainScreen(
             CreatorSettingsModal(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
-                initialTab = if (wearPairTokenForSettings != null) 10 else 0,
+                initialTab = creatorSettingsInitialTab,
+                initialRedeemCode = creatorCodesPrefill,
+                onInitialRedeemCodeConsumed = { creatorCodesPrefill = null },
                 pendingWearPairToken = wearPairTokenForSettings,
                 creatorCodeHintActive = creatorCodeHintActive,
                 onDismiss = {
                     creatorSettingsVisible = false
                     wearPairTokenForSettings = null
+                    creatorCodesPrefill = null
+                    creatorSettingsInitialTab = 0
                 },
                 onLoginClick = onAccountClick,
             )

@@ -158,7 +158,10 @@ private data class EazyNotifRow(
     val isSystem: Boolean = false,
     val systemAudience: String? = null,
     /** From notification `data` JSON: design/hero/product/job preview when available. */
-    val previewImageUrl: String? = null
+    val previewImageUrl: String? = null,
+    /** Creator Code invite: prefill redeem field when opening Creator Settings. */
+    val creatorCodePrefill: String? = null,
+    val opensCreatorCodes: Boolean = false,
 )
 
 private data class EazyKvJobRow(
@@ -226,23 +229,31 @@ private fun JSONObject.firstHttpUrl(vararg keys: String): String? {
 
 /**
  * Reads `data` from user or system notification rows (string JSON or object).
+ */
+private fun extractNotificationDataObject(notification: JSONObject): JSONObject? {
+    if (!notification.has("data") || notification.isNull("data")) return null
+    return when (val d = notification.get("data")) {
+        is JSONObject -> d
+        is String -> try {
+            JSONObject(d)
+        } catch (_: Exception) {
+            null
+        }
+        else -> null
+    }
+}
+
+private fun isCreatorCodeNotificationCategory(category: String?): Boolean {
+    val c = category?.lowercase()?.trim().orEmpty()
+    return c.startsWith("creator_code")
+}
+
+/**
+ * Reads `data` from user or system notification rows (string JSON or object).
  * Covers design/hero/video/product jobs: thumbnail_url, preview_url, result.*, product_image_url, etc.
  */
 private fun extractNotificationPreviewUrl(notification: JSONObject): String? {
-    val data = when {
-        notification.has("data") && !notification.isNull("data") -> {
-            when (val d = notification.get("data")) {
-                is JSONObject -> d
-                is String -> try {
-                    JSONObject(d)
-                } catch (_: Exception) {
-                    null
-                }
-                else -> null
-            }
-        }
-        else -> null
-    } ?: return null
+    val data = extractNotificationDataObject(notification) ?: return null
 
     data.firstHttpUrl(
         "thumbnail_url",
@@ -278,6 +289,13 @@ private fun parseNotifications(
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val id = o.optString("notification_id", o.optString("id", "")).ifBlank { return@mapNotNull null }
         val cat = o.optString("category", o.optString("event_type", "")).takeIf { it.isNotBlank() }
+        val isCreatorCode = isCreatorCodeNotificationCategory(cat)
+        val dataObj = extractNotificationDataObject(o)
+        val prefill = if (isCreatorCode) {
+            dataObj?.optString("code", "")?.trim()?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
         EazyNotifRow(
             id = id,
             title = o.optString("title", "").ifBlank { "Notification" },
@@ -287,7 +305,9 @@ private fun parseNotifications(
             category = cat,
             isSystem = isSystem,
             systemAudience = systemAudience,
-            previewImageUrl = extractNotificationPreviewUrl(o)
+            previewImageUrl = extractNotificationPreviewUrl(o),
+            creatorCodePrefill = prefill,
+            opensCreatorCodes = isCreatorCode,
         )
     }
 }
@@ -493,6 +513,7 @@ fun EazyChatModal(
     onResetMascot: () -> Unit = {},
     chatContext: EazyChatContext = EazyChatContext.Shop,
     startTab: EazySidebarTab = EazySidebarTab.Chat,
+    onOpenCreatorCodes: (prefillCode: String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -1314,7 +1335,8 @@ fun EazyChatModal(
                                         }
                                         loadNotificationsList()
                                     }
-                                }
+                                },
+                                onOpenCreatorCodes = onOpenCreatorCodes,
                             )
 
                             EazySidebarTab.Jobs -> EazyJobsCombinedPanel(
@@ -1617,7 +1639,8 @@ private fun EazyNotificationsPanel(
     notifFeedScope: String,
     onNotifFeedScopeChange: (String) -> Unit,
     t: (String, String) -> String,
-    onMarkRead: (EazyNotifRow) -> Unit
+    onMarkRead: (EazyNotifRow) -> Unit,
+    onOpenCreatorCodes: (prefillCode: String?) -> Unit = {},
 ) {
     val unread = notifications.filter { !it.isRead }
     val read = notifications.filter { it.isRead }
@@ -1700,6 +1723,9 @@ private fun EazyNotificationsPanel(
                             .background(if (!n.isRead) LocalEazyModalPalette.current.accent.copy(alpha = 0.12f) else LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
                             .clickable {
                                 if (!n.isRead) onMarkRead(n)
+                                if (n.opensCreatorCodes) {
+                                    onOpenCreatorCodes(n.creatorCodePrefill)
+                                }
                             }
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically

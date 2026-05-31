@@ -71,6 +71,12 @@ object EazNotificationDisplay {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
                     putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Notifications.name)
                 }
+                "creator_settings_codes", "creator_codes", "creator-codes" -> {
+                    putExtra(MainActivity.EXTRA_OPEN_CREATOR_CODES, true)
+                    extras["code"]?.trim()?.takeIf { it.isNotBlank() }?.let {
+                        putExtra(MainActivity.EXTRA_CREATOR_CODE_PREFILL, it)
+                    }
+                }
                 null, "" -> {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
                     putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Notifications.name)
@@ -308,7 +314,7 @@ object EazNotificationDisplay {
         ) {
             return R.drawable.ic_notif_community
         }
-        if (c.contains("gift") || c.contains("referral") || c.contains("community")) {
+        if (c.contains("gift") || c.contains("referral") || c.contains("community") || c.contains("creator_code")) {
             return R.drawable.ic_notif_community
         }
         return R.drawable.ic_stat_eazpire
