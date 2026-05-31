@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -81,7 +80,7 @@ fun HomeCategoryStrip(
                 modifier = Modifier
                     .weight(1f)
                     .horizontalScroll(scroll)
-                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    .padding(start = 16.dp, end = 0.dp, top = 4.dp, bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.Top,
             ) {
@@ -151,17 +150,43 @@ fun HomeCategoryStrip(
                 }
             }
             if (onFilterClick != null) {
-                IconButton(
-                    onClick = onFilterClick,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .padding(end = 8.dp, top = 2.dp)
-                        .size(48.dp),
+                        .padding(end = 12.dp, top = 4.dp, bottom = 4.dp)
+                        .widthIn(min = 52.dp)
+                        .clickable(onClick = onFilterClick),
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FilterList,
-                        contentDescription = labelForKey("eaz.home.filter_open", "Open filter"),
-                        tint = if (filterActive) LabelActive else IconOrange,
-                        modifier = Modifier.size(24.dp),
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFFFFF5ED), Color(0xFFFEE2CC)),
+                                ),
+                            )
+                            .border(
+                                width = if (filterActive) 3.dp else 2.dp,
+                                color = if (filterActive) IconOrange else IconOrange.copy(alpha = 0.25f),
+                                shape = CircleShape,
+                            ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FilterList,
+                            contentDescription = labelForKey("eaz.home.filter_open", "Open filter"),
+                            tint = if (filterActive) LabelActive else IconOrange,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    Text(
+                        text = labelForKey("eaz.home.filter_label", "Filter"),
+                        fontSize = 10.5.sp,
+                        fontWeight = if (filterActive) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if (filterActive) LabelActive else MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
             }

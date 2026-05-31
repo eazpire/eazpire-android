@@ -78,21 +78,37 @@ fun ProductCarouselSection(
 
     var selectedCategory by remember { mutableStateOf("all") }
     var filterModalVisible by remember { mutableStateOf(false) }
-    var carouselSearchQuery by remember { mutableStateOf("") }
+    var productFilters by remember { mutableStateOf(ProductFilters()) }
+    var withinSearchQuery by remember { mutableStateOf("") }
     val autoScrollPaused =
         (productModalHandleState?.value != null) || filterModalVisible
-    fun filterCarouselProducts(list: List<ShopifyProductsApi.ProductItem>): List<ShopifyProductsApi.ProductItem> {
-        val q = carouselSearchQuery.trim()
-        if (q.isBlank()) return list
-        return list.filter { item ->
-            item.title.contains(q, ignoreCase = true) ||
-                item.productType.contains(q, ignoreCase = true) ||
-                item.creator.contains(q, ignoreCase = true)
-        }
+
+    LaunchedEffect(selectedCategory) {
+        productFilters = ProductFilters()
+        withinSearchQuery = ""
     }
+
+    fun filterCarouselProducts(list: List<ShopifyProductsApi.ProductItem>): List<ShopifyProductsApi.ProductItem> {
+        return applyCollectionWithinSearchFilter(
+            applyCollectionProductFilters(list, productFilters),
+            withinSearchQuery,
+        )
+    }
+
     var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     var sectionPools by remember { mutableStateOf<Map<String, HomeCategoryPools>>(emptyMap()) }
     var createScratchCatalog by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
+
+    val homeFilterPool = remember(selectedCategory, sectionPools, promoProducts) {
+        buildList {
+            addAll(promoProducts)
+            HOME_PRODUCT_SECTIONS.forEach { def ->
+                addAll(sectionPools[def.id]?.get(selectedCategory).orEmpty())
+            }
+        }.distinctBy { it.id }
+    }
+
+    val filterActive = !productFilters.isEmpty() || withinSearchQuery.isNotBlank()
     /** Creators load only after promo + product carousels (top → bottom). */
     var loadCreatorsSection by remember { mutableStateOf(false) }
 
@@ -219,7 +235,7 @@ fun ProductCarouselSection(
                     onCategorySelected = { selectedCategory = it },
                     labelForKey = t,
                     onFilterClick = { filterModalVisible = true },
-                    filterActive = carouselSearchQuery.isNotBlank(),
+                    filterActive = filterActive,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -314,7 +330,7 @@ fun ProductCarouselSection(
                 onCategorySelected = { selectedCategory = it },
                 labelForKey = t,
                 onFilterClick = { filterModalVisible = true },
-                filterActive = carouselSearchQuery.isNotBlank(),
+                filterActive = filterActive,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
@@ -324,8 +340,11 @@ fun ProductCarouselSection(
 
         if (filterModalVisible) {
             HomeCarouselFilterModal(
-                searchQuery = carouselSearchQuery,
-                onSearchQueryChange = { carouselSearchQuery = it },
+                products = homeFilterPool,
+                filters = productFilters,
+                withinSearchQuery = withinSearchQuery,
+                onWithinSearchChange = { withinSearchQuery = it },
+                onFiltersChange = { productFilters = it },
                 onDismiss = { filterModalVisible = false },
                 labelForKey = t,
             )
