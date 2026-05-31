@@ -65,8 +65,8 @@ import kotlin.coroutines.resume
 
 /**
  * Shopify Customer Account OAuth (PKCE).
- * - **Shopify login page** → in-app WebView (Custom Tabs send Accept */* → Shopify 406 blank page).
- * - **Google OAuth** → Chrome Custom Tab when WebView navigates to accounts.google.com.
+ * - Shopify login page in WebView (Custom Tabs send generic Accept and get HTTP 406 blank page).
+ * - Google OAuth in Chrome Custom Tab when WebView navigates to accounts.google.com.
  */
 @Composable
 fun AuthScreen(
