@@ -65,9 +65,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import org.json.JSONObject
 
 private fun normalizeImageUrl(url: String?): String? {
@@ -131,7 +129,7 @@ fun FavoritesModal(
     if (!visible) return
 
     val context = LocalContext.current
-    val scope = remember { CoroutineScope(Dispatchers.Main) }
+    val scope = rememberCoroutineScope()
     var drawerOpen by remember { mutableStateOf(false) }
     var activeView by remember { mutableStateOf("pool") }
     var poolItems by remember { mutableStateOf<List<FavoriteItem>>(emptyList()) }
@@ -161,7 +159,12 @@ fun FavoritesModal(
         val handleFromApi = jsonOptString(obj, "product_handle")
         val handle = handleFromApi ?: handleByProductId[productId]
         return FavoriteItem(
-            id = if (isPool) "$productId|${variantId.orEmpty()}" else (jsonOptString(obj, "id") ?: ""),
+            id = if (isPool) {
+                "pool|${productId.ifBlank { "0" }}|${variantId.orEmpty()}"
+            } else {
+                val listRowId = obj.optLong("id", 0L)
+                if (listRowId > 0L) "list|$listRowId" else (jsonOptString(obj, "id") ?: "list|${obj.hashCode()}")
+            },
             itemId = if (isPool) 0L else obj.optLong("id", 0L),
             productId = productId,
             productHandle = handle,
@@ -365,87 +368,103 @@ fun FavoritesModal(
                     }
                 }
 
-                when {
-                    customerId.isNullOrBlank() -> {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Log in to save favorites", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
-                        }
-                    }
-                    loading && listItems.isEmpty() && activeView != "pool" -> {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
-                        }
-                    }
-                    else -> {
-                        val items = if (activeView == "pool") poolItems else listItems
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            item {
-                                AddProductPlaceholderCard(
-                                    onClick = {
-                                        if (shopProducts.isEmpty() && !shopProductsLoading) {
-                                            shopProductsLoading = true
-                                            loadProductHandles()
-                                            shopProductsLoading = false
-                                        }
-                                        showProductPicker = true
-                                    }
-                                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    when {
+                        customerId.isNullOrBlank() -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("Log in to save favorites", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
                             }
-                            items(items, key = { it.id }) { item ->
-                                FavoriteGridCard(
-                                    item = item,
-                                    onClick = {
-                                        val handle = item.productHandle?.trim().orEmpty()
-                                        if (handle.isNotBlank() && tokenStore != null && !customerId.isNullOrBlank() && onEditFavorite != null) {
-                                            onEditFavorite(
-                                                FavoriteEditContext(
-                                                    productHandle = handle,
-                                                    customerId = customerId,
-                                                    api = api,
-                                                    productId = item.productId,
-                                                    initialVariantId = item.variantId,
-                                                    activeView = activeView,
-                                                    itemId = item.itemId,
-                                                    onSaved = {
-                                                        if (activeView == "pool") loadPool() else loadListItems(activeView.toLong())
-                                                        loadLists()
-                                                    },
-                                                    onDismiss = {},
-                                                )
-                                            )
-                                        } else if (handle.isNotBlank()) {
-                                            onProductClick?.invoke(handle)
+                        }
+                        loading && listItems.isEmpty() && activeView != "pool" -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = EazColors.TextSecondary)
+                            }
+                        }
+                        else -> {
+                            val items = if (activeView == "pool") poolItems else listItems
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                item(key = "add_product") {
+                                    AddProductPlaceholderCard(
+                                        onClick = {
+                                            if (shopProducts.isEmpty() && !shopProductsLoading) {
+                                                shopProductsLoading = true
+                                                loadProductHandles()
+                                                shopProductsLoading = false
+                                            }
+                                            showProductPicker = true
+                                        }
+                                    )
+                                }
+                                items(
+                                    items,
+                                    key = { item ->
+                                        when {
+                                            item.itemId > 0L -> "fav-list-${item.itemId}"
+                                            else -> item.id
                                         }
                                     },
-                                    onRemove = {
-                                        if (activeView == "pool") {
-                                            poolItems = poolItems.filter { it.id != item.id }
-                                            onCountChange(poolItems.size)
-                                        } else {
-                                            listItems = listItems.filter { it.id != item.id }
-                                        }
-                                        scope.launch {
-                                            try {
-                                                if (activeView == "pool") {
-                                                    api.removeFavorite(customerId!!, item.productId, item.variantId)
-                                                    FavoritesRefreshTrigger.trigger()
-                                                    loadPool()
-                                                } else {
-                                                    api.removeFromFavoriteList(customerId!!, activeView.toLong(), item.itemId)
-                                                    loadListItems(activeView.toLong())
-                                                    loadLists()
+                                ) { item ->
+                                    FavoriteGridCard(
+                                        item = item,
+                                        onClick = {
+                                            val handle = item.productHandle?.trim().orEmpty()
+                                            if (handle.isNotBlank() && tokenStore != null && !customerId.isNullOrBlank() && onEditFavorite != null) {
+                                                onEditFavorite(
+                                                    FavoriteEditContext(
+                                                        productHandle = handle,
+                                                        customerId = customerId,
+                                                        api = api,
+                                                        productId = item.productId,
+                                                        initialVariantId = item.variantId,
+                                                        activeView = activeView,
+                                                        itemId = item.itemId,
+                                                        onSaved = {
+                                                            if (activeView == "pool") loadPool() else loadListItems(activeView.toLong())
+                                                            loadLists()
+                                                        },
+                                                        onDismiss = {},
+                                                    )
+                                                )
+                                            } else if (handle.isNotBlank()) {
+                                                onProductClick?.invoke(handle)
+                                            }
+                                        },
+                                        onRemove = {
+                                            if (activeView == "pool") {
+                                                poolItems = poolItems.filter { it.id != item.id }
+                                                onCountChange(poolItems.size)
+                                            } else {
+                                                listItems = listItems.filter { it.id != item.id }
+                                            }
+                                            scope.launch {
+                                                try {
+                                                    if (activeView == "pool") {
+                                                        api.removeFavorite(customerId!!, item.productId, item.variantId)
+                                                        FavoritesRefreshTrigger.trigger()
+                                                        loadPool()
+                                                    } else {
+                                                        api.removeFromFavoriteList(customerId!!, activeView.toLong(), item.itemId)
+                                                        loadListItems(activeView.toLong())
+                                                        loadLists()
+                                                    }
+                                                } catch (_: Exception) {
+                                                    if (activeView == "pool") loadPool() else loadListItems(activeView.toLong())
                                                 }
-                                            } catch (_: Exception) {
-                                                if (activeView == "pool") loadPool() else loadListItems(activeView.toLong())
                                             }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
@@ -787,7 +806,6 @@ private fun FavoriteGridCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FavoriteProductPickerSheet(
     products: List<ShopPickerProduct>,
@@ -795,12 +813,23 @@ private fun FavoriteProductPickerSheet(
     onDismiss: () -> Unit,
     onSelect: (ShopPickerProduct) -> Unit,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Color.White
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            Text("Add product", style = MaterialTheme.typography.titleLarge, color = EazColors.TextPrimary)
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Add product", style = MaterialTheme.typography.titleLarge, color = EazColors.TextPrimary)
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
+                }
+            }
             Spacer(Modifier.height(12.dp))
             if (loading) {
                 Text("Loading…", color = EazColors.TextSecondary)
@@ -849,7 +878,6 @@ private fun FavoriteProductPickerSheet(
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }
