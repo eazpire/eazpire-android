@@ -33,7 +33,7 @@ import com.eazpire.creator.R
 
 /**
  * Same choices as web login modal: Shop app, Google, Email.
- * Shopify login in WebView; Google OAuth continues in Chrome Custom Tab.
+ * All login methods use the same unified in-app WebView OAuth flow.
  */
 @Composable
 fun LoginOptionsModal(

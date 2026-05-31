@@ -1,18 +1,11 @@
 package com.eazpire.creator.ui
 
-import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Bundle
-import android.provider.Browser
 import android.webkit.CookieManager
-import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +38,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
-import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.AuthException
 import com.eazpire.creator.auth.OAuthPkceStore
@@ -64,9 +56,8 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
- * Shopify Customer Account OAuth (PKCE).
- * - Shopify login page in WebView (Custom Tabs send generic Accept and get HTTP 406 blank page).
- * - Google OAuth in Chrome Custom Tab when WebView navigates to accounts.google.com.
+ * Shopify Customer Account OAuth (PKCE) — unified in-app WebView flow (stable 2026-05-18 behavior).
+ * [loginMethod] is UI-only; Shop / Google / Email all use the same OAuth navigation.
  */
 @Composable
 fun AuthScreen(
@@ -93,41 +84,9 @@ fun AuthScreen(
     var webViewProgress by remember { mutableStateOf(0) }
     var callbackHandled by remember { mutableStateOf(false) }
     var oauthWebViewLoadDone by remember(oauthWebViewUrl) { mutableStateOf(false) }
-    var loginAttemptId by remember { mutableStateOf(0) }
-    var lastAuthUrl by remember { mutableStateOf<String?>(null) }
-    var awaitingOAuthCallback by remember { mutableStateOf(false) }
 
     LaunchedEffect(loginMethod) {
-        AuthDebugLog.d("[AUTHSCREEN] loginMethod=$loginMethod usesWebViewForShopify=true")
-    }
-
-    fun openShopifyOAuthInWebView(url: String) {
-        oauthWebViewUrl = url
-        webViewProgress = 0
-        oauthWebViewLoadDone = false
-        awaitingOAuthCallback = false
-    }
-
-    fun isGoogleOAuthUri(uri: Uri): Boolean {
-        val host = uri.host?.lowercase().orEmpty()
-        return host.contains("accounts.google.com") ||
-            (host.contains("google.com") && uri.path?.contains("oauth", ignoreCase = true) == true)
-    }
-
-    fun launchOAuthCustomTab(url: String) {
-        var launchUrl = AuthConfig.normalizeOAuthEndpoint(url)
-        AuthConfig.rewriteAccountHostUri(Uri.parse(launchUrl))?.toString()?.let { launchUrl = it }
-        AuthDebugLog.d("[CUSTOM TAB] launch url=$launchUrl attempt=$loginAttemptId")
-        oauthWebViewUrl = null
-        val tabsIntent = CustomTabsIntent.Builder()
-            .setShowTitle(true)
-            .build()
-        tabsIntent.intent.putExtra(
-            Browser.EXTRA_HEADERS,
-            Bundle().apply { putString("Accept", AuthConfig.SHOPIFY_HTML_ACCEPT) }
-        )
-        tabsIntent.launchUrl(context, Uri.parse(launchUrl))
-        awaitingOAuthCallback = true
+        AuthDebugLog.d("[AUTHSCREEN] loginMethod=$loginMethod uses unified WebView OAuth flow")
     }
 
     fun isShopCallbackUri(uri: Uri?): Boolean {
@@ -152,7 +111,6 @@ fun AuthScreen(
         if (code == null || state == null) return
         callbackHandled = true
         oauthWebViewUrl = null
-        awaitingOAuthCallback = false
         val verifier = when {
             state == savedState && codeVerifier != null -> {
                 OAuthPkceStore.clear(appCtx)
@@ -227,14 +185,9 @@ fun AuthScreen(
             isLoading = true
             error = null
             callbackHandled = false
-            awaitingOAuthCallback = false
-            loginAttemptId += 1
-            val attempt = loginAttemptId
-            AuthDebugLog.d("[LOGIN#$attempt] START method=$loginMethod")
             try {
                 clearCookiesForLogin()
                 val endpoints = authService.discoverEndpoints()
-                AuthDebugLog.d("[LOGIN#$attempt] DISCOVERY authorizationEndpoint=${endpoints.authorizationEndpoint} tokenEndpoint=${endpoints.tokenEndpoint}")
                 val verifier = PkceUtils.generateCodeVerifier()
                 val state = PkceUtils.generateState()
                 codeVerifier = verifier
@@ -245,13 +198,13 @@ fun AuthScreen(
                     verifier,
                     state
                 )
-                lastAuthUrl = url
-                AuthDebugLog.d("[LOGIN#$attempt] AUTH_URL $url")
-                // All methods: WebView for Shopify (avoids Custom Tab 406 on shopify.com). Google handoff in WebViewClient.
-                openShopifyOAuthInWebView(url)
+                AuthDebugLog.d("[START LOGIN] unified WebView OAuth url=$url method=$loginMethod")
+                oauthWebViewUrl = url
+                webViewProgress = 0
+                oauthWebViewLoadDone = false
             } catch (e: Exception) {
                 error = e.message ?: "Unknown error"
-                AuthDebugLog.e("[LOGIN#$attempt] Failed: ${e.message}", e)
+                AuthDebugLog.e("[START LOGIN] Failed: ${e.message}", e)
             } finally {
                 isLoading = false
             }
@@ -309,21 +262,9 @@ fun AuthScreen(
                                 }
                                 webViewClient = object : WebViewClient() {
                                     private fun handleNavigation(view: WebView?, u: Uri): Boolean {
-                                        AuthDebugLog.d("[WEBVIEW NAVIGATION] attempt=$loginAttemptId url=$u host=${u.host} scheme=${u.scheme}")
                                         if (isShopCallbackUri(u)) {
-                                            AuthDebugLog.d("[WEBVIEW CALLBACK DETECTED handleNavigation] attempt=$loginAttemptId url=$u")
                                             view?.stopLoading()
                                             handleCallback(u.toString())
-                                            return true
-                                        }
-                                        AuthConfig.rewriteAccountHostUri(u)?.toString()?.let { rewritten ->
-                                            AuthDebugLog.d("[WEBVIEW ACCOUNT HOST REWRITE] attempt=$loginAttemptId $u -> $rewritten")
-                                            view?.loadUrl(rewritten)
-                                            return true
-                                        }
-                                        if (isGoogleOAuthUri(u)) {
-                                            AuthDebugLog.d("[WEBVIEW GOOGLE REDIRECT] opening Custom Tab attempt=$loginAttemptId url=$u")
-                                            launchOAuthCustomTab(u.toString())
                                             return true
                                         }
                                         return false
@@ -334,80 +275,46 @@ fun AuthScreen(
                                         request: WebResourceRequest?
                                     ): Boolean {
                                         val u = request?.url ?: return false
-                                        AuthDebugLog.d("[WEBVIEW SHOULD_OVERRIDE] attempt=$loginAttemptId url=$u isForMainFrame=${request.isForMainFrame} method=${request.method}")
                                         return handleNavigation(view, u)
                                     }
 
                                     @Deprecated("Deprecated in Java")
                                     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                                         val u = url?.let { Uri.parse(it) } ?: return false
-                                        AuthDebugLog.d("[WEBVIEW SHOULD_OVERRIDE_DEPRECATED] attempt=$loginAttemptId url=$u")
                                         return handleNavigation(view, u)
                                     }
 
                                     override fun onPageStarted(
                                         view: WebView?,
                                         url: String?,
-                                        favicon: Bitmap?
+                                        favicon: android.graphics.Bitmap?
                                     ) {
-                                        AuthDebugLog.d("[WEBVIEW PAGE STARTED] attempt=$loginAttemptId url=$url")
                                         url ?: return
                                         try {
                                             val u = Uri.parse(url)
                                             if (isShopCallbackUri(u)) {
-                                                AuthDebugLog.d("[WEBVIEW CALLBACK DETECTED onPageStarted] attempt=$loginAttemptId url=$url")
                                                 view?.stopLoading()
                                                 handleCallback(url)
-                                                return
                                             }
-                                            if (isGoogleOAuthUri(u)) {
-                                                AuthDebugLog.d("[WEBVIEW GOOGLE REDIRECT onPageStarted] opening Custom Tab attempt=$loginAttemptId url=$url")
-                                                view?.stopLoading()
-                                                launchOAuthCustomTab(u.toString())
-                                            }
-                                        } catch (e: Exception) {
-                                            AuthDebugLog.w("[WEBVIEW PAGE STARTED] Failed to parse url=$url", e)
-                                        }
-                                    }
-
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        super.onPageFinished(view, url)
-                                        AuthDebugLog.d("[WEBVIEW PAGE FINISHED] attempt=$loginAttemptId url=$url title=${view?.title} progress=${view?.progress}")
-                                        try {
-                                            view?.evaluateJavascript(
-                                                """
-                                                (function() {
-                                                  return JSON.stringify({
-                                                    href: location.href,
-                                                    title: document.title,
-                                                    readyState: document.readyState,
-                                                    bodyTextLength: document.body ? document.body.innerText.length : -1,
-                                                    bodyHtmlLength: document.body ? document.body.innerHTML.length : -1,
-                                                    bodyTextPreview: document.body ? document.body.innerText.slice(0, 300) : null
-                                                  });
-                                                })();
-                                                """.trimIndent()
-                                            ) { result ->
-                                                AuthDebugLog.d("[WEBVIEW DOM SNAPSHOT] attempt=$loginAttemptId url=$url result=$result")
-                                            }
-                                        } catch (e: Exception) {
-                                            AuthDebugLog.w("[WEBVIEW DOM SNAPSHOT] failed attempt=$loginAttemptId url=$url", e)
+                                        } catch (_: Exception) {
                                         }
                                     }
 
                                     override fun onReceivedError(
                                         view: WebView?,
                                         request: WebResourceRequest?,
-                                        errorResource: WebResourceError?
+                                        errorResource: android.webkit.WebResourceError?
                                     ) {
                                         super.onReceivedError(view, request, errorResource)
-                                        val description = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                                            errorResource?.description?.toString()
-                                        } else {
-                                            null
-                                        } ?: "Unknown WebView error"
-                                        AuthDebugLog.e("[WEBVIEW ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} description=$description")
                                         if (request?.isForMainFrame == true) {
+                                            val description = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                                errorResource?.description?.toString()
+                                            } else {
+                                                null
+                                            } ?: "Unknown WebView error"
+                                            AuthDebugLog.e(
+                                                "[WEBVIEW ERROR] mainFrame url=${request.url} description=$description"
+                                            )
                                             error = "Login-Seite konnte nicht geladen werden: $description"
                                         }
                                     }
@@ -415,15 +322,15 @@ fun AuthScreen(
                                     override fun onReceivedHttpError(
                                         view: WebView?,
                                         request: WebResourceRequest?,
-                                        errorResponse: WebResourceResponse?
+                                        errorResponse: android.webkit.WebResourceResponse?
                                     ) {
                                         super.onReceivedHttpError(view, request, errorResponse)
-                                        val status = errorResponse?.statusCode ?: 0
-                                        val reason = errorResponse?.reasonPhrase ?: "HTTP error"
-                                        val mime = errorResponse?.mimeType ?: ""
-                                        val encoding = errorResponse?.encoding ?: ""
-                                        AuthDebugLog.e("[WEBVIEW HTTP ERROR] attempt=$loginAttemptId mainFrame=${request?.isForMainFrame} url=${request?.url} status=$status reason=$reason mime=$mime encoding=$encoding")
                                         if (request?.isForMainFrame == true) {
+                                            val status = errorResponse?.statusCode ?: 0
+                                            val reason = errorResponse?.reasonPhrase ?: "HTTP error"
+                                            AuthDebugLog.e(
+                                                "[WEBVIEW HTTP ERROR] mainFrame url=${request.url} status=$status reason=$reason"
+                                            )
                                             error = "Login-Seite konnte nicht geladen werden: HTTP $status $reason"
                                         }
                                     }
@@ -433,11 +340,7 @@ fun AuthScreen(
                         update = { wv ->
                             val target = oauthWebViewUrl
                             if (target != null && !oauthWebViewLoadDone && !callbackHandled) {
-                                AuthDebugLog.d("[WEBVIEW LOAD INITIAL] attempt=$loginAttemptId target=$target")
-                                wv.loadUrl(
-                                    target,
-                                    mapOf("Accept" to AuthConfig.SHOPIFY_HTML_ACCEPT),
-                                )
+                                wv.loadUrl(target)
                                 oauthWebViewLoadDone = true
                             }
                         }
@@ -453,24 +356,6 @@ fun AuthScreen(
                         .padding(8.dp)
                 ) {
                     Text("Abbrechen")
-                }
-                lastAuthUrl?.let { authUrl ->
-                    TextButton(
-                        onClick = {
-                            try {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
-                                )
-                            } catch (e: Exception) {
-                                AuthDebugLog.e("[OPEN EXTERNAL] failed url=$authUrl", e)
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp)
-                    ) {
-                        Text("Debug: Login im Browser öffnen")
-                    }
                 }
             }
         }
@@ -499,34 +384,15 @@ fun AuthScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = when (loginMethod) {
-                        AuthLoginMethod.GOOGLE ->
-                            "Pick Google on the Shopify screen; Google sign-in opens in your browser."
-                        else -> "Mit deinem Shopify-Konto anmelden"
-                    },
+                    text = "Mit deinem Shopify-Konto anmelden",
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Spacer(modifier = Modifier.height(32.dp))
-                when {
-                    isLoading && oauthWebViewUrl == null && !awaitingOAuthCallback -> {
-                        CircularProgressIndicator()
-                    }
-                    awaitingOAuthCallback -> {
-                        CircularProgressIndicator()
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Sign-in läuft im Browser-Tab. Bitte dort abschließen und zur App zurückkehren.",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { startLogin() }) {
-                            Text("Sign-in erneut öffnen")
-                        }
-                    }
-                    else -> {
-                        Button(onClick = { startLogin() }) {
-                            Text(if (error != null) "Erneut versuchen" else "Anmelden")
-                        }
+                if (isLoading && oauthWebViewUrl == null) {
+                    CircularProgressIndicator()
+                } else {
+                    Button(onClick = { startLogin() }) {
+                        Text(if (error != null) "Erneut versuchen" else "Anmelden")
                     }
                 }
                 error?.let { msg ->
@@ -536,22 +402,6 @@ fun AuthScreen(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
-                }
-                lastAuthUrl?.let { authUrl ->
-                    Spacer(modifier = Modifier.height(12.dp))
-                    TextButton(
-                        onClick = {
-                            try {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
-                                )
-                            } catch (e: Exception) {
-                                AuthDebugLog.e("[OPEN EXTERNAL] failed url=$authUrl", e)
-                            }
-                        }
-                    ) {
-                        Text("Debug: Login im Browser öffnen")
-                    }
                 }
                 onCheckUpdate?.let { check ->
                     Spacer(modifier = Modifier.height(24.dp))
@@ -563,7 +413,6 @@ fun AuthScreen(
                 TextButton(
                     onClick = {
                         oauthWebViewUrl = null
-                        awaitingOAuthCallback = false
                         OAuthPkceStore.clear(appCtx)
                         onDismiss()
                     }
