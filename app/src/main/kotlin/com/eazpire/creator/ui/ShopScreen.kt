@@ -602,8 +602,9 @@ fun ShopScreen(
                     selectedCollection = Triple(title, handle, null)
                 }
             }
-            path.startsWith("/pages/creator-dashboard") -> switchCreatorMode(toCreator = true, animate = false)
-            path.startsWith("/pages/design-generator") -> switchCreatorMode(toCreator = true, animate = false)
+            path.startsWith("/pages/creator-dashboard") ||
+                path.startsWith("/pages/design-generator") ->
+                switchCreatorMode(toCreator = true, animate = false)
             path.startsWith("/search") -> {
                 val q = uri.getQueryParameter("q")?.trim().orEmpty()
                 if (q.isNotEmpty()) {

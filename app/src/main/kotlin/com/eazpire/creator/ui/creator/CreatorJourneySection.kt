@@ -105,17 +105,17 @@ private fun parseJourneyTodo(
 }
 
 private val TODO_CONFIG = mapOf(
-    "todo_first_design" to Triple("💾", "/pages/design-generator", "creator.overview.todo_first_design"),
+    "todo_first_design" to Triple("💾", "/?eaz_open_shop_create=1", "creator.overview.todo_first_design"),
     "todo_first_product" to Triple("📦", "/pages/my-creations", "creator.overview.todo_first_product"),
-    "todo_five_designs" to Triple("🎨", "/pages/design-generator", "creator.overview.todo_five_designs"),
+    "todo_five_designs" to Triple("🎨", "/?eaz_open_shop_create=1", "creator.overview.todo_five_designs"),
     "todo_twenty_products" to Triple("🚀", "/pages/my-creations", "creator.overview.todo_twenty_products"),
     "todo_first_transaction" to Triple("🛒", "#", "creator.overview.todo_first_transaction"),
     "todo_become_creator" to Triple("⭐", "/pages/creator-settings", "creator.overview.todo_become_creator"),
     "todo_creator_name" to Triple("👤", "/pages/creator-settings", "creator.overview.todo_creator_name"),
-    "todo_generate_design" to Triple("🎨", "/pages/design-generator", "creator.overview.todo_generate_design"),
+    "todo_generate_design" to Triple("🎨", "/?eaz_open_shop_create=1", "creator.overview.todo_generate_design"),
     "todo_activate_design" to Triple("✅", "/pages/my-creations", "creator.overview.todo_activate_design"),
     "todo_publish_product" to Triple("🚀", "/pages/my-creations", "creator.overview.todo_publish_product"),
-    "todo_upload_design" to Triple("📤", "/pages/design-generator?mode=upload", "creator.overview.todo_upload_design"),
+    "todo_upload_design" to Triple("📤", "/pages/my-creations", "creator.overview.todo_upload_design"),
     "todo_create_hero" to Triple("🖼️", "/pages/content-creation", "creator.overview.todo_create_hero"),
     "todo_create_avatar" to Triple("👤", "/pages/creator-settings#creator-image", "creator.overview.todo_create_avatar"),
     "todo_create_cover" to Triple("🎨", "/pages/creator-settings#cover-image", "creator.overview.todo_create_cover"),
