@@ -56,6 +56,8 @@ import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.api.hasPromoPricingUi
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.plp.PlpCardDisplay
+import com.eazpire.creator.plp.PlpCardImageResolver
 import com.eazpire.creator.ui.components.EazProductCardMediaOverlays
 import com.eazpire.creator.ui.components.EazProductCardRotatingImages
 import com.eazpire.creator.ui.components.togglePlpTryOnSession
@@ -366,36 +368,37 @@ private fun ProductCard(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val shopImages = product.variantImages.ifEmpty { product.images }
-    /** Full variant URL list for rotation; lazyLoadImages only defers Coil decode, not auto-rotate. */
-    var images by remember(product.id) { mutableStateOf(shopImages) }
+    val shopImages = PlpCardImageResolver.shopRotationUrls(product)
+    var display by remember(product.id) {
+        mutableStateOf(PlpCardDisplay(shopImages, isPersonalizedMock = false))
+    }
     var imageReload by remember(product.id) { mutableIntStateOf(0) }
-    var mockDisplayLocked by remember(product.handle) { mutableStateOf(false) }
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle))
     }
     var showManualTryOn by remember(product.handle) { mutableStateOf(false) }
-    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload, lazyCardImages, skipPersonalizedMock) {
+    LaunchedEffect(
+        product.id,
+        shopImages,
+        ownerId,
+        mockPreviewRevision,
+        imageReload,
+        skipPersonalizedMock,
+        tryOnActive
+    ) {
         if (skipPersonalizedMock || ownerId.isBlank() || creatorApi == null) {
-            if (!mockDisplayLocked) images = shopImages
+            display = PlpCardDisplay(shopImages, isPersonalizedMock = false)
             return@LaunchedEffect
         }
-        if (mockDisplayLocked) return@LaunchedEffect
         val map = CustomerMockPreviewStore.peekMap(ownerId)
             ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
-        val info = CustomerMockPreviewStore.tryOnInfo(
-            map,
-            product.handle,
-            product.metaProductKey,
-            product.designId
-        )
+        val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle)
         val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
             map,
             product.handle,
             product.metaProductKey,
             product.designId
         )
-        val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle)
         tryOnActive = sessionActive || autoActive
         showManualTryOn = CustomerMockPreviewStore.shouldShowManualTryOnButton(
             map,
@@ -403,30 +406,14 @@ private fun ProductCard(
             product.metaProductKey,
             product.designId
         )
-        val useMock = tryOnActive || autoActive
-        if (!useMock && info == null) {
-            if (!mockDisplayLocked) images = shopImages
-            return@LaunchedEffect
-        }
-        val resolved = withContext(Dispatchers.IO) {
-            CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
-        }
-        val shopFirst = shopImages.firstOrNull()
-        val mockFirst = resolved.firstOrNull()
-        val hasMock = mockFirst != null && mockFirst != shopFirst
-        if (useMock && hasMock) {
-            mockDisplayLocked = true
-            images = listOf(mockFirst!!)
-            return@LaunchedEffect
-        }
-        if (useMock && resolved.isNotEmpty()) {
-            mockDisplayLocked = true
-            images = resolved.take(4)
-            return@LaunchedEffect
-        }
-        if (!mockDisplayLocked) {
-            images = if (resolved.isNotEmpty()) resolved else shopImages
-        }
+        display = PlpCardImageResolver.resolve(
+            context = context,
+            creatorApi = creatorApi,
+            ownerId = ownerId,
+            product = product,
+            mockMap = map,
+            sessionTryOnActive = sessionActive,
+        )
     }
 
     Column(
@@ -441,21 +428,21 @@ private fun ProductCard(
                 .aspectRatio(4f / 5f)
                 .clip(RoundedCornerShape(8.dp))
                 .then(
-                    if (images.isEmpty()) Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+                    if (display.urls.isEmpty()) Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
                     else Modifier
                 )
         ) {
-            if (images.isNotEmpty()) {
+            if (display.urls.isNotEmpty()) {
                 EazProductCardRotatingImages(
-                    imageUrls = images,
+                    imageUrls = display.urls,
                     productId = product.id.toString(),
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
                     rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
                     lazyLoadImages = lazyCardImages,
                     targetWidthPx = 280,
-                    fullResolution = mockDisplayLocked || tryOnActive,
-                    autoRotate = !tryOnActive && !mockDisplayLocked && images.size > 1,
+                    fullResolution = display.isPersonalizedMock,
+                    autoRotate = display.autoRotate,
                 )
             }
             EazProductCardMediaOverlays(
@@ -464,7 +451,6 @@ private fun ProductCard(
                 onTryOnClick = {
                     val next = !tryOnActive
                     togglePlpTryOnSession(context, product.handle, next)
-                    mockDisplayLocked = false
                     tryOnActive = next
                     imageReload++
                 },
@@ -477,7 +463,7 @@ private fun ProductCard(
                                 productId = product.id.toString(),
                                 variantId = null,
                                 productTitle = product.title,
-                                productImage = images.firstOrNull()
+                                productImage = display.urls.firstOrNull()
                             )
                             FavoritesRefreshTrigger.trigger()
                         }

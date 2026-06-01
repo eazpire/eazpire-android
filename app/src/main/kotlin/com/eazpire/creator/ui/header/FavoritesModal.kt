@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,12 +37,15 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.List
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,8 +57,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -118,6 +118,13 @@ private data class ShopPickerProduct(
     val price: Double,
 )
 
+/** Lazy grid keys must be unique — pool rows can share product_id/variant_id in API data. */
+private fun favoriteGridItemKey(item: FavoriteItem, index: Int): String {
+    if (item.itemId > 0L) return "list-${item.itemId}"
+    return "pool-$index-${item.productId}-${item.variantId.orEmpty()}"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FavoritesModal(
     visible: Boolean,
@@ -133,6 +140,7 @@ fun FavoritesModal(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var drawerOpen by remember { mutableStateOf(false) }
     var activeView by remember { mutableStateOf("pool") }
     var poolItems by remember { mutableStateOf<List<FavoriteItem>>(emptyList()) }
@@ -340,8 +348,8 @@ fun FavoritesModal(
         }
     }
 
-    LaunchedEffect(activeView) {
-        if (customerId.isNullOrBlank()) return@LaunchedEffect
+    LaunchedEffect(activeView, visible) {
+        if (!visible || customerId.isNullOrBlank()) return@LaunchedEffect
         if (activeView == "pool") {
             loadPool()
         } else {
@@ -349,34 +357,18 @@ fun FavoritesModal(
         }
     }
 
-    Dialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
-        ),
+        sheetState = sheetState,
+        containerColor = Color.White,
+        modifier = Modifier.fillMaxHeight(0.9f),
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            Box(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .clickable(onClick = onDismiss),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.9f),
+                    .padding(16.dp),
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                        .background(Color.White)
-                        .padding(16.dp),
-                ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -468,14 +460,10 @@ fun FavoritesModal(
                                     )
                                 }
                                 items(
-                                    items,
-                                    key = { item ->
-                                        when {
-                                            item.itemId > 0L -> "fav-list-${item.itemId}"
-                                            else -> item.id
-                                        }
-                                    },
-                                ) { item ->
+                                    count = items.size,
+                                    key = { index -> favoriteGridItemKey(items[index], index) },
+                                ) { index ->
+                                    val item = items[index]
                                     FavoriteGridCard(
                                         item = item,
                                         onClick = {
@@ -530,23 +518,23 @@ fun FavoritesModal(
                         }
                     }
                 }
-                }
+            }
 
-                if (drawerOpen) {
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .background(Color.Black.copy(alpha = 0.3f))
-                            .clickable { drawerOpen = false },
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .fillMaxHeight()
-                            .width(280.dp)
-                            .background(Color.White),
-                    ) {
-                        FavoritesSidebar(
+            if (drawerOpen) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        .clickable { drawerOpen = false },
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .width(280.dp)
+                        .background(Color.White),
+                ) {
+                    FavoritesSidebar(
                             poolCount = poolItems.size,
                             lists = lists,
                             activeView = activeView,
@@ -574,16 +562,16 @@ fun FavoritesModal(
                                     }
                                 }
                             },
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .padding(12.dp),
-                        )
-                    }
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(12.dp),
+                    )
                 }
             }
         }
+    }
 
-        if (showCreateListModal) {
+    if (showCreateListModal) {
             CreateListModal(
                 name = newListName,
                 onNameChange = { newListName = it },
@@ -701,7 +689,6 @@ fun FavoritesModal(
                 }
             }
         }
-    }
 }
 
 @Composable

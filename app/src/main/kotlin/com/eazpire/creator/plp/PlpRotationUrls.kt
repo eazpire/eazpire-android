@@ -61,7 +61,8 @@ object PlpRotationUrls {
 
         for (pi in images) {
             if (urls.size >= MAX_SLOTS) break
-            val src = pi.src.trim().ifBlank { continue }
+            val src = pi.src.trim()
+            if (src.isBlank()) continue
             val alt = (pi.alt ?: "").trim()
             if (!alt.contains("|")) continue
             val parts = alt.split("|")
@@ -88,7 +89,8 @@ object PlpRotationUrls {
             val seenVariant = linkedSetOf<Long>()
             for (pi in images) {
                 if (urls.size >= MAX_SLOTS) break
-                val src = pi.src.trim().ifBlank { continue }
+                val src = pi.src.trim()
+            if (src.isBlank()) continue
                 val alt = (pi.alt ?: "").trim()
                 if (!alt.contains("|")) continue
                 val parts = alt.split("|")

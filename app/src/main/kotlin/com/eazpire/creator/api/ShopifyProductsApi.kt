@@ -1,5 +1,6 @@
 package com.eazpire.creator.api
 
+import com.eazpire.creator.plp.PlpRotationUrls
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -27,6 +28,8 @@ class ShopifyProductsApi(
         val images: List<String>,
         /** Variant-only images (preview view); use for collection card rotation. Falls back to images if empty. */
         val variantImages: List<String> = emptyList(),
+        /** Color name per [variantImages] slot (from image alt), for mock lookup. */
+        val rotationColorNames: List<String> = emptyList(),
         val url: String,
         val price: Double = 0.0,
         val compareAtPrice: Double? = null,
@@ -289,79 +292,11 @@ class ShopifyProductsApi(
         }
     }
 
-    /**
-     * Filter images to variant-only (preview view). Alt: "Color|View" or "Color|View|preview-default".
-     * Same logic as eaz-product-card-redesign.liquid and getStorefrontProducts.js.
-     */
-    private fun filterVariantImages(imagesArr: JSONArray): List<String> {
-        var primaryView = ""
-        var hasPreviewDefault = false
-        for (j in 0 until imagesArr.length()) {
-            val img = imagesArr.optJSONObject(j) ?: continue
-            val alt = (img.optString("alt") ?: "").trim().lowercase()
-            if (alt.contains("preview-default")) hasPreviewDefault = true
-            if (alt.contains("|") && primaryView.isEmpty()) {
-                val parts = (img.optString("alt") ?: "").trim().split("|")
-                primaryView = (parts.getOrNull(1) ?: "").trim().lowercase()
-            }
-        }
-        val variantImages = mutableListOf<String>()
-        val usedColors = mutableSetOf<String>()
-        for (j in 0 until imagesArr.length()) {
-            val img = imagesArr.optJSONObject(j) ?: continue
-            val src = img.optString("src").takeIf { it.isNotBlank() } ?: continue
-            val alt = (img.optString("alt") ?: "").trim()
-            if (alt.isEmpty() || !alt.contains("|")) continue
-            val parts = alt.split("|")
-            val colorKey = (parts.getOrNull(0) ?: "").trim().lowercase()
-            val mediaView = (parts.getOrNull(1) ?: "").trim().lowercase()
-            if (colorKey.isEmpty()) continue
-            if (hasPreviewDefault && !alt.lowercase().contains("preview-default")) continue
-            if (!hasPreviewDefault && primaryView.isNotEmpty() && mediaView != primaryView) continue
-            val colorToken = "|$colorKey|"
-            if (colorToken in usedColors) continue
-            usedColors.add(colorToken)
-            variantImages.add(src)
-        }
-        return variantImages
-    }
+    private fun filterVariantImages(imagesArr: JSONArray): List<String> =
+        PlpRotationUrls.fromProductJsonImages(imagesArr).urls
 
-    /**
-     * Variant preview URLs from parsed product detail (same rules as [filterVariantImages] on REST images).
-     * Used when [parseProductFromJson] cannot build a [ProductItem] (e.g. slightly different JSON).
-     */
-    private fun shopCardUrlsFromProductImages(images: List<ProductImage>): List<String> {
-        if (images.isEmpty()) return emptyList()
-        var primaryView = ""
-        var hasPreviewDefault = false
-        for (pi in images) {
-            val alt = (pi.alt ?: "").trim().lowercase()
-            if (alt.contains("preview-default")) hasPreviewDefault = true
-            if (alt.contains("|") && primaryView.isEmpty()) {
-                val parts = (pi.alt ?: "").trim().split("|")
-                primaryView = (parts.getOrNull(1) ?: "").trim().lowercase()
-            }
-        }
-        val variantUrls = mutableListOf<String>()
-        val usedColors = mutableSetOf<String>()
-        for (pi in images) {
-            val src = pi.src.takeIf { it.isNotBlank() } ?: continue
-            val alt = (pi.alt ?: "").trim()
-            if (alt.isEmpty() || !alt.contains("|")) continue
-            val parts = alt.split("|")
-            val colorKey = (parts.getOrNull(0) ?: "").trim().lowercase()
-            val mediaView = (parts.getOrNull(1) ?: "").trim().lowercase()
-            if (colorKey.isEmpty()) continue
-            if (hasPreviewDefault && !alt.lowercase().contains("preview-default")) continue
-            if (!hasPreviewDefault && primaryView.isNotEmpty() && mediaView != primaryView) continue
-            val colorToken = "|$colorKey|"
-            if (colorToken in usedColors) continue
-            usedColors.add(colorToken)
-            variantUrls.add(src)
-        }
-        val allSrcs = images.map { it.src }.filter { it.isNotBlank() }
-        return variantUrls.ifEmpty { listOfNotNull(allSrcs.firstOrNull()) }
-    }
+    private fun shopCardUrlsFromProductImages(images: List<ProductImage>): List<String> =
+        PlpRotationUrls.fromProductImages(images).urls
 
     /**
      * Same image URL list as shop [ProductItem.variantImages] / [CollectionScreen] cards:
@@ -415,10 +350,15 @@ class ShopifyProductsApi(
         }
         if (images.isEmpty()) return null
 
-        val variantImages = if (imagesArr != null) {
-            val filtered = filterVariantImages(imagesArr)
-            if (filtered.isNotEmpty()) filtered else listOfNotNull(images.firstOrNull())
-        } else listOfNotNull(images.firstOrNull())
+        val rotation = if (imagesArr != null) {
+            PlpRotationUrls.fromProductJsonImages(imagesArr)
+        } else {
+            PlpRotationUrls.fromProductImages(
+                images.map { src -> ProductImage(src = src, variantIds = emptyList()) }
+            )
+        }
+        val variantImages = rotation.urls.ifEmpty { listOfNotNull(images.firstOrNull()) }
+        val rotationColorNames = rotation.colorNames
         var price = 0.0
         val variants = obj.optJSONArray("variants")
         if (variants != null && variants.length() > 0) {
@@ -436,6 +376,7 @@ class ShopifyProductsApi(
             handle = handle,
             images = images,
             variantImages = variantImages.ifEmpty { images.take(1) },
+            rotationColorNames = rotationColorNames,
             url = "$storeUrl/products/$handle",
             price = price,
             compareAtPrice = null,

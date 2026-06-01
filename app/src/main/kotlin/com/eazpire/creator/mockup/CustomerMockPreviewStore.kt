@@ -207,11 +207,18 @@ object CustomerMockPreviewStore {
             if (colorsResp.optBoolean("ok", false)) parseProductColorHexMap(colorsResp) else emptyMap()
         }.getOrDefault(emptyMap())
 
-        val size = base.size.coerceAtLeast(1)
-        val resolved = (0 until size).mapNotNull { i ->
+        val colorNames = product.rotationColorNames
+        val poolSize = kotlin.math.max(
+            base.size,
+            if (info.previewMockupIds.isNotEmpty()) info.previewMockupIds.size else 1
+        ).coerceAtMost(24)
+        val resolved = (0 until poolSize).mapNotNull { i ->
             val slice = info.forColorIndex(handle, i)
-            slice.cachedByColor.values.firstOrNull { it.isNotBlank() }
-                ?: resolveMockupImageUrl(slice, "", ownerId, colorMap)
+            val colorName = colorNames.getOrNull(i).orEmpty()
+            val hex = resolveProductColorHex(colorName, colorMap)
+            slice.cachedByColor[hex]
+                ?: slice.cachedByColor.values.firstOrNull { it.isNotBlank() }
+                ?: resolveMockupImageUrl(slice, colorName, ownerId, colorMap)
         }
 
         Log.d(
@@ -221,11 +228,7 @@ object CustomerMockPreviewStore {
         )
 
         if (resolved.isEmpty()) return@withContext base
-        if (resolved.size >= size) {
-            resolved.take(size)
-        } else {
-            List(size) { i -> resolved[i % resolved.size] }
-        }
+        return@withContext resolved.distinct()
     }
 
     suspend fun resolveSingleImageUrl(

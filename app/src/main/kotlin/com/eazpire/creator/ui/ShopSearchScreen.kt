@@ -48,6 +48,8 @@ import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.plp.PlpCardDisplay
+import com.eazpire.creator.plp.PlpCardImageResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -246,36 +248,31 @@ private fun ShopSearchProductCard(
     onCartClick: () -> Unit = onClick,
     modifier: Modifier = Modifier
 ) {
-    val shopImages = product.variantImages.ifEmpty { product.images }
-    var images by remember(product.id, mockPreviewRevision) { mutableStateOf(shopImages) }
+    val shopImages = PlpCardImageResolver.shopRotationUrls(product)
+    var display by remember(product.id, mockPreviewRevision) {
+        mutableStateOf(PlpCardDisplay(shopImages, isPersonalizedMock = false))
+    }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var imageReload by remember(product.id) { mutableIntStateOf(0) }
-    var mockDisplayLocked by remember(product.handle) { mutableStateOf(false) }
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
     }
     var showManualTryOn by remember(product.handle) { mutableStateOf(false) }
-    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
+    LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload, tryOnActive) {
         if (ownerId.isBlank() || creatorApi == null) {
-            if (!mockDisplayLocked) images = shopImages
+            display = PlpCardDisplay(shopImages, isPersonalizedMock = false)
             return@LaunchedEffect
         }
         val map = CustomerMockPreviewStore.peekMap(ownerId)
             ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
-        val info = CustomerMockPreviewStore.tryOnInfo(
-            map,
-            product.handle,
-            product.metaProductKey,
-            product.designId
-        )
+        val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle)
         val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(
             map,
             product.handle,
             product.metaProductKey,
             product.designId
         )
-        val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle)
         tryOnActive = sessionActive || autoActive
         showManualTryOn = CustomerMockPreviewStore.shouldShowManualTryOnButton(
             map,
@@ -283,30 +280,14 @@ private fun ShopSearchProductCard(
             product.metaProductKey,
             product.designId
         )
-        val useMock = tryOnActive || autoActive
-        if (!useMock && info == null) {
-            if (!mockDisplayLocked) images = shopImages
-            return@LaunchedEffect
-        }
-        val resolved = withContext(Dispatchers.IO) {
-            CustomerMockPreviewStore.resolveCardImages(ctx, creatorApi, ownerId, product, map)
-        }
-        val shopFirst = shopImages.firstOrNull()
-        val mockFirst = resolved.firstOrNull()
-        val hasMock = mockFirst != null && mockFirst != shopFirst
-        if (useMock && hasMock) {
-            mockDisplayLocked = true
-            images = listOf(mockFirst!!)
-            return@LaunchedEffect
-        }
-        if (useMock && resolved.isNotEmpty()) {
-            mockDisplayLocked = true
-            images = resolved.take(4)
-            return@LaunchedEffect
-        }
-        if (!mockDisplayLocked) {
-            images = if (resolved.isNotEmpty()) resolved else shopImages
-        }
+        display = PlpCardImageResolver.resolve(
+            context = ctx,
+            creatorApi = creatorApi,
+            ownerId = ownerId,
+            product = product,
+            mockMap = map,
+            sessionTryOnActive = sessionActive,
+        )
     }
 
     Column(
@@ -321,14 +302,14 @@ private fun ShopSearchProductCard(
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFFF5F5F5))
         ) {
-            if (images.isNotEmpty()) {
+            if (display.urls.isNotEmpty()) {
                 com.eazpire.creator.ui.components.EazProductCardRotatingImages(
-                    imageUrls = images,
+                    imageUrls = display.urls,
                     productId = product.id.toString(),
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxSize(),
-                    autoRotate = !tryOnActive && images.size > 1,
-                    fullResolution = mockDisplayLocked || tryOnActive,
+                    autoRotate = display.autoRotate,
+                    fullResolution = display.isPersonalizedMock,
                 )
             }
             com.eazpire.creator.ui.components.EazProductCardMediaOverlays(
@@ -337,7 +318,6 @@ private fun ShopSearchProductCard(
                 onTryOnClick = {
                     val next = !tryOnActive
                     com.eazpire.creator.ui.components.togglePlpTryOnSession(ctx, product.handle, next)
-                    mockDisplayLocked = false
                     tryOnActive = next
                     imageReload++
                 },
@@ -350,7 +330,7 @@ private fun ShopSearchProductCard(
                                 productId = product.id.toString(),
                                 variantId = null,
                                 productTitle = product.title,
-                                productImage = images.firstOrNull()
+                                productImage = display.urls.firstOrNull()
                             )
                             com.eazpire.creator.favorites.FavoritesRefreshTrigger.trigger()
                         }

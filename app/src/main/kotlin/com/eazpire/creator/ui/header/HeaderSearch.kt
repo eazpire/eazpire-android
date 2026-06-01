@@ -77,6 +77,9 @@ import com.eazpire.creator.api.ShopifyPredictiveSearchApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.plp.PlpCardDisplay
+import com.eazpire.creator.plp.PlpCardImageResolver
+import com.eazpire.creator.ui.components.EazProductCardRotatingImages
 import com.eazpire.creator.ui.components.EazLazyProductImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -425,15 +428,8 @@ private fun PredictiveMockImageGridCell(
     mockPreviewRevision: Int = 0
 ) {
     val context = LocalContext.current
-    var images by remember(handle, mockPreviewRevision) { mutableStateOf(shopUrls) }
-    var showingMock by remember(handle) { mutableStateOf(false) }
-    LaunchedEffect(handle, shopUrls, ownerId, mockPreviewRevision) {
-        showingMock = false
-        if (ownerId.isBlank() || creatorApi == null || handle.isBlank()) {
-            images = shopUrls
-            return@LaunchedEffect
-        }
-        val product = ShopifyProductsApi.ProductItem(
+    val product = remember(handle, shopUrls) {
+        ShopifyProductsApi.ProductItem(
             id = 0L,
             title = handle,
             handle = handle,
@@ -441,36 +437,26 @@ private fun PredictiveMockImageGridCell(
             variantImages = shopUrls,
             url = ""
         )
+    }
+    var display by remember(handle, mockPreviewRevision) {
+        mutableStateOf(PlpCardDisplay(shopUrls, isPersonalizedMock = false))
+    }
+    LaunchedEffect(handle, shopUrls, ownerId, mockPreviewRevision) {
+        if (ownerId.isBlank() || creatorApi == null || handle.isBlank()) {
+            display = PlpCardDisplay(shopUrls, isPersonalizedMock = false)
+            return@LaunchedEffect
+        }
         val map = CustomerMockPreviewStore.peekMap(ownerId)
             ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
-        val autoActive = CustomerMockPreviewStore.shouldAutoShowMockOnCard(map, handle, null, null)
         val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(context, handle)
-        val useMock = sessionActive || autoActive
-        if (!useMock && CustomerMockPreviewStore.tryOnInfo(map, handle, null, null) == null) {
-            images = shopUrls
-            return@LaunchedEffect
-        }
-        val resolved = withContext(Dispatchers.IO) {
-            CustomerMockPreviewStore.resolveCardImages(context, creatorApi, ownerId, product, map)
-        }
-        val shopFirst = shopUrls.firstOrNull()
-        val mockFirst = resolved.firstOrNull()
-        if (useMock && mockFirst != null && mockFirst != shopFirst) {
-            showingMock = true
-            images = listOf(mockFirst)
-            return@LaunchedEffect
-        }
-        if (useMock && resolved.isNotEmpty()) {
-            showingMock = true
-            images = resolved.take(4)
-            return@LaunchedEffect
-        }
-        if (resolved.isNotEmpty() && resolved != shopUrls) {
-            showingMock = true
-            images = resolved
-        } else {
-            images = shopUrls
-        }
+        display = PlpCardImageResolver.resolve(
+            context = context,
+            creatorApi = creatorApi,
+            ownerId = ownerId,
+            product = product,
+            mockMap = map,
+            sessionTryOnActive = sessionActive,
+        )
     }
 
     Box(
@@ -478,34 +464,16 @@ private fun PredictiveMockImageGridCell(
             .fillMaxSize()
             .background(Color(0xFFF5F5F5))
     ) {
-        when {
-            images.isEmpty() -> Unit
-            images.size == 1 -> {
-                EazLazyProductImage(
-                    url = images[0],
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    targetWidthPx = 400,
-                    fullResolution = showingMock,
-                )
-            }
-            else -> {
-                val state = rememberPagerState(pageCount = { images.size })
-                HorizontalPager(
-                    state = state,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    EazLazyProductImage(
-                        url = images[page],
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        targetWidthPx = 400,
-                        fullResolution = showingMock,
-                    )
-                }
-            }
+        if (display.urls.isNotEmpty()) {
+            EazProductCardRotatingImages(
+                imageUrls = display.urls,
+                productId = handle,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                targetWidthPx = 400,
+                fullResolution = display.isPersonalizedMock,
+                autoRotate = display.autoRotate,
+            )
         }
     }
 }
