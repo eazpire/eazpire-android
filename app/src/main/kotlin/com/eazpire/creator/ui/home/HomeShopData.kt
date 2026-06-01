@@ -70,15 +70,16 @@ private val CHIP_COLLECTION_CANDIDATES: Map<String, List<String?>> = mapOf(
     "home-living" to listOf("home-living", "home-&-living"),
 )
 
-/** Fast path: products for the default home chip only (shown first). */
+/** Fast path: products for one home chip ([initialOnly] = first batch only for quick paint). */
 suspend fun loadHomeSectionForChip(
     api: ShopifyProductsApi,
     baseCollectionHandle: String?,
     maxProducts: Int,
     chipId: String = "all",
+    initialOnly: Boolean = false,
 ): List<ShopifyProductsApi.ProductItem> = withContext(Dispatchers.IO) {
     val handles = CHIP_COLLECTION_CANDIDATES[chipId] ?: listOf(null)
-    loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts)
+    loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts, initialOnly)
 }
 
 suspend fun loadHomeCategoryPools(
@@ -104,10 +105,15 @@ suspend fun loadHomeCategoryPoolsMissingChips(
     existing: HomeCategoryPools,
 ): HomeCategoryPools = withContext(Dispatchers.IO) {
     val out = existing.toMutableMap()
-    CHIP_COLLECTION_CANDIDATES.keys.forEach { chipId ->
-        if (out.containsKey(chipId)) return@forEach
-        val handles = CHIP_COLLECTION_CANDIDATES[chipId] ?: listOf(null)
-        out[chipId] = loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts)
+    val missing = CHIP_COLLECTION_CANDIDATES.keys.filter { !out.containsKey(it) }
+    if (missing.isEmpty()) return@withContext out
+    coroutineScope {
+        missing.map { chipId ->
+            async {
+                val handles = CHIP_COLLECTION_CANDIDATES[chipId] ?: listOf(null)
+                chipId to loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts)
+            }
+        }.awaitAll().forEach { (chipId, products) -> out[chipId] = products }
     }
     out
 }
@@ -118,8 +124,9 @@ private suspend fun loadProductsForChip(
     handles: List<String?>,
     baseCollectionHandle: String?,
     maxProducts: Int,
+    initialOnly: Boolean = false,
 ): List<ShopifyProductsApi.ProductItem> =
-    loadProductsForChipUpTo(api, chipId, handles, baseCollectionHandle, maxProducts, initialOnly = false)
+    loadProductsForChipUpTo(api, chipId, handles, baseCollectionHandle, maxProducts, initialOnly = initialOnly)
 
 /** Loads up to [maxProducts], optionally stopping after the first batch for fast paint. */
 suspend fun loadProductsForChipUpTo(

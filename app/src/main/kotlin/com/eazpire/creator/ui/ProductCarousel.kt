@@ -44,7 +44,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -74,10 +73,6 @@ import java.util.Locale
 private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
 private const val IMAGE_FADE_DURATION_MS = 1200
 private const val IMAGE_FADE_CLEANUP_MS = 1250L
-private const val CAROUSEL_SCROLL_PX_PER_SEC = 144f
-private const val CAROUSEL_TICK_MS = 50L
-private const val PAUSE_AFTER_MANUAL_SCROLL_MS = 1000L
-
 /** Optional collection context for breadcrumb when navigating to product. */
 data class ProductClickWithCollection(
     val handle: String,
@@ -109,8 +104,6 @@ fun ProductCarousel(
     /** When true, never swap in customer mock / try-on images (e.g. create-from-scratch catalog). */
     skipPersonalizedMock: Boolean = false,
     onCartClick: ((ProductClickWithCollection) -> Unit)? = null,
-    /** Pause auto-scroll while a modal (product detail, filter, etc.) is open. */
-    autoScrollPaused: Boolean = false,
     /** Show title row with loading indicator while products for this chip are loading. */
     productsLoading: Boolean = false,
     /** Called when auto/manual scroll nears the end of the loaded product list. */
@@ -161,10 +154,7 @@ fun ProductCarousel(
         return
     }
     val context = LocalContext.current
-    val density = LocalDensity.current
     val listState = rememberLazyListState()
-
-    val infiniteProducts = remember(products) { products + products }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Box(
@@ -192,7 +182,7 @@ fun ProductCarousel(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                itemsIndexed(infiniteProducts, key = { index, p -> "${p.id}-$index" }) { index, product ->
+                itemsIndexed(products, key = { _, p -> p.id }) { _, product ->
                     ProductCard(
                         product = product,
                         cardWidth = carouselCardWidth,
@@ -240,16 +230,6 @@ fun ProductCarousel(
                     )
                 }
             }
-            var lastManualScrollEnd by remember { mutableLongStateOf(0L) }
-            var wasUserScrolling by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) {
-                snapshotFlow { listState.isScrollInProgress }.collect { inProgress ->
-                    if (wasUserScrolling && !inProgress) lastManualScrollEnd = System.currentTimeMillis()
-                    wasUserScrolling = inProgress
-                }
-            }
-            // Web-Logik: scrollBy mit kleinem Intervall (wie CSS animation linear infinite)
-            // 48px/Sek, Tick alle 50ms → ~2.4px pro Tick
             LaunchedEffect(listState, products.size, onNearEnd) {
                 snapshotFlow {
                     listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -257,32 +237,6 @@ fun ProductCarousel(
                     if (products.isEmpty()) return@collect
                     val threshold = (products.size - 4).coerceAtLeast(0)
                     if (lastVisible >= threshold) onNearEnd?.invoke()
-                }
-            }
-            LaunchedEffect(autoScrollPaused, listState, products.size) {
-                val scrollPxPerTick = with(density) {
-                    (CAROUSEL_SCROLL_PX_PER_SEC * CAROUSEL_TICK_MS / 1000f).toDp().toPx()
-                }
-                while (true) {
-                    delay(CAROUSEL_TICK_MS)
-                    if (autoScrollPaused) continue
-                    val sinceLastManual = System.currentTimeMillis() - lastManualScrollEnd
-                    if (sinceLastManual < PAUSE_AFTER_MANUAL_SCROLL_MS) continue
-                    if (listState.isScrollInProgress) continue
-                    val firstIndex = listState.firstVisibleItemIndex
-                    val firstOffset = listState.firstVisibleItemScrollOffset
-                    if (firstIndex >= products.size) {
-                        listState.scrollToItem(0, firstOffset)
-                        delay(50)
-                        continue
-                    }
-                    val layoutInfo = listState.layoutInfo
-                    val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                    val canScrollMore = lastVisible < infiniteProducts.lastIndex ||
-                        firstOffset < (layoutInfo.visibleItemsInfo.lastOrNull()?.size ?: 0)
-                    if (canScrollMore) {
-                        listState.scroll { scrollBy(scrollPxPerTick) }
-                    }
                 }
             }
         }

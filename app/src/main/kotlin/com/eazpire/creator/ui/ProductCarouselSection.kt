@@ -41,7 +41,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
 @Composable
@@ -81,8 +80,6 @@ fun ProductCarouselSection(
     var productFilters by remember { mutableStateOf(ProductFilters()) }
     var withinSearchQuery by remember { mutableStateOf("") }
     var loadingCategories by remember { mutableStateOf(setOf<String>()) }
-    val autoScrollPaused =
-        (productModalHandleState?.value != null) || filterModalVisible
 
     fun filterCarouselProducts(list: List<ShopifyProductsApi.ProductItem>): List<ShopifyProductsApi.ProductItem> {
         return applyCollectionWithinSearchFilter(
@@ -145,25 +142,37 @@ fun ProductCarouselSection(
         coroutineScope {
             launch(Dispatchers.IO) {
                 val updated = sectionPools.toMutableMap()
-                for (def in HOME_PRODUCT_SECTIONS) {
-                    val fullProducts = loadHomeSectionForChip(
-                        api,
-                        def.baseCollectionHandle,
-                        def.maxProducts,
-                        chipId = "all",
-                    )
-                    updated[def.id] = mapOf("all" to fullProducts)
-                    sectionPools = updated.toMap()
-                }
-                for (def in HOME_PRODUCT_SECTIONS) {
-                    val fullPools = loadHomeCategoryPoolsMissingChips(
-                        api,
-                        def.baseCollectionHandle,
-                        def.maxProducts,
-                        updated[def.id].orEmpty(),
-                    )
-                    updated[def.id] = fullPools
-                    sectionPools = updated.toMap()
+                coroutineScope {
+                    HOME_PRODUCT_SECTIONS.map { def ->
+                        async {
+                            val fullProducts = loadHomeSectionForChip(
+                                api,
+                                def.baseCollectionHandle,
+                                def.maxProducts,
+                                chipId = "all",
+                            )
+                            def.id to fullProducts
+                        }
+                    }.forEach { deferred ->
+                        val (id, fullProducts) = deferred.await()
+                        updated[id] = mapOf("all" to fullProducts)
+                        sectionPools = updated.toMap()
+                    }
+                    HOME_PRODUCT_SECTIONS.map { def ->
+                        async {
+                            val fullPools = loadHomeCategoryPoolsMissingChips(
+                                api,
+                                def.baseCollectionHandle,
+                                def.maxProducts,
+                                updated[def.id].orEmpty(),
+                            )
+                            def.id to fullPools
+                        }
+                    }.forEach { deferred ->
+                        val (id, fullPools) = deferred.await()
+                        updated[id] = fullPools
+                        sectionPools = updated.toMap()
+                    }
                 }
             }
             launch(Dispatchers.IO) {
@@ -174,23 +183,57 @@ fun ProductCarouselSection(
 
     LaunchedEffect(selectedCategory, sectionPools, region) {
         if (selectedCategory == "all") return@LaunchedEffect
-        val needsLoad = HOME_PRODUCT_SECTIONS.any { def ->
-            !sectionPools[def.id].orEmpty().containsKey(selectedCategory)
+        val chip = selectedCategory
+        val defsToLoad = HOME_PRODUCT_SECTIONS.filter { def ->
+            !sectionPools[def.id].orEmpty().containsKey(chip)
         }
-        if (!needsLoad) return@LaunchedEffect
-        loadingCategories = loadingCategories + selectedCategory
-        val updated = sectionPools.toMutableMap()
-        for (def in HOME_PRODUCT_SECTIONS) {
-            if (updated[def.id].orEmpty().containsKey(selectedCategory)) continue
-            val products = withContext(Dispatchers.IO) {
-                loadHomeSectionForChip(api, def.baseCollectionHandle, def.maxProducts, chipId = selectedCategory)
+        if (defsToLoad.isEmpty()) return@LaunchedEffect
+        loadingCategories = loadingCategories + chip
+        try {
+            val updated = sectionPools.toMutableMap()
+            coroutineScope {
+                defsToLoad.map { def ->
+                    async(Dispatchers.IO) {
+                        val products = loadHomeSectionForChip(
+                            api,
+                            def.baseCollectionHandle,
+                            def.maxProducts,
+                            chipId = chip,
+                            initialOnly = true,
+                        )
+                        def.id to products
+                    }
+                }.forEach { deferred ->
+                    val (id, products) = deferred.await()
+                    val chipMap = updated[id].orEmpty().toMutableMap()
+                    chipMap[chip] = products
+                    updated[id] = chipMap
+                    sectionPools = updated.toMap()
+                }
             }
-            val chipMap = updated[def.id].orEmpty().toMutableMap()
-            chipMap[selectedCategory] = products
-            updated[def.id] = chipMap
+            loadingCategories = loadingCategories - chip
+            coroutineScope {
+                defsToLoad.map { def ->
+                    async(Dispatchers.IO) {
+                        val products = loadHomeSectionForChip(
+                            api,
+                            def.baseCollectionHandle,
+                            def.maxProducts,
+                            chipId = chip,
+                        )
+                        def.id to products
+                    }
+                }.forEach { deferred ->
+                    val (id, products) = deferred.await()
+                    val chipMap = updated[id].orEmpty().toMutableMap()
+                    chipMap[chip] = products
+                    updated[id] = chipMap
+                    sectionPools = updated.toMap()
+                }
+            }
+        } finally {
+            loadingCategories = loadingCategories - chip
         }
-        sectionPools = updated
-        loadingCategories = loadingCategories - selectedCategory
     }
 
     val listState = rememberLazyListState()
@@ -259,7 +302,6 @@ fun ProductCarouselSection(
                     onCartClick = { params ->
                         productModalHandleState?.value = params.handle
                     },
-                    autoScrollPaused = autoScrollPaused,
                 )
                 }
             }
@@ -290,7 +332,6 @@ fun ProductCarouselSection(
                     onCartClick = { params ->
                         productModalHandleState?.value = params.handle
                     },
-                    autoScrollPaused = autoScrollPaused,
                 )
             }
         }
