@@ -255,6 +255,7 @@ private fun ShopSearchProductCard(
     var tryOnActive by remember(product.handle) {
         mutableStateOf(CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle))
     }
+    var showManualTryOn by remember(product.handle) { mutableStateOf(false) }
     LaunchedEffect(product.id, shopImages, ownerId, mockPreviewRevision, imageReload) {
         if (ownerId.isBlank() || creatorApi == null) {
             if (!mockDisplayLocked) images = shopImages
@@ -276,6 +277,12 @@ private fun ShopSearchProductCard(
         )
         val sessionActive = CustomerMockPreviewStore.isTryOnSessionActive(ctx, product.handle)
         tryOnActive = sessionActive || autoActive
+        showManualTryOn = CustomerMockPreviewStore.shouldShowManualTryOnButton(
+            map,
+            product.handle,
+            product.metaProductKey,
+            product.designId
+        )
         val useMock = tryOnActive || autoActive
         if (!useMock && info == null) {
             if (!mockDisplayLocked) images = shopImages
@@ -325,8 +332,15 @@ private fun ShopSearchProductCard(
                 )
             }
             com.eazpire.creator.ui.components.EazProductCardMediaOverlays(
-                showTryOn = false,
+                showTryOn = showManualTryOn,
                 isTryOnActive = tryOnActive,
+                onTryOnClick = {
+                    val next = !tryOnActive
+                    com.eazpire.creator.ui.components.togglePlpTryOnSession(ctx, product.handle, next)
+                    mockDisplayLocked = false
+                    tryOnActive = next
+                    imageReload++
+                },
                 onFavoriteClick = {
                     if (ownerId.isBlank() || creatorApi == null) return@EazProductCardMediaOverlays
                     scope.launch {

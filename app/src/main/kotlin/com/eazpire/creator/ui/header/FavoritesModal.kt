@@ -67,7 +67,9 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 private fun normalizeImageUrl(url: String?): String? {
@@ -178,8 +180,11 @@ fun FavoritesModal(
 
     fun loadProductHandles() {
         scope.launch {
+            shopProductsLoading = true
             try {
-                val resp = api.getShopifyProducts(shop = "eazpire.myshopify.com", ownerId = customerId)
+                val resp = withContext(Dispatchers.IO) {
+                    api.getShopifyProducts(shop = "eazpire.myshopify.com", ownerId = customerId)
+                }
                 if (!resp.optBoolean("ok", false)) return@launch
                 val arr = resp.optJSONArray("products") ?: return@launch
                 val map = mutableMapOf<String, String>()
@@ -204,6 +209,9 @@ fun FavoritesModal(
                 poolItems = poolItems.map { it.copy(productHandle = it.productHandle ?: map[it.productId]) }
                 listItems = listItems.map { it.copy(productHandle = it.productHandle ?: map[it.productId]) }
             } catch (_: Exception) {}
+            finally {
+                shopProductsLoading = false
+            }
         }
     }
 
@@ -211,7 +219,7 @@ fun FavoritesModal(
         scope.launch {
             if (customerId.isNullOrBlank()) return@launch
             try {
-                val resp = api.getFavorites(customerId)
+                val resp = withContext(Dispatchers.IO) { api.getFavorites(customerId) }
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("items") ?: org.json.JSONArray()
                     poolItems = (0 until arr.length()).map { i ->
@@ -227,7 +235,7 @@ fun FavoritesModal(
         scope.launch {
             if (customerId.isNullOrBlank()) return@launch
             try {
-                val resp = api.getFavoriteLists(customerId)
+                val resp = withContext(Dispatchers.IO) { api.getFavoriteLists(customerId) }
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("lists") ?: org.json.JSONArray()
                     lists = (0 until arr.length()).map { i ->
@@ -250,7 +258,9 @@ fun FavoritesModal(
             loading = true
             listShareToken = null
             try {
-                val resp = api.getFavoriteListItems(customerId!!, listId)
+                val resp = withContext(Dispatchers.IO) {
+                    api.getFavoriteListItems(customerId!!, listId)
+                }
                 if (resp.optBoolean("ok", false)) {
                     val listObj = resp.optJSONObject("list")
                     listName = listObj?.optString("name", "") ?: ""
@@ -258,13 +268,17 @@ fun FavoritesModal(
                     listItems = (0 until arr.length()).map { i ->
                         mapFavoriteItem(arr.optJSONObject(i) ?: JSONObject(), isPool = false)
                     }
-                    val token = listObj?.optString("share_token", null).takeIf { it.isNullOrBlank().not() }
+                    val token = listObj?.let { jsonOptString(it, "share_token") }
+                        ?.takeIf { it.isNotBlank() }
                     if (token != null) {
                         listShareToken = token
                     } else {
-                        val ensureResp = api.ensureFavoriteListShareToken(customerId, listId)
+                        val ensureResp = withContext(Dispatchers.IO) {
+                            api.ensureFavoriteListShareToken(customerId, listId)
+                        }
                         if (ensureResp.optBoolean("ok", false)) {
-                            listShareToken = ensureResp.optString("share_token", null).takeIf { it.isNullOrBlank().not() }
+                            listShareToken = jsonOptString(ensureResp, "share_token")
+                                ?.takeIf { it.isNotBlank() }
                         }
                     }
                 }
@@ -283,14 +297,46 @@ fun FavoritesModal(
         }
         loading = true
         try {
-            loadProductHandles()
-            loadPool()
-            loadLists()
-            if (activeView != "pool" && activeView.toLongOrNull() != null) {
-                loadListItems(activeView.toLong())
+            withContext(Dispatchers.IO) {
+                val cid = customerId!!
+                val poolResp = api.getFavorites(cid)
+                if (poolResp.optBoolean("ok", false)) {
+                    val arr = poolResp.optJSONArray("items") ?: org.json.JSONArray()
+                    val pool = (0 until arr.length()).map { i ->
+                        mapFavoriteItem(arr.optJSONObject(i) ?: JSONObject(), isPool = true)
+                    }
+                    withContext(Dispatchers.Main) {
+                        poolItems = pool
+                        onCountChange(pool.size)
+                    }
+                }
+                val listsResp = api.getFavoriteLists(cid)
+                if (listsResp.optBoolean("ok", false)) {
+                    val arr = listsResp.optJSONArray("lists") ?: org.json.JSONArray()
+                    val loaded = (0 until arr.length()).map { i ->
+                        val obj = arr.optJSONObject(i) ?: JSONObject()
+                        FavoriteListInfo(
+                            id = obj.optLong("id", 0L),
+                            name = obj.optString("name", ""),
+                            description = obj.optString("description", ""),
+                            itemsCount = obj.optInt("items_count", 0)
+                        )
+                    }
+                    withContext(Dispatchers.Main) { lists = loaded }
+                }
             }
+            if (activeView != "pool") {
+                activeView.toLongOrNull()?.let { loadListItems(it) }
+            }
+        } catch (_: Exception) {
         } finally {
             loading = false
+        }
+    }
+
+    LaunchedEffect(showProductPicker) {
+        if (showProductPicker && shopProducts.isEmpty() && !shopProductsLoading) {
+            loadProductHandles()
         }
     }
 
@@ -418,14 +464,7 @@ fun FavoritesModal(
                             ) {
                                 item(key = "add_product") {
                                     AddProductPlaceholderCard(
-                                        onClick = {
-                                            if (shopProducts.isEmpty() && !shopProductsLoading) {
-                                                shopProductsLoading = true
-                                                loadProductHandles()
-                                                shopProductsLoading = false
-                                            }
-                                            showProductPicker = true
-                                        }
+                                        onClick = { showProductPicker = true }
                                     )
                                 }
                                 items(

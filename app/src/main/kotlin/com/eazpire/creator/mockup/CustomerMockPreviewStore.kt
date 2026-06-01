@@ -125,10 +125,25 @@ object CustomerMockPreviewStore {
         productKey: String?,
         designId: String?
     ): Boolean {
+        if (!MockupPreviewPool.SHOP_PREVIEW_AUTO_DISPLAY_ENABLED) return false
         if (tryOnInfo(map, handle, productKey, designId) == null) return false
         val pk = resolveProductKeyFromMap(map, handle, productKey) ?: return false
         val entry = map?.optJSONObject("mockups")?.optJSONObject(pk) ?: return false
         return MockupPreviewPool.isShopPreviewActive(entry)
+    }
+
+    /** Bottom-center Anziehen when preview mocks exist and auto shop preview is off. */
+    fun shouldShowManualTryOnButton(
+        map: JSONObject?,
+        handle: String,
+        productKey: String?,
+        designId: String?
+    ): Boolean {
+        if (tryOnInfo(map, handle, productKey, designId) == null) return false
+        if (shouldAutoShowMockOnCard(map, handle, productKey, designId)) return false
+        val pk = resolveProductKeyFromMap(map, handle, productKey) ?: return false
+        val entry = map?.optJSONObject("mockups")?.optJSONObject(pk) ?: return false
+        return MockupPreviewPool.hasPreviewPool(entry)
     }
 
     fun resolveProductKeyFromMap(map: JSONObject?, handle: String, productKeyMeta: String?): String? {

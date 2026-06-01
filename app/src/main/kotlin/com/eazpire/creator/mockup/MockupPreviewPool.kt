@@ -6,6 +6,8 @@ import org.json.JSONObject
 /** Multi-mock shop preview pool (parity with eaz-mockup-preview-pool.js). */
 object MockupPreviewPool {
     const val MAX_PREVIEW_MOCKS_PER_PRODUCT = 5
+    /** Auto wearing mocks on PLP/carousels — disabled until shop preview ships. */
+    const val SHOP_PREVIEW_AUTO_DISPLAY_ENABLED = false
 
     fun hashString(seed: String): Int {
         var h = 0
@@ -31,6 +33,7 @@ object MockupPreviewPool {
     fun hasPreviewPool(meta: JSONObject?): Boolean = getPreviewIds(meta).isNotEmpty()
 
     fun isShopPreviewActive(meta: JSONObject?): Boolean {
+        if (!SHOP_PREVIEW_AUTO_DISPLAY_ENABLED) return false
         if (meta == null) return false
         if (meta.has("shop_preview_enabled") && !meta.optBoolean("shop_preview_enabled", true)) {
             return false

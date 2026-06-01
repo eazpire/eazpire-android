@@ -126,6 +126,7 @@ fun AccountMockupsTab(
     var lightboxIndex by remember { mutableStateOf(0) }
     var lightboxLoading by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf<MockupCatalogProduct?>(null) }
+    var showShopPreviewComingSoon by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
 
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
@@ -265,6 +266,10 @@ fun AccountMockupsTab(
     }
 
     fun onToggleProductShopPreview(productKey: String, enabled: Boolean) {
+        if (enabled) {
+            showShopPreviewComingSoon = true
+            return
+        }
         scope.launch {
             try {
                 val resp = api.toggleProductShopPreview(ownerId, productKey, enabled)
@@ -660,6 +665,26 @@ fun AccountMockupsTab(
             dismissButton = {
                 TextButton(onClick = { deleteConfirm = null }) {
                     Text(t("creator.common.cancel", "Cancel"))
+                }
+            }
+        )
+    }
+
+    if (showShopPreviewComingSoon) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showShopPreviewComingSoon = false },
+            title = { Text(t("size_ai.shop_preview_coming_soon_title", "Coming soon")) },
+            text = {
+                Text(
+                    t(
+                        "size_ai.shop_preview_coming_soon_body",
+                        "Shop preview automatically shows your personalized wearing mocks on product cards across the shop. This is not available yet — use Try on on each product for now."
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showShopPreviewComingSoon = false }) {
+                    Text(t("size_ai.close", "Close"))
                 }
             }
         )
