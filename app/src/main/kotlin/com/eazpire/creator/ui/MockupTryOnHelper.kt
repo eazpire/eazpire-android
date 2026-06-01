@@ -40,6 +40,18 @@ data class MockupTryOnInfo(
         val cache = cachedByMockupId[picked] ?: if (picked == mockupId) cachedByColor else emptyMap()
         return copy(mockupId = picked, cachedByColor = cache)
     }
+
+    fun withPreviewPoolIndex(index: Int): MockupTryOnInfo {
+        val ids = when {
+            previewMockupIds.isNotEmpty() -> previewMockupIds
+            mockupId > 0 -> listOf(mockupId)
+            else -> emptyList()
+        }
+        if (ids.isEmpty()) return this
+        val picked = ids[((index % ids.size) + ids.size) % ids.size]
+        val cache = cachedByMockupId[picked] ?: if (picked == mockupId) cachedByColor else emptyMap()
+        return copy(mockupId = picked, cachedByColor = cache)
+    }
 }
 
 private val COLOR_NAME_TO_HEX = mapOf(
@@ -156,6 +168,34 @@ fun isTryOnApparelProduct(productKey: String?): Boolean {
 
 private const val MOCKUP_TRY_ON_TAG = "EazMockPreview"
 
+private fun inferDesignIdFromCache(
+    data: JSONObject,
+    previewIds: List<Long>,
+    primaryMockupId: Long
+): String? {
+    val cachedVariants = data.optJSONObject("cached_variants") ?: return null
+    val designs = linkedSetOf<String>()
+    val ids = previewIds.ifEmpty { listOf(primaryMockupId) }
+    for (id in ids) {
+        val rows = cachedVariants.optJSONArray(id.toString()) ?: continue
+        for (i in 0 until rows.length()) {
+            val row = rows.optJSONObject(i) ?: continue
+            row.optString("design_id").takeIf { it.isNotBlank() }?.let { designs.add(it) }
+        }
+    }
+    return if (designs.size == 1) designs.first() else null
+}
+
+/** Pick a specific preview mock from the wearing pool (multi-photo mocks). */
+fun previewPoolSize(info: MockupTryOnInfo?): Int {
+    if (info == null) return 0
+    return when {
+        info.previewMockupIds.isNotEmpty() -> info.previewMockupIds.size
+        info.mockupId > 0 -> 1
+        else -> 0
+    }
+}
+
 fun parseMockupTryOnInfo(
     data: JSONObject,
     handle: String,
@@ -202,6 +242,9 @@ fun parseMockupTryOnInfo(
     if (designId.isNullOrBlank()) designId = designIdMeta?.takeIf { it.isNotBlank() }
 
     val isTemplateProduct = handle == productKey
+    if (designId.isNullOrBlank() && !isTemplateProduct) {
+        designId = inferDesignIdFromCache(data, previewIds, mockupId)
+    }
     if (designId.isNullOrBlank() && !isTemplateProduct) return gate("no_design_id")
 
     val wantDesign = designId ?: "NONE"

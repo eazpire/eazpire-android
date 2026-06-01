@@ -38,6 +38,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
@@ -494,6 +496,7 @@ fun ProductDetailScreen(
     val mockGalleryCache = remember(productHandle) { mutableMapOf<String, List<String>>() }
     var tryOnLoading by remember(productHandle) { mutableStateOf(false) }
     var tryOnOverlayMessage by remember(productHandle) { mutableStateOf<String?>(null) }
+    var activePreviewMockIndex by remember(productHandle) { mutableIntStateOf(0) }
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
     val ownerIdForMocks = remember { tokenStore.getOwnerId()?.takeIf { it.isNotBlank() }.orEmpty() }
 
@@ -525,12 +528,14 @@ fun ProductDetailScreen(
         tryOnImageUrl = null
         mockGalleryUrls = emptyList()
         tryOnLoading = false
+        activePreviewMockIndex = 0
         val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val prod = product ?: return@LaunchedEffect
         try {
             val map = withContext(Dispatchers.IO) {
-                CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
-            } ?: return@LaunchedEffect
+                creatorApi.getCustomerMockupMap(ownerId, handle = productHandle)
+            }
+            if (!map.optBoolean("ok", false)) return@LaunchedEffect
             mockupTryOnInfo = parseMockupTryOnInfo(
                 data = map,
                 handle = productHandle,
@@ -674,6 +679,7 @@ fun ProductDetailScreen(
     }
     LaunchedEffect(selectedColor, selectedVariant?.id, tryOnActive) {
         selectedImageIndex = 0
+        if (tryOnActive) activePreviewMockIndex = 0
     }
 
     /** Auto-advance gallery views (front/back/detail) for the selected color — like web slideshow. */
@@ -687,7 +693,7 @@ fun ProductDetailScreen(
         }
     }
 
-    LaunchedEffect(tryOnActive, selectedColor, selectedVariant?.id, mockupTryOnInfo, productColorHexMap) {
+    LaunchedEffect(tryOnActive, selectedColor, selectedVariant?.id, mockupTryOnInfo, productColorHexMap, activePreviewMockIndex) {
         if (!tryOnActive) {
             tryOnImageUrl = null
             mockGalleryUrls = emptyList()
@@ -698,7 +704,7 @@ fun ProductDetailScreen(
             tryOnOverlayMessage = null
             return@LaunchedEffect
         }
-        val info = mockupTryOnInfo ?: run {
+        val info = mockupTryOnInfo?.withPreviewPoolIndex(activePreviewMockIndex) ?: run {
             tryOnActive = false
             tryOnOverlayMessage = null
             return@LaunchedEffect
@@ -708,7 +714,7 @@ fun ProductDetailScreen(
             tryOnOverlayMessage = null
             return@LaunchedEffect
         }
-        val cacheKey = "${selectedVariant?.id ?: 0}|${selectedColor.trim().lowercase()}"
+        val cacheKey = "${selectedVariant?.id ?: 0}|${selectedColor.trim().lowercase()}|$activePreviewMockIndex"
         mockGalleryCache[cacheKey]?.let { cached ->
             if (cached.isNotEmpty()) {
                 mockGalleryUrls = cached
@@ -1026,6 +1032,34 @@ fun ProductDetailScreen(
                         message = tryOnOverlayMessage,
                         modifier = Modifier.fillMaxSize()
                     )
+                    val previewPoolCount = previewPoolSize(mockupTryOnInfo)
+                    if (tryOnActive && previewPoolCount > 1) {
+                        IconButton(
+                            onClick = {
+                                activePreviewMockIndex =
+                                    (activePreviewMockIndex - 1 + previewPoolCount) % previewPoolCount
+                            },
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 4.dp)
+                                .size(40.dp)
+                                .background(Color.White.copy(alpha = 0.92f), CircleShape)
+                        ) {
+                            Icon(Icons.Default.ChevronLeft, contentDescription = null)
+                        }
+                        IconButton(
+                            onClick = {
+                                activePreviewMockIndex = (activePreviewMockIndex + 1) % previewPoolCount
+                            },
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 4.dp)
+                                .size(40.dp)
+                                .background(Color.White.copy(alpha = 0.92f), CircleShape)
+                        ) {
+                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                        }
+                    }
                     mockupTryOnInfo?.let { _ ->
                         Box(
                             modifier = Modifier

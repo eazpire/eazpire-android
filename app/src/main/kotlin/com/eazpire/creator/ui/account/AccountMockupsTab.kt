@@ -26,9 +26,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -122,6 +124,7 @@ fun AccountMockupsTab(
     var lightboxProduct by remember { mutableStateOf<MockupCatalogProduct?>(null) }
     var lightboxVariants by remember { mutableStateOf<List<MockupVariant>>(emptyList()) }
     var lightboxIndex by remember { mutableStateOf(0) }
+    var lightboxLoading by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf<MockupCatalogProduct?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -235,17 +238,28 @@ fun AccountMockupsTab(
 
     fun openLightbox(product: MockupCatalogProduct) {
         lightboxProduct = product
-        lightboxVariants = product.variants
+        lightboxVariants = product.variants.filter { !it.mockupUrl.isNullOrBlank() }
         lightboxIndex = 0
-        if (product.variants.isNotEmpty()) return
+        lightboxLoading = true
         scope.launch {
             try {
                 val resp = api.listCustomerMockups(ownerId, product.productKey)
                 if (resp.optBoolean("ok", false)) {
-                    lightboxVariants = parseVariantsForProduct(resp, product.productKey)
+                    val loaded = parseVariantsForProduct(resp, product.productKey)
+                        .filter { !it.mockupUrl.isNullOrBlank() }
+                    if (loaded.isNotEmpty()) {
+                        lightboxVariants = loaded
+                        val activeId = product.activeMockupId
+                        if (activeId != null) {
+                            val idx = loaded.indexOfFirst { it.id == activeId }
+                            if (idx >= 0) lightboxIndex = idx
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 DebugLog.w("AccountMockupsTab lightbox variants: ${e.message}")
+            } finally {
+                lightboxLoading = false
             }
         }
     }
@@ -497,8 +511,8 @@ fun AccountMockupsTab(
     }
 
     lightboxProduct?.let { product ->
-        val variants = lightboxVariants.ifEmpty { product.variants }
-        val idx = lightboxIndex.coerceIn(0, (variants.size - 1).coerceAtLeast(0))
+        val variants = lightboxVariants.filter { !it.mockupUrl.isNullOrBlank() }
+        val idx = if (variants.isEmpty()) 0 else lightboxIndex.coerceIn(0, variants.size - 1)
         val current = variants.getOrNull(idx)
         val imageUrl = current?.mockupUrl ?: product.mockupUrl ?: product.templateUrl
         val previewCount = generated.find { it.productKey == product.productKey }?.previewCount
@@ -506,22 +520,56 @@ fun AccountMockupsTab(
         val wearActive = current?.useAsPreview == true
         val wearDisabled = !wearActive && previewCount >= MockupPreviewPool.MAX_PREVIEW_MOCKS_PER_PRODUCT
 
-        AlertDialog(
+        Dialog(
             onDismissRequest = {
                 lightboxProduct = null
                 lightboxVariants = emptyList()
                 lightboxIndex = 0
+                lightboxLoading = false
             },
-            title = { Text(product.productName) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                    ) {
-                        if (!imageUrl.isNullOrBlank()) {
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth(0.94f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White)
+                    .padding(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        product.productName,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2
+                    )
+                    IconButton(onClick = {
+                        lightboxProduct = null
+                        lightboxVariants = emptyList()
+                        lightboxIndex = 0
+                        lightboxLoading = false
+                    }) {
+                        Icon(Icons.Default.Close, contentDescription = t("creator.common.close", "Close"))
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF3F4F6))
+                ) {
+                    when {
+                        lightboxLoading -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.align(Alignment.Center),
+                                color = EazColors.Orange
+                            )
+                        }
+                        !imageUrl.isNullOrBlank() -> {
                             AsyncImage(
                                 model = imageUrl,
                                 contentDescription = null,
@@ -529,77 +577,78 @@ fun AccountMockupsTab(
                                 contentScale = ContentScale.Crop
                             )
                         }
-                        if (variants.size > 1) {
-                            IconButton(
-                                onClick = {
-                                    lightboxIndex = (idx - 1 + variants.size) % variants.size
-                                },
-                                modifier = Modifier
-                                    .align(Alignment.CenterStart)
-                                    .padding(4.dp)
-                                    .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
-                            ) {
-                                Icon(Icons.Default.ChevronLeft, contentDescription = null)
-                            }
-                            IconButton(
-                                onClick = {
-                                    lightboxIndex = (idx + 1) % variants.size
-                                },
-                                modifier = Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .padding(4.dp)
-                                    .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
-                            ) {
-                                Icon(Icons.Default.ChevronRight, contentDescription = null)
-                            }
-                        }
-                        if (current != null) {
-                            IconButton(
-                                onClick = {
-                                    if (!wearDisabled) {
-                                        onToggleMockPreview(current.id, !wearActive)
-                                    }
-                                },
-                                enabled = !wearDisabled,
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 8.dp)
-                                    .background(
-                                        if (wearActive) Color(0xFF111827) else Color.White.copy(alpha = 0.92f),
-                                        RoundedCornerShape(50)
-                                    )
-                            ) {
-                                HangerIcon(
-                                    color = if (wearActive) Color.White else Color(0xFF374151),
-                                    size = 22.dp
-                                )
-                            }
+                        else -> {
+                            Icon(
+                                Icons.Default.Image,
+                                contentDescription = null,
+                                modifier = Modifier.align(Alignment.Center),
+                                tint = EazColors.TextSecondary
+                            )
                         }
                     }
-                    if (variants.size > 1) {
-                        Text(
-                            "${idx + 1} / ${variants.size}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = EazColors.TextSecondary,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        )
+                    if (!lightboxLoading && variants.size > 1) {
+                        IconButton(
+                            onClick = {
+                                lightboxIndex = (idx - 1 + variants.size) % variants.size
+                            },
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(4.dp)
+                                .background(Color.White.copy(alpha = 0.92f), RoundedCornerShape(50))
+                        ) {
+                            Icon(Icons.Default.ChevronLeft, contentDescription = null)
+                        }
+                        IconButton(
+                            onClick = {
+                                lightboxIndex = (idx + 1) % variants.size
+                            },
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(4.dp)
+                                .background(Color.White.copy(alpha = 0.92f), RoundedCornerShape(50))
+                        ) {
+                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                        }
+                    }
+                    if (current != null && !lightboxLoading) {
+                        IconButton(
+                            onClick = {
+                                if (!wearDisabled) {
+                                    onToggleMockPreview(current.id, !wearActive)
+                                }
+                            },
+                            enabled = !wearDisabled,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 8.dp)
+                                .background(
+                                    if (wearActive) Color(0xFF111827) else Color.White.copy(alpha = 0.92f),
+                                    RoundedCornerShape(50)
+                                )
+                        ) {
+                            HangerIcon(
+                                color = if (wearActive) Color.White else Color(0xFF374151),
+                                size = 22.dp
+                            )
+                        }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    lightboxProduct = null
-                    lightboxVariants = emptyList()
-                    lightboxIndex = 0
-                }) {
-                    Text(t("creator.common.close", "Close"))
+                if (!lightboxLoading && variants.size > 1) {
+                    Text(
+                        "${idx + 1} / ${variants.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = EazColors.TextSecondary,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 8.dp)
+                    )
                 }
             }
-        )
+        }
     }
 
     deleteConfirm?.let { product ->
-        AlertDialog(
+        androidx.compose.material3.AlertDialog(
             onDismissRequest = { deleteConfirm = null },
             title = { Text(t("creator.my_mockups.delete_title", "Delete mockup?")) },
             text = { Text(t("creator.my_mockups.delete_body", "This mockup will be permanently deleted.")) },
