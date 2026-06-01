@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -599,31 +600,23 @@ fun CreatorCreationsScreen(
 
         when (currentTab) {
             "designs" -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    listOf(
-                        "active" to translationStore.t("creator.creations.designs_tab_active", "Active"),
-                        "inactive" to translationStore.t("creator.creations.designs_tab_inactive", "Inactive"),
-                    ).forEach { (key, label) ->
-                        val active = designsActivityFilter == key
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (active) EazColors.Orange else Color.White.copy(alpha = 0.55f),
-                            modifier = Modifier.clickable {
-                                if (designsActivityFilter != key) {
-                                    designsActivityFilter = key
-                                    designsRefreshTrigger++
-                                }
-                            },
-                        )
-                    }
-                }
+                CreationsDesignsToolbar(
+                    designsSearch = designsSearch,
+                    onDesignsSearchChange = { designsSearch = it },
+                    onFilterClick = { filterModalVisible = true },
+                    onUploadClick = {
+                        if (!uploadInProgress) imagePicker.launch("image/*")
+                    },
+                    designsActivityFilter = designsActivityFilter,
+                    onDesignsActivityChange = { key ->
+                        if (designsActivityFilter != key) {
+                            designsActivityFilter = key
+                            designsRefreshTrigger++
+                        }
+                    },
+                    designsCount = filteredDesigns.size,
+                    translationStore = translationStore,
+                )
                 if (designsLoading) {
                     Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = EazColors.Orange)
@@ -650,63 +643,6 @@ fun CreatorCreationsScreen(
                         contentPadding = PaddingValues(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF262930).copy(alpha = 0.68f))
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                BasicTextField(
-                                    value = designsSearch,
-                                    onValueChange = { designsSearch = it },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.Black.copy(alpha = 0.3f))
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                        .padding(10.dp),
-                                    singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                                    decorationBox = { inner ->
-                                        if (designsSearch.text.isEmpty()) {
-                                            Text(
-                                                translationStore.t("creator.common.search", "Search…"),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color.White.copy(alpha = 0.5f)
-                                            )
-                                        }
-                                        inner()
-                                    }
-                                )
-                                IconButton(
-                                    onClick = { filterModalVisible = true },
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                ) {
-                                    Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
-                                }
-                                IconButton(
-                                    onClick = {
-                                        if (!uploadInProgress) imagePicker.launch("image/*")
-                                    },
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(EazColors.Orange.copy(alpha = 0.2f))
-                                        .border(1.dp, EazColors.Orange, RoundedCornerShape(8.dp))
-                                ) {
-                                    Icon(Icons.Default.Upload, contentDescription = null, tint = Color.White)
-                                }
-                                Text(
-                                    "${filteredDesigns.size} ${translationStore.t("creator.mobile.designs", "Designs")}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
-                            }
-                        }
                         items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
                             CreationDesignListItem(
                                 design = design,
@@ -727,63 +663,6 @@ fun CreatorCreationsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        item(span = { GridItemSpan(gridCols) }) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF262930).copy(alpha = 0.68f))
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                BasicTextField(
-                                    value = designsSearch,
-                                    onValueChange = { designsSearch = it },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.Black.copy(alpha = 0.3f))
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                        .padding(10.dp),
-                                    singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                                    decorationBox = { inner ->
-                                        if (designsSearch.text.isEmpty()) {
-                                            Text(
-                                                translationStore.t("creator.common.search", "Search…"),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color.White.copy(alpha = 0.5f)
-                                            )
-                                        }
-                                        inner()
-                                    }
-                                )
-                                IconButton(
-                                    onClick = { filterModalVisible = true },
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                ) {
-                                    Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
-                                }
-                                IconButton(
-                                    onClick = {
-                                        if (!uploadInProgress) imagePicker.launch("image/*")
-                                    },
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(EazColors.Orange.copy(alpha = 0.2f))
-                                        .border(1.dp, EazColors.Orange, RoundedCornerShape(8.dp))
-                                ) {
-                                    Icon(Icons.Default.Upload, contentDescription = null, tint = Color.White)
-                                }
-                                Text(
-                                    "${filteredDesigns.size} ${translationStore.t("creator.mobile.designs", "Designs")}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
-                            }
-                        }
                         items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
                             CreationDesignCard(
                                 design = design,
@@ -1063,6 +942,125 @@ fun CreatorCreationsScreen(
             translationStore = translationStore,
             tokenStore = tokenStore,
             onRequestGeneratorPrefill = onRequestGeneratorPrefill
+        )
+    }
+}
+
+@Composable
+private fun CreationsDesignsActivityMeta(
+    designsActivityFilter: String,
+    onDesignsActivityChange: (String) -> Unit,
+    designsCount: Int,
+    designsLabel: String,
+    activeLabel: String,
+    inactiveLabel: String,
+) {
+    Column(
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier.padding(start = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
+                .background(Color.Black.copy(alpha = 0.28f)),
+        ) {
+            listOf("active" to activeLabel, "inactive" to inactiveLabel).forEach { (key, label) ->
+                val selected = designsActivityFilter == key
+                Box(
+                    modifier = Modifier
+                        .clickable { onDesignsActivityChange(key) }
+                        .background(
+                            if (selected) EazColors.Orange.copy(alpha = 0.22f) else Color.Transparent
+                        )
+                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (selected) Color.White else Color.White.copy(alpha = 0.55f),
+                    )
+                }
+            }
+        }
+        Text(
+            text = "$designsCount $designsLabel",
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            color = Color.White.copy(alpha = 0.6f),
+        )
+    }
+}
+
+@Composable
+private fun CreationsDesignsToolbar(
+    designsSearch: TextFieldValue,
+    onDesignsSearchChange: (TextFieldValue) -> Unit,
+    onFilterClick: () -> Unit,
+    onUploadClick: () -> Unit,
+    designsActivityFilter: String,
+    onDesignsActivityChange: (String) -> Unit,
+    designsCount: Int,
+    translationStore: TranslationStore,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF262930).copy(alpha = 0.68f))
+            .padding(horizontal = 18.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        BasicTextField(
+            value = designsSearch,
+            onValueChange = onDesignsSearchChange,
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.3f))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                .padding(10.dp),
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+            decorationBox = { inner ->
+                if (designsSearch.text.isEmpty()) {
+                    Text(
+                        translationStore.t("creator.common.search", "Search…"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.5f),
+                    )
+                }
+                inner()
+            },
+        )
+        IconButton(
+            onClick = onFilterClick,
+            modifier = Modifier
+                .size(40.dp)
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+        ) {
+            Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+        }
+        IconButton(
+            onClick = onUploadClick,
+            modifier = Modifier
+                .size(40.dp)
+                .background(EazColors.Orange.copy(alpha = 0.2f))
+                .border(1.dp, EazColors.Orange, RoundedCornerShape(8.dp)),
+        ) {
+            Icon(Icons.Default.Upload, contentDescription = null, tint = Color.White)
+        }
+        CreationsDesignsActivityMeta(
+            designsActivityFilter = designsActivityFilter,
+            onDesignsActivityChange = onDesignsActivityChange,
+            designsCount = designsCount,
+            designsLabel = translationStore.t("creator.mobile.designs", "Designs"),
+            activeLabel = translationStore.t("creator.creations.designs_tab_active", "Active"),
+            inactiveLabel = translationStore.t("creator.creations.designs_tab_inactive", "Inactive"),
         )
     }
 }
