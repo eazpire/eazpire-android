@@ -1,8 +1,13 @@
+// Google mirror before mavenCentral(): Maven Central often returns 403 for GitHub Actions IPs.
 pluginManagement {
     repositories {
         google()
-        mavenCentral()
         gradlePluginPortal()
+        maven {
+            name = "MavenCentralGoogleMirror"
+            url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
+        }
+        mavenCentral()
     }
 }
 
@@ -10,6 +15,10 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
+        maven {
+            name = "MavenCentralGoogleMirror"
+            url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
+        }
         mavenCentral()
     }
 }
