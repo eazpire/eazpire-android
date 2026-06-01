@@ -48,7 +48,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -113,7 +116,8 @@ data class CreationDesign(
     val productsCount: Int,
     val ratio: String? = null,
     val designType: String? = null,
-    val contentType: String? = null
+    val contentType: String? = null,
+    val libraryStatus: String = "active",
 )
 
 data class CreationProduct(
@@ -147,14 +151,6 @@ private fun extractShopifyHandle(product: CreationProduct): String? {
     } catch (_: Exception) {
         null
     }
-}
-
-/** Matches web `resolveLibraryStatus` — active tab only shows library_status active (or legacy rows with id). */
-private fun resolveLibraryStatus(obj: JSONObject): String {
-    val ls = obj.optString("library_status", "").trim().lowercase()
-    if (ls == "active" || ls == "inactive") return ls
-    val id = obj.optString("id", "").trim()
-    return if (id.isNotBlank()) "active" else "inactive"
 }
 
 /** Same URL list as shop cards: worker product-json → variantImages (or API fallback). */
@@ -202,6 +198,21 @@ fun CreatorCreationsScreen(
     var designPreviewDesign by remember { mutableStateOf<CreationDesign?>(null) }
     var creationsFilter by remember { mutableStateOf(CreationsFilterState()) }
     var designsRefreshTrigger by remember { mutableIntStateOf(0) }
+    var bulkSelectedKeys by remember { mutableStateOf(setOf<String>()) }
+    var activateTargets by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
+    var showActivateDialog by remember { mutableStateOf(false) }
+    var deactivateTargets by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
+    var showDeactivateDialog by remember { mutableStateOf(false) }
+    var deleteTargets by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var saveTargets by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var libraryActionBusy by remember { mutableStateOf(false) }
+    var creatorNamesCache by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(designsActivityFilter, currentTab) {
+        bulkSelectedKeys = emptySet()
+    }
 
     LaunchedEffect(initialDesignsActivityFilter) {
         val f = initialDesignsActivityFilter?.trim()?.lowercase().orEmpty()
@@ -288,99 +299,37 @@ fun CreatorCreationsScreen(
                 designsLoading = true
                 try {
                     val designsResult = withContext(Dispatchers.IO) {
-                        if (designsActivityFilter == "inactive") {
-                            val genRes = api.listGenerated(ownerId, 100)
-                            val generatedItems = (genRes.optJSONArray("items") ?: JSONArray()).let { arr ->
-                                (0 until arr.length()).mapNotNull { i ->
-                                    val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-                                    val preview = obj.optString("preview_url", "")
-                                        .ifBlank { obj.optJSONObject("result")?.optString("preview_url").orEmpty() }
-                                        .ifBlank { obj.optJSONObject("result")?.optString("image_url").orEmpty() }
-                                    if (preview.isBlank()) return@mapNotNull null
-                                    CreationDesign(
-                                        id = obj.optString("design_id", "").takeIf { it.isNotBlank() }
-                                            ?: obj.optString("id", "").takeIf { it.isNotBlank() },
-                                        designId = obj.optString("design_id", "").takeIf { it.isNotBlank() }
-                                            ?: obj.optString("id", "").takeIf { it.isNotBlank() },
-                                        jobId = obj.optString("job_id", "").takeIf { it.isNotBlank() },
-                                        imageUrl = preview,
-                                        previewUrl = preview,
-                                        originalUrl = preview,
-                                        title = obj.optString("title", obj.optString("prompt", "Design")).take(80),
-                                        prompt = obj.optString("prompt").takeIf { it.isNotBlank() },
-                                        designPrompt = obj.optString("design_prompt").takeIf { it.isNotBlank() },
-                                        createdAt = (obj.opt("started") as? Number)?.toLong()
-                                            ?: (obj.opt("updated_at") as? Number)?.toLong() ?: 0L,
-                                        source = "generated",
-                                        designSource = "Generated",
-                                        creatorName = obj.optString("creator_name", "").takeIf { it.isNotBlank() },
-                                        productsCount = 0,
-                                    )
-                                }
-                            }
-                            return@withContext generatedItems.sortedByDescending { it.createdAt } to emptyMap<String, Int>()
-                        }
-
-                        // Active library designs (saved / uploaded in library)
-                        val listRes = api.listDesigns(ownerId, 100)
+                        val listRes = api.listDesigns(ownerId, 200)
+                        val genRes = api.listGenerated(ownerId, 100)
                         val summaryRes = api.getPublishedSummary(ownerId, shop)
 
-                        val savedItems = (listRes.optJSONArray("items") ?: JSONArray()).let { arr ->
-                            (0 until arr.length()).mapNotNull { i ->
-                                val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-                                if (resolveLibraryStatus(obj) != "active") return@mapNotNull null
-                                val meta = try {
-                                    val m = obj.opt("metadata")
-                                    when (m) {
-                                        is String -> JSONObject(m.ifBlank { "{}" })
-                                        is JSONObject -> m
-                                        else -> JSONObject()
-                                    }
-                                } catch (_: Exception) { JSONObject() }
-                                val userImg = meta.optString("user_image_url", "").ifBlank { obj.optString("user_image_url", "") }
-                                val designPrompt = meta.optString("design_prompt", "").ifBlank { obj.optString("design_prompt", "") }
-                                val isUploaded = userImg.isNotBlank() && designPrompt.isBlank()
-                                val src = when {
-                                    isUploaded -> "uploaded"
-                                    else -> (obj.optString("design_source", obj.optString("source", "saved"))).lowercase()
+                        val savedJobIds = mutableSetOf<String>()
+                        val merged = mutableListOf<CreationDesign>()
+
+                        (listRes.optJSONArray("items") ?: JSONArray()).let { arr ->
+                            for (i in 0 until arr.length()) {
+                                val obj = arr.optJSONObject(i) ?: continue
+                                parseSavedCreationDesign(obj)?.let { d ->
+                                    d.jobId?.let { savedJobIds.add(it) }
+                                    merged.add(d)
                                 }
-                                val preview = obj.optString("preview_url", "").ifBlank { obj.optString("original_url", "") }
-                                if (preview.isBlank()) return@mapNotNull null
-                                val ct = meta.optString("content_type", "").let { c ->
-                                    when (c) {
-                                        "Design + Text" -> "design_text"
-                                        "Text Only" -> "text_only"
-                                        "Design Only" -> "design_only"
-                                        else -> c.ifBlank { null }
-                                    }
-                                }
-                                CreationDesign(
-                                    id = obj.optString("id", "").takeIf { it.isNotBlank() },
-                                    designId = obj.optString("id", "").takeIf { it.isNotBlank() },
-                                    jobId = obj.optString("job_id", "").takeIf { it.isNotBlank() },
-                                    imageUrl = preview,
-                                    previewUrl = obj.optString("preview_url", "").ifBlank { preview },
-                                    originalUrl = obj.optString("original_url", "").ifBlank { preview },
-                                    title = obj.optString("title", obj.optString("prompt", "Design")).take(80),
-                                    prompt = obj.optString("prompt").takeIf { it.isNotBlank() },
-                                    designPrompt = obj.optString("design_prompt").takeIf { it.isNotBlank() },
-                                    createdAt = (obj.opt("updated_at") as? Number)?.toLong() ?: (obj.opt("created_at") as? Number)?.toLong() ?: 0L,
-                                    source = src,
-                                    designSource = when (src) {
-                                        "generated" -> "Generated"
-                                        "uploaded" -> "Uploaded"
-                                        else -> "Saved"
-                                    },
-                                    creatorName = meta.optString("creator_name", "").takeIf { it.isNotBlank() }
-                                        ?: obj.optString("creator_name", "").takeIf { it.isNotBlank() },
-                                    productsCount = 0,
-                                    ratio = meta.optString("ratio", "").takeIf { it.isNotBlank() }?.lowercase(),
-                                    designType = meta.optString("design_type", "").takeIf { it.isNotBlank() }?.lowercase(),
-                                    contentType = ct
-                                )
                             }
                         }
-                        val merged = savedItems.sortedByDescending { it.createdAt }
+
+                        (genRes.optJSONArray("items") ?: JSONArray()).let { arr ->
+                            for (i in 0 until arr.length()) {
+                                val obj = arr.optJSONObject(i) ?: continue
+                                val jid = obj.optString("job_id", "").trim()
+                                if (jid.isNotBlank() && savedJobIds.contains(jid)) continue
+                                parseGeneratedCreationDesign(obj)?.let { merged.add(it) }
+                            }
+                        }
+
+                        val activityFiltered = merged.filter { d ->
+                            val ls = d.effectiveLibraryStatus()
+                            if (designsActivityFilter == "active") ls == "active" else ls == "inactive"
+                        }.sortedByDescending { it.createdAt }
+
                         val summaryMap = mutableMapOf<String, Int>()
                         if (summaryRes.optBoolean("ok", false)) {
                             (summaryRes.optJSONArray("designs") ?: JSONArray()).let { arr ->
@@ -391,7 +340,8 @@ fun CreatorCreationsScreen(
                                 }
                             }
                         }
-                        merged.map { d ->
+
+                        activityFiltered.map { d ->
                             d.copy(productsCount = (d.id ?: d.designId)?.let { summaryMap[it] ?: 0 } ?: 0)
                         } to summaryMap
                     }
@@ -557,6 +507,18 @@ fun CreatorCreationsScreen(
         else -> 2
     }
     val isListMode = VIEW_MODES[viewMode] == "list"
+    val bulkCohort = remember(bulkSelectedKeys, designsActivityFilter) {
+        resolveBulkCohort(bulkSelectedKeys, designsActivityFilter)
+    }
+    val selectedDesignObjects = remember(filteredDesigns, bulkSelectedKeys) {
+        designsFromSelectedKeys(filteredDesigns, bulkSelectedKeys)
+    }
+
+    LaunchedEffect(showActivateDialog, showSaveDialog) {
+        if ((showActivateDialog || showSaveDialog) && ownerId.isNotBlank()) {
+            creatorNamesCache = CreationsDesignLibraryActions.loadCreatorNames(api, ownerId)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -617,59 +579,134 @@ fun CreatorCreationsScreen(
                     designsCount = filteredDesigns.size,
                     translationStore = translationStore,
                 )
-                if (designsLoading) {
-                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = EazColors.Orange)
-                    }
-                } else if (filteredDesigns.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.5f))
-                            Spacer(Modifier.size(8.dp))
-                            Text(
-                                if (designs.isEmpty()) translationStore.t("creator.creations.no_designs", "No designs found.") else translationStore.t("creator.mobile.no_search_results", "No search results."),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.7f)
-                            )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize(),
+                ) {
+                    val bulkBottomPad = if (bulkSelectedKeys.isNotEmpty()) 118.dp else 0.dp
+                    when {
+                        designsLoading -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = EazColors.Orange)
+                            }
+                        }
+                        filteredDesigns.isEmpty() -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.5f))
+                                    Spacer(Modifier.size(8.dp))
+                                    Text(
+                                        if (designs.isEmpty()) translationStore.t("creator.creations.no_designs", "No designs found.") else translationStore.t("creator.mobile.no_search_results", "No search results."),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                        isListMode -> {
+                            LazyColumn(
+                                state = designsListState,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .heightIn(max = boundedHeight),
+                                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + bulkBottomPad),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
+                                    CreationDesignListItem(
+                                        design = design,
+                                        translationStore = translationStore,
+                                        bulkSelectable = isBulkSelectableDesign(design, designsActivityFilter),
+                                        selected = bulkSelectedKeys.contains(design.bulkSelectionKey()),
+                                        onSelectedChange = { on ->
+                                            bulkSelectedKeys = setBulkSelectedKey(design, on, bulkSelectedKeys)
+                                        },
+                                        onLibraryAction = if (!design.id.isNullOrBlank()) {
+                                            {
+                                                if (design.effectiveLibraryStatus() == "inactive") {
+                                                    activateTargets = listOf(design)
+                                                    showActivateDialog = true
+                                                } else {
+                                                    deactivateTargets = listOf(design)
+                                                    showDeactivateDialog = true
+                                                }
+                                            }
+                                        } else null,
+                                        onClick = { designPreviewDesign = design }
+                                    )
+                                }
+                            }
+                        }
+                        else -> {
+                            LazyVerticalGrid(
+                                state = designsGridState,
+                                columns = GridCells.Fixed(gridCols),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .heightIn(max = boundedHeight),
+                                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + bulkBottomPad),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
+                                    Box(Modifier.aspectRatio(1f)) {
+                                        CreationDesignGridCard(
+                                            design = design,
+                                            bulkSelectable = isBulkSelectableDesign(design, designsActivityFilter),
+                                            selected = bulkSelectedKeys.contains(design.bulkSelectionKey()),
+                                            onSelectedChange = { on ->
+                                                bulkSelectedKeys = setBulkSelectedKey(design, on, bulkSelectedKeys)
+                                            },
+                                            onLibraryAction = if (!design.id.isNullOrBlank()) {
+                                                {
+                                                    if (design.effectiveLibraryStatus() == "inactive") {
+                                                        activateTargets = listOf(design)
+                                                        showActivateDialog = true
+                                                    } else {
+                                                        deactivateTargets = listOf(design)
+                                                        showDeactivateDialog = true
+                                                    }
+                                                }
+                                            } else null,
+                                            onClick = { designPreviewDesign = design },
+                                            activateLabel = translationStore.t("creator.creations.library_activate_btn", "Activate"),
+                                            deactivateLabel = translationStore.t("creator.creations.library_deactivate_btn", "Deactivate"),
+                                            shimmer = { GridImageShimmer(Modifier.fillMaxSize()) },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
-                } else if (isListMode) {
-                    LazyColumn(
-                        state = designsListState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                            .heightIn(max = boundedHeight),
-                        contentPadding = PaddingValues(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
-                            CreationDesignListItem(
-                                design = design,
-                                translationStore = translationStore,
-                                onClick = { designPreviewDesign = design }
-                            )
-                        }
-                    }
-                } else {
-                    LazyVerticalGrid(
-                        state = designsGridState,
-                        columns = GridCells.Fixed(gridCols),
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                            .heightIn(max = boundedHeight),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
-                            CreationDesignCard(
-                                design = design,
-                                onClick = { designPreviewDesign = design }
-                            )
-                        }
-                    }
+                    CreationsDesignBulkDock(
+                        selectedCount = bulkSelectedKeys.size,
+                        cohort = bulkCohort,
+                        translationStore = translationStore,
+                        onSelectAll = {
+                            bulkSelectedKeys = selectAllPoolDesigns(filteredDesigns, designsActivityFilter, bulkSelectedKeys)
+                                .mapNotNull { it.bulkSelectionKey().takeIf { k -> k.isNotBlank() } }
+                                .toSet()
+                        },
+                        onDeselectAll = { bulkSelectedKeys = emptySet() },
+                        onActivate = {
+                            activateTargets = selectedDesignObjects
+                            showActivateDialog = true
+                        },
+                        onDeactivate = {
+                            deactivateTargets = selectedDesignObjects
+                            showDeactivateDialog = true
+                        },
+                        onDelete = {
+                            deleteTargets = selectedDesignObjects
+                            showDeleteDialog = true
+                        },
+                        onSave = {
+                            saveTargets = selectedDesignObjects.filter { it.id.isNullOrBlank() && !it.jobId.isNullOrBlank() }
+                            showSaveDialog = true
+                        },
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
                 }
             }
             "products" -> {
@@ -881,6 +918,173 @@ fun CreatorCreationsScreen(
         }
     }
 
+    if (showActivateDialog) {
+        CreationsActivateDesignDialog(
+            targets = activateTargets,
+            creatorNames = creatorNamesCache,
+            translationStore = translationStore,
+            busy = libraryActionBusy,
+            onDismiss = {
+                if (!libraryActionBusy) {
+                    showActivateDialog = false
+                    activateTargets = emptyList()
+                }
+            },
+            onConfirm = { creatorName, visibilityPublic, activateWithout ->
+                scope.launch {
+                    libraryActionBusy = true
+                    try {
+                        var ok = true
+                        activateTargets.forEach { d ->
+                            val id = d.id?.trim().orEmpty()
+                            if (id.isBlank()) return@forEach
+                            ok = ok && CreationsDesignLibraryActions.activateDesign(
+                                api, id, creatorName,
+                                if (visibilityPublic) "public" else "private",
+                                activateWithout,
+                            )
+                        }
+                        if (ok) {
+                            bulkSelectedKeys = emptySet()
+                            showActivateDialog = false
+                            activateTargets = emptyList()
+                            designsActivityFilter = "active"
+                            designsRefreshTrigger++
+                        }
+                    } finally {
+                        libraryActionBusy = false
+                    }
+                }
+            },
+        )
+    }
+
+    if (showSaveDialog) {
+        CreationsActivateDesignDialog(
+            targets = saveTargets,
+            creatorNames = creatorNamesCache,
+            translationStore = translationStore,
+            busy = libraryActionBusy,
+            onDismiss = {
+                if (!libraryActionBusy) {
+                    showSaveDialog = false
+                    saveTargets = emptyList()
+                }
+            },
+            onConfirm = { creatorName, visibilityPublic, activateWithout ->
+                scope.launch {
+                    libraryActionBusy = true
+                    try {
+                        runBulkSaveWithThrottle(
+                            saveTargets, ownerId, api, creatorName,
+                            visibilityPublic,
+                        )
+                        bulkSelectedKeys = emptySet()
+                        showSaveDialog = false
+                        saveTargets = emptyList()
+                        designsActivityFilter = "active"
+                        designsRefreshTrigger++
+                    } finally {
+                        libraryActionBusy = false
+                    }
+                }
+            },
+        )
+    }
+
+    if (showDeactivateDialog) {
+        CreationsConfirmActionDialog(
+            title = if (deactivateTargets.size > 1) {
+                translationStore.t("creator.creations.bulk_deactivate_title", "Deactivate designs")
+            } else {
+                translationStore.t("creator.creations.library_deactivate_title", "Deactivate design")
+            },
+            message = translationStore.t(
+                "creator.creations.library_deactivate_simple_intro",
+                "The design will be moved to Inactive. Published products can be unpublished."
+            ),
+            confirmLabel = translationStore.t("creator.creations.library_confirm_deactivate", "Deactivate"),
+            busy = libraryActionBusy,
+            onDismiss = {
+                if (!libraryActionBusy) {
+                    showDeactivateDialog = false
+                    deactivateTargets = emptyList()
+                }
+            },
+            onConfirm = {
+                scope.launch {
+                    libraryActionBusy = true
+                    try {
+                        var ok = true
+                        deactivateTargets.forEach { d ->
+                            val id = d.id?.trim().orEmpty()
+                            if (id.isBlank()) return@forEach
+                            ok = ok && CreationsDesignLibraryActions.deactivateDesign(api, ownerId, shop, id)
+                        }
+                        if (ok) {
+                            bulkSelectedKeys = emptySet()
+                            showDeactivateDialog = false
+                            deactivateTargets = emptyList()
+                            designsRefreshTrigger++
+                        }
+                    } finally {
+                        libraryActionBusy = false
+                    }
+                }
+            },
+        )
+    }
+
+    if (showDeleteDialog) {
+        CreationsConfirmActionDialog(
+            title = translationStore.t("creator.creations.bulk_delete_title", "Delete designs"),
+            message = if (deleteTargets.any { it.id.isNullOrBlank() }) {
+                translationStore.t(
+                    "creator.creations.bulk_delete_jobs_intro",
+                    "These generated designs are not in your library yet. They will be removed permanently."
+                )
+            } else {
+                translationStore.t("creator.creations.bulk_delete_intro", "Delete selected designs permanently?")
+            },
+            confirmLabel = translationStore.t("creator.creations.bulk_confirm_delete", "Delete"),
+            busy = libraryActionBusy,
+            danger = true,
+            onDismiss = {
+                if (!libraryActionBusy) {
+                    showDeleteDialog = false
+                    deleteTargets = emptyList()
+                }
+            },
+            onConfirm = {
+                scope.launch {
+                    libraryActionBusy = true
+                    try {
+                        var ok = true
+                        deleteTargets.forEach { d ->
+                            val id = d.id?.trim().orEmpty()
+                            val jid = d.jobId?.trim().orEmpty()
+                            ok = ok && if (id.isNotBlank()) {
+                                CreationsDesignLibraryActions.deleteSavedDesign(api, ownerId, id)
+                            } else if (jid.isNotBlank()) {
+                                CreationsDesignLibraryActions.deleteGeneratedJob(api, ownerId, jid)
+                            } else {
+                                false
+                            }
+                        }
+                        if (ok) {
+                            bulkSelectedKeys = emptySet()
+                            showDeleteDialog = false
+                            deleteTargets = emptyList()
+                            designsRefreshTrigger++
+                        }
+                    } finally {
+                        libraryActionBusy = false
+                    }
+                }
+            },
+        )
+    }
+
     if (filterModalVisible) {
         CreatorFilterModal(
             onDismiss = { filterModalVisible = false },
@@ -1066,57 +1270,14 @@ private fun CreationsDesignsToolbar(
 }
 
 @Composable
-private fun CreationDesignCard(
-    design: CreationDesign,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF353D4C)),
-            contentAlignment = Alignment.Center
-        ) {
-            SubcomposeAsyncImage(
-                model = design.imageUrl,
-                contentDescription = design.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-                alignment = Alignment.Center,
-                loading = { GridImageShimmer(Modifier.fillMaxSize()) }
-            )
-            if (design.productsCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .background(EazColors.Orange, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        "${design.productsCount}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun CreationDesignListItem(
     design: CreationDesign,
     translationStore: TranslationStore,
-    onClick: () -> Unit
+    bulkSelectable: Boolean,
+    selected: Boolean,
+    onSelectedChange: (Boolean) -> Unit,
+    onLibraryAction: (() -> Unit)?,
+    onClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -1127,6 +1288,13 @@ private fun CreationDesignListItem(
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (bulkSelectable) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = onSelectedChange,
+                colors = CheckboxDefaults.colors(checkedColor = EazColors.Orange),
+            )
+        }
         SubcomposeAsyncImage(
             model = design.imageUrl,
             contentDescription = design.title,
@@ -1154,6 +1322,19 @@ private fun CreationDesignListItem(
                         color = EazColors.Orange
                     )
                 }
+            }
+        }
+        if (onLibraryAction != null) {
+            TextButton(onClick = onLibraryAction) {
+                Text(
+                    if (design.effectiveLibraryStatus() == "inactive") {
+                        translationStore.t("creator.creations.library_activate_btn", "Activate")
+                    } else {
+                        translationStore.t("creator.creations.library_deactivate_btn", "Deactivate")
+                    },
+                    color = EazColors.Orange,
+                    fontSize = 12.sp,
+                )
             }
         }
     }

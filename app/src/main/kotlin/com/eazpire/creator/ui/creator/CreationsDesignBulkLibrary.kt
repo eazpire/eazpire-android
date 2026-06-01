@@ -504,7 +504,7 @@ fun CreationsActivateDesignDialog(
                                 unfocusedTextColor = Color.White,
                             ),
                         )
-                        ExposedDropdownMenu(expanded = expanded, onExpandedChange = { expanded = it }) {
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             creatorNames.forEach { name ->
                                 DropdownMenuItem(
                                     text = { Text(name) },

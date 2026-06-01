@@ -1485,6 +1485,66 @@ class CreatorApi(
     /** PUT ?op=update-design — body must include design_id; optional metadata, prompt, visibility, title, description */
     suspend fun updateDesign(body: JSONObject): JSONObject = putJsonBodyOp("update-design", body)
 
+    /** POST ?op=save-design — save generated job to library (bulk / inactive tab). */
+    suspend fun saveDesign(body: JSONObject): JSONObject = postJsonBodyOp("save-design", body)
+
+    /** GET ?op=get-design-published-rows&design_id=&owner_id= */
+    suspend fun getDesignPublishedRows(ownerId: String, designId: String, shop: String? = null): JSONObject {
+        val params = mutableMapOf("design_id" to designId, "owner_id" to ownerId)
+        shop?.takeIf { it.isNotBlank() }?.let { params["shop"] = it }
+        return call("get-design-published-rows", params)
+    }
+
+    /** POST ?op=batch-unpublish-published — body { published_design_ids: [numbers] } */
+    suspend fun batchUnpublishPublished(
+        ownerId: String,
+        publishedDesignIds: List<Long>,
+        shop: String? = null,
+    ): JSONObject {
+        val body = JSONObject().put(
+            "published_design_ids",
+            JSONArray().apply { publishedDesignIds.forEach { put(it) } }
+        )
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=batch-unpublish-published")
+            append("&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            shop?.takeIf { it.isNotBlank() }?.let {
+                append("&shop=${java.net.URLEncoder.encode(it, "UTF-8")}")
+            }
+            append("&_t=${System.currentTimeMillis()}")
+        }
+        return withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url(url)
+                .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+    }
+
+    /** POST ?op=delete-job&job_id=&owner_id= */
+    suspend fun deleteJob(ownerId: String, jobId: String): JSONObject = withContext(Dispatchers.IO) {
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=delete-job")
+            append("&job_id=${java.net.URLEncoder.encode(jobId, "UTF-8")}")
+            append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&_t=${System.currentTimeMillis()}")
+        }
+        val request = Request.Builder()
+            .url(url)
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), ByteArray(0)))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
+
     /** DELETE ?op=delete-design&design_id=&owner_id= */
     suspend fun deleteDesign(ownerId: String, designId: String): JSONObject = deleteWithQuery(
         "delete-design",

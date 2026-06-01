@@ -102,6 +102,7 @@ import com.eazpire.creator.shop.sidebar.AudienceSidebarSection
 import com.eazpire.creator.shop.sidebar.CategoryTile
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.shop.sidebar.CreatePromoSection
+import com.eazpire.creator.shop.sidebar.SidebarCategoryIcon
 import com.eazpire.creator.shop.sidebar.SidebarNavVisuals
 import com.eazpire.creator.shop.sidebar.ExpandCell
 import com.eazpire.creator.shop.sidebar.GroupedCategorySection
@@ -926,7 +927,7 @@ private fun MenuDrawerRecursiveListItems(
     val handleKey = item.handle.ifBlank { SidebarNavVisuals.handleFromNavUrl(item.url).orEmpty() }
     val collectionHandle = SidebarNavVisuals.handleFromNavUrl(item.url)
     val productCount = collectionHandle?.let { collectionProductCounts[it] }
-    val menuEmoji = SidebarNavVisuals.emojiForHandle(handleKey.ifBlank { collectionHandle.orEmpty() })
+    val iconHandle = handleKey.ifBlank { collectionHandle.orEmpty() }
     val titleStyle =
         if (depth == 0) {
             MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
@@ -965,6 +966,10 @@ private fun MenuDrawerRecursiveListItems(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            SidebarCategoryIcon(
+                handle = iconHandle,
+                modifier = Modifier.size(22.dp),
+            )
             Text(
                 text = if (item.title.isBlank()) item.handle else item.title,
                 style = titleStyle,
@@ -981,10 +986,6 @@ private fun MenuDrawerRecursiveListItems(
                     color = EazColors.TextSecondary,
                 )
             }
-            Text(
-                text = menuEmoji,
-                style = MaterialTheme.typography.titleMedium,
-            )
             if (branch) {
                 Icon(
                     Icons.Default.ExpandMore,
