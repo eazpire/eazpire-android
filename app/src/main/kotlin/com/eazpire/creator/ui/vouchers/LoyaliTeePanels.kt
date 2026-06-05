@@ -92,7 +92,7 @@ fun LoyaliTeeStampsPanel(
             color = TextSubdued
         )
         status == null -> Text(
-            t("eaz.loyalitee.load_error", "Could not load LoyaliTee status."),
+            t("eaz.loyalitee.error_loading", "Could not load LoyaliTee. Please try again."),
             modifier = Modifier.padding(16.dp),
             color = TextSubdued
         )
@@ -288,7 +288,7 @@ fun LoyaliTeeRedeemedPanel(
         }
         errorText != null -> Text(errorText, modifier = Modifier.padding(16.dp), color = TextSubdued)
         status == null -> Text(
-            t("eaz.loyalitee.load_error", "Could not load LoyaliTee status."),
+            t("eaz.loyalitee.error_loading", "Could not load LoyaliTee. Please try again."),
             modifier = Modifier.padding(16.dp),
             color = TextSubdued
         )
@@ -299,7 +299,7 @@ fun LoyaliTeeRedeemedPanel(
             }
             if (items.isEmpty()) {
                 Text(
-                    t("eaz.loyalitee.no_redeemed", "No redeemed tees yet."),
+                    t("eaz.loyalitee.no_redeemed", "No redeemed LoyaliTee rewards yet."),
                     modifier = Modifier.padding(16.dp),
                     color = TextSubdued
                 )
@@ -323,7 +323,7 @@ fun LoyaliTeeRedeemedPanel(
 @Composable
 private fun LoyaliTeeRedeemedRow(item: JSONObject, t: (String, String) -> String) {
     val title = item.optString("product_title").ifBlank {
-        t("eaz.loyalitee.unnamed_tee", "Softstyle Tee")
+        t("eaz.loyalitee.unnamed_tee", "Softstyle Cotton Tee")
     }
     val dateStr = fmtLoyaliteeDate(item.optString("redeemed_at"))
     val imageUrl = item.optString("image_url").takeIf { it.isNotBlank() }

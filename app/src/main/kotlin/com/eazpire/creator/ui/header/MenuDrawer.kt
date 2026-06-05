@@ -103,6 +103,8 @@ import com.eazpire.creator.shop.sidebar.CategoryTile
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.shop.sidebar.CreatePromoSection
 import com.eazpire.creator.shop.sidebar.SidebarCategoryIcon
+import com.eazpire.creator.ui.nav.EazNavTablerIconByName
+import com.eazpire.creator.ui.nav.EazNavTablerIconChip
 import com.eazpire.creator.shop.sidebar.SidebarNavVisuals
 import com.eazpire.creator.shop.sidebar.ExpandCell
 import com.eazpire.creator.shop.sidebar.GroupedCategorySection
@@ -1128,10 +1130,11 @@ private fun AudienceZielCard(
                         },
                 )
             }
-            Text(
-                text = card.emoji,
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+            EazNavTablerIconChip(
+                handle = card.audHandle,
+                onDarkHeader = true,
+                chipSize = 28.dp,
+                iconSize = 14.dp,
             )
             Text(
                 text = label,
@@ -1210,7 +1213,7 @@ private fun AudienceInlinePanel(
             activeCard.title
         }
     val activeWord = t("eaz.sidebar.audience_active", "Active")
-    val bannerText = "${activeCard.emoji} ${titleTranslated.trim()} ${activeWord.trim()}".trim()
+    val bannerText = "${titleTranslated.trim()} ${activeWord.trim()}".trim()
 
     Surface(
         modifier =
@@ -1231,17 +1234,28 @@ private fun AudienceInlinePanel(
                         .background(audiencePanelHeaderBrush(norm))
                         .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
-                Text(
-                    text = bannerText.uppercase(),
-                    style =
-                        MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.4.sp,
-                        ),
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    EazNavTablerIconChip(
+                        handle = activeCard.audHandle,
+                        onDarkHeader = true,
+                        chipSize = 24.dp,
+                        iconSize = 12.dp,
+                    )
+                    Text(
+                        text = bannerText.uppercase(),
+                        style =
+                            MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.4.sp,
+                            ),
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Column(
                 modifier =
@@ -1645,14 +1659,10 @@ private fun SidebarDrawerGridEngine(
                 is GroupedCategorySection -> {
                     val (skip, alphaBg) = containerHiddenSkip(sec.containerId)
                     if (skip) return@forEach
-                    val headingTitle =
-                        if (sec.sectionEmoji.isNotBlank()) {
-                            "${sec.sectionEmoji.trim()} ${t(sec.sectionTitleKey, sec.sectionTitleKey)}".trim()
-                        } else {
-                            t(sec.sectionTitleKey, sec.sectionTitleKey)
-                        }
+                    val headingTitle = t(sec.sectionTitleKey, sec.sectionTitleKey)
                     SidebarSectionChrome(
                         title = headingTitle,
+                        titleIconId = sec.sectionEmoji.takeIf { it.isNotBlank() },
                         draggableId = sec.containerId,
                         movableIds = movable,
                         containerEyeId = sec.containerId,
@@ -1772,19 +1782,32 @@ private fun SidebarSectionChrome(
     persistHidden: (SidebarHiddenState) -> Unit,
     contentAlpha: Float,
     t: (String, String) -> String,
+    titleIconId: String? = null,
 ) {
     val ix = draggableId?.let { d -> movableIds.indexOf(d) } ?: -1
     Row(
         Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = EazColors.TextPrimary,
+        Row(
             modifier = Modifier.weight(1f).alpha(contentAlpha.coerceIn(0f, 1f)),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (!titleIconId.isNullOrBlank()) {
+                EazNavTablerIconChip(
+                    handle = titleIconId,
+                    chipSize = 24.dp,
+                    iconSize = 12.dp,
+                )
+            }
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = EazColors.TextPrimary,
+            )
+        }
         draggableId?.let {
             IconButton(onClick = { onMoveSection(it, -1) }, enabled = ix > 0) {
                 Icon(
@@ -1919,7 +1942,11 @@ private fun SidebarCategoryTileSingle(
                             },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(text = tile.emoji, style = MaterialTheme.typography.titleLarge)
+                        EazNavTablerIconChip(
+                            handle = tile.emoji,
+                            chipSize = 40.dp,
+                            iconSize = 22.dp,
+                        )
                         Text(
                             text =
                                 (if (tile.navTitleKey.isNotBlank()) {

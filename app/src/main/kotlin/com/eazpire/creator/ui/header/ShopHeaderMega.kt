@@ -21,16 +21,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.nav.EazNavTablerIcon
 
 data class ShopMegaLink(
     val label: String,
     val collectionHandle: String,
-    val productType: String? = null
+    val productType: String? = null,
+    val iconHandle: String? = null,
 )
 
 data class ShopMegaColumn(
     val headerLabel: String,
     val headerProductType: String? = null,
+    val headerIconHandle: String? = null,
     val links: List<ShopMegaLink>
 )
 
@@ -40,34 +43,37 @@ fun shopMegaColumnsForAudience(audienceHandle: String): List<ShopMegaColumn> {
     return listOf(
         ShopMegaColumn(
             headerLabel = "Clothing",
+            headerIconHandle = "clothing",
             links = listOf(
-                ShopMegaLink("T-Shirts", base, "t-shirt"),
-                ShopMegaLink("Hoodies", base, "hoodie"),
-                ShopMegaLink("Sweatshirts", base, "sweatshirt"),
-                ShopMegaLink("Tank Tops", base, "tank-top"),
-                ShopMegaLink("Jackets", base, "jacket"),
-                ShopMegaLink("Shorts", base, "shorts"),
-                ShopMegaLink("Dresses", base, "dress"),
+                ShopMegaLink("T-Shirts", base, "t-shirt", "t-shirt"),
+                ShopMegaLink("Hoodies", base, "hoodie", "hoodie"),
+                ShopMegaLink("Sweatshirts", base, "sweatshirt", "sweatshirt"),
+                ShopMegaLink("Tank Tops", base, "tank-top", "tank-top"),
+                ShopMegaLink("Jackets", base, "jacket", "jacket"),
+                ShopMegaLink("Shorts", base, "shorts", "shorts"),
+                ShopMegaLink("Dresses", base, "dress", "dress"),
             )
         ),
         ShopMegaColumn(
             headerLabel = "Shoes",
             headerProductType = "shoes",
+            headerIconHandle = "shoes",
             links = listOf(
-                ShopMegaLink("All Shoes", base, "shoes"),
-                ShopMegaLink("Sneakers", base, "sneakers"),
-                ShopMegaLink("Boots", base, "boots"),
-                ShopMegaLink("Sandals", base, "sandals"),
+                ShopMegaLink("All Shoes", base, "shoes", "shoes"),
+                ShopMegaLink("Sneakers", base, "sneakers", "sneakers"),
+                ShopMegaLink("Boots", base, "boots", "boots"),
+                ShopMegaLink("Sandals", base, "sandals", "sandals"),
             )
         ),
         ShopMegaColumn(
             headerLabel = "Accessories",
             headerProductType = "accessories",
+            headerIconHandle = "accessories",
             links = listOf(
-                ShopMegaLink("Bags", base, "bags"),
-                ShopMegaLink("Jewelry", base, "jewelry"),
-                ShopMegaLink("Hats & Caps", base, "hats"),
-                ShopMegaLink("Scarves", base, "scarves"),
+                ShopMegaLink("Bags", base, "bags", "bags"),
+                ShopMegaLink("Jewelry", base, "jewelry", "jewelry"),
+                ShopMegaLink("Hats & Caps", base, "hats", "hats"),
+                ShopMegaLink("Scarves", base, "scarves", "scarves"),
             )
         ),
     )
@@ -77,12 +83,12 @@ fun shopMegaColumnsForHomeLiving(): List<ShopMegaColumn> = listOf(
     ShopMegaColumn(
         headerLabel = "Home & Living",
         links = listOf(
-            ShopMegaLink("Home & Living", "home-living"),
-            ShopMegaLink("Plush Toys", "plush-toys"),
-            ShopMegaLink("Drinkware", "drinkware"),
-            ShopMegaLink("Wall Art", "wall-art"),
-            ShopMegaLink("Stationery", "stationery"),
-            ShopMegaLink("Tech", "tech"),
+            ShopMegaLink("Home & Living", "home-living", iconHandle = "home-living"),
+            ShopMegaLink("Plush Toys", "plush-toys", iconHandle = "plush-toys"),
+            ShopMegaLink("Drinkware", "drinkware", iconHandle = "drinkware"),
+            ShopMegaLink("Wall Art", "wall-art", iconHandle = "wall-art"),
+            ShopMegaLink("Stationery", "stationery", iconHandle = "stationery"),
+            ShopMegaLink("Tech", "tech", iconHandle = "tech"),
         )
     )
 )
@@ -106,11 +112,9 @@ fun ShopHeaderMegaPanel(
         ) {
             columns.forEach { col ->
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = col.headerLabel,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = EazColors.TextPrimary,
+                    Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
                             .padding(bottom = 6.dp)
                             .clickable {
@@ -119,19 +123,39 @@ fun ShopHeaderMegaPanel(
                                     col.links.firstOrNull()?.collectionHandle ?: "home-living",
                                     col.headerProductType
                                 )
-                            }
-                    )
-                    col.links.forEach { link ->
+                            },
+                    ) {
+                        EazNavTablerIcon(
+                            handle = col.headerIconHandle ?: col.headerLabel,
+                            iconSize = 16.dp,
+                        )
                         Text(
-                            text = link.label,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EazColors.TextSecondary,
+                            text = col.headerLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = EazColors.TextPrimary,
+                        )
+                    }
+                    col.links.forEach { link ->
+                        Row(
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .padding(vertical = 4.dp)
                                 .clickable {
                                     onLinkClick(link.label, link.collectionHandle, link.productType)
-                                }
-                        )
+                                },
+                        ) {
+                            EazNavTablerIcon(
+                                handle = link.iconHandle ?: link.productType ?: link.collectionHandle,
+                                iconSize = 14.dp,
+                            )
+                            Text(
+                                text = link.label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = EazColors.TextSecondary,
+                            )
+                        }
                     }
                 }
             }

@@ -16,9 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.Icon
+import com.eazpire.creator.ui.nav.EazNavTablerIcon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -54,6 +52,16 @@ private val MENU_ITEMS = listOf(
     MenuItem("Kids", "kids", "https://www.eazpire.com/collections/kids", megaAudienceHandle = "kids"),
     MenuItem("Toddler", "toddler", "https://www.eazpire.com/collections/toddler", megaAudienceHandle = "toddler"),
     MenuItem("Home & Living", "home-living", "https://www.eazpire.com/collections/home-living", megaHomeLiving = true),
+)
+
+private val MENU_ITEM_ICON_HANDLES = mapOf(
+    "Create" to "create",
+    "Promotions" to "eaz-promotions",
+    "Women" to "women",
+    "Men" to "men",
+    "Kids" to "kids",
+    "Toddler" to "toddler",
+    "Home & Living" to "home-living",
 )
 
 private val MENU_ITEM_KEYS = mapOf(
@@ -95,11 +103,10 @@ fun ShopMenuBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        Icons.Default.Menu,
-                        contentDescription = t("header.all", "All"),
+                    EazNavTablerIcon(
+                        handle = "all",
                         tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                        iconSize = 16.dp,
                     )
                     Text(
                         text = t("header.all", "All"),
@@ -181,15 +188,25 @@ fun ShopMenuBar(
                                     )
                                 }
                             } else {
-                                Text(
-                                    text = label,
-                                    color = when {
-                                        isMegaExpanded || isSelected -> Color.White
-                                        else -> Color.White.copy(alpha = 0.95f)
-                                    },
-                                    fontWeight = if (isMegaExpanded) FontWeight.Bold else FontWeight.Normal,
-                                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    EazNavTablerIcon(
+                                        handle = MENU_ITEM_ICON_HANDLES[item.label] ?: item.collectionHandle.orEmpty(),
+                                        tint = Color.White,
+                                        iconSize = 14.dp,
+                                    )
+                                    Text(
+                                        text = label,
+                                        color = when {
+                                            isMegaExpanded || isSelected -> Color.White
+                                            else -> Color.White.copy(alpha = 0.95f)
+                                        },
+                                        fontWeight = if (isMegaExpanded) FontWeight.Bold else FontWeight.Normal,
+                                        style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                                    )
+                                }
                             }
                         }
                     }

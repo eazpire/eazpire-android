@@ -180,7 +180,7 @@ fun LoyaliTeeProductPickerModal(
                                 selectedProduct = null
                                 selectedVariantId = null
                             }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = t("eaz.loyalitee.back", "Back"))
+                                Icon(Icons.Default.ArrowBack, contentDescription = t("eaz.loyalitee.back_to_grid", "Back to designs"))
                             }
                         }
                     },
@@ -204,7 +204,7 @@ fun LoyaliTeeProductPickerModal(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
-                        placeholder = { Text(t("eaz.loyalitee.search", "Search designs…")) },
+                        placeholder = { Text(t("eaz.loyalitee.search_placeholder", "Search designs…")) },
                         singleLine = true
                     )
                     when {
@@ -213,7 +213,7 @@ fun LoyaliTeeProductPickerModal(
                         }
                         products.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
-                                t("eaz.loyalitee.picker_empty", "No eligible tees found."),
+                                t("eaz.loyalitee.no_products", "No eligible tees found."),
                                 color = Color(0xFF6B7280)
                             )
                         }
@@ -286,7 +286,7 @@ fun LoyaliTeeProductPickerModal(
                         }
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            t("eaz.loyalitee.select_variant", "Select size / color"),
+                            t("eaz.loyalitee.choose_variant", "Size & color"),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
                         )
@@ -368,7 +368,7 @@ fun LoyaliTeeProductPickerModal(
                                     strokeWidth = 2.dp
                                 )
                             } else {
-                                Text(t("eaz.loyalitee.redeem_checkout", "Redeem & checkout"))
+                                Text(t("eaz.loyalitee.redeem_button", "Redeem & checkout"))
                             }
                         }
                     }
@@ -378,7 +378,7 @@ fun LoyaliTeeProductPickerModal(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun LoyaliteeVariantChips(
     variants: List<LoyaliteeVariant>,

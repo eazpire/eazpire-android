@@ -55,6 +55,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.creator.ui.header.CheckoutDrawer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,6 +68,7 @@ enum class VoucherModalTab {
     STORE_CREDIT,
     GIFT_CARDS,
     PROMO_CODES,
+    LOYALITEE,
 }
 
 private enum class GiftCardSubTab {
@@ -78,7 +80,13 @@ private enum class GiftCardSubTab {
 private enum class MainTab {
     STORE_CREDIT,
     GIFT_CARDS,
-    PROMO_CODES
+    PROMO_CODES,
+    LOYALITEE,
+}
+
+private enum class LoyaliTeeSubTab {
+    STAMPS,
+    REDEEMED,
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -94,8 +102,14 @@ fun VoucherModal(
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     val api = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
     var giftCardDetailId by remember { mutableStateOf<String?>(null) }
+    var loyaliteePickerRewardId by remember { mutableStateOf<String?>(null) }
+    var checkoutUrl by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(visible) {
-        if (!visible) giftCardDetailId = null
+        if (!visible) {
+            giftCardDetailId = null
+            loyaliteePickerRewardId = null
+            checkoutUrl = null
+        }
     }
     GiftCardDetailNativeModal(
         giftCardId = giftCardDetailId,
@@ -106,11 +120,17 @@ fun VoucherModal(
         api = api,
         t = t
     )
+    CheckoutDrawer(
+        visible = checkoutUrl != null,
+        checkoutUrl = checkoutUrl.orEmpty(),
+        onDismiss = { checkoutUrl = null }
+    )
     if (!visible) return
 
     var mainTab by remember { mutableStateOf(MainTab.STORE_CREDIT) }
     var giftSubTab by remember { mutableStateOf(GiftCardSubTab.PURCHASED) }
     var promoSubCreated by remember { mutableStateOf(true) }
+    var loyaliteeSubTab by remember { mutableStateOf(LoyaliTeeSubTab.STAMPS) }
 
     LaunchedEffect(visible, initialTab) {
         if (visible && initialTab != null) {
@@ -118,6 +138,7 @@ fun VoucherModal(
                 VoucherModalTab.STORE_CREDIT -> MainTab.STORE_CREDIT
                 VoucherModalTab.GIFT_CARDS -> MainTab.GIFT_CARDS
                 VoucherModalTab.PROMO_CODES -> MainTab.PROMO_CODES
+                VoucherModalTab.LOYALITEE -> MainTab.LOYALITEE
             }
         }
     }
@@ -126,6 +147,7 @@ fun VoucherModal(
     var payoutJson by remember { mutableStateOf<JSONObject?>(null) }
     var giftCards by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var promoJson by remember { mutableStateOf<JSONObject?>(null) }
+    var loyaltyJson by remember { mutableStateOf<JSONObject?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
 
     val currencyCode = remember {
@@ -146,12 +168,14 @@ fun VoucherModal(
                 api.getCustomerGiftCards(ownerId, AuthConfig.SHOP_DOMAIN)
             }
             val pr = withContext(Dispatchers.IO) { api.getPromoSlots(ownerId) }
+            val loyalty = withContext(Dispatchers.IO) { api.getLoyaltyStatus(ownerId) }
             payoutJson = if (p.optBoolean("ok", false)) p else null
             giftCards = if (g.optBoolean("ok", false)) {
                 val arr = g.optJSONArray("gift_cards") ?: JSONArray()
                 (0 until arr.length()).map { arr.getJSONObject(it) }
             } else emptyList()
             promoJson = if (pr.optBoolean("ok", false)) pr else null
+            loyaltyJson = if (loyalty.optBoolean("ok", false)) loyalty else null
         } catch (e: Exception) {
             errorText = e.message ?: "Error"
         } finally {
@@ -159,7 +183,7 @@ fun VoucherModal(
         }
     }
 
-    val screenTitle = remember(mainTab, giftSubTab, promoSubCreated, translationStore) {
+    val screenTitle = remember(mainTab, giftSubTab, promoSubCreated, loyaliteeSubTab, translationStore) {
         when (mainTab) {
             MainTab.STORE_CREDIT -> t("creator.voucher_page.subtab_store_credit", "Store Credit")
             MainTab.GIFT_CARDS ->
@@ -171,6 +195,12 @@ fun VoucherModal(
             MainTab.PROMO_CODES ->
                 if (promoSubCreated) t("creator.voucher_page.subtab_created_promos", "Created Promos")
                 else t("creator.voucher_page.subtab_redeemed_promos", "Redeemed Promos")
+            MainTab.LOYALITEE ->
+                if (loyaliteeSubTab == LoyaliTeeSubTab.STAMPS) {
+                    t("creator.voucher_page.subtab_loyalitee_stamps", "Loyalitees")
+                } else {
+                    t("creator.voucher_page.subtab_loyalitee_redeemed", "Redeemed")
+                }
         }
     }
 
@@ -187,11 +217,22 @@ fun VoucherModal(
         }
     }
 
+    fun reloadLoyalty() {
+        if (ownerId.isBlank()) return
+        scope.launch {
+            try {
+                val loyalty = withContext(Dispatchers.IO) { api.getLoyaltyStatus(ownerId) }
+                loyaltyJson = if (loyalty.optBoolean("ok", false)) loyalty else null
+            } catch (_: Exception) { /* ignore */ }
+        }
+    }
+
     val mainDrawerItems = remember(t) {
         listOf(
             MainTab.STORE_CREDIT to t("creator.voucher_page.subtab_store_credit", "Store Credit"),
             MainTab.GIFT_CARDS to t("creator.voucher_page.tab_gift_cards", "Gift Cards"),
-            MainTab.PROMO_CODES to t("creator.voucher_page.tab_promo_codes", "Promo Codes")
+            MainTab.PROMO_CODES to t("creator.voucher_page.tab_promo_codes", "Promo Codes"),
+            MainTab.LOYALITEE to t("creator.voucher_page.tab_loyalitee", "LoyaliTee")
         )
     }
 
@@ -262,6 +303,13 @@ fun VoucherModal(
                                 onSelectLeft = { promoSubCreated = true },
                                 onSelectRight = { promoSubCreated = false }
                             )
+                            MainTab.LOYALITEE -> VoucherSubTabRow(
+                                leftLabel = t("creator.voucher_page.subtab_loyalitee_stamps", "Loyalitees"),
+                                rightLabel = t("creator.voucher_page.subtab_loyalitee_redeemed", "Redeemed"),
+                                selectedLeft = loyaliteeSubTab == LoyaliTeeSubTab.STAMPS,
+                                onSelectLeft = { loyaliteeSubTab = LoyaliTeeSubTab.STAMPS },
+                                onSelectRight = { loyaliteeSubTab = LoyaliTeeSubTab.REDEEMED }
+                            )
                             else -> Spacer(Modifier.height(0.dp))
                         }
                         Box(
@@ -292,6 +340,23 @@ fun VoucherModal(
                                         api = api,
                                         onReloadPromos = { reloadPromos() }
                                     )
+                                MainTab.LOYALITEE ->
+                                    if (loyaliteeSubTab == LoyaliTeeSubTab.STAMPS) {
+                                        LoyaliTeeStampsPanel(
+                                            status = loyaltyJson,
+                                            loading = loading,
+                                            errorText = errorText,
+                                            t = t,
+                                            onChooseTee = { loyaliteePickerRewardId = it }
+                                        )
+                                    } else {
+                                        LoyaliTeeRedeemedPanel(
+                                            status = loyaltyJson,
+                                            loading = loading,
+                                            errorText = errorText,
+                                            t = t
+                                        )
+                                    }
                             }
                         }
                     }
@@ -299,6 +364,17 @@ fun VoucherModal(
             }
         )
     }
+
+    LoyaliTeeProductPickerModal(
+        rewardId = loyaliteePickerRewardId,
+        customerId = ownerId,
+        api = api,
+        tokenStore = tokenStore,
+        t = t,
+        onDismiss = { loyaliteePickerRewardId = null },
+        onRedeemSuccess = { reloadLoyalty() },
+        onCheckout = { checkoutUrl = it }
+    )
 }
 
 @Composable
