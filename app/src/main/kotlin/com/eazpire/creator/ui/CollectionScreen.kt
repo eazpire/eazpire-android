@@ -1236,9 +1236,10 @@ private fun CollectionProductCard(
             product.metaProductKey,
             product.designId
         )
-        tryOnActive = sessionActive || autoActive
-        showManualTryOn = CustomerMockPreviewStore.shouldShowManualTryOnButton(
+        tryOnActive = CustomerMockPreviewStore.isTryOnDisplayActive(ctx, product.handle, autoActive)
+        showManualTryOn = CustomerMockPreviewStore.shouldShowTryOnButton(
             map,
+            ctx,
             product.handle,
             product.metaProductKey,
             product.designId

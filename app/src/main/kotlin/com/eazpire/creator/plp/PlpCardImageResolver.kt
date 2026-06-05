@@ -50,7 +50,9 @@ object PlpCardImageResolver {
             product.metaProductKey,
             product.designId
         )
-        val useMock = sessionTryOnActive || autoMock
+        val explicitlyOff = CustomerMockPreviewStore.isTryOnExplicitlyOff(context, product.handle)
+        val sessionOn = CustomerMockPreviewStore.isTryOnSessionActive(context, product.handle)
+        val useMock = !explicitlyOff && (sessionOn || autoMock)
 
         if (!useMock && CustomerMockPreviewStore.tryOnInfo(
                 map,
@@ -72,10 +74,6 @@ object PlpCardImageResolver {
 
         when {
             mockUrls.size >= 2 -> PlpCardDisplay(mockUrls, isPersonalizedMock = true)
-            mockUrls.size == 1 && shop.size >= 2 -> {
-                // One mock ready but multiple shop slots — keep rotating shop until more mocks cached.
-                PlpCardDisplay(shop, isPersonalizedMock = false)
-            }
             mockUrls.size == 1 -> PlpCardDisplay(mockUrls, isPersonalizedMock = true)
             useMock && shop.isNotEmpty() -> PlpCardDisplay(shop, isPersonalizedMock = false)
             else -> PlpCardDisplay(shop, isPersonalizedMock = false)

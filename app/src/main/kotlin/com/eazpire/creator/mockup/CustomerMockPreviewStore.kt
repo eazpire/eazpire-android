@@ -22,6 +22,7 @@ object CustomerMockPreviewStore {
     private const val TAG = "EazMockPreview"
     private const val PREFS = "eaz_mock_preview"
     private const val KEY_TRYON_HANDLES = "tryon_handles"
+    private const val KEY_TRYON_OFF_HANDLES = "tryon_off_handles"
     private const val MAP_TTL_MS = 300_000L
 
     @Volatile
@@ -56,22 +57,58 @@ object CustomerMockPreviewStore {
         }.getOrDefault(false)
     }
 
+    /** User explicitly turned try-on off — overrides auto-wearing preview. */
+    fun isTryOnExplicitlyOff(context: Context, handle: String): Boolean {
+        if (handle.isBlank()) return false
+        val raw = prefs(context).getString(KEY_TRYON_OFF_HANDLES, null) ?: return false
+        return runCatching {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).any { arr.optString(it) == handle }
+        }.getOrDefault(false)
+    }
+
     fun setTryOnSessionActive(context: Context, handle: String, active: Boolean) {
         if (handle.isBlank()) return
-        val set = linkedSetOf<String>()
-        val raw = prefs(context).getString(KEY_TRYON_HANDLES, null)
-        if (raw != null) {
+        val onSet = linkedSetOf<String>()
+        val offSet = linkedSetOf<String>()
+        prefs(context).getString(KEY_TRYON_HANDLES, null)?.let { raw ->
             runCatching {
                 val arr = org.json.JSONArray(raw)
                 for (i in 0 until arr.length()) {
-                    arr.optString(i).takeIf { it.isNotBlank() }?.let { set.add(it) }
+                    arr.optString(i).takeIf { it.isNotBlank() }?.let { onSet.add(it) }
                 }
             }
         }
-        if (active) set.add(handle) else set.remove(handle)
+        prefs(context).getString(KEY_TRYON_OFF_HANDLES, null)?.let { raw ->
+            runCatching {
+                val arr = org.json.JSONArray(raw)
+                for (i in 0 until arr.length()) {
+                    arr.optString(i).takeIf { it.isNotBlank() }?.let { offSet.add(it) }
+                }
+            }
+        }
+        if (active) {
+            onSet.add(handle)
+            offSet.remove(handle)
+        } else {
+            onSet.remove(handle)
+            offSet.add(handle)
+        }
         prefs(context).edit()
-            .putString(KEY_TRYON_HANDLES, org.json.JSONArray(set.toList()).toString())
+            .putString(KEY_TRYON_HANDLES, org.json.JSONArray(onSet.toList()).toString())
+            .putString(KEY_TRYON_OFF_HANDLES, org.json.JSONArray(offSet.toList()).toString())
             .apply()
+    }
+
+    /** Whether mock images should display on this card (respects explicit off). */
+    fun isTryOnDisplayActive(
+        context: Context,
+        handle: String,
+        autoWearing: Boolean
+    ): Boolean {
+        if (isTryOnExplicitlyOff(context, handle)) return false
+        if (isTryOnSessionActive(context, handle)) return true
+        return autoWearing
     }
 
     /** Cached map without network — use after [loadMap] on home. */
@@ -114,6 +151,7 @@ object CustomerMockPreviewStore {
         designId: String?
     ): Boolean {
         if (tryOnInfo(map, handle, productKey, designId) == null) return false
+        if (isTryOnExplicitlyOff(context, handle)) return false
         if (isTryOnSessionActive(context, handle)) return true
         return shouldAutoShowMockOnCard(map, handle, productKey, designId)
     }
@@ -139,6 +177,7 @@ object CustomerMockPreviewStore {
         productKey: String?,
         designId: String?
     ): Boolean {
+        if (!isHandleEligibleForTryOn(map, handle, productKey)) return false
         if (tryOnInfo(map, handle, productKey, designId) == null) return false
         if (shouldAutoShowMockOnCard(map, handle, productKey, designId)) return false
         val pk = resolveProductKeyFromMap(map, handle, productKey) ?: return false
@@ -146,18 +185,54 @@ object CustomerMockPreviewStore {
         return MockupPreviewPool.hasPreviewPool(entry)
     }
 
+    fun canUseTryOn(
+        map: JSONObject?,
+        handle: String,
+        productKey: String?,
+        designId: String?
+    ): Boolean {
+        if (!isHandleEligibleForTryOn(map, handle, productKey)) return false
+        if (tryOnInfo(map, handle, productKey, designId) == null) return false
+        val pk = resolveProductKeyFromMap(map, handle, productKey) ?: return false
+        val entry = map?.optJSONObject("mockups")?.optJSONObject(pk) ?: return false
+        return MockupPreviewPool.hasPreviewPool(entry)
+    }
+
+    /** PLP/PDP hanger icon when customer preview mocks exist for this handle. */
+    fun shouldShowTryOnButton(
+        map: JSONObject?,
+        context: Context,
+        handle: String,
+        productKey: String?,
+        designId: String?
+    ): Boolean = canUseTryOn(map, handle, productKey, designId)
+
     fun resolveProductKeyFromMap(map: JSONObject?, handle: String, productKeyMeta: String?): String? {
         productKeyMeta?.takeIf { it.isNotBlank() }?.let { return it }
-        if (map == null) return null
+        if (map == null || handle.isBlank()) return null
         val htk = map.optJSONObject("handle_to_key")
         htk?.optString(handle)?.takeIf { it.isNotBlank() }?.let { return it }
         val mockups = map.optJSONObject("mockups") ?: return null
-        val keys = mockups.keys()
-        while (keys.hasNext()) {
-            val k = keys.next()
-            if (handle == k || handle.endsWith("-$k")) return k
+        if (mockups.has(handle)) return handle
+        val hdm = map.optJSONObject("handle_design_map")
+        if (hdm?.has(handle) == true) {
+            val keys = mockups.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                if (handle == k || handle.endsWith("-$k")) return k
+            }
         }
         return null
+    }
+
+    fun isHandleEligibleForTryOn(map: JSONObject?, handle: String, productKeyMeta: String?): Boolean {
+        if (map == null || handle.isBlank()) return false
+        if (map.optJSONObject("handle_to_key")?.optString(handle)?.isNotBlank() == true) return true
+        if (map.optJSONObject("handle_design_map")?.has(handle) == true) return true
+        if (map.optJSONObject("mockups")?.has(handle) == true) return true
+        val pk = productKeyMeta?.takeIf { it.isNotBlank() }
+        if (pk != null && handle == pk && map.optJSONObject("mockups")?.has(pk) == true) return true
+        return false
     }
 
     /**

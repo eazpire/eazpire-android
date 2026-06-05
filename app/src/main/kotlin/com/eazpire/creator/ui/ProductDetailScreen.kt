@@ -491,6 +491,7 @@ fun ProductDetailScreen(
 
     var promoOverlay by remember(productHandle) { mutableStateOf<ShopifyProductsApi.ProductItem?>(null) }
     var mockupTryOnInfo by remember(productHandle) { mutableStateOf<MockupTryOnInfo?>(null) }
+    var mockPreviewMap by remember(productHandle) { mutableStateOf<org.json.JSONObject?>(null) }
     var productColorHexMap by remember(productHandle) { mutableStateOf<Map<String, String>>(emptyMap()) }
     var tryOnActive by remember(productHandle) { mutableStateOf(false) }
     var tryOnImageUrl by remember(productHandle) { mutableStateOf<String?>(null) }
@@ -523,31 +524,40 @@ fun ProductDetailScreen(
         }
     }
 
-    LaunchedEffect(productHandle, product?.productKey, product?.designIdMeta) {
+    LaunchedEffect(productHandle, product?.productKey, product?.designIdMeta, product?.tags) {
+        val sessionTryOn = CustomerMockPreviewStore.isTryOnSessionActive(context, productHandle)
+        val explicitlyOff = CustomerMockPreviewStore.isTryOnExplicitlyOff(context, productHandle)
         mockupTryOnInfo = null
+        mockPreviewMap = null
         productColorHexMap = emptyMap()
-        tryOnActive = false
         tryOnImageUrl = null
         mockGalleryUrls = emptyList()
+        mockGalleryCache.clear()
         tryOnLoading = false
         activePreviewMockIndex = 0
-        val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: run {
+            tryOnActive = false
+            return@LaunchedEffect
+        }
         val prod = product ?: return@LaunchedEffect
         try {
             val map = withContext(Dispatchers.IO) {
-                CustomerMockPreviewStore.peekMap(ownerId)
-                    ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+                CustomerMockPreviewStore.loadMap(creatorApi, ownerId, force = false)
                     ?: creatorApi.getCustomerMockupMap(ownerId, handle = productHandle)
             }
-            if (!map.optBoolean("ok", false)) return@LaunchedEffect
+            if (!map.optBoolean("ok", false)) {
+                tryOnActive = false
+                return@LaunchedEffect
+            }
+            mockPreviewMap = map
             mockupTryOnInfo = parseMockupTryOnInfo(
                 data = map,
                 handle = productHandle,
                 productKeyMeta = prod.productKey,
                 designIdMeta = prod.designIdMeta
             )
-            val info = mockupTryOnInfo ?: return@LaunchedEffect
-            if (isTryOnApparelProduct(info.productKey)) {
+            val info = mockupTryOnInfo
+            if (info != null && isTryOnApparelProduct(info.productKey)) {
                 val colorsResp = withContext(Dispatchers.IO) {
                     creatorApi.getColorVariants(info.productKey)
                 }
@@ -561,12 +571,18 @@ fun ProductDetailScreen(
                 prod.productKey,
                 prod.designIdMeta
             )
-            val sessionTryOn = CustomerMockPreviewStore.isTryOnSessionActive(context, productHandle)
-            if (mockupTryOnInfo != null && (autoActive || sessionTryOn)) {
-                tryOnActive = true
+            tryOnActive = CustomerMockPreviewStore.isTryOnDisplayActive(context, productHandle, autoActive)
+            if (tryOnActive && info != null) {
+                val cached = info.cachedByColor.values.filter { it.isNotBlank() }
+                if (cached.isNotEmpty()) {
+                    mockGalleryUrls = cached.distinct()
+                    tryOnImageUrl = mockGalleryUrls.firstOrNull()
+                }
             }
         } catch (_: Exception) {
             mockupTryOnInfo = null
+            mockPreviewMap = null
+            tryOnActive = false
         }
     }
 
@@ -604,6 +620,14 @@ fun ProductDetailScreen(
         }
         return
     }
+
+    val showTryOnButton = CustomerMockPreviewStore.shouldShowTryOnButton(
+        mockPreviewMap,
+        context,
+        productHandle,
+        p.productKey,
+        p.designIdMeta
+    )
 
     // Variant options — Paper → Color → other → Size (parity with web)
     val sortedOptions = remember(p.options) { ProductOptionSort.sort(p.options) }
@@ -719,9 +743,6 @@ fun ProductDetailScreen(
             tryOnImageUrl = null
             mockGalleryUrls = emptyList()
             tryOnLoading = false
-            if (tryOnOverlayMessage != null) {
-                kotlinx.coroutines.delay(280)
-            }
             tryOnOverlayMessage = null
             return@LaunchedEffect
         }
@@ -1081,8 +1102,7 @@ fun ProductDetailScreen(
                             Icon(Icons.Default.ChevronRight, contentDescription = null)
                         }
                     }
-                    mockupTryOnInfo?.let { info ->
-                        if (!isTryOnApparelProduct(info.productKey)) return@let
+                    if (showTryOnButton) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -1101,8 +1121,7 @@ fun ProductDetailScreen(
                                         t("eaz.pdp.try_on_overlay_off", "Taking off mock…")
                                     }
                                     tryOnActive = next
-                                    com.eazpire.creator.mockup.CustomerMockPreviewStore
-                                        .setTryOnSessionActive(context, productHandle, next)
+                                    CustomerMockPreviewStore.setTryOnSessionActive(context, productHandle, next)
                                 },
                             contentAlignment = Alignment.Center
                         ) {

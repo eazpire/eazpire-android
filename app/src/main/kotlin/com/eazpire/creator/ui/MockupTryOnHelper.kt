@@ -214,12 +214,15 @@ fun parseMockupTryOnInfo(
     var productKey = handleToKey?.optString(handle)?.takeIf { it.isNotBlank() }
 
     if (productKey.isNullOrBlank()) {
-        val keys = mockupsObj.keys()
-        while (keys.hasNext()) {
-            val k = keys.next()
-            if (handle == k || handle.endsWith("-$k")) {
-                productKey = k
-                break
+        val handleDesignMap = data.optJSONObject("handle_design_map")
+        if (handleDesignMap?.has(handle) == true) {
+            val keys = mockupsObj.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                if (handle == k || handle.endsWith("-$k")) {
+                    productKey = k
+                    break
+                }
             }
         }
     }
