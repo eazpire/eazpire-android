@@ -7,8 +7,11 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import org.json.JSONObject
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -47,6 +50,9 @@ class EazyChatStore(private val context: Context) {
 
     private val _designJobState = MutableStateFlow<DesignJobState?>(null)
     val designJobState: StateFlow<DesignJobState?> = _designJobState.asStateFlow()
+
+    private val _designSaveComplete = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val designSaveComplete: SharedFlow<String> = _designSaveComplete.asSharedFlow()
 
     /** Mirrors web localStorage eazy_fn_visibility: feature id → false = hidden in carousel. */
     private val _fnVisibility = MutableStateFlow<Map<String, Boolean>>(emptyMap())
@@ -155,6 +161,14 @@ class EazyChatStore(private val context: Context) {
 
     fun clearDesignJob() {
         _designJobState.value = null
+    }
+
+    /** Full save finished (inactive library row persisted) — notify Eazy modal to show saved notification. */
+    fun completeDesignSave(jobId: String) {
+        _designJobState.value = null
+        if (jobId.isNotBlank()) {
+            _designSaveComplete.tryEmit(jobId)
+        }
     }
 
     fun failDesignJob(message: String) {

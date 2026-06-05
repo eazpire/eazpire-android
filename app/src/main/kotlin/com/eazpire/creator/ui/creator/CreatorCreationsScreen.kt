@@ -88,6 +88,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -118,6 +119,8 @@ data class CreationDesign(
     val designType: String? = null,
     val contentType: String? = null,
     val libraryStatus: String = "active",
+    /** True while auto-save / save queue writes the inactive library row (show spinner overlay). */
+    val savingToLibrary: Boolean = false,
 )
 
 data class CreationProduct(
@@ -301,9 +304,26 @@ fun CreatorCreationsScreen(
                     val designsResult = withContext(Dispatchers.IO) {
                         val listRes = api.listDesigns(ownerId, 200)
                         val genRes = api.listGenerated(ownerId, 100)
+                        val jobsRes = api.listJobs(ownerId, 50)
                         val summaryRes = api.getPublishedSummary(ownerId, shop)
 
                         val savedJobIds = mutableSetOf<String>()
+                        val savingJobIds = mutableSetOf<String>()
+                        val savingKvJobs = mutableListOf<JSONObject>()
+                        (jobsRes.optJSONArray("items") ?: JSONArray()).let { arr ->
+                            for (i in 0 until arr.length()) {
+                                val obj = arr.optJSONObject(i) ?: continue
+                                val jid = obj.optString("job_id", "").trim()
+                                if (jid.isBlank()) continue
+                                val saving = obj.optBoolean("saving", false)
+                                val saved = obj.optBoolean("saved", false)
+                                val done = obj.optBoolean("done", false)
+                                if (saving && !saved) {
+                                    savingJobIds.add(jid)
+                                    if (done) savingKvJobs.add(obj)
+                                }
+                            }
+                        }
                         val merged = mutableListOf<CreationDesign>()
 
                         (listRes.optJSONArray("items") ?: JSONArray()).let { arr ->
@@ -321,8 +341,15 @@ fun CreatorCreationsScreen(
                                 val obj = arr.optJSONObject(i) ?: continue
                                 val jid = obj.optString("job_id", "").trim()
                                 if (jid.isNotBlank() && savedJobIds.contains(jid)) continue
-                                parseGeneratedCreationDesign(obj)?.let { merged.add(it) }
+                                parseGeneratedCreationDesign(obj, savingToLibrary = savingJobIds.contains(jid))?.let { merged.add(it) }
                             }
+                        }
+
+                        savingKvJobs.forEach { obj ->
+                            val jid = obj.optString("job_id", "").trim()
+                            if (jid.isBlank() || savedJobIds.contains(jid)) return@forEach
+                            if (merged.any { it.jobId == jid }) return@forEach
+                            parseKvSavingCreationDesign(obj)?.let { merged.add(it) }
                         }
 
                         val activityFiltered = merged.filter { d ->
@@ -419,6 +446,13 @@ fun CreatorCreationsScreen(
             designsLoading = false
             productsLoading = false
         }
+    }
+
+    LaunchedEffect(designs.any { it.savingToLibrary }, designsActivityFilter, ownerId) {
+        if (ownerId.isBlank() || designsActivityFilter != "inactive") return@LaunchedEffect
+        if (!designs.any { it.savingToLibrary }) return@LaunchedEffect
+        delay(3000)
+        designsRefreshTrigger++
     }
 
     val filteredDesigns = remember(designs, designsSearch.text, productsCountByDesignId, creationsFilter) {

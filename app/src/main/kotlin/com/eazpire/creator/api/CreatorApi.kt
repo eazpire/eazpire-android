@@ -429,6 +429,41 @@ class CreatorApi(
         mapOf("customer_id" to customerId)
     )
 
+    /** GET ?op=get-loyalty-status&customer_id=xxx — LoyaliTee stamp card status */
+    suspend fun getLoyaltyStatus(customerId: String): JSONObject = call(
+        "get-loyalty-status",
+        mapOf("customer_id" to customerId)
+    )
+
+    /** GET ?op=list-loyalitee-products — eligible Softstyle tees for reward picker */
+    suspend fun listLoyaliteeProducts(
+        limit: Int = 48,
+        offset: Int = 0,
+        q: String? = null
+    ): JSONObject = call(
+        "list-loyalitee-products",
+        buildMap {
+            put("limit", limit.toString())
+            put("offset", offset.toString())
+            if (!q.isNullOrBlank()) put("q", q)
+        }
+    )
+
+    /** POST ?op=redeem-loyalty-reward — reserve reward + discount code */
+    suspend fun redeemLoyaltyReward(
+        customerId: String,
+        rewardId: String,
+        productId: String,
+        variantId: String
+    ): JSONObject = postJsonBodyOp(
+        "redeem-loyalty-reward",
+        JSONObject()
+            .put("customer_id", customerId)
+            .put("reward_id", rewardId)
+            .put("product_id", productId)
+            .put("variant_id", variantId)
+    )
+
     /** POST ?op=revoke-promo-code Body: { customer_id, promo_id } */
     suspend fun revokePromoCode(customerId: String, promoId: String): JSONObject =
         postJson(

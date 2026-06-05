@@ -282,6 +282,8 @@ fun ShopScreen(
             try {
                 val r = withContext(Dispatchers.IO) { creatorPollApi.pollJob(jobId) }
                 val done = r.optBoolean("done")
+                val saved = r.optBoolean("saved")
+                val saving = r.optBoolean("saving")
                 val notFound = r.optBoolean("not_found")
                 if (!done) {
                     val progress = r.optInt("progress", 0)
@@ -294,8 +296,15 @@ fun ShopScreen(
                     eazyChatStore.failDesignJob(
                         r.optString("message", "").takeIf { it.isNotBlank() } ?: "Job not found"
                     )
+                } else if (saving && !saved) {
+                    val progress = r.optInt("progress", 90).coerceIn(0, 99)
+                    val msg = r.optString("message", "").takeIf { it.isNotBlank() }
+                    eazyChatStore.updateDesignJobPoll(progress, msg ?: "Saving…")
+                    delay(2000)
+                    continue
+                } else if (saved) {
+                    eazyChatStore.completeDesignSave(jobId)
                 } else {
-                    // KV list shows save phase; drop local overlay once generate finishes.
                     eazyChatStore.clearDesignJob()
                 }
                 break

@@ -280,6 +280,34 @@ private fun extractNotificationPreviewUrl(notification: JSONObject): String? {
     return null
 }
 
+private fun extractJobIdFromNotificationId(notificationId: String): String? {
+    val raw = notificationId.removePrefix("api-")
+    if (raw.startsWith("generated-")) return raw.removePrefix("generated-")
+    if (raw.startsWith("saved-")) return raw.removePrefix("saved-")
+    return null
+}
+
+private fun pendingSaveJobIdsFromKv(jobsR: JSONObject): Set<String> {
+    val pending = mutableSetOf<String>()
+    if (!jobsR.optBoolean("ok", false)) return pending
+    (jobsR.optJSONArray("items") ?: JSONArray()).let { arr ->
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val jid = o.optString("job_id", "").trim()
+            if (jid.isBlank()) continue
+            if (o.optBoolean("done", false) && !o.optBoolean("saved", false)) pending.add(jid)
+        }
+    }
+    return pending
+}
+
+private fun shouldHideGeneratedNotification(row: EazyNotifRow, pendingSave: Set<String>): Boolean {
+    val cat = row.category?.lowercase()?.trim().orEmpty()
+    if (cat != "generated") return false
+    val jid = extractJobIdFromNotificationId(row.id) ?: return false
+    return pendingSave.contains(jid)
+}
+
 private fun parseNotifications(
     arr: JSONArray,
     isSystem: Boolean = false,
@@ -613,8 +641,11 @@ fun EazyChatModal(
                 val userR = withContext(Dispatchers.IO) { api.getNotifications(oid) }
                 val crR = withContext(Dispatchers.IO) { api.getSystemNotifications(oid, "creator") }
                 val shR = withContext(Dispatchers.IO) { api.getSystemNotifications(oid, "shop") }
+                val jobsR = withContext(Dispatchers.IO) { api.listJobs(oid, 50) }
+                val pendingSave = pendingSaveJobIdsFromKv(jobsR)
                 notifsUser = if (userR.optBoolean("ok", false)) {
                     parseNotifications(userR.optJSONArray("notifications") ?: JSONArray())
+                        .filter { !shouldHideGeneratedNotification(it, pendingSave) }
                 } else emptyList()
                 notifsSysCreator = if (crR.optBoolean("ok", false)) {
                     parseNotifications(crR.optJSONArray("notifications") ?: JSONArray(), true, "creator")
@@ -650,6 +681,16 @@ fun EazyChatModal(
 
     LaunchedEffect(visible, selectedTab, ownerId) {
         if (visible && selectedTab == EazySidebarTab.Notifications && ownerId != null) {
+            loadNotificationsList()
+        }
+    }
+
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
+        chatStore.designSaveComplete.collect {
+            selectedTab = EazySidebarTab.Notifications
+            notifFilter = "unread"
+            delay(2000)
             loadNotificationsList()
         }
     }

@@ -202,10 +202,38 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
         designType = meta.optString("design_type", "").takeIf { it.isNotBlank() }?.lowercase(),
         contentType = ct,
         libraryStatus = ls,
+        savingToLibrary = obj.optBoolean("saving_to_library", false),
     )
 }
 
-fun parseGeneratedCreationDesign(obj: JSONObject): CreationDesign? {
+fun parseKvSavingCreationDesign(obj: JSONObject): CreationDesign? {
+    val preview = obj.optJSONObject("result")?.optString("preview_url").orEmpty()
+        .ifBlank { obj.optJSONObject("result")?.optString("image_url").orEmpty() }
+        .ifBlank { obj.optString("preview_url", "") }
+        .ifBlank { obj.optString("image_url", "") }
+    if (preview.isBlank()) return null
+    return CreationDesign(
+        id = null,
+        designId = null,
+        jobId = obj.optString("job_id", "").takeIf { it.isNotBlank() },
+        imageUrl = preview,
+        previewUrl = preview,
+        originalUrl = preview,
+        title = obj.optString("prompt", obj.optString("title", "Design")).take(80),
+        prompt = obj.optString("prompt").takeIf { it.isNotBlank() },
+        designPrompt = obj.optString("design_prompt").takeIf { it.isNotBlank() },
+        createdAt = (obj.opt("finished") as? Number)?.toLong()
+            ?: (obj.opt("started") as? Number)?.toLong() ?: System.currentTimeMillis(),
+        source = "generated",
+        designSource = "Generated",
+        creatorName = obj.optString("creator_name", "").takeIf { it.isNotBlank() },
+        productsCount = 0,
+        libraryStatus = "inactive",
+        savingToLibrary = true,
+    )
+}
+
+fun parseGeneratedCreationDesign(obj: JSONObject, savingToLibrary: Boolean = false): CreationDesign? {
     val preview = obj.optString("preview_url", "")
         .ifBlank { obj.optJSONObject("result")?.optString("preview_url").orEmpty() }
         .ifBlank { obj.optJSONObject("result")?.optString("image_url").orEmpty() }
@@ -230,6 +258,7 @@ fun parseGeneratedCreationDesign(obj: JSONObject): CreationDesign? {
         creatorName = obj.optString("creator_name", "").takeIf { it.isNotBlank() },
         productsCount = 0,
         libraryStatus = "inactive",
+        savingToLibrary = savingToLibrary,
     )
 }
 
@@ -693,6 +722,28 @@ fun CreationDesignGridCard(
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                 )
+            }
+        }
+        if (design.savingToLibrary) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color(0xFF0F172A).copy(alpha = 0.62f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        color = EazColors.Orange,
+                        strokeWidth = 3.dp,
+                    )
+                    Text(
+                        text = "Saving…",
+                        color = Color.White.copy(alpha = 0.92f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
         }
     }

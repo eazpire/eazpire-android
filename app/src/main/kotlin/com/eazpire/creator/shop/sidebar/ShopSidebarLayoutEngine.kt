@@ -1,5 +1,7 @@
 package com.eazpire.creator.shop.sidebar
 
+import com.eazpire.creator.ui.nav.EazNavTablerIcons
+
 private const val SHOP_ORIGIN = "https://www.eazpire.com"
 
 private val AUD_ORDER =
@@ -61,8 +63,8 @@ object ShopSidebarLayoutEngine {
                 GroupedCategorySection(
                     ShopSidebarConstants.CONTAINER_HOME_DECOR,
                     "eaz.sidebar.home_decor",
-                    "🏠",
-                    groupedTilesFor(roots, ShopSidebarConstants.homeDecorHandles.toSet(), "home-decor") { emojiHomeDecor(it) },
+                    EazNavTablerIcons.iconNameForHandle("home-living"),
+                    groupedTilesFor(roots, ShopSidebarConstants.homeDecorHandles.toSet(), "home-decor") { iconForHandle(it) },
                     true,
                     order++,
                 )
@@ -72,8 +74,8 @@ object ShopSidebarLayoutEngine {
                 GroupedCategorySection(
                     ShopSidebarConstants.CONTAINER_LIFESTYLE,
                     "eaz.sidebar.lifestyle",
-                    "✨",
-                    groupedTilesFor(roots, ShopSidebarConstants.lifestyleHandles.toSet(), "lifestyle") { emojiLifestyle(it) },
+                    EazNavTablerIcons.iconNameForHandle("sparkle"),
+                    groupedTilesFor(roots, ShopSidebarConstants.lifestyleHandles.toSet(), "lifestyle") { iconForHandle(it) },
                     true,
                     order++,
                 )
@@ -83,8 +85,8 @@ object ShopSidebarLayoutEngine {
                 GroupedCategorySection(
                     ShopSidebarConstants.CONTAINER_TECH,
                     "eaz.sidebar.tech",
-                    "📱",
-                    groupedTilesFor(roots, ShopSidebarConstants.techHandles.toSet(), "tech") { emojiTech(it) },
+                    EazNavTablerIcons.iconNameForHandle("tech"),
+                    groupedTilesFor(roots, ShopSidebarConstants.techHandles.toSet(), "tech") { iconForHandle(it) },
                     true,
                     order++,
                 )
@@ -159,13 +161,13 @@ object ShopSidebarLayoutEngine {
 
     private fun childTile(parentContainer: String, child: ParsedNavItem): CategoryTile {
         val midId = "${parentContainer}--${child.handle}"
-        val emoji = emojiChildMid(child.handle)
+        val iconId = iconForHandle(child.handle)
         return if (hasRealChildSubitems(child)) {
             CategoryTile(
                 midId = midId,
                 titleRaw = child.title,
                 navTitleKey = navUiTranslationKey(child.handle),
-                emoji = emoji,
+                emoji = iconId,
                 expandable = true,
                 leafUrl = null,
                 expandCells =
@@ -184,7 +186,7 @@ object ShopSidebarLayoutEngine {
                 midId = midId,
                 titleRaw = child.title,
                 navTitleKey = navUiTranslationKey(child.handle),
-                emoji = emoji,
+                emoji = iconId,
                 expandable = false,
                 leafUrl = normalizeUrl(child.url),
                 expandCells = emptyList(),
@@ -410,9 +412,11 @@ object ShopSidebarLayoutEngine {
             title = aud.title,
             collectionUrl = url,
             navTitleKey = navUiTranslationKey(h),
-            emoji = emojiAudience(h),
+            emoji = iconForHandle(h),
         )
     }
+
+    private fun iconForHandle(raw: String): String = EazNavTablerIcons.iconNameForHandle(raw)
 
     private fun normalizeUrl(raw: String): String {
         val u = raw.trim()
@@ -430,61 +434,5 @@ object ShopSidebarLayoutEngine {
     private fun collectionHrefFiltered(handle: String, q: String) =
         normalizeUrl("/collections/$handle").let { url ->
             if (q.isBlank()) url else "$url?$q"
-        }
-
-    private fun emojiAudience(handle: String) =
-        when (handle) {
-            "women", "female", "frauen" -> "👩"
-            "men", "male", "manner" -> "👨"
-            "kids", "kinder" -> "🧒"
-            "toddler", "babys", "baby" -> "👶"
-            else -> "👤"
-        }
-
-    private fun emojiHomeDecor(h: String): String =
-        when (ShopSidebarConstants.normalizeHandleLite(h)) {
-            "drinkware" -> "☕"
-            "wall-art" -> "🖼️"
-            "home-living", "home-&-living" -> "🏡"
-            "plush-toys" -> "🧸"
-            "stationery" -> "📝"
-            else -> "📦"
-        }
-
-    private fun emojiLifestyle(h: String): String =
-        when (ShopSidebarConstants.normalizeHandleLite(h)) {
-            "bags", "taschen" -> "👜"
-            "jewelry", "schmuck" -> "💍"
-            else -> "📦"
-        }
-
-    private fun emojiTech(h: String): String =
-        when (ShopSidebarConstants.normalizeHandleLite(h)) {
-            "phone-cases", "handyhullen" -> "📱"
-            "tech" -> "💻"
-            else -> "📱"
-        }
-
-    private fun emojiChildMid(h: String): String =
-        when (ShopSidebarConstants.normalizeHandleLite(h)) {
-            "t-shirts" -> "👕"
-            "hoodies" -> "🧥"
-            "sweatshirts" -> "🧶"
-            "tank-tops" -> "🎽"
-            "crop-tops" -> "👚"
-            "long-sleeves" -> "👔"
-            "jackets", "coats" -> "🧥"
-            "shorts" -> "🩳"
-            "joggers", "pants", "jeans" -> "👖"
-            "dresses" -> "👗"
-            "socks" -> "🧦"
-            "shoes", "schuhe" -> "👟"
-            "bags", "taschen" -> "👜"
-            "accessories", "accessoires" -> "👜"
-            "jewelry", "schmuck" -> "💍"
-            "deals" -> "🏷️"
-            "new-arrivals" -> "⭐"
-            "bestsellers" -> "🔥"
-            else -> "📦"
         }
 }

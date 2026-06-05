@@ -329,10 +329,11 @@ suspend fun buildMockGalleryUrlsForColor(
 ): List<String> {
     if (maxViews <= 0) return emptyList()
     val out = linkedSetOf<String>()
+    val colorHex = resolveProductColorHex(colorName, productColorMap)
     for (i in 0 until maxViews) {
         val slice = info.forColorIndex(handle, i)
-        val cached = slice.cachedByColor.values.firstOrNull { it.isNotBlank() }
-            ?: slice.cachedByColor[resolveProductColorHex(colorName, productColorMap)]
+        // Only the selected color — never reuse another variant's cached mock on color change.
+        val cached = slice.cachedByColor[colorHex]
         when {
             !cached.isNullOrBlank() -> out.add(cached)
             else -> resolveMockupImageUrl(slice, colorName, ownerId, productColorMap)?.let { out.add(it) }
