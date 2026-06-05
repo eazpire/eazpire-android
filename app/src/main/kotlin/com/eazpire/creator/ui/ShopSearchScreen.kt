@@ -292,9 +292,7 @@ private fun ShopSearchProductCard(
     }
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        modifier = modifier.fillMaxWidth()
     ) {
         Box(
             modifier = Modifier
@@ -302,6 +300,7 @@ private fun ShopSearchProductCard(
                 .aspectRatio(4f / 5f)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFFF5F5F5))
+                .clickable(onClick = onClick)
         ) {
             if (display.urls.isNotEmpty()) {
                 com.eazpire.creator.ui.components.EazProductCardRotatingImages(
@@ -346,7 +345,9 @@ private fun ShopSearchProductCard(
             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .clickable(onClick = onClick)
         )
         if (product.price > 0) {
             Text(

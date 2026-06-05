@@ -1255,8 +1255,6 @@ fun ShopScreen(
         translationStore = translationStore,
         initialTab = voucherModalInitialTab,
         onOpenProduct = { handle ->
-            voucherModalVisible = false
-            voucherModalInitialTab = null
             productModalHandleState.value = handle
         },
     )
