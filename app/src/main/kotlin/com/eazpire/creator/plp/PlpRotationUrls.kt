@@ -5,19 +5,20 @@ import org.json.JSONArray
 
 /**
  * PLP mock rotation URL list (parity with theme eaz-product-card-redesign.liquid
- * and worker getShopifyProducts.buildRotationImageUrls).
+ * and worker buildPlpRotationUrls).
  */
 data class PlpRotationBuild(
     val urls: List<String>,
-    /** Color label per [urls] entry (from image alt), for personalized mock lookup. */
+    /** Color/group label per [urls] entry (from image alt), for personalized mock lookup. */
     val colorNames: List<String>,
 )
 
 object PlpRotationUrls {
 
     private const val MAX_SLOTS = 24
+    private val APPAREL_VIEW_HINTS = setOf("back", "right", "left", "folded", "detail")
 
-    fun fromProductJsonImages(imagesArr: JSONArray?): PlpRotationBuild {
+    fun fromProductJsonImages(imagesArr: JSONArray?, productKey: String? = null): PlpRotationBuild {
         if (imagesArr == null || imagesArr.length() == 0) return PlpRotationBuild(emptyList(), emptyList())
         val images = (0 until imagesArr.length()).mapNotNull { i ->
             val img = imagesArr.optJSONObject(i) ?: return@mapNotNull null
@@ -25,11 +26,88 @@ object PlpRotationUrls {
             val alt = img.optString("alt", "").trim()
             ShopifyProductsApi.ProductImage(src = src, variantIds = emptyList(), alt = alt.ifBlank { null })
         }
-        return fromProductImages(images)
+        return fromProductImages(images, productKey)
     }
 
-    fun fromProductImages(images: List<ShopifyProductsApi.ProductImage>): PlpRotationBuild {
+    fun isPhotopaperLikeProductKey(productKey: String?): Boolean {
+        val pk = productKey?.trim()?.lowercase().orEmpty()
+        if (pk.isBlank()) return false
+        if (pk.contains("photopaper")) return true
+        if (pk.contains("poster") && !pk.contains("frame")) return true
+        return false
+    }
+
+    private fun isPhotopaperLikeAltLayout(images: List<ShopifyProductsApi.ProductImage>): Boolean {
+        var hasStructured = false
+        for (pi in images) {
+            val alt = (pi.alt ?: "").trim()
+            if (!alt.contains("|")) continue
+            hasStructured = true
+            val view = alt.split("|").getOrNull(1)?.trim()?.lowercase().orEmpty()
+            if (view.isBlank()) continue
+            if (APPAREL_VIEW_HINTS.any { h -> view == h || view.startsWith(h) }) return false
+        }
+        if (!hasStructured) return false
+        return images.any { pi ->
+            val alt = (pi.alt ?: "").trim().lowercase()
+            alt.contains("context_1") || alt.contains("context_2")
+        }
+    }
+
+    private fun shouldUsePhotopaperSizeRotation(
+        images: List<ShopifyProductsApi.ProductImage>,
+        productKey: String?,
+    ): Boolean = isPhotopaperLikeProductKey(productKey) || isPhotopaperLikeAltLayout(images)
+
+    private fun buildPhotopaperRotationUrls(images: List<ShopifyProductsApi.ProductImage>): PlpRotationBuild {
+        val usedGroups = linkedSetOf<String>()
+        val seenUrls = linkedSetOf<String>()
+        val urls = mutableListOf<String>()
+        val colorNames = mutableListOf<String>()
+
+        fun tryAdd(pi: ShopifyProductsApi.ProductImage, groupKey: String): Boolean {
+            if (urls.size >= MAX_SLOTS || groupKey.isBlank() || groupKey in usedGroups) return false
+            val src = pi.src.trim()
+            if (src.isBlank() || src in seenUrls) return false
+            usedGroups.add(groupKey)
+            seenUrls.add(src)
+            urls.add(src)
+            colorNames.add(pi.alt?.split("|")?.firstOrNull()?.trim().orEmpty())
+            return true
+        }
+
+        for (pi in images) {
+            val alt = (pi.alt ?: "").trim()
+            if (!alt.contains("preview-default", ignoreCase = true)) continue
+            val groupKey = alt.split("|").firstOrNull()?.trim()?.lowercase().orEmpty()
+            tryAdd(pi, groupKey)
+        }
+
+        if (urls.size < 2) {
+            for (pi in images) {
+                val alt = (pi.alt ?: "").trim()
+                if (!alt.contains("|")) continue
+                val parts = alt.split("|")
+                val groupKey = parts.getOrNull(0)?.trim()?.lowercase().orEmpty()
+                val view = parts.getOrNull(1)?.trim()?.lowercase().orEmpty()
+                if (view != "front" && !view.startsWith("front")) continue
+                tryAdd(pi, groupKey)
+            }
+        }
+
+        return PlpRotationBuild(urls, colorNames)
+    }
+
+    fun fromProductImages(
+        images: List<ShopifyProductsApi.ProductImage>,
+        productKey: String? = null,
+    ): PlpRotationBuild {
         if (images.isEmpty()) return PlpRotationBuild(emptyList(), emptyList())
+
+        if (shouldUsePhotopaperSizeRotation(images, productKey)) {
+            val photopaper = buildPhotopaperRotationUrls(images)
+            if (photopaper.urls.size >= 1) return photopaper
+        }
 
         var primaryView = ""
         var primaryColor = ""
@@ -86,11 +164,10 @@ object PlpRotationUrls {
         if (urls.size >= 2) return PlpRotationBuild(urls, colorNames)
 
         if (!isSingleColor) {
-            val seenVariant = linkedSetOf<Long>()
             for (pi in images) {
                 if (urls.size >= MAX_SLOTS) break
                 val src = pi.src.trim()
-            if (src.isBlank()) continue
+                if (src.isBlank()) continue
                 val alt = (pi.alt ?: "").trim()
                 if (!alt.contains("|")) continue
                 val parts = alt.split("|")
@@ -106,7 +183,7 @@ object PlpRotationUrls {
             val fallback = images.map { it.src.trim() }.filter { it.isNotBlank() }.distinct().take(MAX_SLOTS)
             return PlpRotationBuild(
                 urls = fallback,
-                colorNames = List(fallback.size) { "" }
+                colorNames = List(fallback.size) { "" },
             )
         }
 

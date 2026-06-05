@@ -116,6 +116,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import com.eazpire.creator.pricing.QuantityDiscount
+import com.eazpire.creator.util.ProductOptionSort
+import com.eazpire.creator.util.ProductOptionSort.Kind
 import com.eazpire.creator.util.SizeAiProductTypeMapper
 import com.eazpire.creator.util.matchShopifySizeOption
 import kotlinx.coroutines.Dispatchers
@@ -533,7 +535,9 @@ fun ProductDetailScreen(
         val prod = product ?: return@LaunchedEffect
         try {
             val map = withContext(Dispatchers.IO) {
-                creatorApi.getCustomerMockupMap(ownerId, handle = productHandle)
+                CustomerMockPreviewStore.peekMap(ownerId)
+                    ?: CustomerMockPreviewStore.loadMap(creatorApi, ownerId)
+                    ?: creatorApi.getCustomerMockupMap(ownerId, handle = productHandle)
             }
             if (!map.optBoolean("ok", false)) return@LaunchedEffect
             mockupTryOnInfo = parseMockupTryOnInfo(
@@ -601,11 +605,30 @@ fun ProductDetailScreen(
         return
     }
 
-    // Color/Size options – wie Web
-    val colorOption = p.options.find { it.name.equals("Color", ignoreCase = true) || it.name.equals("Colour", ignoreCase = true) || it.name.equals("Farbe", ignoreCase = true) }
-    val sizeOption = p.options.find { it.name.equals("Size", ignoreCase = true) || it.name.equals("Größe", ignoreCase = true) || it.name.equals("Groesse", ignoreCase = true) }
-    var selectedColor by remember { mutableStateOf(colorOption?.values?.firstOrNull() ?: "") }
-    var selectedSize by remember { mutableStateOf(sizeOption?.values?.firstOrNull() ?: "") }
+    // Variant options — Paper → Color → other → Size (parity with web)
+    val sortedOptions = remember(p.options) { ProductOptionSort.sort(p.options) }
+    val colorOption = p.options.find { ProductOptionSort.kindForName(it.name) == Kind.COLOR }
+    val sizeOption = p.options.find { ProductOptionSort.kindForName(it.name) == Kind.SIZE }
+    val sizeOptionIndex = p.options.indexOfFirst { ProductOptionSort.kindForName(it.name) == Kind.SIZE }
+    var selectedByIndex by remember(p.id) {
+        mutableStateOf(
+            p.options.indices.associateWith { idx ->
+                listOfNotNull(
+                    p.variants.firstOrNull()?.option1,
+                    p.variants.firstOrNull()?.option2,
+                    p.variants.firstOrNull()?.option3,
+                ).getOrNull(idx).orEmpty()
+            },
+        )
+    }
+    val selectedColor = colorOption?.let { opt ->
+        val idx = p.options.indexOfFirst { it.name == opt.name }
+        if (idx >= 0) selectedByIndex[idx].orEmpty() else ""
+    }.orEmpty()
+    val selectedSize = sizeOption?.let { opt ->
+        val idx = p.options.indexOfFirst { it.name == opt.name }
+        if (idx >= 0) selectedByIndex[idx].orEmpty() else ""
+    }.orEmpty()
     var initialVariantApplied by remember(productHandle, favoriteEdit?.initialVariantId) { mutableStateOf(false) }
     var userOverrodeSize by remember(productHandle) { mutableStateOf(false) }
     var sizeAiHint by remember(productHandle) { mutableStateOf<String?>(null) }
@@ -622,8 +645,7 @@ fun ProductDetailScreen(
             ?: return@LaunchedEffect
         val variant = p.variants.find { it.id == vid } ?: return@LaunchedEffect
         val optionValues = listOfNotNull(variant.option1, variant.option2, variant.option3)
-        colorOption?.values?.firstOrNull { ov -> optionValues.any { it.equals(ov, true) } }?.let { selectedColor = it }
-        sizeOption?.values?.firstOrNull { ov -> optionValues.any { it.equals(ov, true) } }?.let { selectedSize = it }
+        selectedByIndex = p.options.indices.associateWith { idx -> optionValues.getOrNull(idx).orEmpty() }
         initialVariantApplied = true
         userOverrodeSize = true
     }
@@ -635,6 +657,7 @@ fun ProductDetailScreen(
         userOverrodeSize
     ) {
         if (favoriteEdit != null || userOverrodeSize) return@LaunchedEffect
+        if (sizeOptionIndex < 0) return@LaunchedEffect
         val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val opt = sizeOption ?: return@LaunchedEffect
         val typeKey = SizeAiProductTypeMapper.resolve(p.productKey, p.productType) ?: return@LaunchedEffect
@@ -646,18 +669,16 @@ fun ProductDetailScreen(
             val rec = resp.optJSONObject("recommendation") ?: return@LaunchedEffect
             val sizeStr = rec.optString("size").takeIf { it.isNotBlank() } ?: return@LaunchedEffect
             val matched = matchShopifySizeOption(opt.values, sizeStr) ?: return@LaunchedEffect
-            selectedSize = matched
+            selectedByIndex = selectedByIndex.toMutableMap().apply { put(sizeOptionIndex, matched) }
             sizeAiHint = "Recommended by Size AI"
         } catch (_: Exception) {
         }
     }
 
-    // Resolve variant by selected color/size
-    val selectedVariant = remember(selectedColor, selectedSize, p.variants) {
+    val selectedVariant = remember(selectedByIndex, p.variants) {
         p.variants.find { v ->
-            val matchColor = colorOption == null || v.option1.equals(selectedColor, true) || v.option2.equals(selectedColor, true) || v.option3.equals(selectedColor, true)
-            val matchSize = sizeOption == null || v.option1.equals(selectedSize, true) || v.option2.equals(selectedSize, true) || v.option3.equals(selectedSize, true)
-            matchColor && matchSize
+            val vals = listOfNotNull(v.option1, v.option2, v.option3)
+            p.options.indices.all { idx -> vals.getOrNull(idx).equals(selectedByIndex[idx], true) }
         } ?: p.variants.firstOrNull()
     }
     val price = selectedVariant?.price?.takeIf { it > 0.0 }
@@ -1060,7 +1081,8 @@ fun ProductDetailScreen(
                             Icon(Icons.Default.ChevronRight, contentDescription = null)
                         }
                     }
-                    mockupTryOnInfo?.let { _ ->
+                    mockupTryOnInfo?.let { info ->
+                        if (!isTryOnApparelProduct(info.productKey)) return@let
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -1095,92 +1117,145 @@ fun ProductDetailScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Mobile options (order 3) – Color, Size, Stock
+            // Mobile options (order 3) — Paper → Color → other → Size
             Column(modifier = Modifier.padding(horizontal = 8.dp)) {
-                if (colorOption != null) {
-                    Text(
-                        "${colorOption.name} $selectedColor",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                        color = EazColors.TextPrimary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(bottom = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        colorOption.values.forEach { value ->
-                            val isActive = value.equals(selectedColor, ignoreCase = true)
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(colorForName(value))
-                                    .border(2.dp, if (isActive) EazColors.Orange else Color.Transparent, CircleShape)
-                                    .clickable { selectedColor = value }
+                sortedOptions.forEach { entry ->
+                    val optionIndex = entry.shopifyIndex
+                    val option = entry.option
+                    val selectedValue = selectedByIndex[optionIndex].orEmpty()
+                    when (entry.kind) {
+                        Kind.COLOR -> {
+                            Text(
+                                "${option.name} $selectedValue",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                color = EazColors.TextPrimary,
+                                modifier = Modifier.padding(bottom = 6.dp),
                             )
-                        }
-                    }
-                }
-                if (sizeOption != null) {
-                    Text(
-                        sizeOption.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                        color = EazColors.TextPrimary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(bottom = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        sizeOption.values.forEach { value ->
-                            val isActive = value.equals(selectedSize, ignoreCase = true)
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (isActive) EazColors.TextPrimary
-                                        else Color.White
-                                    )
-                                    .border(
-                                        width = if (sizeAiHint != null && isActive) 2.dp else 1.5.dp,
-                                        color = when {
-                                            sizeAiHint != null && isActive -> EazColors.Orange
-                                            isActive -> EazColors.TextPrimary
-                                            else -> Color(0xFFDDDDDD)
-                                        },
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable {
-                                        userOverrodeSize = true
-                                        sizeAiHint = null
-                                        selectedSize = value
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(bottom = 14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
+                                option.values.forEach { value ->
+                                    val isActive = value.equals(selectedValue, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(colorForName(value))
+                                            .border(2.dp, if (isActive) EazColors.Orange else Color.Transparent, CircleShape)
+                                            .clickable {
+                                                selectedByIndex = selectedByIndex.toMutableMap().apply { put(optionIndex, value) }
+                                            },
+                                    )
+                                }
+                            }
+                        }
+                        Kind.SIZE -> {
+                            Text(
+                                option.name,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                color = EazColors.TextPrimary,
+                                modifier = Modifier.padding(bottom = 6.dp),
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(bottom = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                option.values.forEach { value ->
+                                    val isActive = value.equals(selectedValue, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isActive) EazColors.TextPrimary
+                                                else Color.White,
+                                            )
+                                            .border(
+                                                width = if (sizeAiHint != null && isActive) 2.dp else 1.5.dp,
+                                                color = when {
+                                                    sizeAiHint != null && isActive -> EazColors.Orange
+                                                    isActive -> EazColors.TextPrimary
+                                                    else -> Color(0xFFDDDDDD)
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                            )
+                                            .clickable {
+                                                userOverrodeSize = true
+                                                sizeAiHint = null
+                                                selectedByIndex = selectedByIndex.toMutableMap().apply { put(optionIndex, value) }
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    ) {
+                                        Text(
+                                            value,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal,
+                                            color = if (isActive) Color.White else EazColors.TextPrimary,
+                                        )
+                                    }
+                                }
+                            }
+                            sizeAiHint?.let { hint ->
                                 Text(
-                                    value,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal,
-                                    color = if (isActive) Color.White else EazColors.TextPrimary
+                                    text = hint,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = EazColors.Orange,
+                                    modifier = Modifier.padding(bottom = 8.dp),
                                 )
                             }
                         }
-                    }
-                    sizeAiHint?.let { hint ->
-                        Text(
-                            text = hint,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EazColors.Orange,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                        Kind.PAPER, Kind.OTHER -> {
+                            Text(
+                                option.name,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                color = EazColors.TextPrimary,
+                                modifier = Modifier.padding(bottom = 6.dp),
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(bottom = 14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                option.values.forEach { value ->
+                                    val isActive = value.equals(selectedValue, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isActive) EazColors.TextPrimary
+                                                else Color.White,
+                                            )
+                                            .border(
+                                                width = 1.5.dp,
+                                                color = if (isActive) EazColors.TextPrimary else Color(0xFFDDDDDD),
+                                                shape = RoundedCornerShape(8.dp),
+                                            )
+                                            .clickable {
+                                                selectedByIndex = selectedByIndex.toMutableMap().apply { put(optionIndex, value) }
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    ) {
+                                        Text(
+                                            value,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal,
+                                            color = if (isActive) Color.White else EazColors.TextPrimary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 // Stock

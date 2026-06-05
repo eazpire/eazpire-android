@@ -20,11 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.MonetizationOn
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.RequestPage
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,13 +37,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.creator.ui.nav.EazModalTablerIcon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -71,11 +66,11 @@ fun CreatorSalesModal(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val tabs = listOf(
-        SalesTabItem(translationStore.t("creator.sales_modal.screen_overview", "Overview"), Icons.Default.MonetizationOn),
-        SalesTabItem(translationStore.t("creator.sales_modal.screen_earnings", "Sales"), Icons.Default.ShoppingCart),
-        SalesTabItem(translationStore.t("creator.sales_modal.screen_network", "Community"), Icons.Default.Groups),
-        SalesTabItem(translationStore.t("creator.sales_modal.screen_payouts", "Payouts"), Icons.Default.Payments),
-        SalesTabItem(translationStore.t("creator.sales_modal.screen_request", "Request payout"), Icons.Default.RequestPage)
+        SalesTabItem(translationStore.t("creator.sales_modal.screen_overview", "Overview"), "overview"),
+        SalesTabItem(translationStore.t("creator.sales_modal.screen_earnings", "Sales"), "earnings"),
+        SalesTabItem(translationStore.t("creator.sales_modal.screen_network", "Community"), "network"),
+        SalesTabItem(translationStore.t("creator.sales_modal.screen_payouts", "Payouts"), "payouts"),
+        SalesTabItem(translationStore.t("creator.sales_modal.screen_request", "Request payout"), "request")
     )
 
     LaunchedEffect(ownerId) {
@@ -118,10 +113,10 @@ fun CreatorSalesModal(
             ) {
                 tabs.forEachIndexed { i, tab ->
                     val isActive = i == currentTab
-                    Icon(
-                        tab.icon,
-                        contentDescription = tab.label,
+                    EazModalTablerIcon(
+                        tabId = tab.tabId,
                         tint = if (isActive) EazColors.Orange else Color.White.copy(alpha = 0.7f),
+                        iconSize = 22.dp,
                         modifier = Modifier
                             .size(40.dp)
                             .background(
@@ -189,7 +184,7 @@ fun CreatorSalesModal(
     }
 }
 
-private data class SalesTabItem(val label: String, val icon: ImageVector)
+private data class SalesTabItem(val label: String, val tabId: String)
 
 @Composable
 private fun SlmOverviewScreen(

@@ -295,8 +295,11 @@ class ShopifyProductsApi(
     private fun filterVariantImages(imagesArr: JSONArray): List<String> =
         PlpRotationUrls.fromProductJsonImages(imagesArr).urls
 
-    private fun shopCardUrlsFromProductImages(images: List<ProductImage>): List<String> =
-        PlpRotationUrls.fromProductImages(images).urls
+    private fun shopCardUrlsFromProductImages(
+        images: List<ProductImage>,
+        productKey: String? = null,
+    ): List<String> =
+        PlpRotationUrls.fromProductImages(images, productKey).urls
 
     /**
      * Same image URL list as shop [ProductItem.variantImages] / [CollectionScreen] cards:
@@ -319,7 +322,7 @@ class ShopifyProductsApi(
                 return@withContext if (v.isNotEmpty()) v else imgs
             }
             val detail = parseProductDetail(productObj, handle) ?: return@withContext emptyList()
-            shopCardUrlsFromProductImages(detail.images)
+            shopCardUrlsFromProductImages(detail.images, detail.productKey)
         } catch (_: Exception) {
             emptyList()
         }
@@ -351,7 +354,7 @@ class ShopifyProductsApi(
         if (images.isEmpty()) return null
 
         val rotation = if (imagesArr != null) {
-            PlpRotationUrls.fromProductJsonImages(imagesArr)
+            PlpRotationUrls.fromProductJsonImages(imagesArr, obj.optString("product_key", null).takeIf { it.isNotBlank() })
         } else {
             PlpRotationUrls.fromProductImages(
                 images.map { src -> ProductImage(src = src, variantIds = emptyList()) }
@@ -608,6 +611,8 @@ class ShopifyProductsApi(
             }
         }
 
+        val tagsRaw = obj.optString("tags", "").trim()
+        val tagsList = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
         val productKey = obj.optJSONObject("metafields")
             ?.optJSONObject("custom")
             ?.optJSONObject("product_key")
@@ -618,8 +623,14 @@ class ShopifyProductsApi(
                     (arr.optJSONObject(i)?.takeIf { it.optString("namespace") == "custom" && it.optString("key") == "product_key" })
                 }.firstOrNull()?.optString("value")?.takeIf { it.isNotBlank() }
             }
-        val tagsRaw = obj.optString("tags", "").trim()
-        val tagsList = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            ?: tagsList.firstOrNull { it.startsWith("product_key:", ignoreCase = true) }
+                ?.substringAfter(":")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        val designIdFromTags = tagsList.firstOrNull { it.startsWith("design_id:", ignoreCase = true) }
+            ?.substringAfter(":")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
         val vendorStr = obj.optString("vendor", "")
         return ProductDetail(
             id = obj.optLong("id", 0L),
@@ -635,7 +646,7 @@ class ShopifyProductsApi(
             productKey = productKey,
             tags = tagsList,
             creatorDisplay = vendorStr,
-            designIdMeta = null
+            designIdMeta = designIdFromTags
         )
     }
 

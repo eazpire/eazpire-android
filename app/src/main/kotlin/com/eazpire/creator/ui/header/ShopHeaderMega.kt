@@ -81,9 +81,8 @@ fun shopMegaColumnsForAudience(audienceHandle: String): List<ShopMegaColumn> {
 
 fun shopMegaColumnsForHomeLiving(): List<ShopMegaColumn> = listOf(
     ShopMegaColumn(
-        headerLabel = "Home & Living",
+        headerLabel = "",
         links = listOf(
-            ShopMegaLink("Home & Living", "home-living", iconHandle = "home-living"),
             ShopMegaLink("Plush Toys", "plush-toys", iconHandle = "plush-toys"),
             ShopMegaLink("Drinkware", "drinkware", iconHandle = "drinkware"),
             ShopMegaLink("Wall Art", "wall-art", iconHandle = "wall-art"),
@@ -112,29 +111,31 @@ fun ShopHeaderMegaPanel(
         ) {
             columns.forEach { col ->
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .padding(bottom = 6.dp)
-                            .clickable {
-                                onLinkClick(
-                                    col.headerLabel,
-                                    col.links.firstOrNull()?.collectionHandle ?: "home-living",
-                                    col.headerProductType
-                                )
-                            },
-                    ) {
-                        EazNavTablerIcon(
-                            handle = col.headerIconHandle ?: col.headerLabel,
-                            iconSize = 16.dp,
-                        )
-                        Text(
-                            text = col.headerLabel,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = EazColors.TextPrimary,
-                        )
+                    if (col.headerLabel.isNotBlank()) {
+                        Row(
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .padding(bottom = 6.dp)
+                                .clickable {
+                                    onLinkClick(
+                                        col.headerLabel,
+                                        col.links.firstOrNull()?.collectionHandle ?: "home-living",
+                                        col.headerProductType
+                                    )
+                                },
+                        ) {
+                            EazNavTablerIcon(
+                                handle = col.headerIconHandle ?: col.headerLabel,
+                                iconSize = 16.dp,
+                            )
+                            Text(
+                                text = col.headerLabel,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = EazColors.TextPrimary,
+                            )
+                        }
                     }
                     col.links.forEach { link ->
                         Row(

@@ -56,6 +56,7 @@ import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.header.CheckoutDrawer
+import com.eazpire.creator.ui.nav.EazModalTablerIcon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,6 +98,7 @@ fun VoucherModal(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     initialTab: VoucherModalTab? = null,
+    onOpenProduct: ((String) -> Unit)? = null,
 ) {
     val t = remember(translationStore) { { k: String, d: String -> translationStore.t(k, d) } }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
@@ -229,10 +231,10 @@ fun VoucherModal(
 
     val mainDrawerItems = remember(t) {
         listOf(
-            MainTab.STORE_CREDIT to t("creator.voucher_page.subtab_store_credit", "Store Credit"),
-            MainTab.GIFT_CARDS to t("creator.voucher_page.tab_gift_cards", "Gift Cards"),
-            MainTab.PROMO_CODES to t("creator.voucher_page.tab_promo_codes", "Promo Codes"),
-            MainTab.LOYALITEE to t("creator.voucher_page.tab_loyalitee", "LoyaliTee")
+            MainTab.STORE_CREDIT to Pair("store-credit", t("creator.voucher_page.subtab_store_credit", "Store Credit")),
+            MainTab.GIFT_CARDS to Pair("gift-cards", t("creator.voucher_page.tab_gift_cards", "Gift Cards")),
+            MainTab.PROMO_CODES to Pair("promo-codes", t("creator.voucher_page.tab_promo_codes", "Promo Codes")),
+            MainTab.LOYALITEE to Pair("loyalitee", t("creator.voucher_page.tab_loyalitee", "LoyaliTee"))
         )
     }
 
@@ -244,10 +246,10 @@ fun VoucherModal(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet {
-                    mainDrawerItems.forEach { (dest, label) ->
+                    mainDrawerItems.forEach { (dest, item) ->
+                        val (tabId, label) = item
                         val selected = mainTab == dest
-                        Text(
-                            label,
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
@@ -255,9 +257,20 @@ fun VoucherModal(
                                     scope.launch { drawerState.close() }
                                 }
                                 .padding(16.dp),
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            EazModalTablerIcon(
+                                tabId = tabId,
+                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                                iconSize = 18.dp
+                            )
+                            Text(
+                                label,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
             },
@@ -347,14 +360,16 @@ fun VoucherModal(
                                             loading = loading,
                                             errorText = errorText,
                                             t = t,
-                                            onChooseTee = { loyaliteePickerRewardId = it }
+                                            onChooseTee = { loyaliteePickerRewardId = it },
+                                            onOpenProduct = onOpenProduct
                                         )
                                     } else {
                                         LoyaliTeeRedeemedPanel(
                                             status = loyaltyJson,
                                             loading = loading,
                                             errorText = errorText,
-                                            t = t
+                                            t = t,
+                                            onOpenProduct = onOpenProduct
                                         )
                                     }
                             }

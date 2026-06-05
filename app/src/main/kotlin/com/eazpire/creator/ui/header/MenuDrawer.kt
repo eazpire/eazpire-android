@@ -2072,6 +2072,7 @@ private fun SidebarGutscheineInline(
     var loading by remember { mutableStateOf(false) }
     var giftCards by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var promo by remember { mutableStateOf<JSONObject?>(null) }
+    var loyalty by remember { mutableStateOf<JSONObject?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val giftCardBuyUrl = "https://www.eazpire.com/products/gift-card"
@@ -2081,6 +2082,7 @@ private fun SidebarGutscheineInline(
         err = null
         giftCards = emptyList()
         promo = null
+        loyalty = null
         if (ownerId.isBlank()) {
             loading = false
             return@LaunchedEffect
@@ -2091,6 +2093,7 @@ private fun SidebarGutscheineInline(
                     api.getCustomerGiftCards(ownerId, AuthConfig.SHOP_DOMAIN)
                 }
             val pr = withContext(Dispatchers.IO) { api.getPromoSlots(ownerId) }
+            val loyaltyResp = withContext(Dispatchers.IO) { api.getLoyaltyStatus(ownerId) }
             giftCards =
                 if (g.optBoolean("ok", false)) {
                     val arr = g.optJSONArray("gift_cards") ?: JSONArray()
@@ -2102,6 +2105,7 @@ private fun SidebarGutscheineInline(
                     }
                 } else emptyList()
             promo = if (pr.optBoolean("ok", false)) pr else null
+            loyalty = if (loyaltyResp.optBoolean("ok", false)) loyaltyResp else null
         } catch (e: Exception) {
             err = e.message
         } finally {
@@ -2115,6 +2119,13 @@ private fun SidebarGutscheineInline(
             val slotsTotal = p.optInt("slots_total", 5)
             val active = p.optJSONArray("active") ?: JSONArray()
             (slotsTotal - active.length()).coerceAtLeast(0)
+        }
+
+    val loyaliteeBadgeCount =
+        remember(loyalty) {
+            val l = loyalty ?: return@remember 0
+            val available = l.optJSONArray("available_rewards")?.length() ?: 0
+            if (available > 0) available else l.optInt("stamp_count", 0)
         }
 
     Column(
@@ -2146,7 +2157,23 @@ private fun SidebarGutscheineInline(
                 onClick = { tab = 1 },
                 onCountClick = { onOpenWallet(VoucherModalTab.PROMO_CODES) },
             )
-            SidebarGiftBuyNowButton(t = t) {
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SidebarWalletTabChip(
+                modifier = Modifier.weight(1f),
+                label = t("eaz.sidebar.loyalitee", "LoyaliTee"),
+                count = loyaliteeBadgeCount,
+                selected = tab == 2,
+                onClick = { tab = 2 },
+                onCountClick = { onOpenWallet(VoucherModalTab.LOYALITEE) },
+            )
+            SidebarGiftBuyNowButton(
+                modifier = Modifier.weight(1f),
+                t = t,
+            ) {
                 try {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(giftCardBuyUrl)))
                 } catch (_: Exception) {
@@ -2238,7 +2265,7 @@ private fun SidebarGutscheineInline(
                     )
                 }
             }
-        } else {
+        } else if (tab == 1) {
             val p = promo
             if (p == null || couponCount <= 0) {
                 Text(
@@ -2258,6 +2285,43 @@ private fun SidebarGutscheineInline(
                     style = MaterialTheme.typography.bodySmall,
                     color = EazColors.TextSecondary,
                 )
+            }
+        } else {
+            val l = loyalty
+            val stampCount = l?.optInt("stamp_count", 0) ?: 0
+            val perReward = l?.optInt("stamps_per_reward", 10) ?: 10
+            val available = l?.optJSONArray("available_rewards")?.length() ?: 0
+            if (l == null || (stampCount <= 0 && available <= 0)) {
+                Text(
+                    t("eaz.sidebar.no_loyalitee_yet", "No stamps yet — shop to collect!"),
+                    Modifier.padding(top = 12.dp),
+                    color = EazColors.TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "$stampCount / $perReward",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = EazColors.TextPrimary,
+                    )
+                    if (available > 0) {
+                        Text(
+                            t("eaz.loyalitee.rewards_available", "{count} free tee(s) ready")
+                                .replace("{count}", available.toString()),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EazColors.Orange,
+                        )
+                    }
+                    Text(
+                        t("creator.voucher_page.tab_loyalitee", "Open LoyaliTee"),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = EazColors.Orange,
+                        modifier = Modifier.clickable { onOpenWallet(VoucherModalTab.LOYALITEE) },
+                    )
+                }
             }
         }
     }
@@ -2313,9 +2377,14 @@ private fun RowScope.SidebarWalletTabChip(
 }
 
 @Composable
-private fun SidebarGiftBuyNowButton(t: (String, String) -> String, onClick: () -> Unit) {
+private fun SidebarGiftBuyNowButton(
+    modifier: Modifier = Modifier,
+    t: (String, String) -> String,
+    onClick: () -> Unit,
+) {
     Button(
         onClick = onClick,
+        modifier = modifier,
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111827), contentColor = Color.White),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),

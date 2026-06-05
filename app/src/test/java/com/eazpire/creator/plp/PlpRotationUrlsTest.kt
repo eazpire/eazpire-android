@@ -34,6 +34,21 @@ class PlpRotationUrlsTest {
         assertEquals(listOf("White", "White", "White"), build.colorNames)
     }
 
+    @Test
+    fun photopaper_rotatesSizeGroupsNotViews() {
+        val build = PlpRotationUrls.fromProductImages(
+            listOf(
+                img("https://shop/a4.jpg", "a4-vertical|front|preview-default"),
+                img("https://shop/a4-context.jpg", "a4-vertical|context_1"),
+                img("https://shop/a3.jpg", "a3-vertical|front|preview-default"),
+            ),
+            productKey = "photopaper-posters",
+        )
+        assertEquals(2, build.urls.size)
+        assertTrue(build.urls.contains("https://shop/a4.jpg"))
+        assertTrue(build.urls.contains("https://shop/a3.jpg"))
+    }
+
     private fun img(src: String, alt: String) =
         ShopifyProductsApi.ProductImage(src = src, variantIds = emptyList(), alt = alt)
 }

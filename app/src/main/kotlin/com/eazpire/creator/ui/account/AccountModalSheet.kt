@@ -46,16 +46,21 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.ui.nav.EazModalTablerIcon
 
-enum class AccountTab(val labelKey: String, val labelDefault: String) {
-    Profile("content.account_profile_settings", "Profile Settings"),
-    Notifications("creator.notifications.notifications_tab", "Notifications"),
-    SizeAI("content.account_size_ai", "Size AI"),
-    Wardrobe("content.account_wardrobe", "Wardrobe"),
-    Mockups("content.account_mockups", "My Mockups"),
-    Creations("content.account_my_creations", "My Creations"),
-    Community("content.account_community", "Community"),
-    Balance("content.account_balance_payouts", "Balance & Payouts"),
+enum class AccountTab(
+    val labelKey: String,
+    val labelDefault: String,
+    val tabId: String,
+) {
+    Profile("content.account_profile_settings", "Profile Settings", "profile-settings"),
+    Notifications("creator.notifications.notifications_tab", "Notifications", "notifications"),
+    SizeAI("content.account_size_ai", "Size AI", "size-ai"),
+    Wardrobe("content.account_wardrobe", "Wardrobe", "wardrobe"),
+    Mockups("content.account_mockups", "My Mockups", "mockups"),
+    Creations("content.account_my_creations", "My Creations", "my-creations"),
+    Community("content.account_community", "Community", "community"),
+    Balance("content.account_balance_payouts", "Balance & Payouts", "balance-payouts"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -306,8 +311,7 @@ fun AccountModalSheet(
                             ) {
                                 AccountTab.entries.forEachIndexed { index, tab ->
                                     val isSelected = selectedTab == index
-                                    Text(
-                                        text = t(tab.labelKey, tab.labelDefault),
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
@@ -321,9 +325,20 @@ fun AccountModalSheet(
                                                     RoundedCornerShape(4.dp)
                                                 ) else Modifier
                                             ),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = if (isSelected) EazColors.Orange else EazColors.TextSecondary
-                                    )
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        EazModalTablerIcon(
+                                            tabId = tab.tabId,
+                                            tint = if (isSelected) EazColors.Orange else EazColors.TextSecondary,
+                                            iconSize = 18.dp
+                                        )
+                                        Text(
+                                            text = t(tab.labelKey, tab.labelDefault),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = if (isSelected) EazColors.Orange else EazColors.TextSecondary
+                                        )
+                                    }
                                 }
                             }
                             Box(
