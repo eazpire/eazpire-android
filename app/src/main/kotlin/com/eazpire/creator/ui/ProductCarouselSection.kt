@@ -77,7 +77,7 @@ fun ProductCarouselSection(
 
     var selectedCategory by remember { mutableStateOf("all") }
     var filterModalVisible by remember { mutableStateOf(false) }
-    var productFilters by remember { mutableStateOf(ProductFilters()) }
+    var productFilters by remember { mutableStateOf(PlpTriFilterSelection()) }
     var withinSearchQuery by remember { mutableStateOf("") }
     var loadingCategories by remember { mutableStateOf(setOf<String>()) }
 

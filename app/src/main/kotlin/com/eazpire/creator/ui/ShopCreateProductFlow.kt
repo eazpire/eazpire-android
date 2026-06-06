@@ -43,6 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -122,6 +123,18 @@ private fun matchesFacetGroup(
     for (ex in excludes) if (matches(ex)) return false
     if (includes.isNotEmpty()) return includes.any(matches)
     return true
+}
+
+private fun applyCatalogWithinSearchFilter(
+    products: List<CatalogProduct>,
+    queryRaw: String,
+): List<CatalogProduct> {
+    val q = queryRaw.trim().lowercase()
+    if (q.isEmpty()) return products
+    return products.filter { p ->
+        val title = (p.title.ifBlank { p.productKey }).lowercase()
+        title.contains(q)
+    }
 }
 
 private fun filterCatalogProductsTri(
@@ -548,10 +561,13 @@ private fun ShopCreateCatalogGrid(
     modifier: Modifier = Modifier
 ) {
     var facetSel by remember { mutableStateOf(CatalogFacetTriSelection()) }
+    var withinSearchQuery by remember { mutableStateOf("") }
     var filterDrawerVisible by remember { mutableStateOf(false) }
     var sortBy by remember { mutableStateOf("manual") }
     var sortSheetVisible by remember { mutableStateOf(false) }
-    val filtered = remember(products, facetSel) { filterCatalogProductsTri(products, facetSel) }
+    val filtered = remember(products, facetSel, withinSearchQuery) {
+        applyCatalogWithinSearchFilter(filterCatalogProductsTri(products, facetSel), withinSearchQuery)
+    }
     val sorted = remember(filtered, sortBy) { sortCatalogProducts(filtered, sortBy) }
     val availableProducts = remember(sorted) { sorted.filter { it.catalogAvailability != "coming_soon" } }
     val comingSoonProducts = remember(sorted) { sorted.filter { it.catalogAvailability == "coming_soon" } }
@@ -655,9 +671,11 @@ private fun ShopCreateCatalogGrid(
         ShopCreateFilterDrawer(
             products = products,
             facetSel = facetSel,
+            withinSearchQuery = withinSearchQuery,
+            onWithinSearchChange = { withinSearchQuery = it },
             onFacetChange = { facetSel = it },
             t = t,
-            onDismiss = { filterDrawerVisible = false }
+            onDismiss = { filterDrawerVisible = false },
         )
     }
 
@@ -676,9 +694,11 @@ private fun ShopCreateCatalogGrid(
 private fun ShopCreateFilterDrawer(
     products: List<CatalogProduct>,
     facetSel: CatalogFacetTriSelection,
+    withinSearchQuery: String,
+    onWithinSearchChange: (String) -> Unit,
     onFacetChange: (CatalogFacetTriSelection) -> Unit,
     t: (String, String) -> String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -723,6 +743,24 @@ private fun ShopCreateFilterDrawer(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
             ) {
+                TextField(
+                    value = withinSearchQuery,
+                    onValueChange = onWithinSearchChange,
+                    placeholder = {
+                        Text(
+                            t(
+                                "creator.shop_create_product.catalog_search_placeholder",
+                                "Search products…",
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                        .heightIn(min = 44.dp),
+                    singleLine = true,
+                )
                 Text(
                     t("creator.shop_create_product.catalog_filter_category", "Category"),
                     style = MaterialTheme.typography.titleSmall,
@@ -816,7 +854,10 @@ private fun ShopCreateFilterDrawer(
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.White)
-                        .clickable { onFacetChange(CatalogFacetTriSelection()) }
+                        .clickable {
+                            onFacetChange(CatalogFacetTriSelection())
+                            onWithinSearchChange("")
+                        }
                         .padding(horizontal = 20.dp, vertical = 14.dp),
                     contentAlignment = Alignment.Center
                 ) {

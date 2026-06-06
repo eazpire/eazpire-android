@@ -159,7 +159,7 @@ fun CreatorProfileScreen(
     var profileReady by remember(creatorName) { mutableStateOf(false) }
     var sortBy by remember(creatorName) { mutableStateOf("date-desc") }
     var withinSearchQuery by remember(creatorName) { mutableStateOf("") }
-    var productFilters by remember(creatorName) { mutableStateOf(ProductFilters()) }
+    var productFilters by remember(creatorName) { mutableStateOf(PlpTriFilterSelection()) }
     var showSortSheet by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showReviewsModal by remember { mutableStateOf(false) }
@@ -342,7 +342,7 @@ fun CreatorProfileScreen(
         derivedStateOf {
             val items = allLoadedProducts.map { it.toFilterProductItem() }
             val filtered = applyCollectionProductFilters(items, productFilters)
-            val searched = applyCollectionWithinSearchFilter(filtered, withinSearchQuery)
+            val searched = applyCollectionWithinSearchFilter(filtered, withinSearchQuery, resolvedCreatorName)
             val byHandle = allLoadedProducts.associateBy { it.handle }
             sortCreatorProducts(
                 searched.mapNotNull { byHandle[it.handle] },
@@ -358,7 +358,8 @@ fun CreatorProfileScreen(
                 val items = allLoadedProducts.map { it.toFilterProductItem() }
                 applyCollectionWithinSearchFilter(
                     applyCollectionProductFilters(items, productFilters),
-                    withinSearchQuery
+                    withinSearchQuery,
+                    resolvedCreatorName,
                 ).size
             }
         }
@@ -524,7 +525,8 @@ fun CreatorProfileScreen(
             onWithinSearchChange = { withinSearchQuery = it },
             onFiltersChange = { productFilters = it },
             onDismiss = { showFilterSheet = false },
-            t = t
+            creatorName = resolvedCreatorName,
+            t = t,
         )
     }
 }
