@@ -105,7 +105,7 @@ fun CreatorSettingsTabContent(
             3 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
             4 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
             5 -> CreatorSettingsLevelContent(ownerId, api, translationStore)
-            6 -> CreatorSettingsEazContent(translationStore)
+            6 -> CreatorSettingsEazPanel(tokenStore = tokenStore, translationStore = translationStore)
             7 -> CreatorSettingsPayoutContent(ownerId, api, translationStore)
             8 -> CreatorSettingsInterestsContent(ownerId, api, translationStore)
             9 -> CreatorSettingsNftContent(translationStore)
@@ -961,29 +961,6 @@ private fun CreatorSettingsLevelContent(
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun CreatorSettingsEazContent(translationStore: TranslationStore) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.Star, null, Modifier.size(48.dp), tint = EazColors.Orange.copy(alpha = 0.6f))
-        Text(
-            text = translationStore.t("creator.common.coming_soon", "Coming soon"),
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
-            modifier = Modifier.padding(top = 16.dp)
-        )
-        Text(
-            text = translationStore.t("creator.settings.eaz_coming_soon", "EAZ features are coming soon"),
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.6f),
-            modifier = Modifier.padding(top = 8.dp)
-        )
     }
 }
 

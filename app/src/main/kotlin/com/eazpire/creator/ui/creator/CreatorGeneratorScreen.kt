@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.billing.EazCostCatalog
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.i18n.TranslationStore
@@ -97,7 +98,8 @@ data class RefImage(
     val similarity: Float = 0.8f
 )
 
-private const val DESIGN_GENERATE_COST_EAZ = 0.5
+private val DEFAULT_UPLOAD_COST_EAZ = EazCostCatalog.defaultCost("design_upload")
+private val DEFAULT_GENERATE_COST_EAZ = EazCostCatalog.defaultCost("design_generate")
 
 private fun buildDesignGeneratePayload(
     ownerId: String,
@@ -236,6 +238,7 @@ fun CreatorGeneratorScreen(
     var showGenConfirmDialog by remember { mutableStateOf(false) }
     var generatingGen by remember { mutableStateOf(false) }
     var confirmBalanceGenEaz by remember { mutableStateOf<Double?>(null) }
+    var confirmGenerateCostEaz by remember { mutableStateOf(DEFAULT_GENERATE_COST_EAZ) }
     SideEffect { onGeneratorGeneratingChange(generatingGen) }
 
     LaunchedEffect(generatorPrefillRequest, ownerId) {
@@ -302,10 +305,14 @@ fun CreatorGeneratorScreen(
     LaunchedEffect(showGenConfirmDialog) {
         if (!showGenConfirmDialog || ownerId.isBlank()) return@LaunchedEffect
         confirmBalanceGenEaz = null
+        confirmGenerateCostEaz = DEFAULT_GENERATE_COST_EAZ
         try {
             val b = withContext(Dispatchers.IO) { api.getBalance(ownerId) }
-            if (b.optBoolean("ok", false) && b.has("balance_eaz")) {
-                confirmBalanceGenEaz = b.optDouble("balance_eaz", 0.0)
+            if (b.optBoolean("ok", false)) {
+                if (b.has("balance_eaz")) {
+                    confirmBalanceGenEaz = b.optDouble("balance_eaz", 0.0)
+                }
+                confirmGenerateCostEaz = EazCostCatalog.resolveCost(b, "design_generate")
             }
         } catch (_: Exception) {}
     }
@@ -758,7 +765,7 @@ fun CreatorGeneratorScreen(
 
         if (showGenConfirmDialog) {
             val lowBalance =
-                confirmBalanceGenEaz != null && confirmBalanceGenEaz!! + 1e-9 < DESIGN_GENERATE_COST_EAZ
+                confirmBalanceGenEaz != null && confirmBalanceGenEaz!! + 1e-9 < confirmGenerateCostEaz
             val pTrim = prompt.trim()
             AlertDialog(
                 onDismissRequest = { if (!generatingGen) showGenConfirmDialog = false },
@@ -772,7 +779,7 @@ fun CreatorGeneratorScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             "${translationStore.t("creator.hero_eazy.confirm_cost_label", "Cost")}: " +
-                                String.format(Locale.US, "%.1f", DESIGN_GENERATE_COST_EAZ) +
+                                EazCostCatalog.fmtEaz(confirmGenerateCostEaz) +
                                 " ${translationStore.t("creator.hero_eazy.eaz_unit", "EAZ")}"
                         )
                         when {

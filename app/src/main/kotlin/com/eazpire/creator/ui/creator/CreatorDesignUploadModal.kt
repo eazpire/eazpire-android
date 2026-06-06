@@ -69,6 +69,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.billing.EazCostCatalog
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -112,6 +113,16 @@ fun CreatorDesignUploadModal(
     var cropProcessing by remember { mutableStateOf(false) }
     var removeBgProcessing by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
+    var uploadCostEaz by remember { mutableStateOf(EazCostCatalog.defaultCost("design_upload")) }
+
+    LaunchedEffect(ownerId) {
+        if (ownerId.isBlank()) return@LaunchedEffect
+        uploadCostEaz = EazCostCatalog.defaultCost("design_upload")
+        try {
+            val bal = withContext(Dispatchers.IO) { api.getBalance(ownerId) }
+            uploadCostEaz = EazCostCatalog.resolveCost(bal, "design_upload")
+        } catch (_: Exception) {}
+    }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isBlank()) return@LaunchedEffect
@@ -569,7 +580,12 @@ fun CreatorDesignUploadModal(
                         ) {
                             Text(translationStore.t("creator.upload_modal.upload_button", "Upload Design"), color = Color.White)
                             Spacer(Modifier.size(6.dp))
-                            Text("0.1 EAZ", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.9f), maxLines = 1)
+                            Text(
+                                "${EazCostCatalog.fmtEaz(uploadCostEaz)} EAZ",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.9f),
+                                maxLines = 1
+                            )
                         }
                     }
                 }
