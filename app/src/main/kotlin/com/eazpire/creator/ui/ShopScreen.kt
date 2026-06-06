@@ -338,6 +338,34 @@ fun ShopScreen(
         isCreatorMode = toCreator
     }
 
+    fun openShopCreate() {
+        shopSearchQuery = null
+        selectedProductHandle = null
+        selectedCreatorName = null
+        selectedCollection = null
+        shopCreateStudioPhase = null
+        shopCreateActive = true
+    }
+
+    fun openShopCollection(title: String, handle: String, productType: String? = null) {
+        shopSearchQuery = null
+        selectedProductHandle = null
+        selectedCreatorName = null
+        shopCreateStudioPhase = null
+        shopCreateActive = false
+        selectedCollection = Triple(title, handle, productType)
+    }
+
+    fun openShopHome() {
+        shopCreateActive = false
+        shopCreateStudioPhase = null
+        selectedCollection = null
+        selectedProductHandle = null
+        selectedCreatorName = null
+        shopSearchQuery = null
+        productModalHandleState.value = null
+    }
+
     val pendingWearPair = pendingWearPairToken?.value
     LaunchedEffect(pendingWearPair) {
         if (!pendingWearPair.isNullOrBlank()) isCreatorMode = true
@@ -608,7 +636,7 @@ fun ShopScreen(
                 val handle = path.removePrefix("/collections/").trimEnd('/').substringBefore("?")
                 if (handle.isNotBlank()) {
                     val title = COLLECTION_HANDLE_TO_TITLE[handle] ?: handle.replaceFirstChar { it.uppercase() }
-                    selectedCollection = Triple(title, handle, null)
+                    openShopCollection(title, handle)
                 }
             }
             path.startsWith("/pages/creator-dashboard") ||
@@ -713,11 +741,7 @@ fun ShopScreen(
                             accountModalVisible = false
                             showLoginOptions = false
                             menuDrawerVisible = false
-                            selectedCollection = null
-                            shopSearchQuery = null
-                            selectedProductHandle = null
-                            selectedCreatorName = null
-                            productModalHandleState.value = null
+                            openShopHome()
                             scrollToTopTrigger++
                         }
                     },
@@ -735,6 +759,8 @@ fun ShopScreen(
                             path.startsWith("/products/") -> {
                                 val handle = path.removePrefix("/products/").trimEnd('/').substringBefore("?")
                                 if (handle.isNotBlank()) {
+                                    shopCreateActive = false
+                                    shopCreateStudioPhase = null
                                     shopSearchQuery = null
                                     selectedCreatorName = null
                                     productModalHandleState.value = handle
@@ -743,6 +769,8 @@ fun ShopScreen(
                             path.startsWith("/search") -> {
                                 val q = uri.getQueryParameter("q")?.trim().orEmpty()
                                 if (q.isNotEmpty()) {
+                                    shopCreateActive = false
+                                    shopCreateStudioPhase = null
                                     selectedCollection = null
                                     selectedProductHandle = null
                                     selectedCreatorName = null
@@ -760,6 +788,8 @@ fun ShopScreen(
                     onSearchQuerySubmit = { q ->
                         val t = q.trim()
                         if (t.isNotEmpty()) {
+                            shopCreateActive = false
+                            shopCreateStudioPhase = null
                             selectedCollection = null
                             selectedProductHandle = null
                             selectedCreatorName = null
@@ -787,20 +817,12 @@ fun ShopScreen(
                     },
                     onCategoryClick = { title, handle, productType ->
                         if (handle == SHOP_MENU_CREATE_HANDLE) {
-                            shopSearchQuery = null
-                            selectedProductHandle = null
-                            selectedCreatorName = null
-                            selectedCollection = null
-                            shopCreateStudioPhase = null
-                            shopCreateActive = true
+                            openShopCreate()
                         } else {
-                            shopSearchQuery = null
-                            selectedProductHandle = null
-                            selectedCreatorName = null
-                            selectedCollection = Triple(title, handle, productType)
+                            openShopCollection(title, handle, productType)
                         }
                     },
-                    selectedHandle = selectedCollection?.second
+                    selectedHandle = if (shopCreateActive) SHOP_MENU_CREATE_HANDLE else selectedCollection?.second
                 )
                 if (shopCreateActive || selectedCollection != null || selectedProductHandle != null || selectedCreatorName != null) {
                     CollectionBreadcrumb(
@@ -809,13 +831,7 @@ fun ShopScreen(
                             selectedCreatorName != null -> selectedCreatorName!!
                             else -> selectedCollection?.first ?: ""
                         },
-                        onHomeClick = {
-                            shopCreateActive = false
-                            shopCreateStudioPhase = null
-                            selectedCollection = null
-                            selectedProductHandle = null
-                            selectedCreatorName = null
-                        },
+                        onHomeClick = { openShopHome() },
                         productTitle = null,
                         onCollectionClick = when {
                             selectedProductHandle != null && selectedCreatorName != null -> {
@@ -1198,19 +1214,9 @@ fun ShopScreen(
         onCategoryClick = { title, handle, productType ->
             menuDrawerVisible = false
             if (handle == SHOP_MENU_CREATE_HANDLE) {
-            selectedCollection = null
-            selectedProductHandle = null
-            selectedCreatorName = null
-            shopSearchQuery = null
-            shopCreateActive = false
-            shopCreateStudioPhase = null
-                shopCreateStudioPhase = null
-                shopCreateActive = true
+                openShopCreate()
             } else {
-                selectedProductHandle = null
-                selectedCreatorName = null
-                shopSearchQuery = null
-                selectedCollection = Triple(title, handle, productType)
+                openShopCollection(title, handle, productType)
             }
         },
         onExternalUrl = { url ->
@@ -1221,10 +1227,7 @@ fun ShopScreen(
         },
         onHomeClick = {
             menuDrawerVisible = false
-            selectedCollection = null
-            selectedProductHandle = null
-            selectedCreatorName = null
-            shopSearchQuery = null
+            openShopHome()
             scrollToTopTrigger++
         },
         onCartClick = {
