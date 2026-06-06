@@ -115,13 +115,9 @@ fun CreatorDesignUploadModal(
     var actionError by remember { mutableStateOf<String?>(null) }
     var uploadCostEaz by remember { mutableStateOf(EazCostCatalog.defaultCost("design_upload")) }
 
+    // Catalog list price (1 EAZ); mascot discounts apply at billing, not on button labels.
     LaunchedEffect(ownerId) {
-        if (ownerId.isBlank()) return@LaunchedEffect
         uploadCostEaz = EazCostCatalog.defaultCost("design_upload")
-        try {
-            val bal = withContext(Dispatchers.IO) { api.getBalance(ownerId) }
-            uploadCostEaz = EazCostCatalog.resolveCost(bal, "design_upload")
-        } catch (_: Exception) {}
     }
 
     LaunchedEffect(ownerId) {
