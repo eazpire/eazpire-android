@@ -23,5 +23,7 @@ internal fun HomeCarouselFilterModal(
         onFiltersChange = onFiltersChange,
         onDismiss = onDismiss,
         t = labelForKey,
+        showFacetCounts = false,
+        showApplyCount = false,
     )
 }

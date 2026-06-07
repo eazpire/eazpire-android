@@ -263,6 +263,7 @@ private fun PlpTriFacetGroupSection(
     options: List<PlpFacetOption>,
     states: Map<String, FacetTriState>,
     onStateChange: (String, FacetTriState) -> Unit,
+    showFacetCounts: Boolean = true,
 ) {
     val visible = options.filter { it.count > 0 }
     if (visible.isEmpty()) return
@@ -276,7 +277,7 @@ private fun PlpTriFacetGroupSection(
         visible.forEach { opt ->
             FacetTriSwitchRow(
                 label = opt.label,
-                count = opt.count,
+                count = if (showFacetCounts) opt.count else null,
                 state = states[opt.value] ?: 0,
                 onStateChange = { onStateChange(opt.value, it) },
             )
@@ -295,6 +296,8 @@ internal fun CollectionFilterDrawer(
     onDismiss: () -> Unit,
     creatorName: String = "",
     t: (String, String) -> String = { _, d -> d },
+    showFacetCounts: Boolean = true,
+    showApplyCount: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
@@ -433,6 +436,7 @@ internal fun CollectionFilterDrawer(
                     onStateChange = { v, st ->
                         onFiltersChange(filters.copy(productTypes = filters.productTypes + (v to st)))
                     },
+                    showFacetCounts = showFacetCounts,
                 )
                 PlpTriFacetGroupSection(
                     title = t("eaz.creator_profile.facet_product", "Product"),
@@ -441,6 +445,7 @@ internal fun CollectionFilterDrawer(
                     onStateChange = { v, st ->
                         onFiltersChange(filters.copy(productNames = filters.productNames + (v to st)))
                     },
+                    showFacetCounts = showFacetCounts,
                 )
                 PlpTriFacetGroupSection(
                     title = t("eaz.creator_profile.facet_content_type", "Content type"),
@@ -449,6 +454,7 @@ internal fun CollectionFilterDrawer(
                     onStateChange = { v, st ->
                         onFiltersChange(filters.copy(contentTypes = filters.contentTypes + (v to st)))
                     },
+                    showFacetCounts = showFacetCounts,
                 )
                 PlpTriFacetGroupSection(
                     title = t("eaz.creator_profile.facet_design_type", "Design type"),
@@ -457,6 +463,7 @@ internal fun CollectionFilterDrawer(
                     onStateChange = { v, st ->
                         onFiltersChange(filters.copy(designTypes = filters.designTypes + (v to st)))
                     },
+                    showFacetCounts = showFacetCounts,
                 )
                 PlpTriFacetGroupSection(
                     title = t("eaz.creator_profile.facet_design_ratio", "Design ratio"),
@@ -465,6 +472,7 @@ internal fun CollectionFilterDrawer(
                     onStateChange = { v, st ->
                         onFiltersChange(filters.copy(designRatios = filters.designRatios + (v to st)))
                     },
+                    showFacetCounts = showFacetCounts,
                 )
                 PlpTriFacetGroupSection(
                     title = t("eaz.creator_profile.facet_design_language", "Design language"),
@@ -473,6 +481,7 @@ internal fun CollectionFilterDrawer(
                     onStateChange = { v, st ->
                         onFiltersChange(filters.copy(designLanguages = filters.designLanguages + (v to st)))
                     },
+                    showFacetCounts = showFacetCounts,
                 )
             }
 
@@ -512,7 +521,11 @@ internal fun CollectionFilterDrawer(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        t("collection.apply_count", "Apply (%d)").format(filteredCount),
+                        if (showApplyCount) {
+                            t("collection.apply_count", "Apply (%d)").format(filteredCount)
+                        } else {
+                            t("collection.apply", "Apply")
+                        },
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White,
                     )
