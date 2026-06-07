@@ -86,7 +86,13 @@ class NotificationPreferencesRepository(private val context: Context) {
         val out = defaults.toMutableMap()
         if (src == null) return out
         for (k in defaults.keys) {
-            if (src.has(k)) out[k] = src.optBoolean(k, defaults[k] ?: true)
+            if (!src.has(k)) continue
+            val raw = src.get(k)
+            out[k] = when (raw) {
+                is Boolean -> raw
+                is JSONObject -> raw.optBoolean("push", defaults[k] ?: true)
+                else -> src.optBoolean(k, defaults[k] ?: true)
+            }
         }
         return out
     }

@@ -88,6 +88,18 @@ fun NotificationSettingsContent(
         modifier = modifier.padding(horizontal = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        Text(
+            text = stringResource(R.string.notif_push_section_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = if (scope == NotificationScope.Creator) Color(0xFFE8E8E8) else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+        Text(
+            text = stringResource(R.string.notif_push_section_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (scope == NotificationScope.Creator) Color(0xFFB0B0B0) else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 0.dp)
+        )
         when (scope) {
             NotificationScope.Shop -> {
                 notifRow(
@@ -144,6 +156,28 @@ fun NotificationSettingsContent(
                     enabled = subEnabled,
                     onChecked = { v ->
                         scopeIo.launch { repo.saveShopKey(api, "promotions_ending_soon", v) }
+                    }
+                )
+                notifRow(
+                    context = context,
+                    label = stringResource(R.string.notif_shop_app_promotions),
+                    labelColor = labelColor,
+                    testOpenTarget = "gift_cards_won",
+                    checked = state.shop["app_promotions"] != false,
+                    enabled = subEnabled,
+                    onChecked = { v ->
+                        scopeIo.launch { repo.saveShopKey(api, "app_promotions", v) }
+                    }
+                )
+                notifRow(
+                    context = context,
+                    label = stringResource(R.string.notif_shop_daily_game),
+                    labelColor = labelColor,
+                    testOpenTarget = "eazy_notifications",
+                    checked = state.shop["daily_game"] != false,
+                    enabled = subEnabled,
+                    onChecked = { v ->
+                        scopeIo.launch { repo.saveShopKey(api, "daily_game", v) }
                     }
                 )
             }

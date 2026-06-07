@@ -14,7 +14,9 @@ data class NotificationPrefs(
             "orders" to true,
             "promotions" to true,
             "promotions_new" to true,
-            "promotions_ending_soon" to true
+            "promotions_ending_soon" to true,
+            "app_promotions" to true,
+            "daily_game" to true
         )
 
         fun defaultCreator(): Map<String, Boolean> = mapOf(
@@ -40,7 +42,13 @@ data class NotificationPrefs(
             val out = defaults.toMutableMap()
             if (src == null) return out
             for (k in defaults.keys) {
-                if (src.has(k)) out[k] = src.optBoolean(k, defaults[k] ?: true)
+                if (!src.has(k)) continue
+                val raw = src.get(k)
+                out[k] = when (raw) {
+                    is Boolean -> raw
+                    is JSONObject -> raw.optBoolean("push", defaults[k] ?: true)
+                    else -> src.optBoolean(k, defaults[k] ?: true)
+                }
             }
             return out
         }
@@ -66,6 +74,8 @@ object NotificationCategoryMapping {
         if (c.contains("ending") || c.contains("ends_soon") || c.contains("ending_soon")) {
             return "promotions_ending_soon"
         }
+        if (c.contains("daily_game")) return "daily_game"
+        if (c.contains("app_install") || c.contains("app_promotion")) return "app_promotions"
         if (c.contains("cart") || c.contains("abandon")) return "cart_reminder"
         if (c.contains("shop_order")) return "orders"
         return "promotions_new"

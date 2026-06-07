@@ -2223,12 +2223,13 @@ class CreatorApi(
         if (creatorMaster != null) body.put("creator_master", creatorMaster)
         shopPatch?.let { m ->
             val o = org.json.JSONObject()
-            m.forEach { (k, v) -> o.put(k, v) }
+            // Nur Push-Kanal patchen — In-App-Einstellungen vom Web bleiben erhalten.
+            m.forEach { (k, v) -> o.put(k, org.json.JSONObject().put("push", v)) }
             body.put("shop", o)
         }
         creatorPatch?.let { m ->
             val o = org.json.JSONObject()
-            m.forEach { (k, v) -> o.put(k, v) }
+            m.forEach { (k, v) -> o.put(k, org.json.JSONObject().put("push", v)) }
             body.put("creator", o)
         }
         return postJsonBodyOp("save-notification-preferences", body)

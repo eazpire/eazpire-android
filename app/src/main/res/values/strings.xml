@@ -12,12 +12,16 @@
     <string name="notif_cart_promo_10_title">Last minutes for your promo price</string>
     <string name="notif_cart_promo_10_body">Your promotional price expires in about 10 minutes.</string>
     <string name="notif_prefs_login_required">Sign in to manage notification settings.</string>
+    <string name="notif_push_section_title">Push notifications (Android)</string>
+    <string name="notif_push_section_hint">In-app and email settings are managed on the web. Push toggles sync with your account.</string>
     <string name="notif_shop_master">Shop notifications</string>
     <string name="notif_shop_cart">Cart reminders</string>
     <string name="notif_shop_orders">Order updates</string>
     <string name="notif_shop_promotions">Promotions and offers</string>
     <string name="notif_shop_promotions_new">New promotions (bundles)</string>
     <string name="notif_shop_promotions_ending">Promotions ending within 24 hours</string>
+    <string name="notif_shop_app_promotions">App bonuses &amp; offers</string>
+    <string name="notif_shop_daily_game">Daily game</string>
     <string name="shop_notif_new_promo_title">New promotion</string>
     <string name="shop_notif_new_promo_body">%1$s: %2$d products at %3$s.</string>
     <string name="notif_creator_master">Creator notifications</string>
