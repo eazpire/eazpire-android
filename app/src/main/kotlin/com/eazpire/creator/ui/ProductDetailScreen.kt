@@ -97,8 +97,9 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
-import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.util.releaseForCompose
 import com.eazpire.creator.auth.ShopSessionGuard
+import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
@@ -2189,6 +2190,7 @@ private fun JudgeMeReviewsWebView(productId: Long, modifier: Modifier = Modifier
         update = { webView ->
             webView.loadDataWithBaseURL("https://www.eazpire.com/", html, "text/html", "UTF-8", null)
         },
+        onRelease = { it.releaseForCompose() },
         modifier = modifier
     )
 }
@@ -2225,6 +2227,7 @@ private fun HtmlWebView(content: String, modifier: Modifier = Modifier) {
                 loadDataWithBaseURL(null, htmlWithStyle, "text/html", "UTF-8", null)
             }
         },
+        onRelease = { it.releaseForCompose() },
         modifier = modifier
     )
 }

@@ -1,5 +1,6 @@
 package com.eazpire.creator.ui.home
 
+import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.ui.CatalogProduct
 import kotlinx.coroutines.Dispatchers
@@ -21,8 +22,8 @@ data class HomeCarouselSectionDef(
     val maxProducts: Int = 12,
 )
 
-/** Max products per home carousel row (lazy-loaded in batches). */
-const val HOME_MAX_PRODUCTS = 200
+/** Max products per home carousel row (matches web worker `list-home-carousel-products`). */
+const val HOME_MAX_PRODUCTS = 100
 
 /** Fast first paint on home: show this many products per carousel row, then fill in background. */
 const val HOME_INITIAL_PRODUCTS = 24
@@ -32,6 +33,101 @@ const val HOME_LAZY_BATCH = 24
 
 /** Creators carousel: first paint count before loading the full set. */
 const val HOME_INITIAL_CREATORS = 7
+
+fun homeCarouselWorkerSlot(sectionId: String): String = when (sectionId) {
+    "new_arrivals" -> "new-arrivals"
+    "bestseller" -> "bestseller"
+    "personalizable" -> "personalizable"
+    else -> sectionId
+}
+
+/** Worker `list-home-carousel-products` — same sorting/dedupe as web home carousels. */
+suspend fun loadHomeCarouselFromWorker(
+    creatorApi: CreatorApi,
+    sectionId: String,
+    chipId: String = "all",
+    limit: Int = HOME_MAX_PRODUCTS,
+    personalizableMode: String = "shoppable",
+    countryCode: String? = null,
+): List<ShopifyProductsApi.ProductItem> = withContext(Dispatchers.IO) {
+    runCatching {
+        val slot = homeCarouselWorkerSlot(sectionId)
+        val j = creatorApi.listHomeCarouselProducts(
+            slot = slot,
+            category = chipId,
+            limit = limit.coerceIn(1, HOME_MAX_PRODUCTS),
+            personalizableMode = personalizableMode,
+            countryCode = countryCode,
+        )
+        ShopifyProductsApi.parseHomeCarouselProductsResponse(j)
+    }.getOrElse { emptyList() }
+}
+
+suspend fun loadHomeCarouselCategoryPools(
+    creatorApi: CreatorApi,
+    sectionId: String,
+    limit: Int = HOME_MAX_PRODUCTS,
+    personalizableMode: String = "shoppable",
+    countryCode: String? = null,
+): HomeCategoryPools = withContext(Dispatchers.IO) {
+    coroutineScope {
+        CHIP_COLLECTION_CANDIDATES.keys.map { chipId ->
+            async {
+                chipId to loadHomeCarouselFromWorker(
+                    creatorApi,
+                    sectionId,
+                    chipId,
+                    limit,
+                    personalizableMode,
+                    countryCode,
+                )
+            }
+        }.awaitAll().toMap()
+    }
+}
+
+suspend fun loadHomeCarouselCategoryPoolsMissingChips(
+    creatorApi: CreatorApi,
+    sectionId: String,
+    limit: Int = HOME_MAX_PRODUCTS,
+    existing: HomeCategoryPools,
+    personalizableMode: String = "shoppable",
+    countryCode: String? = null,
+): HomeCategoryPools = withContext(Dispatchers.IO) {
+    val out = existing.toMutableMap()
+    val missing = CHIP_COLLECTION_CANDIDATES.keys.filter { !out.containsKey(it) }
+    if (missing.isEmpty()) return@withContext out
+    coroutineScope {
+        missing.map { chipId ->
+            async {
+                chipId to loadHomeCarouselFromWorker(
+                    creatorApi,
+                    sectionId,
+                    chipId,
+                    limit,
+                    personalizableMode,
+                    countryCode,
+                )
+            }
+        }.awaitAll().forEach { (chipId, products) -> out[chipId] = products }
+    }
+    out
+}
+
+suspend fun loadHomePromotionsFromWorker(
+    creatorApi: CreatorApi,
+    limit: Int = HOME_MAX_PRODUCTS,
+    countryCode: String? = null,
+): List<ShopifyProductsApi.ProductItem> = withContext(Dispatchers.IO) {
+    runCatching {
+        val j = creatorApi.listHomeCarouselProducts(
+            slot = "promotions",
+            limit = limit.coerceIn(1, HOME_MAX_PRODUCTS),
+            countryCode = countryCode,
+        )
+        ShopifyProductsApi.parseHomeCarouselProductsResponse(j)
+    }.getOrElse { emptyList() }
+}
 
 val HOME_PRODUCT_SECTIONS: List<HomeCarouselSectionDef> = listOf(
     HomeCarouselSectionDef(

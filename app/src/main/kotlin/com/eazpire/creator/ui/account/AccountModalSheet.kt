@@ -141,6 +141,7 @@ fun AccountModalSheet(
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
+                        val tabModifier = Modifier.fillMaxSize()
                         when (val tab = AccountTab.entries[selectedTab]) {
                             AccountTab.Profile -> AccountProfileTab(
                                 tokenStore = tokenStore,
@@ -150,12 +151,13 @@ fun AccountModalSheet(
                                 onLogout = {
                                     ShopSessionGuard.performFullLogout(context, tokenStore)
                                     onDismiss()
-                                }
+                                },
+                                modifier = tabModifier
                             )
                             AccountTab.Notifications -> NotificationSettingsContent(
                                 scope = NotificationScope.Shop,
                                 tokenStore = tokenStore,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = tabModifier
                             )
                             AccountTab.SizeAI -> AccountSizeAITab(
                                 tokenStore = tokenStore,
@@ -163,7 +165,8 @@ fun AccountModalSheet(
                                     footerSaveAction = if (onMeasurements) action else null
                                     sizeAiMeasurementsSubTab = onMeasurements
                                 },
-                                onSavingStateChange = { footerSaveInProgress = it }
+                                onSavingStateChange = { footerSaveInProgress = it },
+                                modifier = tabModifier
                             )
                             AccountTab.Wardrobe -> AccountWardrobeTab(
                                 tokenStore = tokenStore,
@@ -175,12 +178,13 @@ fun AccountModalSheet(
                                 onSaveActionReady = { action, canSave ->
                                     wardrobeSaveAction = action
                                     wardrobeCanSave = canSave
-                                }
+                                },
+                                modifier = tabModifier
                             )
-                            AccountTab.Mockups -> AccountMockupsTab(tokenStore = tokenStore)
-                            AccountTab.Creations -> AccountCreationsTab(tokenStore = tokenStore)
-                            AccountTab.Community -> AccountCommunityTab(tokenStore = tokenStore)
-                            AccountTab.Balance -> AccountBalanceTab(tokenStore = tokenStore)
+                            AccountTab.Mockups -> AccountMockupsTab(tokenStore = tokenStore, modifier = tabModifier)
+                            AccountTab.Creations -> AccountCreationsTab(tokenStore = tokenStore, modifier = tabModifier)
+                            AccountTab.Community -> AccountCommunityTab(tokenStore = tokenStore, modifier = tabModifier)
+                            AccountTab.Balance -> AccountBalanceTab(tokenStore = tokenStore, modifier = tabModifier)
                         }
                     }
 

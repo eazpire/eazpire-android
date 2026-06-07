@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -370,12 +371,15 @@ fun AccountCommunityTab(
         }
     }
 
-    val scrollModifier = if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
+    val scrollModifier = if (scrollable) {
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+    } else {
+        Modifier.fillMaxWidth()
+    }
     CompositionLocalProvider(LocalCommunityColors provides scheme) {
     CompositionLocalProvider(LocalCommunityTranslate provides t) {
         Column(
             modifier = modifier
-                .fillMaxWidth()
                 .then(scrollModifier)
                 .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)

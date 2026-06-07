@@ -358,7 +358,7 @@ fun AccountMockupsTab(
 
     Column(
         modifier = modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)

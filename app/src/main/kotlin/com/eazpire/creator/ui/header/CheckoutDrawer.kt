@@ -46,6 +46,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.util.releaseForCompose
 import kotlin.math.roundToInt
 
 /** CSS to hide Shopify branding – checkout feels native in-app */
@@ -198,7 +199,8 @@ fun CheckoutDrawer(
                                         loadUrl(checkoutUrl)
                                     }
                                 },
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
+                                onRelease = { it.releaseForCompose() }
                             )
                             if (!isCheckoutReady) {
                                 Box(

@@ -26,6 +26,7 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.ui.home.HOME_INITIAL_PRODUCTS
+import com.eazpire.creator.ui.home.HOME_MAX_PRODUCTS
 import com.eazpire.creator.ui.home.HOME_PRODUCT_SECTIONS
 import com.eazpire.creator.ui.home.HomeCategoryPools
 import com.eazpire.creator.ui.home.HomeCategoryStrip
@@ -34,8 +35,9 @@ import com.eazpire.creator.ui.home.HomeCreateScratchCarousel
 import com.eazpire.creator.ui.home.HomeCreatorsCarousel
 import com.eazpire.creator.ui.home.catalogAvailabilityFromJson
 import com.eazpire.creator.ui.home.catalogPreviewUrlsFromJson
-import com.eazpire.creator.ui.home.loadHomeCategoryPoolsMissingChips
-import com.eazpire.creator.ui.home.loadHomeSectionForChip
+import com.eazpire.creator.ui.home.loadHomeCarouselCategoryPoolsMissingChips
+import com.eazpire.creator.ui.home.loadHomeCarouselFromWorker
+import com.eazpire.creator.ui.home.loadHomePromotionsFromWorker
 import com.eazpire.creator.ui.home.matchesHomeCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -59,7 +61,6 @@ fun ProductCarouselSection(
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = LocalTranslationStore.current
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
-    val api = remember { ShopifyProductsApi() }
     val tokenStore = remember { SecureTokenStore(context) }
     val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
@@ -98,7 +99,7 @@ fun ProductCarouselSection(
             HOME_PRODUCT_SECTIONS.forEach { def ->
                 addAll(sectionPools[def.id]?.get(selectedCategory).orEmpty())
             }
-        }.distinctBy { it.id }
+        }.distinctBy { it.handle }
     }
 
     val filterActive = !productFilters.isEmpty() || withinSearchQuery.isNotBlank()
@@ -111,22 +112,21 @@ fun ProductCarouselSection(
         sectionPools = emptyMap()
         createScratchCatalog = emptyList()
 
+        val countryCode = localeStore.getCountryCodeSync()
         val pools = mutableMapOf<String, HomeCategoryPools>()
         coroutineScope {
             val promoDeferred = async(Dispatchers.IO) {
-                runCatching {
-                    val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
-                    ShopifyProductsApi.parseActivePromotionProductsResponse(j)
-                }.getOrElse { emptyList() }
+                loadHomePromotionsFromWorker(creatorApi, HOME_MAX_PRODUCTS, countryCode)
             }
             val firstDef = HOME_PRODUCT_SECTIONS.firstOrNull()
             val firstDeferred = firstDef?.let { def ->
                 async(Dispatchers.IO) {
-                    loadHomeSectionForChip(
-                        api,
-                        def.baseCollectionHandle,
-                        HOME_INITIAL_PRODUCTS,
+                    loadHomeCarouselFromWorker(
+                        creatorApi,
+                        def.id,
                         chipId = "all",
+                        limit = HOME_INITIAL_PRODUCTS.coerceAtMost(HOME_MAX_PRODUCTS),
+                        countryCode = countryCode,
                     )
                 }
             }
@@ -145,11 +145,12 @@ fun ProductCarouselSection(
                 coroutineScope {
                     HOME_PRODUCT_SECTIONS.map { def ->
                         async {
-                            val fullProducts = loadHomeSectionForChip(
-                                api,
-                                def.baseCollectionHandle,
-                                def.maxProducts,
+                            val fullProducts = loadHomeCarouselFromWorker(
+                                creatorApi,
+                                def.id,
                                 chipId = "all",
+                                limit = HOME_MAX_PRODUCTS,
+                                countryCode = countryCode,
                             )
                             def.id to fullProducts
                         }
@@ -160,11 +161,12 @@ fun ProductCarouselSection(
                     }
                     HOME_PRODUCT_SECTIONS.map { def ->
                         async {
-                            val fullPools = loadHomeCategoryPoolsMissingChips(
-                                api,
-                                def.baseCollectionHandle,
-                                def.maxProducts,
+                            val fullPools = loadHomeCarouselCategoryPoolsMissingChips(
+                                creatorApi,
+                                def.id,
+                                HOME_MAX_PRODUCTS,
                                 updated[def.id].orEmpty(),
+                                countryCode = countryCode,
                             )
                             def.id to fullPools
                         }
@@ -188,18 +190,19 @@ fun ProductCarouselSection(
             !sectionPools[def.id].orEmpty().containsKey(chip)
         }
         if (defsToLoad.isEmpty()) return@LaunchedEffect
+        val countryCode = localeStore.getCountryCodeSync()
         loadingCategories = loadingCategories + chip
         try {
             val updated = sectionPools.toMutableMap()
             coroutineScope {
                 defsToLoad.map { def ->
                     async(Dispatchers.IO) {
-                        val products = loadHomeSectionForChip(
-                            api,
-                            def.baseCollectionHandle,
-                            def.maxProducts,
+                        val products = loadHomeCarouselFromWorker(
+                            creatorApi,
+                            def.id,
                             chipId = chip,
-                            initialOnly = true,
+                            limit = HOME_INITIAL_PRODUCTS.coerceAtMost(HOME_MAX_PRODUCTS),
+                            countryCode = countryCode,
                         )
                         def.id to products
                     }
@@ -215,11 +218,12 @@ fun ProductCarouselSection(
             coroutineScope {
                 defsToLoad.map { def ->
                     async(Dispatchers.IO) {
-                        val products = loadHomeSectionForChip(
-                            api,
-                            def.baseCollectionHandle,
-                            def.maxProducts,
+                        val products = loadHomeCarouselFromWorker(
+                            creatorApi,
+                            def.id,
                             chipId = chip,
+                            limit = HOME_MAX_PRODUCTS,
+                            countryCode = countryCode,
                         )
                         def.id to products
                     }

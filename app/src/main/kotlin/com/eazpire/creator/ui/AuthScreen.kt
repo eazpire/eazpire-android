@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.eazpire.creator.util.releaseForCompose
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.AuthConfig
@@ -386,7 +387,8 @@ fun AuthScreen(
                                 )
                                 oauthWebViewLoadDone = true
                             }
-                        }
+                        },
+                        onRelease = { it.releaseForCompose() }
                     )
                 }
                 TextButton(

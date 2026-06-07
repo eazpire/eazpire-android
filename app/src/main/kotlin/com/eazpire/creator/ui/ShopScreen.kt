@@ -80,6 +80,7 @@ import com.eazpire.creator.ui.header.FavoriteEditContext
 import com.eazpire.creator.ui.header.FavoritesModal
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
+import com.eazpire.creator.ui.header.SHOP_CREATE_CATALOG_HANDLE
 import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
 import com.eazpire.creator.ui.header.ShopMenuBar
 import com.eazpire.creator.ui.vouchers.VoucherGiftSubTab
@@ -354,6 +355,11 @@ fun ShopScreen(
         selectedProductHandle = null
         selectedCreatorName = null
         shopCreateStudioPhase = null
+        if (handle == SHOP_CREATE_CATALOG_HANDLE || handle == SHOP_MENU_CREATE_HANDLE) {
+            shopCreateActive = true
+            selectedCollection = null
+            return
+        }
         shopCreateActive = false
         selectedCollection = Triple(title, handle, productType)
     }
@@ -961,12 +967,16 @@ fun ShopScreen(
                     onCreateScratchClick = { catalogProduct ->
                         shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(catalogProduct)
                     },
-                    onCategoryClick = { title, h ->
+                    onCategoryClick = { title, handle ->
                         productModalHandleState.value = null
                         selectedProductHandle = null
                         selectedCreatorName = null
                         shopSearchQuery = null
-                        selectedCollection = Triple(title, h, null)
+                        if (handle == SHOP_MENU_CREATE_HANDLE) {
+                            openShopCreate()
+                        } else {
+                            openShopCollection(title, handle, null)
+                        }
                     },
                     onProductClick = { params ->
                         productModalHandleState.value = null
@@ -1158,8 +1168,15 @@ fun ShopScreen(
                         lookLeft = if (showGenOverlay) faceTowardBubbleLeft else creatorGenEazyLookLeft,
                         autoFaceFromScreenHalf = isCreatorMode && !showGenOverlay,
                         onVisualPositionChange = { x, y ->
-                            liveMascotX = x
-                            liveMascotY = y
+                            val px = liveMascotX
+                            val py = liveMascotY
+                            if (px == null || py == null ||
+                                kotlin.math.abs(x - px) > 6f ||
+                                kotlin.math.abs(y - py) > 6f
+                            ) {
+                                liveMascotX = x
+                                liveMascotY = y
+                            }
                         }
                     )
                 }

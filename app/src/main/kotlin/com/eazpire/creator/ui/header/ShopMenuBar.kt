@@ -2,6 +2,7 @@ package com.eazpire.creator.ui.header
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,12 +37,21 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 /** Synthetic handle: opens shop “Create product” flow (not a Shopify collection). */
 const val SHOP_MENU_CREATE_HANDLE = "eaz_shop_create"
 
+/** Home / menu link to the create-from-scratch catalog overview (not a Shopify collection). */
+const val SHOP_CREATE_CATALOG_HANDLE = "shop-create-catalog"
+
 private data class MenuItem(
     val label: String,
     val collectionHandle: String?,
     val url: String,
     val megaAudienceHandle: String? = null,
     val megaHomeLiving: Boolean = false,
+)
+
+private data class ComingSoonMenuItem(
+    val label: String,
+    val iconHandle: String,
+    val translationKey: String,
 )
 
 private val MENU_ITEMS = listOf(
@@ -52,6 +62,11 @@ private val MENU_ITEMS = listOf(
     MenuItem("Kids", "kids", "https://www.eazpire.com/collections/kids", megaAudienceHandle = "kids"),
     MenuItem("Toddler", "toddler", "https://www.eazpire.com/collections/toddler", megaAudienceHandle = "toddler"),
     MenuItem("Home & Living", "home-living", "https://www.eazpire.com/collections/home-living", megaHomeLiving = true),
+)
+
+private val COMING_SOON_MENU_ITEMS = listOf(
+    ComingSoonMenuItem("3D Print", "print-3d", "eaz.header.print_3d"),
+    ComingSoonMenuItem("Blank products", "blank-products", "eaz.header.blank_products"),
 )
 
 private val MENU_ITEM_ICON_HANDLES = mapOf(
@@ -84,6 +99,7 @@ fun ShopMenuBar(
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val menuBg = EazColors.Orange.copy(alpha = 0.95f)
     var expandedMegaKey by remember { mutableStateOf<String?>(null) }
+    val comingSoonMessage = t("creator.common.coming_soon", "Coming soon")
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -117,8 +133,8 @@ fun ShopMenuBar(
             }
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp),
+                    .weight(1f)
+                    .fillMaxHeight(),
                 contentAlignment = Alignment.CenterStart
             ) {
                 Box(
@@ -208,6 +224,41 @@ fun ShopMenuBar(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.padding(end = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                COMING_SOON_MENU_ITEMS.forEach { item ->
+                    val label = t(item.translationKey, item.label)
+                    Box(
+                        modifier = Modifier
+                            .clickable {
+                                Toast.makeText(context, comingSoonMessage, Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            EazNavTablerIcon(
+                                handle = item.iconHandle,
+                                tint = Color.White.copy(alpha = 0.72f),
+                                iconSize = 14.dp,
+                            )
+                            Text(
+                                text = label,
+                                color = Color.White.copy(alpha = 0.72f),
+                                fontWeight = FontWeight.Bold,
+                                style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                            )
                         }
                     }
                 }

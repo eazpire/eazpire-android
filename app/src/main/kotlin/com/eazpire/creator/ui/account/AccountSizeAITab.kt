@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -516,7 +518,7 @@ fun AccountSizeAITab(
         onSaveActionReady?.invoke({ saveMeasurements() }, selectedSubTab == 0)
     }
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -540,11 +542,12 @@ fun AccountSizeAITab(
             }
         }
 
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         when (selectedSubTab) {
             0 -> {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -733,7 +736,7 @@ fun AccountSizeAITab(
             1 -> {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -814,7 +817,7 @@ fun AccountSizeAITab(
             2 -> {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1039,6 +1042,7 @@ fun AccountSizeAITab(
                     }
                 }
             }
+        }
         }
     }
 

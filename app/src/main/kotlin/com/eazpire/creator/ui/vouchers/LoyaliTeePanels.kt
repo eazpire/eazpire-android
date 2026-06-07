@@ -82,7 +82,7 @@ private fun parseStampSlots(arr: JSONArray?): List<LoyaliTeeSlot> {
             imageUrl = o.optString("image_url").takeIf { it.isNotBlank() },
             title = o.optString("product_title").takeIf { it.isNotBlank() },
             productAvailable = available,
-            unavailable = o.optBoolean("unavailable", false) || (!available && !o.optString("product_title").isNullOrBlank()),
+            unavailable = o.optBoolean("unavailable", false),
         )
     }
 }
@@ -396,7 +396,7 @@ private fun LoyaliTeeRedeemedTile(
     } else {
         !handle.isNullOrBlank()
     }
-    val unavailable = item.optBoolean("unavailable", false) || (!available && title.isNotBlank())
+    val unavailable = item.optBoolean("unavailable", false)
     val imageUrl = if (!unavailable) item.optString("image_url").takeIf { it.isNotBlank() } else null
     val clickable = available && !handle.isNullOrBlank() && onOpenProduct != null
 

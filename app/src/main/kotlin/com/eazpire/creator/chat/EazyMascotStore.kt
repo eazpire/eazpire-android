@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.eazpire.creator.api.CreatorApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +26,8 @@ private val Context.eazyMascotDataStore: DataStore<Preferences> by preferencesDa
  * Mirrors web: localStorage eazy_mascot_position, eazy_mascot_docked.
  */
 class EazyMascotStore(private val context: Context) {
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val _isDocked = MutableStateFlow(false)
     val isDocked: StateFlow<Boolean> = _isDocked.asStateFlow()
 
@@ -34,7 +37,7 @@ class EazyMascotStore(private val context: Context) {
     val positionY: StateFlow<Float?> = _positionY.asStateFlow()
 
     init {
-        CoroutineScope(Dispatchers.IO).launch {
+        ioScope.launch {
             context.eazyMascotDataStore.data.map { prefs ->
                 _isDocked.value = prefs[DOCKED_KEY] ?: false
                 val x = prefs[POS_X_KEY]
@@ -69,7 +72,7 @@ class EazyMascotStore(private val context: Context) {
 
     fun setDockedSync(docked: Boolean) {
         _isDocked.value = docked
-        CoroutineScope(Dispatchers.IO).launch {
+        ioScope.launch {
             context.eazyMascotDataStore.edit { it[DOCKED_KEY] = docked }
         }
     }
@@ -77,7 +80,7 @@ class EazyMascotStore(private val context: Context) {
     fun setPositionSync(x: Float, y: Float) {
         _positionX.value = x
         _positionY.value = y
-        CoroutineScope(Dispatchers.IO).launch {
+        ioScope.launch {
             context.eazyMascotDataStore.edit {
                 it[POS_X_KEY] = x
                 it[POS_Y_KEY] = y
@@ -90,7 +93,7 @@ class EazyMascotStore(private val context: Context) {
         _isDocked.value = false
         _positionX.value = null
         _positionY.value = null
-        CoroutineScope(Dispatchers.IO).launch {
+        ioScope.launch {
             context.eazyMascotDataStore.edit { prefs ->
                 prefs.remove(DOCKED_KEY)
                 prefs.remove(POS_X_KEY)

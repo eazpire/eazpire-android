@@ -769,6 +769,21 @@ class ShopifyProductsApi(
             }
         }
 
+        private fun optTimestampMs(o: JSONObject, vararg keys: String): Long? {
+            for (key in keys) {
+                if (!o.has(key) || o.isNull(key)) continue
+                try {
+                    when (val v = o.get(key)) {
+                        is Number -> v.toLong().takeIf { it > 0L }?.let { return it }
+                        is String -> v.trim().toLongOrNull()?.takeIf { it > 0L }?.let { return it }
+                    }
+                } catch (_: Exception) {
+                    /* try next key */
+                }
+            }
+            return null
+        }
+
         /**
          * Public worker op `list-active-shop-promotion-products` — maps to [ProductItem] for shop grid/carousel.
          */
@@ -843,6 +858,87 @@ class ShopifyProductsApi(
                         promoPreviewPrice = promoPreview,
                         promoPrelaunch = prelaunch,
                         promoCampaignStartsAtMs = promoCampaignStartMs
+                    )
+                )
+            }
+            return out
+        }
+
+        /** Worker op `list-home-carousel-products` — home carousel rows (sorted/deduped server-side). */
+        fun parseHomeCarouselProductsResponse(json: JSONObject, storeBase: String = "https://www.eazpire.com"): List<ProductItem> {
+            if (!json.optBoolean("ok", true)) return emptyList()
+            val arr = json.optJSONArray("products") ?: return emptyList()
+            val out = ArrayList<ProductItem>()
+            val seen = HashSet<String>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val handle = o.optString("handle", "").trim()
+                if (handle.isBlank() || !seen.add(handle)) continue
+                val imgs = mutableListOf<String>()
+                val imgArr = o.optJSONArray("images")
+                if (imgArr != null) {
+                    for (j in 0 until imgArr.length()) {
+                        imgArr.optString(j, "").takeIf { it.isNotBlank() }?.let { imgs.add(it) }
+                    }
+                }
+                val variantArr = o.optJSONArray("variantImages")
+                val variantImgs = mutableListOf<String>()
+                if (variantArr != null) {
+                    for (j in 0 until variantArr.length()) {
+                        variantArr.optString(j, "").takeIf { it.isNotBlank() }?.let { variantImgs.add(it) }
+                    }
+                }
+                val rotation = variantImgs.ifEmpty { imgs }
+                val price = o.optDouble("price", 0.0)
+                val compare = if (o.has("compareAtPrice") && !o.isNull("compareAtPrice")) {
+                    o.optDouble("compareAtPrice").takeIf { !it.isNaN() }
+                } else if (o.has("compare_at_price") && !o.isNull("compare_at_price")) {
+                    o.optDouble("compare_at_price").takeIf { !it.isNaN() }
+                } else {
+                    null
+                }
+                val designStyleArr = o.optJSONArray("designStyle")
+                val designStyle = mutableListOf<String>()
+                if (designStyleArr != null) {
+                    for (j in 0 until designStyleArr.length()) {
+                        designStyleArr.optString(j, "").takeIf { it.isNotBlank() }?.let { designStyle.add(it) }
+                    }
+                }
+                val promoEndsMs = optTimestampMs(o, "promotion_ends_at", "promotionEndsAt")
+                val promoNextMs = optTimestampMs(o, "promo_next_window_starts_at", "promoNextWindowStartsAt")
+                val promoCampaignStartMs = optTimestampMs(o, "promo_campaign_starts_at", "promoCampaignStartsAt")
+                val outside = o.optBoolean("promoOutsideSlot", o.optBoolean("promo_outside_slot", false))
+                val prelaunch = o.optBoolean("promoPrelaunch", o.optBoolean("promo_prelaunch", false))
+                out.add(
+                    ProductItem(
+                        id = o.optLong("id", 0L),
+                        title = o.optString("title", handle),
+                        handle = handle,
+                        images = imgs,
+                        variantImages = rotation,
+                        url = o.optString("url", "").ifBlank { "$storeBase/products/$handle" },
+                        price = price,
+                        compareAtPrice = compare,
+                        createdAt = o.optString("createdAt", o.optString("created_at", "")),
+                        productType = o.optString("productType", o.optString("product_type", "")),
+                        tags = emptyList(),
+                        vendor = o.optString("vendor", ""),
+                        contentType = o.optString("contentType", o.optString("content_type", "")),
+                        designType = o.optString("designType", o.optString("design_type", "")),
+                        designStyle = designStyle,
+                        ratio = o.optString("ratio", ""),
+                        designLanguage = o.optString("designLanguage", o.optString("design_language", "")),
+                        creator = o.optString("creator", o.optString("vendor", "")),
+                        metaProductKey = o.optString("productKey", o.optString("product_key", "")),
+                        patProductName = o.optString("productName", o.optString("product_name", "")),
+                        designId = "",
+                        promotionEndsAtMs = promoEndsMs,
+                        promoBeforePrice = compare,
+                        promoNextWindowStartsAtMs = promoNextMs,
+                        promoOutsideSlot = outside,
+                        promoPreviewPrice = null,
+                        promoPrelaunch = prelaunch,
+                        promoCampaignStartsAtMs = promoCampaignStartMs,
                     )
                 )
             }
