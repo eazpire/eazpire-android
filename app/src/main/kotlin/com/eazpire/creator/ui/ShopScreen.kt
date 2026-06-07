@@ -81,6 +81,7 @@ import com.eazpire.creator.ui.header.FavoritesModal
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.SHOP_CREATE_CATALOG_HANDLE
+import com.eazpire.creator.ui.header.SHOP_CREATE_PAGE_HANDLE
 import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
 import com.eazpire.creator.ui.header.ShopMenuBar
 import com.eazpire.creator.ui.vouchers.VoucherGiftSubTab
@@ -355,7 +356,11 @@ fun ShopScreen(
         selectedProductHandle = null
         selectedCreatorName = null
         shopCreateStudioPhase = null
-        if (handle == SHOP_CREATE_CATALOG_HANDLE || handle == SHOP_MENU_CREATE_HANDLE) {
+        if (
+            handle == SHOP_CREATE_PAGE_HANDLE ||
+            handle == SHOP_CREATE_CATALOG_HANDLE ||
+            handle == SHOP_MENU_CREATE_HANDLE
+        ) {
             shopCreateActive = true
             selectedCollection = null
             return

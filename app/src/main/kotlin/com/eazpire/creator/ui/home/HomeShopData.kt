@@ -326,6 +326,6 @@ fun CatalogProduct.toHomeProductItem(): ShopifyProductsApi.ProductItem =
         handle = productKey,
         images = mockUrls,
         variantImages = mockUrls,
-        url = "https://www.eazpire.com/pages/shop-create-catalog",
+        url = "https://www.eazpire.com/pages/shop-create",
         metaProductKey = productKey,
     )

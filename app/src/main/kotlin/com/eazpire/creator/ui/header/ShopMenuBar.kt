@@ -37,7 +37,10 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 /** Synthetic handle: opens shop “Create product” flow (not a Shopify collection). */
 const val SHOP_MENU_CREATE_HANDLE = "eaz_shop_create"
 
-/** Home / menu link to the create-from-scratch catalog overview (not a Shopify collection). */
+/** Home / menu link to the create-from-scratch catalog overview (Shopify page handle shop-create). */
+const val SHOP_CREATE_PAGE_HANDLE = "shop-create"
+
+/** @deprecated Use [SHOP_CREATE_PAGE_HANDLE]; kept for deep links that still use the old path segment. */
 const val SHOP_CREATE_CATALOG_HANDLE = "shop-create-catalog"
 
 private data class MenuItem(

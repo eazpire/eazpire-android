@@ -347,7 +347,7 @@ fun ProductCarouselSection(
                     title = title,
                     products = createScratchProducts,
                     onTitleClick = onCategoryClick?.let { cb ->
-                        { cb(title, "shop-create-catalog") }
+                        { cb(title, "shop-create") }
                     },
                     onProductClick = { cat -> onCreateScratchClick?.invoke(cat) },
                     modifier = Modifier.padding(bottom = 6.dp),
