@@ -55,6 +55,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.creator.ui.ProductDetailScreen
 import com.eazpire.creator.ui.header.CheckoutDrawer
 import com.eazpire.creator.ui.nav.EazModalTablerIcon
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +71,12 @@ enum class VoucherModalTab {
     GIFT_CARDS,
     PROMO_CODES,
     LOYALITEE,
+}
+
+enum class VoucherGiftSubTab {
+    PURCHASED,
+    REWARDS,
+    SENT,
 }
 
 private enum class GiftCardSubTab {
@@ -98,18 +105,20 @@ fun VoucherModal(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     initialTab: VoucherModalTab? = null,
-    onOpenProduct: ((String) -> Unit)? = null,
+    initialGiftSubTab: VoucherGiftSubTab? = null,
 ) {
     val t = remember(translationStore) { { k: String, d: String -> translationStore.t(k, d) } }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     val api = remember(tokenStore) { CreatorApi(jwt = tokenStore.getJwt()) }
     var giftCardDetailId by remember { mutableStateOf<String?>(null) }
     var loyaliteePickerRewardId by remember { mutableStateOf<String?>(null) }
+    var loyaliteeProductHandle by remember { mutableStateOf<String?>(null) }
     var checkoutUrl by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(visible) {
         if (!visible) {
             giftCardDetailId = null
             loyaliteePickerRewardId = null
+            loyaliteeProductHandle = null
             checkoutUrl = null
         }
     }
@@ -134,13 +143,21 @@ fun VoucherModal(
     var promoSubCreated by remember { mutableStateOf(true) }
     var loyaliteeSubTab by remember { mutableStateOf(LoyaliTeeSubTab.STAMPS) }
 
-    LaunchedEffect(visible, initialTab) {
+    LaunchedEffect(visible, initialTab, initialGiftSubTab) {
         if (visible && initialTab != null) {
             mainTab = when (initialTab) {
                 VoucherModalTab.STORE_CREDIT -> MainTab.STORE_CREDIT
                 VoucherModalTab.GIFT_CARDS -> MainTab.GIFT_CARDS
                 VoucherModalTab.PROMO_CODES -> MainTab.PROMO_CODES
                 VoucherModalTab.LOYALITEE -> MainTab.LOYALITEE
+            }
+        }
+        if (visible && initialGiftSubTab != null) {
+            mainTab = MainTab.GIFT_CARDS
+            giftSubTab = when (initialGiftSubTab) {
+                VoucherGiftSubTab.PURCHASED -> GiftCardSubTab.PURCHASED
+                VoucherGiftSubTab.REWARDS -> GiftCardSubTab.REWARDS
+                VoucherGiftSubTab.SENT -> GiftCardSubTab.SENT
             }
         }
     }
@@ -361,7 +378,7 @@ fun VoucherModal(
                                             errorText = errorText,
                                             t = t,
                                             onChooseTee = { loyaliteePickerRewardId = it },
-                                            onOpenProduct = onOpenProduct
+                                            onOpenProduct = { loyaliteeProductHandle = it }
                                         )
                                     } else {
                                         LoyaliTeeRedeemedPanel(
@@ -369,7 +386,7 @@ fun VoucherModal(
                                             loading = loading,
                                             errorText = errorText,
                                             t = t,
-                                            onOpenProduct = onOpenProduct
+                                            onOpenProduct = { loyaliteeProductHandle = it }
                                         )
                                     }
                             }
@@ -390,6 +407,26 @@ fun VoucherModal(
         onRedeemSuccess = { reloadLoyalty() },
         onCheckout = { checkoutUrl = it }
     )
+
+    loyaliteeProductHandle?.let { productHandle ->
+        Dialog(
+            onDismissRequest = { loyaliteeProductHandle = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.White)
+            ) {
+                ProductDetailScreen(
+                    productHandle = productHandle,
+                    onBack = { loyaliteeProductHandle = null },
+                    tokenStore = tokenStore,
+                    showCloseButton = true,
+                )
+            }
+        }
+    }
 }
 
 @Composable

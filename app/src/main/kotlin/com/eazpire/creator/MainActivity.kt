@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
         /** Creator Settings → Creator Codes (invite / redeemed push). */
         const val EXTRA_OPEN_CREATOR_CODES = "eaz_open_creator_codes"
         const val EXTRA_CREATOR_CODE_PREFILL = "eaz_creator_code_prefill"
+        /** Wallet → Gift Cards → Won (app install bonus push). */
+        const val EXTRA_OPEN_GIFT_CARDS_WON = "eaz_open_gift_cards_won"
     }
 
     data class PendingCreatorCodesNav(val prefillCode: String? = null)
@@ -65,6 +67,7 @@ class MainActivity : ComponentActivity() {
     val pendingCreatorInactiveDesigns = mutableStateOf(false)
     /** Creator Settings → Creator Codes (from FCM / in-app notification). */
     val pendingCreatorCodesNav = mutableStateOf<PendingCreatorCodesNav?>(null)
+    val pendingOpenGiftCardsWon = mutableStateOf(false)
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -126,6 +129,7 @@ class MainActivity : ComponentActivity() {
                         pendingWearPairToken = pendingWearPairToken,
                         pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
                         pendingCreatorCodesNav = pendingCreatorCodesNav,
+                        pendingOpenGiftCardsWon = pendingOpenGiftCardsWon,
                     )
                 }
             }
@@ -194,6 +198,9 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_CODES, false)) {
             val prefill = intent.getStringExtra(EXTRA_CREATOR_CODE_PREFILL)?.trim()?.takeIf { it.isNotBlank() }
             pendingCreatorCodesNav.value = PendingCreatorCodesNav(prefillCode = prefill)
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_GIFT_CARDS_WON, false)) {
+            pendingOpenGiftCardsWon.value = true
         }
     }
 

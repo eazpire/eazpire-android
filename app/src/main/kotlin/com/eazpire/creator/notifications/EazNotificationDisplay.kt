@@ -77,6 +77,9 @@ object EazNotificationDisplay {
                         putExtra(MainActivity.EXTRA_CREATOR_CODE_PREFILL, it)
                     }
                 }
+                "gift_cards_won", "voucher_gift_cards_won", "gift_cards_rewards" -> {
+                    putExtra(MainActivity.EXTRA_OPEN_GIFT_CARDS_WON, true)
+                }
                 null, "" -> {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
                     putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Notifications.name)

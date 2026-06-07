@@ -53,6 +53,9 @@ internal object GiftCardUiFallback {
         "creator.gift_cards.postcard_size" to "Postcard size",
         "creator.gift_cards.postcard_size_6x4" to "6x4",
         "creator.gift_cards.postcard_size_9x6" to "9x6",
-        "creator.gift_cards.postcard_size_11x6" to "11x6"
+        "creator.gift_cards.postcard_size_11x6" to "11x6",
+        "creator.voucher_page.reward_badge" to "Daily game prize",
+        "creator.voucher_page.reward_badge_daily_game" to "Daily game prize",
+        "creator.voucher_page.reward_badge_app_install" to "App download bonus",
     )
 }

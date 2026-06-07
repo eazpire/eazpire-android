@@ -82,6 +82,7 @@ import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
 import com.eazpire.creator.ui.header.ShopMenuBar
+import com.eazpire.creator.ui.vouchers.VoucherGiftSubTab
 import com.eazpire.creator.ui.vouchers.VoucherModal
 import com.eazpire.creator.ui.vouchers.VoucherModalTab
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +112,7 @@ fun ShopScreen(
     pendingWearPairToken: MutableState<String?>? = null,
     pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
     pendingCreatorCodesNav: MutableState<MainActivity.PendingCreatorCodesNav?>? = null,
+    pendingOpenGiftCardsWon: MutableState<Boolean>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -428,6 +430,17 @@ fun ShopScreen(
     var termsModalVisible by remember { mutableStateOf(false) }
     var voucherModalVisible by remember { mutableStateOf(false) }
     var voucherModalInitialTab by remember { mutableStateOf<VoucherModalTab?>(null) }
+    var voucherModalInitialGiftSubTab by remember { mutableStateOf<VoucherGiftSubTab?>(null) }
+
+    LaunchedEffect(pendingOpenGiftCardsWon?.value) {
+        val pg = pendingOpenGiftCardsWon
+        if (pg?.value == true) {
+            voucherModalInitialTab = VoucherModalTab.GIFT_CARDS
+            voucherModalInitialGiftSubTab = VoucherGiftSubTab.REWARDS
+            voucherModalVisible = true
+            pg.value = false
+        }
+    }
 
     val jwtForApi = tokenStore.getJwt()
     val ownerId = tokenStore.getOwnerId().orEmpty()
@@ -1253,13 +1266,12 @@ fun ShopScreen(
         onDismiss = {
             voucherModalVisible = false
             voucherModalInitialTab = null
+            voucherModalInitialGiftSubTab = null
         },
         tokenStore = tokenStore,
         translationStore = translationStore,
         initialTab = voucherModalInitialTab,
-        onOpenProduct = { handle ->
-            productModalHandleState.value = handle
-        },
+        initialGiftSubTab = voucherModalInitialGiftSubTab,
     )
 
     if (termsModalVisible) {

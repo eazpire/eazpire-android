@@ -17,9 +17,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -60,16 +63,26 @@ private data class LoyaliTeeSlot(
     val productHandle: String?,
     val imageUrl: String?,
     val title: String?,
+    val productAvailable: Boolean,
+    val unavailable: Boolean,
 )
 
 private fun parseStampSlots(arr: JSONArray?): List<LoyaliTeeSlot> {
     if (arr == null) return emptyList()
     return (0 until arr.length()).map { i ->
         val o = arr.getJSONObject(i)
+        val handle = o.optString("product_handle").takeIf { it.isNotBlank() }
+        val available = if (o.has("product_available")) {
+            o.optBoolean("product_available", false)
+        } else {
+            !handle.isNullOrBlank()
+        }
         LoyaliTeeSlot(
-            productHandle = o.optString("product_handle").takeIf { it.isNotBlank() },
+            productHandle = handle,
             imageUrl = o.optString("image_url").takeIf { it.isNotBlank() },
             title = o.optString("product_title").takeIf { it.isNotBlank() },
+            productAvailable = available,
+            unavailable = o.optBoolean("unavailable", false) || (!available && !o.optString("product_title").isNullOrBlank()),
         )
     }
 }
@@ -253,12 +266,20 @@ private fun LoyaliTeeStampSlot(
     onOpenProduct: ((String) -> Unit)?,
 ) {
     val handle = slot?.productHandle
-    val clickable = filled && !handle.isNullOrBlank() && onOpenProduct != null
+    val available = filled && slot?.productAvailable == true && !handle.isNullOrBlank()
+    val unavailable = filled && slot?.unavailable == true
+    val clickable = available && onOpenProduct != null
     Box(
         modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (filled) StampFilledBg else Color.White)
+            .background(
+                when {
+                    unavailable -> Color(0xFFF9FAFB)
+                    filled -> StampFilledBg
+                    else -> Color.White
+                }
+            )
             .border(
                 width = 2.dp,
                 color = when {
@@ -273,15 +294,29 @@ private fun LoyaliTeeStampSlot(
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (filled && !slot?.imageUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = slot!!.imageUrl,
-                contentDescription = slot.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            LoyaliTeeLogo(Modifier.fillMaxSize(0.62f))
+        when {
+            available && !slot?.imageUrl.isNullOrBlank() -> {
+                AsyncImage(
+                    model = slot!!.imageUrl,
+                    contentDescription = slot.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            unavailable -> {
+                Icon(
+                    imageVector = Icons.Filled.ShoppingBag,
+                    contentDescription = slot?.title,
+                    tint = Color(0xFF9CA3AF),
+                    modifier = Modifier.fillMaxSize(0.42f)
+                )
+            }
+            filled -> {
+                LoyaliTeeLogo(Modifier.fillMaxSize(0.62f))
+            }
+            else -> {
+                LoyaliTeeLogo(Modifier.fillMaxSize(0.62f))
+            }
         }
         LoyaliTeeLogo(
             Modifier
@@ -355,9 +390,15 @@ private fun LoyaliTeeRedeemedTile(
         t("eaz.loyalitee.unnamed_tee", "Softstyle Cotton Tee")
     }
     val dateStr = fmtLoyaliteeDate(item.optString("redeemed_at"))
-    val imageUrl = item.optString("image_url").takeIf { it.isNotBlank() }
     val handle = item.optString("product_handle").takeIf { it.isNotBlank() }
-    val clickable = !handle.isNullOrBlank() && onOpenProduct != null
+    val available = if (item.has("product_available")) {
+        item.optBoolean("product_available", false)
+    } else {
+        !handle.isNullOrBlank()
+    }
+    val unavailable = item.optBoolean("unavailable", false) || (!available && title.isNotBlank())
+    val imageUrl = if (!unavailable) item.optString("image_url").takeIf { it.isNotBlank() } else null
+    val clickable = available && !handle.isNullOrBlank() && onOpenProduct != null
 
     Column(
         Modifier
@@ -373,19 +414,32 @@ private fun LoyaliTeeRedeemedTile(
                 .aspectRatio(1f)
                 .background(Color(0xFFF3F4F6))
         ) {
-            if (imageUrl != null) {
-                AsyncImage(
-                    model = imageUrl,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                LoyaliTeeLogo(
-                    Modifier
-                        .align(Alignment.Center)
-                        .size(40.dp)
-                )
+            when {
+                imageUrl != null -> {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                unavailable -> {
+                    Icon(
+                        imageVector = Icons.Filled.ShoppingBag,
+                        contentDescription = title,
+                        tint = Color(0xFF9CA3AF),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(40.dp)
+                    )
+                }
+                else -> {
+                    LoyaliTeeLogo(
+                        Modifier
+                            .align(Alignment.Center)
+                            .size(40.dp)
+                    )
+                }
             }
             LoyaliTeeLogo(
                 Modifier

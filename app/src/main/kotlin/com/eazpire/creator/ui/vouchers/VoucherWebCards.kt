@@ -240,6 +240,16 @@ fun WebStyleGiftCard(
 
     val purchaseBadge = remember(gc) {
         when {
+            gc.optString("gift_card_origin", "") == "reward" -> {
+                when (gc.optString("reward_kind", "")) {
+                    "app_install_bonus" ->
+                        t("creator.voucher_page.reward_badge_app_install", "App download bonus")
+                    "daily_game" ->
+                        t("creator.voucher_page.reward_badge_daily_game", "Daily game prize")
+                    else ->
+                        t("creator.voucher_page.reward_badge", "Daily game prize")
+                }
+            }
             gc.optBoolean("is_buyer", false) && gc.optString("purchase_date").isNotBlank() ->
                 "${t("creator.gift_cards.purchased", "Purchased")} ${fmtDateIso(gc.optString("purchase_date"))}"
             gc.optBoolean("is_recipient", false) && gc.optString("activation_date").isNotBlank() ->
