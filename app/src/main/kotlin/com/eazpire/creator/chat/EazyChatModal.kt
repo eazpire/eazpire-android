@@ -549,7 +549,9 @@ fun EazyChatModal(
     val context = LocalContext.current
     val store = LocalTranslationStore.current
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
-    val api = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
+    val jwt = tokenStore?.getJwt()
+    val ownerId = tokenStore?.getOwnerId()?.trim()?.takeIf { it.isNotBlank() }
+    val api = remember(jwt, ownerId) { CreatorApi(jwt = jwt) }
     val scope = rememberCoroutineScope()
 
     val messages by chatStore.messages.collectAsState()
@@ -562,9 +564,8 @@ fun EazyChatModal(
     val heroJob by chatStore.heroJobState.collectAsState()
     val videoJob by chatStore.videoJobState.collectAsState()
     val designJob by chatStore.designJobState.collectAsState()
-    val isLoggedIn = tokenStore?.isLoggedIn() == true
+    val isLoggedIn = tokenStore?.isLoggedIn() == true && !ownerId.isNullOrBlank()
     val pagePath = if (chatContext == EazyChatContext.Creator) "/creator" else "/shop"
-    val ownerId = tokenStore?.getOwnerId()
 
     val sidebarTabs = remember {
         listOf(
@@ -690,7 +691,27 @@ fun EazyChatModal(
         chatStore.designSaveComplete.collect {
             selectedTab = EazySidebarTab.Notifications
             notifFilter = "unread"
+            notifFeedScope = "user"
             delay(2000)
+            loadNotificationsList()
+        }
+    }
+
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
+        chatStore.designJobComplete.collect {
+            selectedTab = EazySidebarTab.Notifications
+            notifFilter = "unread"
+            notifFeedScope = "user"
+            delay(800)
+            loadNotificationsList()
+        }
+    }
+
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
+        chatStore.asyncJobComplete.collect {
+            delay(600)
             loadNotificationsList()
         }
     }
@@ -740,6 +761,28 @@ fun EazyChatModal(
 
     val userKvJobsForDisplay = remember(userKvJobs, heroJob, videoJob, designJob) {
         filterKvJobsForLocalOverlay(userKvJobs, heroJob, videoJob, designJob)
+    }
+
+    var lastActiveJobCount by remember { mutableStateOf(0) }
+    val currentActiveJobCount = remember(userKvJobsForDisplay, heroJob, videoJob, designJob) {
+        val heroActive = if (heroJob?.isActive == true) 1 else 0
+        val videoActive = if (videoJob?.isActive == true) 1 else 0
+        val designActive = if (designJob?.isActive == true) 1 else 0
+        userKvJobsForDisplay.size + heroActive + videoActive + designActive
+    }
+    LaunchedEffect(currentActiveJobCount, visible, selectedTab) {
+        if (!visible || selectedTab != EazySidebarTab.Jobs) {
+            lastActiveJobCount = currentActiveJobCount
+            return@LaunchedEffect
+        }
+        if (lastActiveJobCount > 0 && currentActiveJobCount == 0) {
+            selectedTab = EazySidebarTab.Notifications
+            notifFilter = "unread"
+            notifFeedScope = "user"
+            delay(400)
+            loadNotificationsList()
+        }
+        lastActiveJobCount = currentActiveJobCount
     }
 
     val jobsBadgeCount = remember(userKvJobsForDisplay, systemJobs, heroJob, videoJob, designJob, selectedTab, jobsFeedScope) {
@@ -2153,52 +2196,12 @@ private fun EazyJobsCombinedPanel(
                     if (userKvJobs.isNotEmpty()) {
                         Text(
                             t("creator.notifications.active_jobs", "Active Jobs"),
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.labelMedium,
                             color = LocalEazyModalPalette.current.muted
                         )
                         userKvJobs.forEach { j ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 6.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
-                                    .padding(12.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        j.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = LocalEazyModalPalette.current.text,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    if (j.isWear) {
-                                        Text(
-                                            t("eazy_chat.chat_job_device_wear", "Wear"),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = LocalEazyModalPalette.current.accent,
-                                        )
-                                    }
-                                }
-                                LinearProgressIndicator(
-                                    progress = j.progress.coerceIn(0, 100) / 100f,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = LocalEazyModalPalette.current.accent,
-                                    trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
-                                )
-                                val statusLine = when {
-                                    j.saving -> j.message?.ifBlank { null } ?: "Saving…"
-                                    else -> j.message ?: j.status
-                                }
-                                statusLine?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
-                                }
-                            }
+                            EazyKvJobCard(j, t)
                         }
                     }
                 }
@@ -2218,83 +2221,20 @@ private fun EazyLocalAsyncJobsPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         val activeDesign = design?.takeIf { it.isActive }
         val activeHero = hero?.takeIf { it.isActive }
         val activeVideo = video?.takeIf { it.isActive }
-        if (activeDesign != null) {
-            Text(
-                text = t("creator.generator_eazy.job_summary_title", "Design generation"),
-                style = MaterialTheme.typography.labelMedium,
-                color = LocalEazyModalPalette.current.muted
-            )
-            Text(
-                text = activeDesign.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = LocalEazyModalPalette.current.text
-            )
-            LinearProgressIndicator(
-                progress = activeDesign.progress.coerceIn(0, 100) / 100f,
-                modifier = Modifier.fillMaxWidth(),
-                color = LocalEazyModalPalette.current.accent,
-                trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
-            )
-            Text(
-                text = t("creator.notifications.generate_design", "Generate Design"),
-                style = MaterialTheme.typography.labelSmall,
-                color = LocalEazyModalPalette.current.muted
-            )
-            activeDesign.message?.takeIf { it.isNotBlank() }?.let { msg ->
-                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
-            }
-        }
-        if (activeHero != null) {
-            Text(
-                text = t("creator.hero_eazy.job_summary_title", "Hero image generation"),
-                style = MaterialTheme.typography.labelMedium,
-                color = LocalEazyModalPalette.current.muted
-            )
-            Text(
-                text = activeHero.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = LocalEazyModalPalette.current.text
-            )
-            LinearProgressIndicator(
-                progress = activeHero.progress.coerceIn(0, 100) / 100f,
-                modifier = Modifier.fillMaxWidth(),
-                color = LocalEazyModalPalette.current.accent,
-                trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
-            )
-            activeHero.message?.takeIf { it.isNotBlank() }?.let { msg ->
-                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
-            }
-        }
-        if (activeVideo != null) {
-            Text(
-                text = t("creator.content_creation.videos.job_summary_title", "Video generation"),
-                style = MaterialTheme.typography.labelMedium,
-                color = LocalEazyModalPalette.current.muted
-            )
-            Text(
-                text = activeVideo.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = LocalEazyModalPalette.current.text
-            )
-            LinearProgressIndicator(
-                progress = activeVideo.progress.coerceIn(0, 100) / 100f,
-                modifier = Modifier.fillMaxWidth(),
-                color = LocalEazyModalPalette.current.accent,
-                trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
-            )
-            activeVideo.message?.takeIf { it.isNotBlank() }?.let { msg ->
-                Text(text = msg, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
-            }
-        }
+        activeDesign?.let { EazyActiveDesignJobCard(it, t) }
+        activeHero?.let { EazyActiveHeroJobCard(it, t) }
+        activeVideo?.let { EazyActiveVideoJobCard(it, t) }
         if (activeDesign == null && activeHero == null && activeVideo == null && !hasKvJobs) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -2305,7 +2245,7 @@ private fun EazyLocalAsyncJobsPanel(
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
-                    text = "No active jobs",
+                    text = t("eazy_chat.chat_no_active_jobs", "No active jobs"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = LocalEazyModalPalette.current.muted,
                     textAlign = TextAlign.Center
@@ -2328,7 +2268,12 @@ private fun ChatBubble(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(if (isUser) LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.assistantBubble)
+                .then(
+                    if (isUser) Modifier.background(LocalEazyModalPalette.current.userBubble)
+                    else Modifier
+                        .background(LocalEazyModalPalette.current.assistantBubble)
+                        .border(1.dp, LocalEazyModalPalette.current.border, RoundedCornerShape(16.dp))
+                )
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .widthIn(max = 280.dp)
         ) {
@@ -2338,7 +2283,7 @@ private fun ChatBubble(
                 Text(
                     text = message.content,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White
+                    color = if (isUser) Color.White else LocalEazyModalPalette.current.text
                 )
             }
         }

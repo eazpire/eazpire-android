@@ -32,9 +32,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.eazpire.creator.api.CreatorApi
+import android.content.Intent
+import androidx.compose.runtime.rememberCoroutineScope
+import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.creator.ui.share.ReferralShareTarget
+import com.eazpire.creator.ui.share.buildReferralShareUrl
+import com.eazpire.creator.ui.share.getActiveRefUrl
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -60,10 +66,16 @@ private data class JourneyTodo(
     val xp: Int,
     val link: String?,
     val action: String?,
+    val shareReferral: Boolean,
     val completed: Boolean,
     val countCurrent: Int?,
     val countTarget: Int?
 )
+
+private fun isShareReferralTask(id: String, pres: JSONObject): Boolean {
+    if (id == "todo_invite_user") return true
+    return pres.optString("journey_action", "").trim() == "share_referral"
+}
 
 private fun parseJourneyTodo(
     tObj: JSONObject,
@@ -87,9 +99,13 @@ private fun parseJourneyTodo(
         t(shopKey, id.replace("todo_", "").replace('_', ' ').replaceFirstChar { it.uppercase() })
 
     val fbPath = fb?.second?.takeIf { it.startsWith("/") }
-    val path =
+    val shareReferral = isShareReferralTask(id, pres)
+    val path = if (shareReferral) {
+        null
+    } else {
         journeyHrefFromPresentationJson(pres, fbPath)?.takeIf { it.startsWith("/") }
             ?: fbPath
+    }
 
     return JourneyTodo(
         id = id,
@@ -97,7 +113,8 @@ private fun parseJourneyTodo(
         icon = icon,
         xp = tObj.optInt("xp", 10),
         link = path,
-        action = null,
+        action = pres.optString("journey_action", "").takeIf { it.isNotBlank() },
+        shareReferral = shareReferral,
         completed = false,
         countCurrent = tObj.optInt("count_current", -1).takeIf { it >= 0 },
         countTarget = tObj.optInt("count_target", -1).takeIf { it >= 0 }
@@ -120,12 +137,13 @@ private val TODO_CONFIG = mapOf(
     "todo_create_avatar" to Triple("👤", "/pages/creator-settings#creator-image", "creator.overview.todo_create_avatar"),
     "todo_create_cover" to Triple("🎨", "/pages/creator-settings#cover-image", "creator.overview.todo_create_cover"),
     "todo_remix_design" to Triple("🔄", "/pages/inspirations", "creator.overview.todo_remix_design"),
-    "todo_invite_user" to Triple("👥", "/pages/creator-settings#referral", "creator.overview.todo_invite_user")
+    "todo_invite_user" to Triple("👥", null, "creator.overview.todo_invite_user")
 )
 
 @Composable
 fun CreatorJourneySection(
     translationStore: TranslationStore,
+    tokenStore: SecureTokenStore?,
     ownerId: String?,
     isLoggedIn: Boolean,
     onLoginClick: () -> Unit = {},
@@ -139,9 +157,10 @@ fun CreatorJourneySection(
     var isLoading by remember { mutableStateOf(true) }
     var activeTab by remember { mutableStateOf("open") }
     val t = { k: String, d: String -> translationStore.t(k, d) }
+    val jwt = tokenStore?.getJwt()
+    val api = remember(jwt, ownerId) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
 
     if (isLoggedIn && !ownerId.isNullOrBlank()) {
-        val api = remember { CreatorApi() }
         LaunchedEffect(ownerId) {
             try {
                 val r = withContext(Dispatchers.IO) { api.getOnboardingProgress(ownerId!!) }
@@ -281,7 +300,13 @@ fun CreatorJourneySection(
                     )
                 } else {
                     openTodos.forEach { todo ->
-                        JourneyTodoItem(todo = todo, t = t, isCompleted = false)
+                        JourneyTodoItem(
+                            todo = todo,
+                            ownerId = ownerId,
+                            api = api,
+                            t = t,
+                            isCompleted = false,
+                        )
                     }
                 }
             } else {
@@ -293,7 +318,13 @@ fun CreatorJourneySection(
                     )
                 } else {
                     completedTodos.forEach { todo ->
-                        JourneyTodoItem(todo = todo, t = t, isCompleted = true)
+                        JourneyTodoItem(
+                            todo = todo,
+                            ownerId = ownerId,
+                            api = api,
+                            t = t,
+                            isCompleted = true,
+                        )
                     }
                 }
             }
@@ -441,25 +472,45 @@ private fun JourneyTab(
 @Composable
 private fun JourneyTodoItem(
     todo: JourneyTodo,
+    ownerId: String?,
+    api: com.eazpire.creator.api.CreatorApi,
     t: (String, String) -> String,
     isCompleted: Boolean
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val xpText = t("creator.overview.todo_xp_reward", "+%{xp} XP").replace("%{xp}", todo.xp.toString())
     val countText = if (todo.countCurrent != null && todo.countTarget != null) {
         " ${todo.countCurrent}/${todo.countTarget}"
     } else ""
+
+    val clickable = !isCompleted && (todo.shareReferral || todo.link != null)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .then(
-                if (todo.link != null) Modifier.clickable {
-                    try {
-                        val url = "https://www.eazpire.com${todo.link}"
-                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-                    } catch (_: Exception) {}
+                if (clickable) Modifier.clickable {
+                    if (todo.shareReferral) {
+                        val oid = ownerId ?: return@clickable
+                        scope.launch {
+                            try {
+                                val refUrl = getActiveRefUrl(api, oid) ?: return@launch
+                                val urlToShare = buildReferralShareUrl(refUrl, ReferralShareTarget.AndroidApp)
+                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, urlToShare)
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, null))
+                            } catch (_: Exception) {}
+                        }
+                    } else {
+                        try {
+                            val url = "https://www.eazpire.com${todo.link}"
+                            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                        } catch (_: Exception) {}
+                    }
                 } else Modifier
             ),
         verticalAlignment = Alignment.CenterVertically,
@@ -483,7 +534,7 @@ private fun JourneyTodoItem(
                 color = Color.White.copy(alpha = 0.7f)
             )
         }
-        if (todo.link != null && !isCompleted) {
+        if (clickable) {
             Text(
                 text = "→",
                 style = MaterialTheme.typography.bodyMedium,

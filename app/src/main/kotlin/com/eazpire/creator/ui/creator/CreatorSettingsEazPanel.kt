@@ -28,7 +28,8 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.billing.EazCostCatalog
+import androidx.compose.runtime.collectAsState
+import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -48,6 +49,7 @@ fun CreatorSettingsEazPanel(
     var subTab by remember { mutableIntStateOf(0) }
     var balanceData by remember { mutableStateOf<JSONObject?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    val balanceRefreshTick by EazBalanceRefreshBus.tick.collectAsState()
 
     val tabs = listOf(
         EazSettingsSubTab.Balance,
@@ -56,7 +58,7 @@ fun CreatorSettingsEazPanel(
         EazSettingsSubTab.Costs
     )
 
-    LaunchedEffect(ownerId) {
+    LaunchedEffect(ownerId, balanceRefreshTick) {
         if (ownerId.isBlank()) {
             isLoading = false
             return@LaunchedEffect

@@ -190,7 +190,7 @@ fun CreatorCreationsScreen(
     var designsActivityFilter by remember { mutableStateOf("active") }
     var designs by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
     var products by remember { mutableStateOf<List<CreationProduct>>(emptyList()) }
-    var productsCountByDesignId by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var productBadgesByDesignId by remember { mutableStateOf<Map<String, CreationProductBadge>>(emptyMap()) }
     var designsLoading by remember { mutableStateOf(false) }
     var productsLoading by remember { mutableStateOf(false) }
     var designsSearch by remember { mutableStateOf(TextFieldValue("")) }
@@ -305,7 +305,7 @@ fun CreatorCreationsScreen(
                         val listRes = api.listDesigns(ownerId, 200)
                         val genRes = api.listGenerated(ownerId, 100)
                         val jobsRes = api.listJobs(ownerId, 50)
-                        val summaryRes = api.getPublishedSummary(ownerId, shop)
+                        val badgesRes = api.getCreationsProductBadges(ownerId, "EU", shop)
 
                         val savedJobIds = mutableSetOf<String>()
                         val savingJobIds = mutableSetOf<String>()
@@ -357,23 +357,11 @@ fun CreatorCreationsScreen(
                             if (designsActivityFilter == "active") ls == "active" else ls == "inactive"
                         }.sortedByDescending { it.createdAt }
 
-                        val summaryMap = mutableMapOf<String, Int>()
-                        if (summaryRes.optBoolean("ok", false)) {
-                            (summaryRes.optJSONArray("designs") ?: JSONArray()).let { arr ->
-                                for (i in 0 until arr.length()) {
-                                    val d = arr.optJSONObject(i) ?: continue
-                                    val did = d.optString("design_id", "").takeIf { it.isNotBlank() } ?: continue
-                                    summaryMap[did] = d.optInt("products_count", 0)
-                                }
-                            }
-                        }
-
-                        activityFiltered.map { d ->
-                            d.copy(productsCount = (d.id ?: d.designId)?.let { summaryMap[it] ?: 0 } ?: 0)
-                        } to summaryMap
+                        val badgeMap = parseCreationProductBadges(badgesRes)
+                        activityFiltered to badgeMap
                     }
                     designs = designsResult.first
-                    productsCountByDesignId = designsResult.second
+                    productBadgesByDesignId = designsResult.second
                 } catch (_: Exception) {
                     designs = emptyList()
                 } finally {
@@ -455,12 +443,9 @@ fun CreatorCreationsScreen(
         designsRefreshTrigger++
     }
 
-    val filteredDesigns = remember(designs, designsSearch.text, productsCountByDesignId, creationsFilter) {
+    val filteredDesigns = remember(designs, designsSearch.text, creationsFilter) {
         val q = designsSearch.text.trim().lowercase()
-        val withCount = designs.map { d ->
-            d.copy(productsCount = (d.id ?: d.designId)?.let { productsCountByDesignId[it] ?: 0 } ?: 0)
-        }
-        var list = if (q.isBlank()) withCount else withCount.filter { d ->
+        var list = if (q.isBlank()) designs else designs.filter { d ->
             (d.title.lowercase().contains(q) || (d.prompt?.lowercase()?.contains(q) == true))
         }
         val f = creationsFilter
@@ -650,6 +635,7 @@ fun CreatorCreationsScreen(
                                 items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
                                     CreationDesignListItem(
                                         design = design,
+                                        productBadgeText = formatDesignProductBadgeText(design, productBadgesByDesignId),
                                         translationStore = translationStore,
                                         bulkSelectable = isBulkSelectableDesign(design, designsActivityFilter),
                                         selected = bulkSelectedKeys.contains(design.bulkSelectionKey()),
@@ -687,6 +673,7 @@ fun CreatorCreationsScreen(
                                     Box(Modifier.aspectRatio(1f)) {
                                         CreationDesignGridCard(
                                             design = design,
+                                            productBadgeText = formatDesignProductBadgeText(design, productBadgesByDesignId),
                                             bulkSelectable = isBulkSelectableDesign(design, designsActivityFilter),
                                             selected = bulkSelectedKeys.contains(design.bulkSelectionKey()),
                                             onSelectedChange = { on ->
@@ -957,6 +944,9 @@ fun CreatorCreationsScreen(
             targets = activateTargets,
             creatorNames = creatorNamesCache,
             translationStore = translationStore,
+            api = api,
+            ownerId = ownerId,
+            shop = shop,
             busy = libraryActionBusy,
             onDismiss = {
                 if (!libraryActionBusy) {
@@ -964,7 +954,7 @@ fun CreatorCreationsScreen(
                     activateTargets = emptyList()
                 }
             },
-            onConfirm = { creatorName, visibilityPublic, activateWithout ->
+            onConfirm = { creatorName, visibilityPublic, activateWithout, publishExcluded ->
                 scope.launch {
                     libraryActionBusy = true
                     try {
@@ -972,10 +962,14 @@ fun CreatorCreationsScreen(
                         activateTargets.forEach { d ->
                             val id = d.id?.trim().orEmpty()
                             if (id.isBlank()) return@forEach
+                            val excluded = if (activateTargets.size == 1) publishExcluded else null
                             ok = ok && CreationsDesignLibraryActions.activateDesign(
-                                api, id, creatorName,
+                                api,
+                                id,
+                                creatorName,
                                 if (visibilityPublic) "public" else "private",
                                 activateWithout,
+                                excluded,
                             )
                         }
                         if (ok) {
@@ -998,6 +992,9 @@ fun CreatorCreationsScreen(
             targets = saveTargets,
             creatorNames = creatorNamesCache,
             translationStore = translationStore,
+            api = api,
+            ownerId = ownerId,
+            shop = shop,
             busy = libraryActionBusy,
             onDismiss = {
                 if (!libraryActionBusy) {
@@ -1005,7 +1002,7 @@ fun CreatorCreationsScreen(
                     saveTargets = emptyList()
                 }
             },
-            onConfirm = { creatorName, visibilityPublic, activateWithout ->
+            onConfirm = { creatorName, visibilityPublic, activateWithout, _ ->
                 scope.launch {
                     libraryActionBusy = true
                     try {
@@ -1306,6 +1303,7 @@ private fun CreationsDesignsToolbar(
 @Composable
 private fun CreationDesignListItem(
     design: CreationDesign,
+    productBadgeText: String,
     translationStore: TranslationStore,
     bulkSelectable: Boolean,
     selected: Boolean,
@@ -1349,9 +1347,9 @@ private fun CreationDesignListItem(
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.6f)
                 )
-                if (design.productsCount > 0) {
+                if (productBadgeText.isNotBlank()) {
                     Text(
-                        "${design.productsCount} products",
+                        productBadgeText,
                         style = MaterialTheme.typography.labelSmall,
                         color = EazColors.Orange
                     )

@@ -49,6 +49,7 @@ fun CreatorDashboardScreen(
         )
         CreatorJourneySection(
             translationStore = translationStore,
+            tokenStore = tokenStore,
             ownerId = tokenStore.getOwnerId(),
             isLoggedIn = tokenStore.isLoggedIn(),
             onLoginClick = onLoginClick,

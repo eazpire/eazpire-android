@@ -59,6 +59,8 @@ fun EazyDailyGamePanel(
 ) {
     val scope = rememberCoroutineScope()
     val shop = AuthConfig.SHOP_DOMAIN
+    // Wie Web: Spieler-Konto über ownerId (nicht nur JWT-Flag)
+    val canPlay = !ownerId.isNullOrBlank()
     var loading by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
@@ -114,14 +116,14 @@ fun EazyDailyGamePanel(
         }
     }
 
-    LaunchedEffect(ownerId, isLoggedIn) {
+    LaunchedEffect(ownerId, canPlay, isLoggedIn) {
         memorySession = null
         resumeMemory = false
-        if (!isLoggedIn || ownerId.isNullOrBlank()) return@LaunchedEffect
+        if (!canPlay) return@LaunchedEffect
         loading = true
         status = t("eazy_chat.games_loading", "Loading…")
         try {
-            val j = api.getDailyGameState(shop)
+            val j = api.getDailyGameState(shop, ownerId)
             if (j.optBoolean("ok", false)) {
                 applyStateJson(j)
             } else if (j.optString("error") == "unauthorized") {
@@ -139,9 +141,9 @@ fun EazyDailyGamePanel(
         }
     }
 
-    LaunchedEffect(resumeMemory, ownerId, isLoggedIn) {
+    LaunchedEffect(resumeMemory, ownerId, canPlay) {
         val oid = ownerId ?: return@LaunchedEffect
-        if (!isLoggedIn || !resumeMemory) return@LaunchedEffect
+        if (!canPlay || !resumeMemory) return@LaunchedEffect
         resumeMemory = false
         loading = true
         try {
@@ -166,7 +168,7 @@ fun EazyDailyGamePanel(
         }
     }
 
-    if (!isLoggedIn) {
+    if (!canPlay) {
         Column(
             modifier =
                 Modifier
@@ -176,7 +178,7 @@ fun EazyDailyGamePanel(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = t("eazy_chat.login_required_text", "Sign in to use Eazy."),
+                text = t("eazy_chat.games_login", "Sign in to play the daily game."),
                 style = MaterialTheme.typography.bodyLarge,
                 color = LocalEazyModalPalette.current.muted,
                 textAlign = TextAlign.Center,
@@ -229,7 +231,7 @@ fun EazyDailyGamePanel(
                                     playEnabled = false
                                 }
                                 else -> {
-                                    val st = api.getDailyGameState(shop)
+                                    val st = api.getDailyGameState(shop, ownerId)
                                     if (st.optBoolean("ok", false)) applyStateJson(st)
                                 }
                             }

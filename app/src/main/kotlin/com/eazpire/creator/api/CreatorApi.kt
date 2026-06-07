@@ -1,5 +1,6 @@
 package com.eazpire.creator.api
 
+import com.eazpire.creator.auth.AuthConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -339,9 +340,15 @@ class CreatorApi(
         mapOf("customer_id" to customerId, "shop" to shop)
     )
 
-    /** GET ?op=daily-game-state&shop=… — JWT auth */
-    suspend fun getDailyGameState(shop: String): JSONObject =
-        call("daily-game-state", mapOf("shop" to shop))
+    /** GET ?op=daily-game-state&shop=… — JWT + owner query params (wie Web App-Proxy). */
+    suspend fun getDailyGameState(shop: String, ownerId: String? = null): JSONObject {
+        val params = mutableMapOf("shop" to shop)
+        ownerId?.trim()?.takeIf { it.isNotBlank() }?.let { id ->
+            params["logged_in_customer_id"] = id
+            params["owner_id"] = id
+        }
+        return call("daily-game-state", params)
+    }
 
     /** POST ?op=daily-game-play&shop=… Body: owner_id */
     suspend fun postDailyGamePlay(shop: String, ownerId: String): JSONObject =
@@ -379,17 +386,107 @@ class CreatorApi(
         )
     }
 
-    suspend fun getPrizesInventoryList(ownerId: String): JSONObject =
-        postJson(
-            "prizes-inventory-list",
-            mapOf("owner_id" to ownerId, "type" to "all", "category" to "all"),
+    suspend fun getPrizesInventoryList(
+        ownerId: String,
+        shop: String,
+        type: String = "all",
+        category: String = "all",
+    ): JSONObject = postJsonWithShop(
+        "prizes-inventory-list",
+        shop,
+        mapOf("owner_id" to ownerId, "type" to type, "category" to category),
+    )
+
+    suspend fun getPrizesTradeListings(limit: Int = 30, sellerId: String? = null, shop: String = AuthConfig.SHOP_DOMAIN): JSONObject {
+        val params = mutableMapOf("limit" to limit.toString())
+        sellerId?.trim()?.takeIf { it.isNotBlank() }?.let { params["seller_id"] = it }
+        return call("prizes-trade-listings", params + mapOf("shop" to shop))
+    }
+
+    suspend fun getPrizesTradeTokens(ownerId: String, shop: String = AuthConfig.SHOP_DOMAIN): JSONObject =
+        call("prizes-trade-tokens", mapOf("owner_id" to ownerId, "shop" to shop))
+
+    suspend fun getPrizesTradeMyOffers(ownerId: String, shop: String = AuthConfig.SHOP_DOMAIN): JSONObject =
+        call("prizes-trade-my-offers", mapOf("owner_id" to ownerId, "shop" to shop))
+
+    suspend fun postPrizesRedeem(ownerId: String, instanceId: Int, shop: String): JSONObject =
+        postJsonWithShop("prizes-redeem", shop, mapOf("owner_id" to ownerId, "instance_id" to instanceId))
+
+    suspend fun postPrizesRotate(ownerId: String, instanceId: Int, shop: String): JSONObject =
+        postJsonWithShop(
+            "prizes-rotate",
+            shop,
+            mapOf("owner_id" to ownerId, "instance_type" to "prize", "instance_id" to instanceId),
         )
 
-    suspend fun getPrizesTradeListings(): JSONObject =
-        call("prizes-trade-listings", mapOf("limit" to "30"))
+    suspend fun postPrizesTradeListing(ownerId: String, instanceType: String, instanceId: Int, shop: String): JSONObject {
+        val body = JSONObject().apply {
+            put("owner_id", ownerId)
+            put("instance_type", instanceType)
+            put("instance_id", instanceId)
+            put("wishlist", JSONArray())
+        }
+        return postJsonBodyOpWithShop("prizes-trade-listings", shop, body)
+    }
 
-    suspend fun getPrizesTradeTokens(ownerId: String): JSONObject =
-        call("prizes-trade-tokens", mapOf("owner_id" to ownerId))
+    suspend fun deletePrizesTradeListing(ownerId: String, listingId: Int, shop: String): JSONObject {
+        val body = JSONObject().apply {
+            put("owner_id", ownerId)
+            put("listing_id", listingId)
+        }
+        return deleteJsonBodyOpWithShop("prizes-trade-listings", shop, body, mapOf("listing_id" to listingId.toString()))
+    }
+
+    suspend fun postPrizesTradeOffer(ownerId: String, action: String, offerId: Int, shop: String): JSONObject =
+        postJsonWithShop(
+            "prizes-trade-offer",
+            shop,
+            mapOf("owner_id" to ownerId, "action" to action, "offer_id" to offerId),
+        )
+
+    private suspend fun postJsonWithShop(op: String, shop: String, body: Map<String, Any?>): JSONObject =
+        postJson(op, body, mapOf("shop" to shop))
+
+    private suspend fun postJsonBodyOpWithShop(op: String, shop: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            val url =
+                "$baseUrl/apps/creator-dispatch?op=$op&shop=${
+                    java.net.URLEncoder.encode(shop, "UTF-8")
+                }&_t=${System.currentTimeMillis()}"
+            val request =
+                Request.Builder()
+                    .url(url)
+                    .post(body.toString().toRequestBody("application/json".toMediaType()))
+                    .addHeader("Accept", "application/json")
+                    .addHeader("Content-Type", "application/json")
+                    .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                    .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    private suspend fun deleteJsonBodyOpWithShop(
+        op: String,
+        shop: String,
+        body: JSONObject,
+        extraQuery: Map<String, String> = emptyMap(),
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=$op&shop=${java.net.URLEncoder.encode(shop, "UTF-8")}")
+            extraQuery.forEach { (k, v) -> append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}") }
+            append("&_t=${System.currentTimeMillis()}")
+        }
+        val request =
+            Request.Builder()
+                .url(url)
+                .delete(body.toString().toRequestBody("application/json".toMediaType()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
 
     private suspend fun postDailyGamePlayJson(shop: String, body: JSONObject): JSONObject =
         withContext(Dispatchers.IO) {
@@ -1236,6 +1333,13 @@ class CreatorApi(
         val params = mutableMapOf("owner_id" to ownerId)
         shop?.takeIf { it.isNotBlank() }?.let { params["shop"] = it }
         return call("get-published-summary", params)
+    }
+
+    /** GET ?op=get-creations-product-badges — eligible + published counts per design (same as web). */
+    suspend fun getCreationsProductBadges(ownerId: String, region: String = "EU", shop: String? = null): JSONObject {
+        val params = mutableMapOf("owner_id" to ownerId, "region" to region)
+        shop?.takeIf { it.isNotBlank() }?.let { params["shop"] = it }
+        return call("get-creations-product-badges", params)
     }
 
     /** GET ?op=get-published-products&owner_id=xxx&shop=xxx → { ok, products: [...] } */
@@ -2407,13 +2511,15 @@ class CreatorApi(
     suspend fun deleteAudioFile(ownerId: String, audioId: String): JSONObject =
         postJson("delete-audio-file", mapOf("audio_id" to audioId), mapOf("owner_id" to ownerId))
 
-    /** GET ?op=get-catalog-products&region=EU&design_type=classic */
+    /** GET ?op=get-catalog-products&region=EU&design_id=…&design_type=classic */
     suspend fun getCatalogProducts(
         region: String,
-        designType: String? = null
+        designType: String? = null,
+        designId: String? = null,
     ): JSONObject {
         val params = mutableMapOf("region" to region)
         designType?.let { params["design_type"] = it }
+        designId?.takeIf { it.isNotBlank() }?.let { params["design_id"] = it }
         return call("get-catalog-products", params)
     }
 

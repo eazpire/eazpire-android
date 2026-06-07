@@ -14,21 +14,39 @@ data class EazyModalPalette(
     val userBubble: Color,
     val assistantBubble: Color,
     /** Slightly different secondary header (e.g. tab strip) */
-    val headerSecondary: Color
+    val headerSecondary: Color,
+    val border: Color = Color(0xFF374151),
 )
 
-/** Shared chat palette — matches web `--chat-bg` / `--chat-accent` for shop and creator. */
-private val ChatPalette = EazyModalPalette(
+/** Creator dashboard — dark chat panel (body.creator-mode on web). */
+private val CreatorPalette = EazyModalPalette(
     bg = Color(0xFF1F2937),
     header = Color(0xFF111827),
     headerSecondary = Color(0xFF111827),
     accent = Color(0xFFF97316),
     text = Color(0xFFE5E7EB),
     muted = Color(0xFF9CA3AF),
-    userBubble = Color(0xFF374151),
-    assistantBubble = Color(0xFF4B5563)
+    userBubble = Color(0xFFF97316),
+    assistantBubble = Color(0xFF111827),
+    border = Color(0xFF374151),
 )
 
-fun eazyPaletteFor(@Suppress("UNUSED_PARAMETER") context: EazyChatContext): EazyModalPalette = ChatPalette
+/** Shop — light panel (body:not(.creator-mode) on web). */
+private val ShopPalette = EazyModalPalette(
+    bg = Color(0xFFFFFFFF),
+    header = Color(0xFFF9FAFB),
+    headerSecondary = Color(0xFFF9FAFB),
+    accent = Color(0xFFF97316),
+    text = Color(0xFF111827),
+    muted = Color(0xFF6B7280),
+    userBubble = Color(0xFFF97316),
+    assistantBubble = Color(0xFFF3F4F6),
+    border = Color(0xFFE5E7EB),
+)
 
-val LocalEazyModalPalette = staticCompositionLocalOf { ChatPalette }
+fun eazyPaletteFor(context: EazyChatContext): EazyModalPalette = when (context) {
+    EazyChatContext.Creator -> CreatorPalette
+    EazyChatContext.Shop -> ShopPalette
+}
+
+val LocalEazyModalPalette = staticCompositionLocalOf { CreatorPalette }

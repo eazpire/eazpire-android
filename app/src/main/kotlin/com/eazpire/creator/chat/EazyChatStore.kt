@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.eazpire.creator.billing.EazBalanceRefreshBus
 import org.json.JSONObject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,6 +55,14 @@ class EazyChatStore(private val context: Context) {
     private val _designSaveComplete = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val designSaveComplete: SharedFlow<String> = _designSaveComplete.asSharedFlow()
 
+    /** Generate (not save) finished — switch Eazy modal to Notifications. */
+    private val _designJobComplete = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val designJobComplete: SharedFlow<String> = _designJobComplete.asSharedFlow()
+
+    /** Any async job finished (hero/video/generate) — refresh notifications tab. */
+    private val _asyncJobComplete = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val asyncJobComplete: SharedFlow<Unit> = _asyncJobComplete.asSharedFlow()
+
     /** Mirrors web localStorage eazy_fn_visibility: feature id → false = hidden in carousel. */
     private val _fnVisibility = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val fnVisibility: StateFlow<Map<String, Boolean>> = _fnVisibility.asStateFlow()
@@ -99,6 +108,7 @@ class EazyChatStore(private val context: Context) {
 
     fun startHeroJob(jobId: String, summary: String) {
         _heroJobState.value = HeroJobState(jobId = jobId, summary = summary, progress = 0, message = null)
+        EazBalanceRefreshBus.requestRefresh()
     }
 
     fun updateHeroJobPoll(progress: Int, message: String?) {
@@ -114,6 +124,9 @@ class EazyChatStore(private val context: Context) {
             progress = 100,
             resultImageUrl = imageUrl
         )
+        _heroJobState.value = null
+        _asyncJobComplete.tryEmit(Unit)
+        EazBalanceRefreshBus.requestRefresh()
     }
 
     fun failHeroJob(message: String) {
@@ -127,6 +140,7 @@ class EazyChatStore(private val context: Context) {
 
     fun startVideoJob(jobId: String, summary: String) {
         _videoJobState.value = VideoJobState(jobId = jobId, summary = summary, progress = 0, message = null)
+        EazBalanceRefreshBus.requestRefresh()
     }
 
     fun updateVideoJobPoll(progress: Int, message: String?) {
@@ -138,6 +152,9 @@ class EazyChatStore(private val context: Context) {
     fun completeVideoJob(videoUrl: String?) {
         val cur = _videoJobState.value ?: return
         _videoJobState.value = cur.copy(completed = true, progress = 100, resultVideoUrl = videoUrl)
+        _videoJobState.value = null
+        _asyncJobComplete.tryEmit(Unit)
+        EazBalanceRefreshBus.requestRefresh()
     }
 
     fun failVideoJob(message: String) {
@@ -151,6 +168,7 @@ class EazyChatStore(private val context: Context) {
 
     fun startDesignJob(jobId: String, summary: String) {
         _designJobState.value = DesignJobState(jobId = jobId, summary = summary, progress = 0, message = null)
+        EazBalanceRefreshBus.requestRefresh()
     }
 
     fun updateDesignJobPoll(progress: Int, message: String?) {
@@ -163,11 +181,22 @@ class EazyChatStore(private val context: Context) {
         _designJobState.value = null
     }
 
+    /** Generate finished (design in inactive library) — notify Eazy modal. */
+    fun completeDesignJob(jobId: String) {
+        _designJobState.value = null
+        if (jobId.isNotBlank()) {
+            _designJobComplete.tryEmit(jobId)
+            _asyncJobComplete.tryEmit(Unit)
+            EazBalanceRefreshBus.requestRefresh()
+        }
+    }
+
     /** Full save finished (inactive library row persisted) — notify Eazy modal to show saved notification. */
     fun completeDesignSave(jobId: String) {
         _designJobState.value = null
         if (jobId.isNotBlank()) {
             _designSaveComplete.tryEmit(jobId)
+            _asyncJobComplete.tryEmit(Unit)
         }
     }
 

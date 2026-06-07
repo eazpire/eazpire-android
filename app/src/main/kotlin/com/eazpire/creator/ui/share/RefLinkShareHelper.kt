@@ -9,6 +9,14 @@ import org.json.JSONObject
 private const val REF_LINKS_SETTING_KEY = "community_ref_links_v1"
 private const val WEB_BASE = "https://www.eazpire.com"
 private const val JOIN_BASE = "https://join.eazpire.com"
+private const val PLAY_STORE_APP = "https://play.google.com/store/apps/details?id=com.eazpire.creator"
+
+enum class ReferralShareTarget {
+    /** Web: eazpire.com homepage with ref tracking */
+    Homepage,
+    /** App share: ref link targeting Play Store install */
+    AndroidApp,
+}
 
 /**
  * Baut die aktive Ref-Link-URL aus API-Daten.
@@ -78,8 +86,19 @@ private fun slugifyLabel(name: String): String = name
 fun buildShareUrl(refUrl: String, pagePath: String): String {
     val targetUrl = when {
         pagePath.isBlank() || pagePath == "/" -> WEB_BASE
+        pagePath.startsWith("http://") || pagePath.startsWith("https://") -> pagePath
         else -> WEB_BASE + (if (pagePath.startsWith("/")) pagePath else "/$pagePath")
     }
+    return encodeJoinUrlWithTarget(refUrl, targetUrl)
+}
+
+/** Ref share URL for journey invite etc. */
+fun buildReferralShareUrl(refUrl: String, target: ReferralShareTarget): String = when (target) {
+    ReferralShareTarget.Homepage -> buildShareUrl(refUrl, "/")
+    ReferralShareTarget.AndroidApp -> buildShareUrl(refUrl, PLAY_STORE_APP)
+}
+
+private fun encodeJoinUrlWithTarget(refUrl: String, targetUrl: String): String {
     return try {
         val u = java.net.URI(refUrl)
         val base = "${u.scheme}://${u.host}${u.path}"

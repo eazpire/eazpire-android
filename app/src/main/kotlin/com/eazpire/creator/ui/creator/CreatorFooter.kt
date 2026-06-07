@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.eazpire.creator.EazColors
+import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.ui.components.GlassCircularFlag
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.api.CreatorApi
@@ -53,17 +53,18 @@ fun CreatorFooter(
 ) {
     val context = LocalContext.current
     val langCode by localeStore.languageCode.collectAsState(initial = "en")
+    val balanceRefreshTick by EazBalanceRefreshBus.tick.collectAsState()
     var eazBalance by remember { mutableStateOf("…") }
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
 
-    LaunchedEffect(ownerId) {
+    LaunchedEffect(ownerId, balanceRefreshTick) {
         if (ownerId.isNotBlank()) {
             try {
                 val r = withContext(Dispatchers.IO) { api.getBalance(ownerId) }
                 if (r.optBoolean("ok", false)) {
-                    val bal = r.optDouble("balance_eaz", r.optDouble("balance", 0.0))
-                    eazBalance = "%.2f".format(bal)
+                    val bal = r.optDouble("balance_total", r.optDouble("balance_eaz", r.optDouble("balance", 0.0)))
+                    eazBalance = if (bal % 1.0 == 0.0) "%.0f".format(bal) else "%.1f".format(bal)
                 } else {
                     eazBalance = "0.00"
                 }

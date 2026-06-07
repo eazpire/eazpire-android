@@ -309,8 +309,9 @@ fun ShopScreen(
                 } else if (saved) {
                     eazyChatStore.completeDesignSave(jobId)
                 } else {
-                    eazyChatStore.clearDesignJob()
+                    eazyChatStore.completeDesignJob(jobId)
                 }
+                eazyStartTab = EazySidebarTab.Notifications
                 break
             } catch (_: Exception) {
                 delay(3000)

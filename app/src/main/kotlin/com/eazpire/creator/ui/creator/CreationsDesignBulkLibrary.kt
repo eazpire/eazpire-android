@@ -8,15 +8,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Dialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -35,7 +41,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,6 +61,8 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -100,6 +110,42 @@ fun resolveBulkCohort(selectedKeys: Set<String>, activityFilter: String): Creati
     if (sawJob) return CreationsBulkCohort.InactiveUnsaved
     if (sawId) return CreationsBulkCohort.InactiveSaved
     return CreationsBulkCohort.Empty
+}
+
+/** Per-design product counts from op=get-creations-product-badges (matches web). */
+data class CreationProductBadge(
+    val eligible: Int = 0,
+    val published: Int = 0,
+)
+
+fun parseCreationProductBadges(resp: org.json.JSONObject): Map<String, CreationProductBadge> {
+    if (!resp.optBoolean("ok", false)) return emptyMap()
+    val designs = resp.optJSONObject("designs") ?: return emptyMap()
+    val out = mutableMapOf<String, CreationProductBadge>()
+    val keys = designs.keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        val row = designs.optJSONObject(key) ?: continue
+        out[key] = CreationProductBadge(
+            eligible = row.optInt("eligible_product_count", 0),
+            published = row.optInt("published_product_count", 0),
+        )
+    }
+    return out
+}
+
+/** Web formatDesignProductBadgeText: inactive = eligible only; active = published / eligible. */
+fun formatDesignProductBadgeText(design: CreationDesign, badges: Map<String, CreationProductBadge>): String {
+    val id = design.id?.trim().orEmpty()
+    if (id.isBlank()) return ""
+    val row = badges[id]
+    val eligible = row?.eligible ?: 0
+    val pub = row?.published ?: 0
+    return if (design.effectiveLibraryStatus() == "inactive") {
+        eligible.toString()
+    } else {
+        "$pub / $eligible"
+    }
 }
 
 fun selectAllPoolDesigns(
@@ -262,6 +308,126 @@ fun parseGeneratedCreationDesign(obj: JSONObject, savingToLibrary: Boolean = fal
     )
 }
 
+data class ActivateCatalogProduct(
+    val productKey: String,
+    val title: String,
+    val previewImageUrl: String?,
+    val mockUrls: List<String>,
+)
+
+data class ActivateCatalogBundle(
+    val products: List<ActivateCatalogProduct> = emptyList(),
+    val eligibleKeys: List<String> = emptyList(),
+    val checked: Map<String, Boolean> = emptyMap(),
+    val metaExcludedSnapshot: List<String> = emptyList(),
+    val publishedKeys: Set<String> = emptySet(),
+    val loadError: Boolean = false,
+)
+
+fun parsePublishExcludedFromMetadata(metadata: Any?): List<String> {
+    val meta = try {
+        when (metadata) {
+            is String -> JSONObject(metadata.ifBlank { "{}" })
+            is JSONObject -> metadata
+            else -> JSONObject()
+        }
+    } catch (_: Exception) {
+        JSONObject()
+    }
+    val arr = meta.optJSONArray("publish_excluded_product_keys") ?: return emptyList()
+    return buildList {
+        for (i in 0 until arr.length()) {
+            arr.optString(i)?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+        }
+    }
+}
+
+fun normalizeActivateCatalogMockUrls(product: ActivateCatalogProduct): String? {
+    val urls = product.mockUrls.map { it.trim() }.filter { it.isNotBlank() }
+    val creator = urls.filter { it.contains("/mockup/", ignoreCase = true) }
+    val picked = when {
+        creator.isNotEmpty() -> creator
+        else -> urls.filter { !it.contains("images.printify.com", ignoreCase = true) }
+    }
+    return picked.firstOrNull() ?: product.previewImageUrl?.trim()?.takeIf { it.isNotBlank() }
+}
+
+fun computeActivateExcludedKeys(
+    eligibleKeys: List<String>,
+    checked: Map<String, Boolean>,
+    metaExcludedSnapshot: List<String>,
+): List<String> {
+    val eligible = eligibleKeys.toSet()
+    val out = linkedSetOf<String>()
+    metaExcludedSnapshot.forEach { pk ->
+        val key = pk.trim()
+        if (key.isNotBlank() && !eligible.contains(key)) out.add(key)
+    }
+    eligibleKeys.forEach { key ->
+        if (checked[key] != true) out.add(key)
+    }
+    return out.sorted()
+}
+
+suspend fun loadActivateCatalogBundle(
+    api: CreatorApi,
+    ownerId: String,
+    shop: String?,
+    designId: String,
+    metadataExcluded: List<String>,
+    region: String = "EU",
+): ActivateCatalogBundle = withContext(Dispatchers.IO) {
+    try {
+        val catResp = api.getCatalogProducts(region = region, designId = designId)
+        val productsArr = catResp.optJSONArray("products") ?: JSONArray()
+        val products = buildList {
+            for (i in 0 until productsArr.length()) {
+                val o = productsArr.optJSONObject(i) ?: continue
+                val pk = o.optString("product_key", "").trim()
+                if (pk.isBlank()) continue
+                val mockUrls = buildList {
+                    val mocks = o.optJSONArray("mock_urls")
+                    if (mocks != null) {
+                        for (j in 0 until mocks.length()) {
+                            mocks.optString(j)?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+                        }
+                    }
+                }
+                add(
+                    ActivateCatalogProduct(
+                        productKey = pk,
+                        title = o.optString("title", pk).ifBlank { pk },
+                        previewImageUrl = o.optString("preview_image_url", "").trim().takeIf { it.isNotBlank() },
+                        mockUrls = mockUrls,
+                    )
+                )
+            }
+        }
+        val eligibleKeys = products.map { it.productKey }
+        val metaSnap = metadataExcluded.distinct()
+        val checked = eligibleKeys.associateWith { pk -> !metaSnap.contains(pk) }
+        val pubResp = api.getDesignPublishedRows(ownerId, designId, shop)
+        val pubRows = pubResp.optJSONArray("rows") ?: JSONArray()
+        val publishedKeys = buildSet {
+            for (i in 0 until pubRows.length()) {
+                pubRows.optJSONObject(i)?.optString("product_key", "")?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { add(it) }
+            }
+        }
+        ActivateCatalogBundle(
+            products = products,
+            eligibleKeys = eligibleKeys,
+            checked = checked,
+            metaExcludedSnapshot = metaSnap,
+            publishedKeys = publishedKeys,
+            loadError = false,
+        )
+    } catch (_: Exception) {
+        ActivateCatalogBundle(loadError = true)
+    }
+}
+
 object CreationsDesignLibraryActions {
     suspend fun deactivateDesign(api: CreatorApi, ownerId: String, shop: String, designId: String): Boolean {
         val rowsResp = api.getDesignPublishedRows(ownerId, designId, shop)
@@ -296,6 +462,7 @@ object CreationsDesignLibraryActions {
         creatorName: String,
         visibility: String,
         activateWithoutCreator: Boolean,
+        publishExcludedProductKeys: List<String>? = null,
     ): Boolean {
         val body = JSONObject()
             .put("design_id", designId)
@@ -306,6 +473,15 @@ object CreationsDesignLibraryActions {
             body.put("creator_name", "")
         } else {
             body.put("creator_name", creatorName.trim())
+        }
+        if (!publishExcludedProductKeys.isNullOrEmpty()) {
+            body.put(
+                "metadata",
+                JSONObject().put(
+                    "publish_excluded_product_keys",
+                    JSONArray().apply { publishExcludedProductKeys.forEach { put(it) } },
+                ),
+            )
         }
         return api.updateDesign(body).optBoolean("ok", false)
     }
@@ -460,46 +636,162 @@ private fun BulkDockActionBtn(
     }
 }
 
+@Composable
+private fun ActivateCatalogProductCard(
+    product: ActivateCatalogProduct,
+    checked: Boolean,
+    published: Boolean,
+    translationStore: TranslationStore,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val imageUrl = normalizeActivateCatalogMockUrls(product)
+    Column(
+        modifier = Modifier
+            .width(108.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF353D4C))
+            .clickable { onCheckedChange(!checked) }
+            .padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(96.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF1E293B)),
+        ) {
+            if (!imageUrl.isNullOrBlank()) {
+                SubcomposeAsyncImage(
+                    model = imageUrl,
+                    contentDescription = product.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+            Checkbox(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .size(28.dp),
+                colors = CheckboxDefaults.colors(checkedColor = EazColors.Orange),
+            )
+            if (published) {
+                Text(
+                    translationStore.t("creator.design_products.badge_online", "Online"),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .background(Color(0xFF166534), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+            } else if (checked) {
+                Text(
+                    translationStore.t("creator.design_products.badge_queue", "Queue"),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .background(Color(0xFF92400E), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+            }
+        }
+        Text(
+            product.title,
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 10.sp,
+            maxLines = 2,
+            lineHeight = 12.sp,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreationsActivateDesignDialog(
     targets: List<CreationDesign>,
     creatorNames: List<String>,
     translationStore: TranslationStore,
+    api: CreatorApi,
+    ownerId: String,
+    shop: String?,
+    catalogRegion: String = "EU",
     busy: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (creatorName: String, visibilityPublic: Boolean, activateWithoutCreator: Boolean) -> Unit,
+    onConfirm: (
+        creatorName: String,
+        visibilityPublic: Boolean,
+        activateWithoutCreator: Boolean,
+        publishExcludedProductKeys: List<String>?,
+    ) -> Unit,
 ) {
     if (targets.isEmpty()) return
+    val singleTarget = targets.singleOrNull()
     var creatorName by remember(targets, creatorNames) {
         mutableStateOf(creatorNames.firstOrNull().orEmpty())
     }
     var visibilityPublic by remember { mutableStateOf(true) }
     var activateWithout by remember { mutableStateOf(creatorNames.isEmpty()) }
     var expanded by remember { mutableStateOf(false) }
+    var catalogLoading by remember(targets) { mutableStateOf(singleTarget != null) }
+    var catalogBundle by remember(targets) { mutableStateOf<ActivateCatalogBundle?>(null) }
+    val checkedMap = remember(targets) { mutableStateMapOf<String, Boolean>() }
 
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        containerColor = Color(0xFF1E293B),
-        titleContentColor = Color.White,
-        textContentColor = Color.White.copy(alpha = 0.85f),
-        title = {
-            Text(
-                if (targets.size > 1) {
-                    translationStore.t("creator.creations.bulk_activate_title", "Activate designs")
-                } else {
-                    translationStore.t("creator.creations.library_activate_title", "Activate design")
-                }
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LaunchedEffect(singleTarget?.id, ownerId) {
+        val design = singleTarget ?: return@LaunchedEffect
+        val designId = design.id?.trim().orEmpty()
+        if (designId.isBlank()) {
+            catalogLoading = false
+            return@LaunchedEffect
+        }
+        catalogLoading = true
+        val designResp = runCatching { api.getDesign(ownerId, designId) }.getOrNull()
+        val metaObj = designResp?.optJSONObject("design")?.opt("metadata")
+            ?: designResp?.opt("metadata")
+        val excluded = parsePublishExcludedFromMetadata(metaObj)
+        val bundle = loadActivateCatalogBundle(api, ownerId, shop, designId, excluded, catalogRegion)
+        catalogBundle = bundle
+        checkedMap.clear()
+        bundle.checked.forEach { (k, v) -> checkedMap[k] = v }
+        catalogLoading = false
+    }
+
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFF1E293B),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    if (targets.size > 1) {
+                        translationStore.t("creator.creations.bulk_activate_title", "Activate designs")
+                    } else {
+                        translationStore.t("creator.creations.library_activate_title", "Activate design")
+                    },
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
                 if (creatorNames.isEmpty()) {
                     Text(
                         translationStore.t(
                             "creator.creations.library_activate_no_creator_body",
                             "No creator name configured. Activate without publishing under a creator name?"
                         ),
+                        color = Color.White.copy(alpha = 0.85f),
                         fontSize = 13.sp,
                     )
                 } else if (creatorNames.size == 1) {
@@ -508,6 +800,7 @@ fun CreationsActivateDesignDialog(
                             "creator.creations.library_activate_scope_named",
                             "Publish as %name%"
                         ).replace("%name%", creatorNames.first()),
+                        color = Color.White.copy(alpha = 0.85f),
                         fontSize = 13.sp,
                     )
                 } else {
@@ -516,6 +809,7 @@ fun CreationsActivateDesignDialog(
                             "creator.creations.library_activate_choose_intro",
                             "Choose creator name"
                         ),
+                        color = Color.White.copy(alpha = 0.85f),
                         fontSize = 13.sp,
                     )
                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
@@ -546,6 +840,88 @@ fun CreationsActivateDesignDialog(
                         }
                     }
                 }
+
+                if (singleTarget != null) {
+                    Text(
+                        translationStore.t("creator.design_products.eligible_hint", "Eligible for auto-publish"),
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 12.sp,
+                    )
+                    if (catalogLoading) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = EazColors.Orange,
+                            )
+                        }
+                    } else if (catalogBundle?.loadError == true) {
+                        Text(
+                            translationStore.t("creator.design_products.load_error", "Could not load products."),
+                            color = Color(0xFFFCA5A5),
+                            fontSize = 12.sp,
+                        )
+                    } else {
+                        val bundle = catalogBundle
+                        val products = bundle?.products.orEmpty()
+                        if (products.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(
+                                    onClick = {
+                                        products.forEach { checkedMap[it.productKey] = true }
+                                    },
+                                    enabled = !busy,
+                                ) {
+                                    Text(
+                                        translationStore.t("creator.design_products.select_all", "Select all"),
+                                        color = EazColors.Orange,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                                TextButton(
+                                    onClick = {
+                                        products.forEach { checkedMap[it.productKey] = false }
+                                    },
+                                    enabled = !busy,
+                                ) {
+                                    Text(
+                                        translationStore.t("creator.design_products.deselect_all", "Deselect all"),
+                                        color = EazColors.Orange,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                products.forEach { product ->
+                                    ActivateCatalogProductCard(
+                                        product = product,
+                                        checked = checkedMap[product.productKey] == true,
+                                        published = bundle?.publishedKeys?.contains(product.productKey) == true,
+                                        translationStore = translationStore,
+                                        onCheckedChange = { on ->
+                                            checkedMap[product.productKey] = on
+                                        },
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                translationStore.t("creator.design_products.empty", "No products available for your region."),
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                }
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -556,6 +932,7 @@ fun CreationsActivateDesignDialog(
                         } else {
                             translationStore.t("creator.common.visibility_private", "Private")
                         },
+                        color = Color.White.copy(alpha = 0.85f),
                         fontSize = 13.sp,
                     )
                     Switch(
@@ -564,33 +941,51 @@ fun CreationsActivateDesignDialog(
                         colors = SwitchDefaults.colors(checkedTrackColor = EazColors.Orange),
                     )
                 }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onConfirm(
-                        creatorName,
-                        visibilityPublic,
-                        activateWithout || creatorNames.isEmpty(),
-                    )
-                },
-                enabled = !busy && (activateWithout || creatorNames.isEmpty() || creatorName.isNotBlank()),
-                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
-            ) {
-                if (busy) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-                } else {
-                    Text(translationStore.t("creator.creations.library_confirm_activate", "Activate"))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss, enabled = !busy) {
+                        Text(
+                            translationStore.t("creator.common.cancel", "Cancel"),
+                            color = Color.White.copy(alpha = 0.8f),
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            val excluded = catalogBundle?.let { b ->
+                                computeActivateExcludedKeys(
+                                    b.eligibleKeys,
+                                    checkedMap.toMap(),
+                                    b.metaExcludedSnapshot,
+                                )
+                            }
+                            onConfirm(
+                                creatorName,
+                                visibilityPublic,
+                                activateWithout || creatorNames.isEmpty(),
+                                excluded,
+                            )
+                        },
+                        enabled = !busy && (activateWithout || creatorNames.isEmpty() || creatorName.isNotBlank()),
+                        colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                    ) {
+                        if (busy) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White,
+                            )
+                        } else {
+                            Text(translationStore.t("creator.creations.library_confirm_activate", "Activate"))
+                        }
+                    }
                 }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) {
-                Text(translationStore.t("creator.common.cancel", "Cancel"))
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -636,6 +1031,7 @@ fun CreationsConfirmActionDialog(
 @Composable
 fun CreationDesignGridCard(
     design: CreationDesign,
+    productBadgeText: String,
     bulkSelectable: Boolean,
     selected: Boolean,
     onSelectedChange: (Boolean) -> Unit,
@@ -668,7 +1064,7 @@ fun CreationDesignGridCard(
                 loading = { shimmer() },
             )
         }
-        if (design.id?.isNotBlank() == true) {
+        if (design.id?.isNotBlank() == true && productBadgeText.isNotBlank()) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -680,7 +1076,7 @@ fun CreationDesignGridCard(
             ) {
                 Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
                 Text(
-                    "${design.productsCount} / 2",
+                    productBadgeText,
                     color = Color.White,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
