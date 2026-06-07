@@ -959,8 +959,7 @@ fun ShopScreen(
                         selectedCollection = null
                     },
                     onCreateScratchClick = { catalogProduct ->
-                        shopCreateActive = true
-                        shopCreateStudioPhase = ShopCreateProductPhase.Mode(catalogProduct)
+                        shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(catalogProduct)
                     },
                     onCategoryClick = { title, h ->
                         productModalHandleState.value = null
