@@ -92,6 +92,7 @@ fun ProductCarouselSection(
     var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     var sectionPools by remember { mutableStateOf<Map<String, HomeCategoryPools>>(emptyMap()) }
     var createScratchCatalog by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
+    var homePoolsBootstrapping by remember { mutableStateOf(true) }
 
     val homeFilterPool = remember(selectedCategory, sectionPools, promoProducts) {
         buildList {
@@ -111,6 +112,7 @@ fun ProductCarouselSection(
         promoProducts = emptyList()
         sectionPools = emptyMap()
         createScratchCatalog = emptyList()
+        homePoolsBootstrapping = true
 
         val countryCode = localeStore.getCountryCodeSync()
         val pools = mutableMapOf<String, HomeCategoryPools>()
@@ -181,6 +183,7 @@ fun ProductCarouselSection(
                 createScratchCatalog = loadCreateScratchCatalog(creatorApi, region)
             }
         }
+        homePoolsBootstrapping = false
     }
 
     LaunchedEffect(selectedCategory, sectionPools, region) {
@@ -314,9 +317,11 @@ fun ProductCarouselSection(
         HOME_PRODUCT_SECTIONS.forEach { def ->
             val products = sectionPools[def.id]?.get(selectedCategory).orEmpty()
             val visibleProducts = filterCarouselProducts(products)
-            val sectionLoading = selectedCategory != "all" &&
-                loadingCategories.contains(selectedCategory) &&
-                !sectionPools[def.id].orEmpty().containsKey(selectedCategory)
+            val sectionLoading =
+                (homePoolsBootstrapping && !sectionPools.containsKey(def.id)) ||
+                    (selectedCategory != "all" &&
+                        loadingCategories.contains(selectedCategory) &&
+                        !sectionPools[def.id].orEmpty().containsKey(selectedCategory))
             item(key = "section_${def.id}") {
                 val displayTitle = t(def.titleKey, def.titleDefault)
                 ProductCarousel(

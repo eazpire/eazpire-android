@@ -386,6 +386,58 @@ class CreatorApi(
         )
     }
 
+    suspend fun postDailyGameConnectBegin(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("connect_action", "begin")
+            },
+        )
+
+    suspend fun postDailyGameConnectMove(
+        shop: String,
+        ownerId: String,
+        row: Int,
+        col: Int,
+    ): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("connect_action", "move")
+                put("row", row)
+                put("col", col)
+            },
+        )
+
+    suspend fun postDailyGameConnectFinish(
+        shop: String,
+        ownerId: String,
+        forfeit: Boolean,
+    ): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("connect_action", "finish")
+                put("connect_forfeit", forfeit)
+            },
+        )
+
+    suspend fun postDailyGameConnectForfeit(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("connect_action", "forfeit")
+            },
+        )
+
     suspend fun getPrizesInventoryList(
         ownerId: String,
         shop: String,

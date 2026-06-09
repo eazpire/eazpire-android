@@ -43,6 +43,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/** KV-backed active job row (user jobs feed). */
+data class EazyKvJobRow(
+    val id: String,
+    val title: String,
+    val progress: Int,
+    val done: Boolean,
+    val saving: Boolean,
+    val saved: Boolean,
+    val isWear: Boolean,
+    val status: String?,
+    val message: String?,
+)
+
 /**
  * Active job card — mirrors web creator-chat__job-item with circular progress + pulse (gen bar).
  */
@@ -124,7 +137,7 @@ fun EazyActiveJobCard(
                 Text(it, style = MaterialTheme.typography.labelSmall, color = palette.muted, maxLines = 2)
             }
             LinearProgressIndicator(
-                progress = { prog / 100f },
+                progress = prog / 100f,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 2.dp),

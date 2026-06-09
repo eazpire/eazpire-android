@@ -164,18 +164,6 @@ private data class EazyNotifRow(
     val opensCreatorCodes: Boolean = false,
 )
 
-private data class EazyKvJobRow(
-    val id: String,
-    val title: String,
-    val progress: Int,
-    val done: Boolean,
-    val saving: Boolean,
-    val saved: Boolean,
-    val isWear: Boolean,
-    val status: String?,
-    val message: String?,
-)
-
 private data class EazySystemJobRow(
     val sessionId: String,
     val title: String,
