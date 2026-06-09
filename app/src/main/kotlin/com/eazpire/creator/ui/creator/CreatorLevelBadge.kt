@@ -60,6 +60,7 @@ fun CreatorLevelBadge(
     var shareUrl by remember { mutableStateOf<String?>(null) }
     var levelNum by remember { mutableStateOf(1) }
     var levelName by remember { mutableStateOf(translationStore.t("creator.overview.loading", "Loading…")) }
+    var levelLoadFailed by remember { mutableStateOf(false) }
     var xpValue by remember { mutableStateOf("0 / 50") }
     var xpFillPercent by remember { mutableStateOf(0f) }
     var xpHint by remember { mutableStateOf(translationStore.t("creator.mobile.xp_until_next", "XP until next level")) }
@@ -67,6 +68,7 @@ fun CreatorLevelBadge(
     if (isLoggedIn && !ownerId.isNullOrBlank()) {
         val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
         LaunchedEffect(ownerId) {
+            levelLoadFailed = false
             shareUrl = getActiveRefUrl(api, ownerId!!)
             try {
                 val r = withContext(Dispatchers.IO) { api.getLevel(ownerId!!) }
@@ -167,8 +169,20 @@ fun CreatorLevelBadge(
                                     .replace("{level}", (displayLevel + 1).toString())
                             }
                     }
+                } else {
+                    levelLoadFailed = true
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                levelLoadFailed = true
+            } finally {
+                if (levelLoadFailed) {
+                    levelName =
+                        translationStore.t(
+                            "creator.overview.default_level",
+                            "Starter",
+                        )
+                }
+            }
         }
     } else {
         levelNum = 0

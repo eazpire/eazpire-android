@@ -5,12 +5,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -33,8 +36,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.eazpire.creator.api.CreatorApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 data class MemoryDeckUi(
     val slotPairKeys: List<Int>,
@@ -46,28 +53,65 @@ data class MemoryTimingUi(
     val previewGraceMs: Long,
     val matchFlipMs: Long,
     val serverNowMs: Long,
+    val maxWrongMoves: Int = 5,
+    val memoryWrongMoves: Int = 0,
 )
 
 @Composable
 fun EazyMemoryDailyBoard(
     deck: MemoryDeckUi,
     timing: MemoryTimingUi,
+    api: CreatorApi,
+    shop: String,
+    ownerId: String,
     onFinishRequest: (forfeit: Boolean, flipLog: List<Int>) -> Unit,
+    onServerOutcome: (JSONObject) -> Unit,
     t: (String, String) -> String,
 ) {
     val scope = rememberCoroutineScope()
     val n = deck.slotPairKeys.size
     val skewMs = remember(timing.serverNowMs) { timing.serverNowMs - System.currentTimeMillis() }
     val deadline = timing.deadlineMs + skewMs
+    val maxWrongMoves = timing.maxWrongMoves.coerceIn(1, 20)
 
     var preview by remember { mutableStateOf(timing.previewGraceMs > 0) }
     var tick by remember { mutableIntStateOf(0) }
     var submitted by remember { mutableStateOf(false) }
+    var wrongMoves by remember {
+        mutableIntStateOf(timing.memoryWrongMoves.coerceIn(0, maxWrongMoves))
+    }
 
     fun submit(forfeit: Boolean, log: List<Int>) {
         if (submitted) return
         submitted = true
         onFinishRequest(forfeit, log)
+    }
+
+    fun handleServerJson(j: JSONObject) {
+        if (submitted) return
+        val outcome = j.optString("outcome", "")
+        if (outcome == "loss" || j.optBoolean("already_played", false)) {
+            submitted = true
+            onServerOutcome(j)
+            return
+        }
+        if (j.optBoolean("ok", false) && j.has("memory_wrong_moves")) {
+            wrongMoves =
+                j.optInt("memory_wrong_moves", wrongMoves).coerceIn(0, maxWrongMoves)
+        }
+    }
+
+    fun syncFlipAfterMismatch(log: List<Int>) {
+        scope.launch {
+            try {
+                val j =
+                    withContext(Dispatchers.IO) {
+                        api.postDailyGameMemorySyncFlip(shop, ownerId, log)
+                    }
+                handleServerJson(j)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     LaunchedEffect(preview, timing.previewGraceMs) {
@@ -134,6 +178,39 @@ fun EazyMemoryDailyBoard(
                 style = MaterialTheme.typography.bodySmall,
                 color = LocalEazyModalPalette.current.muted,
             )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = t("eazy_chat.games_memory_strikes_aria", "Wrong guesses remaining"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalEazyModalPalette.current.muted,
+                    modifier = Modifier.weight(1f),
+                )
+                repeat(maxWrongMoves) { index ->
+                    val spent = index < wrongMoves
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .then(
+                                    if (spent) {
+                                        Modifier.background(Color(0xFF374151))
+                                    } else {
+                                        Modifier.background(
+                                            Brush.radialGradient(
+                                                colors = listOf(Color(0xFFFBBF24), Color(0xFFEA580C)),
+                                            ),
+                                        )
+                                    },
+                                ),
+                    )
+                }
+            }
         }
 
         OutlinedButton(
@@ -192,11 +269,13 @@ fun EazyMemoryDailyBoard(
                                     } else {
                                         openMismatch = a to b
                                         lock = true
+                                        val logSnapshot = flipLog.toList()
                                         scope.launch {
                                             delay(timing.matchFlipMs.coerceIn(400L, 2500L))
                                             openMismatch = null
                                             lock = false
                                         }
+                                        syncFlipAfterMismatch(logSnapshot)
                                     }
                                     return@clickable
                                 }

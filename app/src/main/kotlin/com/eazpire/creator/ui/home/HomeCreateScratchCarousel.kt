@@ -34,8 +34,11 @@ import com.eazpire.creator.ui.CatalogProduct
 
 private val ScratchShellTop = Color(0xFF111827)
 private val ScratchShellBottom = Color(0xFF1F2937)
-private val ScratchHeaderBg = Color(0xFFF59E0B).copy(alpha = 0.16f)
-private val ScratchHeaderBorder = Color(0xFFFBBF24).copy(alpha = 0.36f)
+private val ScratchHeaderBg =
+    Brush.linearGradient(
+        colors = listOf(Color(0xFFF59E0B).copy(alpha = 0.72f), Color(0xFFEA580C).copy(alpha = 0.62f)),
+    )
+private val ScratchHeaderBorder = Color(0xFFFBBF24).copy(alpha = 0.5f)
 private val ScratchTitleColor = Color(0xFFF9FAFB)
 
 /** Home "Create from Scratch" — matches web `eaz-home-create-scratch` dark shell + catalog cards. */

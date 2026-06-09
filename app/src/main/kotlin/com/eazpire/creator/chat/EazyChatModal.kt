@@ -114,6 +114,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -790,29 +791,48 @@ fun EazyChatModal(
         val userId = chatStore.getUserId(ownerId)
         try {
             val resp = withContext(Dispatchers.IO) {
-                api.getEazyConversation(
-                    userId,
-                    mapOf("page" to pagePath, "auto_create" to "0")
-                )
+                withTimeout(25_000) {
+                    api.getEazyConversation(
+                        userId,
+                        mapOf("page" to pagePath, "auto_create" to "0")
+                    )
+                }
             }
             if (resp.optBoolean("ok", false)) {
                 val conv = resp.optJSONObject("conversation")
                 if (conv != null) {
                     val msgs = resp.optJSONArray("messages") ?: JSONArray()
-                    conv.optString("id")?.let { chatStore.setConversationId(it) }
+                    conv.optString("id")?.let { cid ->
+                        chatStore.setConversationId(cid)
+                        convTabs =
+                            listOf(
+                                EazyConvTabItem(
+                                    cid,
+                                    conv.optString("preview", "").trim().ifBlank { null },
+                                    conv.optString("summary", "").trim().ifBlank { null },
+                                ),
+                            )
+                    }
                     chatStore.setMessages(parseMessagesArray(msgs))
                 } else {
-                    val newR = withContext(Dispatchers.IO) { api.eazyConvNew(userId) }
+                    val newR = withContext(Dispatchers.IO) {
+                        withTimeout(25_000) { api.eazyConvNew(userId) }
+                    }
                     if (newR.optBoolean("ok", false)) {
                         val c = newR.optJSONObject("conversation")
-                        c?.optString("id")?.let { chatStore.setConversationId(it) }
+                        c?.optString("id")?.let { cid ->
+                            chatStore.setConversationId(cid)
+                            convTabs = listOf(EazyConvTabItem(cid, null, null))
+                        }
                         chatStore.setMessages(emptyList())
                     }
                 }
             }
-        } catch (_: Exception) {}
-        chatStore.setLoading(false)
-        loadActiveTabs(userId)
+        } catch (_: Exception) {
+        } finally {
+            chatStore.setLoading(false)
+            loadActiveTabs(userId)
+        }
     }
 
     val eazyPalette = remember(chatContext) { eazyPaletteFor(chatContext) }
@@ -884,6 +904,12 @@ fun EazyChatModal(
                         }
                     }
 
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                    ) {
                     when (selectedTab) {
                             EazySidebarTab.Chat -> {
                                 if (!isLoggedIn) {
@@ -927,9 +953,7 @@ fun EazyChatModal(
                                     }
                                 } else {
                                     Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f)
+                                        modifier = Modifier.fillMaxSize()
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -1529,6 +1553,7 @@ fun EazyChatModal(
                                 t = t
                             )
                         }
+                    }
                 }
 
                 if (sidebarOpen) {

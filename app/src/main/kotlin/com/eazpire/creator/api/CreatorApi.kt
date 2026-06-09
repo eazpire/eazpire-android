@@ -386,6 +386,25 @@ class CreatorApi(
         )
     }
 
+    /** POST ?op=daily-game-play memory_action sync_flip — sync wrong-move count after a mismatch. */
+    suspend fun postDailyGameMemorySyncFlip(
+        shop: String,
+        ownerId: String,
+        flipLog: List<Int>,
+    ): JSONObject {
+        val arr = org.json.JSONArray()
+        flipLog.forEach { arr.put(it) }
+        return postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("memory_action", "sync_flip")
+                put("memory_flip_log", arr)
+            },
+        )
+    }
+
     suspend fun postDailyGameConnectBegin(shop: String, ownerId: String): JSONObject =
         postDailyGamePlayJson(
             shop,

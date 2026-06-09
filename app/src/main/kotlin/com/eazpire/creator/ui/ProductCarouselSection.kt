@@ -120,10 +120,9 @@ fun ProductCarouselSection(
             val promoDeferred = async(Dispatchers.IO) {
                 loadHomePromotionsFromWorker(creatorApi, HOME_MAX_PRODUCTS, countryCode)
             }
-            val firstDef = HOME_PRODUCT_SECTIONS.firstOrNull()
-            val firstDeferred = firstDef?.let { def ->
+            val sectionDeferreds = HOME_PRODUCT_SECTIONS.map { def ->
                 async(Dispatchers.IO) {
-                    loadHomeCarouselFromWorker(
+                    def.id to loadHomeCarouselFromWorker(
                         creatorApi,
                         def.id,
                         chipId = "all",
@@ -133,15 +132,14 @@ fun ProductCarouselSection(
                 }
             }
             promoProducts = promoDeferred.await()
-            if (firstDef != null && firstDeferred != null) {
-                pools[firstDef.id] = mapOf("all" to firstDeferred.await())
+            loadCreatorsSection = true
+            sectionDeferreds.forEach { deferred ->
+                val (id, products) = deferred.await()
+                pools[id] = mapOf("all" to products)
                 sectionPools = pools.toMap()
             }
-        }
+            homePoolsBootstrapping = false
 
-        loadCreatorsSection = true
-
-        coroutineScope {
             launch(Dispatchers.IO) {
                 val updated = sectionPools.toMutableMap()
                 coroutineScope {
@@ -183,7 +181,6 @@ fun ProductCarouselSection(
                 createScratchCatalog = loadCreateScratchCatalog(creatorApi, region)
             }
         }
-        homePoolsBootstrapping = false
     }
 
     LaunchedEffect(selectedCategory, sectionPools, region) {

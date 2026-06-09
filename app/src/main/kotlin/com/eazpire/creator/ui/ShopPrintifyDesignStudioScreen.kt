@@ -103,6 +103,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.max
@@ -356,16 +357,31 @@ internal fun ShopPrintifyDesignStudioScreen(
         loading = true
         error = null
         try {
-            val cfg = withContext(Dispatchers.IO) {
-                api.getDesignStudioShopConfig(oid, product.productKey)
-            }
-            if (cfg.optBoolean("ok", false)) {
+            val cfg =
+                withContext(Dispatchers.IO) {
+                    withTimeoutOrNull(25_000) {
+                        api.getDesignStudioShopConfig(oid, product.productKey)
+                    }
+                }
+            if (cfg != null && cfg.optBoolean("ok", false)) {
                 val (url, frac) = resolveMockFromConfig(cfg)
                 if (!url.isNullOrEmpty()) mockUrl = url
                 printAreaFrac = frac
+            } else if (mockUrl.isNullOrBlank()) {
+                mockUrl = product.mockUrls.firstOrNull()
+            }
+            if (cfg == null) {
+                error =
+                    translation(
+                        "creator.studio.config_timeout",
+                        "Studio config timed out — using catalog preview.",
+                    )
             }
         } catch (e: Exception) {
             error = e.message ?: "error"
+            if (mockUrl.isNullOrBlank()) {
+                mockUrl = product.mockUrls.firstOrNull()
+            }
         } finally {
             loading = false
             if (designUrl != null && defaultSnap == null) {

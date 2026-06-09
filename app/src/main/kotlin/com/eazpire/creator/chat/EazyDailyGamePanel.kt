@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.CreatorApi
@@ -44,6 +45,8 @@ private fun parseMemorySession(j: JSONObject): Pair<MemoryDeckUi, MemoryTimingUi
             previewGraceMs = timing.optLong("preview_grace_ms"),
             matchFlipMs = timing.optLong("match_flip_ms", 850L),
             serverNowMs = timing.optLong("server_now_ms"),
+            maxWrongMoves = timing.optInt("max_wrong_moves", 5).coerceIn(1, 20),
+            memoryWrongMoves = timing.optInt("memory_wrong_moves", 0).coerceAtLeast(0),
         )
     return d to t
 }
@@ -146,6 +149,31 @@ fun EazyDailyGamePanel(
             else -> {
                 playEnabled = true
                 status = ""
+            }
+        }
+    }
+
+    fun applyMemoryOutcome(j: JSONObject) {
+        memorySession = null
+        when {
+            j.optBoolean("ok", false) && j.optString("outcome") == "win" -> {
+                status = t("eazy_chat.games_outcome_win", "You won a gift card!")
+                playEnabled = false
+            }
+            j.optString("outcome") == "loss" || j.optBoolean("already_played", false) -> {
+                status = t("eazy_chat.games_outcome_loss", "Not this time. Come back tomorrow.")
+                playEnabled = false
+            }
+            else -> {
+                val oid = ownerId ?: return
+                scope.launch {
+                    try {
+                        val st = api.getDailyGameState(shop, oid)
+                        if (st.optBoolean("ok", false)) applyStateJson(st)
+                    } catch (_: Exception) {
+                        playEnabled = true
+                    }
+                }
             }
         }
     }
@@ -262,6 +290,7 @@ fun EazyDailyGamePanel(
 
     val memSess = memorySession
     if (memSess != null) {
+        val memOwnerId = ownerId ?: return
         val deck = memSess.first
         val timing = memSess.second
         Column(
@@ -277,27 +306,16 @@ fun EazyDailyGamePanel(
             EazyMemoryDailyBoard(
                 deck = deck,
                 timing = timing,
+                api = api,
+                shop = shop,
+                ownerId = memOwnerId,
                 onFinishRequest = fin@{ forfeit, flipLog ->
-                    val oid = ownerId ?: return@fin
+                    val owner = ownerId ?: return@fin
                     scope.launch {
                         busy = true
                         try {
-                            val j = api.postDailyGameMemoryFinish(shop, oid, forfeit, flipLog)
-                            memorySession = null
-                            when {
-                                j.optBoolean("ok", false) && j.optString("outcome") == "win" -> {
-                                    status = t("eazy_chat.games_outcome_win", "You won a gift card!")
-                                    playEnabled = false
-                                }
-                                j.optBoolean("ok", false) && j.optString("outcome") == "loss" -> {
-                                    status = t("eazy_chat.games_outcome_loss", "Not this time. Come back tomorrow.")
-                                    playEnabled = false
-                                }
-                                else -> {
-                                    val st = api.getDailyGameState(shop, ownerId)
-                                    if (st.optBoolean("ok", false)) applyStateJson(st)
-                                }
-                            }
+                            val j = api.postDailyGameMemoryFinish(shop, owner, forfeit, flipLog)
+                            applyMemoryOutcome(j)
                         } catch (_: Exception) {
                             status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
                             playEnabled = true
@@ -306,6 +324,7 @@ fun EazyDailyGamePanel(
                         }
                     }
                 },
+                onServerOutcome = { j -> applyMemoryOutcome(j) },
                 t = t,
             )
             if (busy) {
@@ -370,6 +389,12 @@ fun EazyDailyGamePanel(
                 "Flip two tiles at a time. Beat the countdown after the peek.",
             )
         }
+    val todayGameLabel =
+        if (todaySlug == "connect_four_5x5") {
+            t("eazy_chat.games_connect_title", "Connect Four")
+        } else {
+            t("eazy_chat.games_memory_title", "Memory Match")
+        }
 
     Column(
         modifier =
@@ -378,6 +403,12 @@ fun EazyDailyGamePanel(
                 .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Text(
+            text = todayGameLabel,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = LocalEazyModalPalette.current.accent,
+        )
         Text(
             text = introText,
             style = MaterialTheme.typography.bodyMedium,
