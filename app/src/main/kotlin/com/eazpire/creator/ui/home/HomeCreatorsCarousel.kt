@@ -22,11 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,12 +36,10 @@ import androidx.compose.ui.unit.sp
 import com.eazpire.creator.ui.components.EazLazyProductImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.i18n.formatCountLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-
-import com.eazpire.creator.i18n.formatCountLabel
-import com.eazpire.creator.ui.home.HOME_INITIAL_CREATORS
 
 data class ShopCreatorCard(
     val name: String,
@@ -65,39 +58,27 @@ private val HomeCreatorsPanelGradient = Brush.linearGradient(
     ),
 )
 
+suspend fun loadShopCreatorsForHome(
+    creatorApi: CreatorApi,
+    sortTab: String,
+    limit: Int = 20,
+): List<ShopCreatorCard> =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            parseShopCreators(creatorApi.listShopCreators(sort = sortTab, limit = limit))
+        }.getOrElse { emptyList() }
+    }
+
 @Composable
 fun HomeCreatorsCarousel(
-    creatorApi: CreatorApi,
+    creators: List<ShopCreatorCard>,
+    sortTab: String,
+    loading: Boolean,
+    onSortTabChange: (String) -> Unit,
     labelForKey: (String, String) -> String,
     onCreatorClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var sortTab by remember { mutableStateOf("recommend") }
-    var loading by remember { mutableStateOf(true) }
-    var creators by remember { mutableStateOf<List<ShopCreatorCard>>(emptyList()) }
-
-    LaunchedEffect(sortTab) {
-        loading = true
-        creators = withContext(Dispatchers.IO) {
-            runCatching {
-                parseShopCreators(creatorApi.listShopCreators(sort = sortTab, limit = HOME_INITIAL_CREATORS))
-            }.getOrElse { emptyList() }
-        }
-        loading = false
-
-        val fullLimit = 20
-        if (creators.size < fullLimit) {
-            val full = withContext(Dispatchers.IO) {
-                runCatching {
-                    parseShopCreators(creatorApi.listShopCreators(sort = sortTab, limit = fullLimit))
-                }.getOrElse { emptyList() }
-            }
-            if (full.size > creators.size) {
-                creators = full
-            }
-        }
-    }
-
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -144,7 +125,7 @@ fun HomeCreatorsCarousel(
                                     )
                                 },
                             )
-                            .clickable { sortTab = sort }
+                            .clickable { onSortTabChange(sort) }
                             .padding(horizontal = 14.dp, vertical = 8.dp),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -155,7 +136,7 @@ fun HomeCreatorsCarousel(
         }
 
         when {
-            loading -> {
+            loading && creators.isEmpty() -> {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

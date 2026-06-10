@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +41,10 @@ private val ScratchHeaderBg =
     )
 private val ScratchHeaderBorder = Color(0xFFFBBF24).copy(alpha = 0.5f)
 private val ScratchTitleColor = Color(0xFFF9FAFB)
+private val ScratchCardTitleBg =
+    Brush.linearGradient(
+        colors = listOf(Color(0xFF1F2937), Color(0xFF374151)),
+    )
 
 /** Home "Create from Scratch" — matches web `eaz-home-create-scratch` dark shell + catalog cards. */
 @Composable
@@ -88,6 +93,9 @@ fun HomeCreateScratchCarousel(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = ScratchTitleColor,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
@@ -138,14 +146,23 @@ private fun HomeCreateScratchCard(
                 )
             }
         }
-        Column(modifier = Modifier.padding(8.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(ScratchCardTitleBg)
+                .padding(horizontal = 8.dp, vertical = 7.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
                 text = product.title,
                 fontSize = 12.sp,
-                lineHeight = 15.sp,
-                maxLines = 2,
+                lineHeight = 14.sp,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = ScratchTitleColor,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

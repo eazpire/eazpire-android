@@ -279,83 +279,95 @@ private fun parseHotspots(obj: JSONObject): List<HeroHotspot> {
     return result
 }
 
+/** Load hero slides once; parent caches so LazyColumn scroll does not re-fetch. */
+suspend fun fetchHeroImagesForHome(
+    api: CreatorApi,
+    heroRegion: String,
+    fallbackProductHandle: String?,
+): List<HeroImage> {
+    var heroImages = withContext(Dispatchers.IO) {
+        try {
+            val json = api.getHeroPublishedRandom(limit = 6, region = heroRegion)
+            if (json.optBoolean("ok", false)) {
+                val arr = json.optJSONArray("images") ?: json.optJSONArray("items")
+                if (arr != null) {
+                    (0 until arr.length()).map { i ->
+                        val obj = arr.getJSONObject(i)
+                        val hotspots = parseHotspots(obj)
+                        HeroImage(
+                            id = obj.optString("id", ""),
+                            imageUrl = obj.optString("image_url", "").takeIf { it.isNotBlank() }
+                                ?: obj.optString("thumbnail_url", ""),
+                            thumbnailUrl = obj.optString("thumbnail_url", "").takeIf { it.isNotBlank() },
+                            title = obj.optString("title", "").takeIf { it.isNotBlank() },
+                            link = null,
+                            hotspots = hotspots,
+                        )
+                    }.filter { it.imageUrl.isNotBlank() }
+                } else {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            debugLog(
+                "HeroCarousel.kt:fetch",
+                "Hero API error",
+                mapOf("error" to (e.message ?: "unknown")),
+                "hero_load",
+            )
+            emptyList()
+        }
+    }
+    val useFallback = heroImages.isEmpty() || (heroImages.size == 1 && heroImages[0].id == "fallback")
+    if (useFallback) {
+        val handle = fallbackProductHandle?.takeIf { it.isNotBlank() } ?: "gift-card"
+        heroImages = listOf(
+            HeroImage(
+                id = "fallback",
+                imageUrl = "https://picsum.photos/800/600",
+                thumbnailUrl = null,
+                title = "Test",
+                link = null,
+                hotspots = listOf(
+                    HeroHotspot(0.5f, 0.5f, "/products/$handle", "Test Hotspot", handle),
+                ),
+            ),
+        )
+    }
+    return heroImages
+}
+
 @Composable
 fun HeroCarousel(
     onProductClick: ((String) -> Unit)? = null,
     onHotspotProductClick: ((String) -> Unit)? = null,
     productModalHandleState: MutableState<String?>? = null,
     fallbackProductHandle: String? = null,
-    modifier: Modifier = Modifier
+    /** When set, skips internal API load (parent caches across LazyColumn dispose). */
+    heroImages: List<HeroImage>? = null,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    // #region agent log
-    debugLog("HeroCarousel.kt:149", "HeroCarousel composed", mapOf("productModalHandleStateNotNull" to (productModalHandleState != null)), "H1")
-    // #endregion
     Log.d(TAG_PRODUCT_MODAL, "[0] HeroCarousel composed: productModalHandleState=${productModalHandleState != null}")
     val api = remember { CreatorApi() }
     val productsApi = remember { ShopifyProductsApi() }
     val localeStore = remember { LocaleStore(context) }
     val heroRegion by localeStore.regionCode.collectAsState(initial = localeStore.getRegionCodeSync())
-    var heroImages by remember { mutableStateOf<List<HeroImage>>(emptyList()) }
+    var internalHeroImages by remember { mutableStateOf<List<HeroImage>>(emptyList()) }
 
-    LaunchedEffect(heroRegion, fallbackProductHandle) {
-        heroImages = withContext(Dispatchers.IO) {
-            try {
-                val json = api.getHeroPublishedRandom(limit = 6, region = heroRegion)
-                // #region agent log
-                debugLog("HeroCarousel.kt:165", "Hero API response", mapOf(
-                    "ok" to json.optBoolean("ok", false),
-                    "heroRegion" to heroRegion,
-                    "imagesCount" to (json.optJSONArray("images")?.length() ?: json.optJSONArray("items")?.length() ?: 0)
-                ), "hero_load")
-                // #endregion
-                if (json.optBoolean("ok", false)) {
-                    val arr = json.optJSONArray("images") ?: json.optJSONArray("items")
-                    if (arr != null) {
-                        (0 until arr.length()).map { i ->
-                            val obj = arr.getJSONObject(i)
-                            val hotspots = parseHotspots(obj)
-                            HeroImage(
-                                id = obj.optString("id", ""),
-                                imageUrl = obj.optString("image_url", "").takeIf { it.isNotBlank() }
-                                    ?: obj.optString("thumbnail_url", ""),
-                                thumbnailUrl = obj.optString("thumbnail_url", "").takeIf { it.isNotBlank() },
-                                title = obj.optString("title", "").takeIf { it.isNotBlank() },
-                                link = null,
-                                hotspots = hotspots
-                            )
-                        }.filter { it.imageUrl.isNotBlank() }
-                    } else emptyList()
-                } else emptyList()
-            } catch (e: Exception) {
-                // #region agent log
-                debugLog("HeroCarousel.kt:188", "Hero API error", mapOf("error" to (e.message ?: "unknown")), "hero_load")
-                // #endregion
-                emptyList()
-            }
-        }
-        val useFallback = heroImages.isEmpty() || (heroImages.size == 1 && heroImages[0].id == "fallback")
-        if (useFallback) {
-            val handle = fallbackProductHandle?.takeIf { it.isNotBlank() } ?: "gift-card"
-            heroImages = listOf(
-                HeroImage(
-                    id = "fallback",
-                    imageUrl = "https://picsum.photos/800/600",
-                    thumbnailUrl = null,
-                    title = "Test",
-                    link = null,
-                    hotspots = listOf(
-                        HeroHotspot(0.5f, 0.5f, "/products/$handle", "Test Hotspot", handle)
-                    )
-                )
-            )
-        }
+    LaunchedEffect(heroRegion, fallbackProductHandle, heroImages) {
+        if (heroImages != null) return@LaunchedEffect
+        internalHeroImages = fetchHeroImagesForHome(api, heroRegion, fallbackProductHandle)
     }
 
-    if (heroImages.isEmpty()) return
+    val displayImages = heroImages ?: internalHeroImages
 
-    val pairCount = (heroImages.size + 1) / 2
+    if (displayImages.isEmpty()) return
+
+    val pairCount = (displayImages.size + 1) / 2
     var currentPairIndex by remember { mutableStateOf(0) }
     val slideProgress = remember { Animatable(1f) }
     var imageSizeByHeroId by remember { mutableStateOf<Map<String, Pair<Int, Int>>>(emptyMap()) }
@@ -369,7 +381,7 @@ fun HeroCarousel(
         }
     }
 
-    LaunchedEffect(heroImages.size, carouselPaused, isModalOpen) {
+    LaunchedEffect(displayImages.size, carouselPaused, isModalOpen) {
         if (pairCount < 2 || carouselPaused || isModalOpen) return@LaunchedEffect
 
         while (true) {
@@ -512,7 +524,7 @@ fun HeroCarousel(
 
                     val baseLeft = basePairIndex * 2
                     val baseRight = basePairIndex * 2 + 1
-                    val baseHero = heroImages[(if (slot == 0) baseLeft else baseRight) % heroImages.size]
+                    val baseHero = displayImages[(if (slot == 0) baseLeft else baseRight) % displayImages.size]
                     val baseHotspots = baseHero.hotspots
                     val baseImageSize = imageSizeByHeroId[baseHero.id]
                     val baseAlignment = hotspotAlignmentFromCentroid(baseHotspots)
@@ -535,7 +547,7 @@ fun HeroCarousel(
                     if (showOverlay) {
                         val overlayLeft = currentPairIndex * 2
                         val overlayRight = currentPairIndex * 2 + 1
-                        val overlayHero = heroImages[(if (slot == 0) overlayLeft else overlayRight) % heroImages.size]
+                        val overlayHero = displayImages[(if (slot == 0) overlayLeft else overlayRight) % displayImages.size]
                         val overlayHotspots = overlayHero.hotspots
                         val overlayImageSize = imageSizeByHeroId[overlayHero.id]
                         val overlayAlignment = hotspotAlignmentFromCentroid(overlayHotspots)

@@ -25,6 +25,7 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.ui.home.HOME_INITIAL_CREATORS
 import com.eazpire.creator.ui.home.HOME_INITIAL_PRODUCTS
 import com.eazpire.creator.ui.home.HOME_MAX_PRODUCTS
 import com.eazpire.creator.ui.home.HOME_PRODUCT_SECTIONS
@@ -32,10 +33,13 @@ import com.eazpire.creator.ui.home.HomeCategoryPools
 import com.eazpire.creator.ui.home.HomeCategoryStrip
 import com.eazpire.creator.ui.home.HomeCarouselFilterModal
 import com.eazpire.creator.ui.home.HomeCreateScratchCarousel
+import com.eazpire.creator.ui.HeroImage
+import com.eazpire.creator.ui.fetchHeroImagesForHome
 import com.eazpire.creator.ui.home.HomeCreatorsCarousel
+import com.eazpire.creator.ui.home.ShopCreatorCard
 import com.eazpire.creator.ui.home.catalogAvailabilityFromJson
+import com.eazpire.creator.ui.home.loadShopCreatorsForHome
 import com.eazpire.creator.ui.home.catalogPreviewUrlsFromJson
-import com.eazpire.creator.ui.home.loadHomeCarouselCategoryPoolsMissingChips
 import com.eazpire.creator.ui.home.loadHomeCarouselFromWorker
 import com.eazpire.creator.ui.home.loadHomePromotionsFromWorker
 import com.eazpire.creator.ui.home.matchesHomeCategory
@@ -107,18 +111,50 @@ fun ProductCarouselSection(
     /** Creators load only after promo + product carousels (top → bottom). */
     var loadCreatorsSection by remember { mutableStateOf(false) }
 
+    /** Cached in parent so LazyColumn scroll-off does not re-fetch hero / creators. */
+    var homeHeroImages by remember { mutableStateOf<List<HeroImage>>(emptyList()) }
+    var homeCreators by remember { mutableStateOf<List<ShopCreatorCard>>(emptyList()) }
+    var homeCreatorsSort by remember { mutableStateOf("recommend") }
+    var homeCreatorsLoading by remember { mutableStateOf(false) }
+
+    val heroFallbackHandle =
+        remember(sectionPools) {
+            sectionPools["new_arrivals"]?.get("all")?.firstOrNull()?.handle
+                ?: sectionPools["bestseller"]?.get("all")?.firstOrNull()?.handle
+        }
+
+    LaunchedEffect(loadCreatorsSection, homeCreatorsSort, reloadTrigger) {
+        if (!loadCreatorsSection) return@LaunchedEffect
+        homeCreatorsLoading = homeCreators.isEmpty()
+        val initial = loadShopCreatorsForHome(creatorApi, homeCreatorsSort, HOME_INITIAL_CREATORS)
+        homeCreators = initial
+        homeCreatorsLoading = false
+        if (initial.size < 20) {
+            val full = loadShopCreatorsForHome(creatorApi, homeCreatorsSort, 20)
+            if (full.size > initial.size) homeCreators = full
+        }
+    }
+
     LaunchedEffect(region, reloadTrigger) {
         loadCreatorsSection = false
         promoProducts = emptyList()
         sectionPools = emptyMap()
         createScratchCatalog = emptyList()
         homePoolsBootstrapping = true
+        homeHeroImages = emptyList()
+        homeCreators = emptyList()
 
         val countryCode = localeStore.getCountryCodeSync()
         val pools = mutableMapOf<String, HomeCategoryPools>()
         coroutineScope {
+            val heroDeferred = async(Dispatchers.IO) {
+                fetchHeroImagesForHome(CreatorApi(), region, heroFallbackHandle)
+            }
             val promoDeferred = async(Dispatchers.IO) {
-                loadHomePromotionsFromWorker(creatorApi, HOME_MAX_PRODUCTS, countryCode)
+                loadHomePromotionsFromWorker(creatorApi, HOME_INITIAL_PRODUCTS, countryCode)
+            }
+            val scratchDeferred = async(Dispatchers.IO) {
+                loadCreateScratchCatalog(creatorApi, region)
             }
             val sectionDeferreds = HOME_PRODUCT_SECTIONS.map { def ->
                 async(Dispatchers.IO) {
@@ -131,7 +167,9 @@ fun ProductCarouselSection(
                     )
                 }
             }
+            homeHeroImages = heroDeferred.await()
             promoProducts = promoDeferred.await()
+            createScratchCatalog = scratchDeferred.await()
             loadCreatorsSection = true
             sectionDeferreds.forEach { deferred ->
                 val (id, products) = deferred.await()
@@ -159,26 +197,11 @@ fun ProductCarouselSection(
                         updated[id] = mapOf("all" to fullProducts)
                         sectionPools = updated.toMap()
                     }
-                    HOME_PRODUCT_SECTIONS.map { def ->
-                        async {
-                            val fullPools = loadHomeCarouselCategoryPoolsMissingChips(
-                                creatorApi,
-                                def.id,
-                                HOME_MAX_PRODUCTS,
-                                updated[def.id].orEmpty(),
-                                countryCode = countryCode,
-                            )
-                            def.id to fullPools
-                        }
-                    }.forEach { deferred ->
-                        val (id, fullPools) = deferred.await()
-                        updated[id] = fullPools
-                        sectionPools = updated.toMap()
-                    }
                 }
             }
             launch(Dispatchers.IO) {
-                createScratchCatalog = loadCreateScratchCatalog(creatorApi, region)
+                val promos = loadHomePromotionsFromWorker(creatorApi, HOME_MAX_PRODUCTS, countryCode)
+                if (promos.isNotEmpty()) promoProducts = promos
             }
         }
     }
@@ -266,8 +289,8 @@ fun ProductCarouselSection(
                     },
                     onHotspotProductClick = onHotspotProductClick,
                     productModalHandleState = productModalHandleState,
-                    fallbackProductHandle = sectionPools["new_arrivals"]?.get("all")?.firstOrNull()?.handle
-                        ?: sectionPools["bestseller"]?.get("women")?.firstOrNull()?.handle,
+                    fallbackProductHandle = heroFallbackHandle,
+                    heroImages = homeHeroImages.takeIf { it.isNotEmpty() },
                 )
             }
 
@@ -335,6 +358,7 @@ fun ProductCarouselSection(
                     mockPreviewRevision = mockPreviewRevision,
                     lazyCardImages = true,
                     productsLoading = sectionLoading,
+                    alwaysShowTitleRow = true,
                     onCartClick = { params ->
                         productModalHandleState?.value = params.handle
                     },
@@ -360,7 +384,10 @@ fun ProductCarouselSection(
         if (loadCreatorsSection && onCreatorClick != null) {
             item(key = "creators") {
                 HomeCreatorsCarousel(
-                    creatorApi = creatorApi,
+                    creators = homeCreators,
+                    sortTab = homeCreatorsSort,
+                    loading = homeCreatorsLoading,
+                    onSortTabChange = { homeCreatorsSort = it },
                     labelForKey = t,
                     onCreatorClick = onCreatorClick,
                 )

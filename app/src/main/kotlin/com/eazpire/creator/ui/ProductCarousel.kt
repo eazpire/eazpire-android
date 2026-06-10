@@ -106,11 +106,13 @@ fun ProductCarousel(
     onCartClick: ((ProductClickWithCollection) -> Unit)? = null,
     /** Show title row with loading indicator while products for this chip are loading. */
     productsLoading: Boolean = false,
+    /** Home rows: always show orange title bar even when the product list is still empty. */
+    alwaysShowTitleRow: Boolean = false,
     /** Called when auto/manual scroll nears the end of the loaded product list. */
     onNearEnd: (() -> Unit)? = null,
 ) {
     if (products.isEmpty()) {
-        if (emptyStateMessage == null && !productsLoading) return
+        if (emptyStateMessage == null && !productsLoading && !alwaysShowTitleRow) return
         Column(modifier = modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
