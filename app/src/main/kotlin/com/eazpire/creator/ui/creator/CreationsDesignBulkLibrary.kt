@@ -515,12 +515,18 @@ object CreationsDesignLibraryActions {
 
     suspend fun loadCreatorNames(api: CreatorApi, ownerId: String): List<String> {
         val settings = runCatching { api.getSettings(ownerId) }.getOrNull() ?: return emptyList()
-        val arr = settings.optJSONObject("settings")?.optJSONArray("creator_names") ?: JSONArray()
-        return buildList {
+        val settingsObj = settings.optJSONObject("settings") ?: settings
+        val arr = settingsObj.optJSONArray("creator_names") ?: JSONArray()
+        val out = buildList {
             for (i in 0 until arr.length()) {
                 arr.optString(i)?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
             }
-        }.distinct()
+        }.toMutableList()
+        val primary = settingsObj.optString("creator_name").takeIf { it.isNotBlank() }
+        if (primary != null && out.none { it.equals(primary, ignoreCase = true) }) {
+            out.add(0, primary)
+        }
+        return out.distinct()
     }
 }
 

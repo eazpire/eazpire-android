@@ -102,6 +102,7 @@ fun CreatorSettingsTabContent(
                 translationStore = translationStore,
                 initialRedeemCode = initialRedeemCode,
                 onInitialRedeemCodeConsumed = onInitialRedeemCodeConsumed,
+                onRequestSettingsTab = onRequestSettingsTab,
             )
             3 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
             4 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
@@ -167,6 +168,7 @@ private fun CreatorSettingsCreatorCodesContent(
     translationStore: TranslationStore,
     initialRedeemCode: String? = null,
     onInitialRedeemCodeConsumed: () -> Unit = {},
+    onRequestSettingsTab: (Int) -> Unit = {},
 ) {
     var isLoading by remember { mutableStateOf(true) }
     var isCreator by remember { mutableStateOf(false) }
@@ -403,7 +405,10 @@ private fun CreatorSettingsCreatorCodesContent(
                             val resp = withContext(Dispatchers.IO) { api.redeemCreatorCode(ownerId, code) }
                             redeemMessage = resp.optString("message", if (resp.optBoolean("ok", false)) "Welcome!" else resp.optString("error", "Error"))
                             redeemError = !resp.optBoolean("ok", false)
-                            if (resp.optBoolean("ok", false)) reload()
+                            if (resp.optBoolean("ok", false)) {
+                                reload()
+                                onRequestSettingsTab(4)
+                            }
                         } catch (_: Exception) {
                             redeemMessage = "Connection error"
                             redeemError = true
@@ -702,6 +707,7 @@ private fun CreatorSettingsNamesContent(
 ) {
     var newName by remember { mutableStateOf("") }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
+    var nameLimit by remember { mutableStateOf(5) }
     var isLoading by remember { mutableStateOf(true) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var statusError by remember { mutableStateOf(false) }
@@ -726,7 +732,9 @@ private fun CreatorSettingsNamesContent(
                 raw = listOf(primary) + raw
             }
             val seen = mutableSetOf<String>()
-            names = raw.filter { seen.add(it.lowercase()) }.take(5)
+            val limitRaw = settingsObj.optInt("creator_name_limit", -1)
+            nameLimit = if (limitRaw > 0) limitRaw else 5
+            names = raw.filter { seen.add(it.lowercase()) }.take(nameLimit.coerceAtMost(5))
         } catch (_: Exception) {}
         isLoading = false
     }
@@ -761,7 +769,7 @@ private fun CreatorSettingsNamesContent(
         onClick = {
             val name = newName.trim()
             if (name.isBlank()) return@Button
-            if (names.size >= 5) return@Button
+            if (names.size >= nameLimit) return@Button
             validateCreatorNameInput(name)?.let { code ->
                 statusMessage = creatorNameErrorMessage(code, translationStore)
                 statusError = true
@@ -800,7 +808,7 @@ private fun CreatorSettingsNamesContent(
     }
 
     Text(
-        text = "${translationStore.t("creator.settings_names.your_names", "Your names")} (${names.size}/5)",
+        text = "${translationStore.t("creator.settings_names.your_names", "Your names")} (${names.size}/$nameLimit)",
         style = MaterialTheme.typography.titleSmall,
         color = Color.White,
         modifier = Modifier.padding(top = 24.dp)
