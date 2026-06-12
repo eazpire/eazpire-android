@@ -121,12 +121,6 @@ fun HeaderSearch(
         lineHeight = 18.sp,
         color = EazColors.TextPrimary
     )
-    val searchFieldPadding = PaddingValues(
-        start = 12.dp,
-        top = 10.dp,
-        end = 4.dp,
-        bottom = 10.dp
-    )
 
     var focused by remember { mutableStateOf(false) }
     var fieldHeightPx by remember { mutableIntStateOf(0) }
@@ -191,7 +185,6 @@ fun HeaderSearch(
                     )
                 },
                 singleLine = true,
-                contentPadding = searchFieldPadding,
                 shape = RoundedCornerShape(8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = EazColors.Orange,
