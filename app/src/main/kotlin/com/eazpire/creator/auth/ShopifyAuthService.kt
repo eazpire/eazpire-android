@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Shopify Customer Account API OAuth 2.0 mit PKCE.
- * Discovery via myshopify → account.eazpire.com (stable flow; avoid shopify.com 406/Cloudflare).
+ * Discovery via shopify.com (token API); login UI may still redirect to account.eazpire.com in the browser tab.
  */
 class ShopifyAuthService {
     private val client = OkHttpClient.Builder()
@@ -25,7 +25,7 @@ class ShopifyAuthService {
     data class AuthEndpoints(val authorizationEndpoint: String, val tokenEndpoint: String)
 
     suspend fun discoverEndpoints(): AuthEndpoints = withContext(Dispatchers.IO) {
-        val url = "https://${AuthConfig.SHOP_DOMAIN}/.well-known/openid-configuration"
+        val url = AuthConfig.OIDC_DISCOVERY_URL
         AuthDebugLog.d("[DISCOVERY] Requesting $url")
         val request = Request.Builder().url(url).build()
         val response = client.newCall(request).execute()
@@ -36,8 +36,8 @@ class ShopifyAuthService {
         val body = response.body?.string() ?: throw AuthException("Empty discovery response")
         AuthDebugLog.d("[DISCOVERY] Body preview=${body.take(500)}")
         val json = JSONObject(body)
-        val auth = json.optString("authorization_endpoint")
-        val token = json.optString("token_endpoint")
+        val auth = AuthConfig.normalizeOAuthEndpoint(json.optString("authorization_endpoint"))
+        val token = AuthConfig.normalizeOAuthEndpoint(json.optString("token_endpoint"))
         if (auth.isBlank() || token.isBlank()) {
             throw AuthException("Missing authorization_endpoint or token_endpoint")
         }

@@ -33,7 +33,7 @@ import com.eazpire.creator.R
 
 /**
  * Same choices as web login modal: Shop app, Google, Email.
- * WebView for account.eazpire.com (Accept header); Chrome Custom Tab for Google OAuth only.
+ * Sign-in opens in Chrome Custom Tab (email, shop, and Google) for better VPN / Cloudflare compatibility.
  */
 @Composable
 fun LoginOptionsModal(
@@ -109,7 +109,7 @@ fun LoginOptionsModal(
                 }
 
                 Text(
-                    text = "Shop and email sign in inside the app. Google opens the Shopify login first, then your browser.",
+                    text = "Sign-in opens in your browser tab (works better with VPN). Choose email, shop, or Google on the Shopify screen.",
                     style = MaterialTheme.typography.labelSmall,
                     color = EazColors.TextSecondary,
                     modifier = Modifier.padding(top = 14.dp)
