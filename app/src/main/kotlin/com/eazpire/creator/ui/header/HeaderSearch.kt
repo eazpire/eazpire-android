@@ -116,6 +116,17 @@ fun HeaderSearch(
         color = EazColors.TextSecondary,
         letterSpacing = 0.8.sp
     )
+    val searchTextStyle = TextStyle(
+        fontSize = 14.sp,
+        lineHeight = 18.sp,
+        color = EazColors.TextPrimary
+    )
+    val searchFieldPadding = PaddingValues(
+        start = 12.dp,
+        top = 10.dp,
+        end = 4.dp,
+        bottom = 10.dp
+    )
 
     var focused by remember { mutableStateOf(false) }
     var fieldHeightPx by remember { mutableIntStateOf(0) }
@@ -166,21 +177,21 @@ fun HeaderSearch(
                 onValueChange = onQueryChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .padding(horizontal = 8.dp)
                     .onGloballyPositioned { coords ->
                         fieldHeightPx = coords.size.height
                     }
                     .onFocusChanged { focused = it.isFocused },
-                textStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
+                textStyle = searchTextStyle,
                 placeholder = {
                     Text(
                         text = placeholder,
-                        color = EazColors.TextSecondary,
-                        fontSize = 14.sp
+                        style = searchTextStyle.copy(color = EazColors.TextSecondary),
+                        maxLines = 1
                     )
                 },
                 singleLine = true,
+                contentPadding = searchFieldPadding,
                 shape = RoundedCornerShape(8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = EazColors.Orange,
