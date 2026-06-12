@@ -402,9 +402,9 @@ fun EazyMascotTabView(
 @Composable
 private fun EazyMascotSection(
     title: String,
-    count: String,
     accent: Color,
     defaultOpen: Boolean,
+    count: String? = null,
     content: @Composable () -> Unit
 ) {
     var isOpen by remember { mutableStateOf(defaultOpen) }
@@ -424,7 +424,9 @@ private fun EazyMascotSection(
         ) {
             Text(title, style = MaterialTheme.typography.labelMedium, color = MascotMuted)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(count, style = MaterialTheme.typography.labelSmall, color = MascotMuted)
+                count?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MascotMuted)
+                }
                 Icon(
                     imageVector = Icons.Default.ExpandMore,
                     contentDescription = null,

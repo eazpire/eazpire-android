@@ -371,7 +371,7 @@ private fun EazResetCountdown(nextAtMs: Long, translationStore: TranslationStore
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         LinearProgressIndicator(
-            progress = { progress },
+            progress = progress,
             modifier = Modifier.fillMaxWidth(),
             color = EazColors.Orange,
             trackColor = Color.White.copy(alpha = 0.12f),
