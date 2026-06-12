@@ -18,7 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
@@ -841,11 +842,18 @@ fun EazyChatModal(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
             dismissOnBackPress = true,
             dismissOnClickOutside = true
         )
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+        ) {
             val isWideLayout = maxWidth > 600.dp
             var sidebarOpen by remember(isWideLayout) { mutableStateOf(isWideLayout) }
             LaunchedEffect(isWideLayout) {
@@ -855,8 +863,6 @@ fun EazyChatModal(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .systemBarsPadding()
-                    .imePadding()
                     .background(LocalEazyModalPalette.current.bg)
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
