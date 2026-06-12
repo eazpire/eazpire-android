@@ -64,7 +64,8 @@ private data class NotifPrefRowModel(
 fun NotificationSettingsContent(
     scope: NotificationScope,
     tokenStore: SecureTokenStore,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    embedInParentScroll: Boolean = false,
 ) {
     val context = LocalContext.current
     val repo = remember { NotificationPreferencesRepository(context) }
@@ -114,11 +115,16 @@ fun NotificationSettingsContent(
         NotificationScope.Creator -> buildCreatorRows(state, api, repo, scopeIo)
     }
 
-    Column(
-        modifier = modifier
+    val contentModifier = if (embedInParentScroll) {
+        modifier.fillMaxWidth()
+    } else {
+        modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 4.dp),
+    }
+
+    Column(
+        modifier = contentModifier.padding(horizontal = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(

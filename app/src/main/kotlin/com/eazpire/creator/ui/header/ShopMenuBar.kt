@@ -229,39 +229,32 @@ fun ShopMenuBar(
                             }
                         }
                     }
-                }
-            }
-
-            Row(
-                modifier = Modifier.padding(end = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                COMING_SOON_MENU_ITEMS.forEach { item ->
-                    val label = t(item.translationKey, item.label)
-                    Box(
-                        modifier = Modifier
-                            .clickable {
-                                Toast.makeText(context, comingSoonMessage, Toast.LENGTH_SHORT).show()
-                            }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    items(COMING_SOON_MENU_ITEMS) { item ->
+                        val label = t(item.translationKey, item.label)
+                        Box(
+                            modifier = Modifier
+                                .clickable {
+                                    Toast.makeText(context, comingSoonMessage, Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            EazNavTablerIcon(
-                                handle = item.iconHandle,
-                                tint = Color.White.copy(alpha = 0.72f),
-                                iconSize = 14.dp,
-                            )
-                            Text(
-                                text = label,
-                                color = Color.White.copy(alpha = 0.72f),
-                                fontWeight = FontWeight.Bold,
-                                style = androidx.compose.material3.MaterialTheme.typography.labelLarge
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                EazNavTablerIcon(
+                                    handle = item.iconHandle,
+                                    tint = Color.White.copy(alpha = 0.72f),
+                                    iconSize = 14.dp,
+                                )
+                                Text(
+                                    text = label,
+                                    color = Color.White.copy(alpha = 0.72f),
+                                    fontWeight = FontWeight.Bold,
+                                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                                )
+                            }
                         }
                     }
                 }

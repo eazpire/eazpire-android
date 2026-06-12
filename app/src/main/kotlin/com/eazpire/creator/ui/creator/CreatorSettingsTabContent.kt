@@ -94,6 +94,7 @@ fun CreatorSettingsTabContent(
             1 -> NotificationSettingsContent(
                 scope = NotificationScope.Creator,
                 tokenStore = tokenStore,
+                embedInParentScroll = true,
                 modifier = Modifier.fillMaxWidth()
             )
             2 -> CreatorSettingsCreatorCodesContent(
@@ -107,7 +108,11 @@ fun CreatorSettingsTabContent(
             3 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
             4 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
             5 -> CreatorSettingsLevelContent(ownerId, api, translationStore)
-            6 -> CreatorSettingsEazPanel(tokenStore = tokenStore, translationStore = translationStore)
+            6 -> CreatorSettingsEazPanel(
+                tokenStore = tokenStore,
+                translationStore = translationStore,
+                onRequestSettingsTab = onRequestSettingsTab,
+            )
             7 -> CreatorSettingsPayoutContent(ownerId, api, translationStore)
             8 -> CreatorSettingsInterestsContent(ownerId, api, translationStore)
             9 -> CreatorSettingsNftContent(translationStore)

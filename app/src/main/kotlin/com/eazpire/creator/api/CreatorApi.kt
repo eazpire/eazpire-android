@@ -60,6 +60,19 @@ class CreatorApi(
         return call("get-balance", params)
     }
 
+    /** GET ?op=get-transactions&owner_id=&limit= */
+    suspend fun getTransactions(ownerId: String, limit: Int = 200): JSONObject = call(
+        "get-transactions",
+        mapOf("owner_id" to ownerId, "limit" to limit.coerceIn(1, 500).toString())
+    )
+
+    /** POST ?op=eaz-stripe-checkout&owner_id= — body { eaz } */
+    suspend fun eazStripeCheckout(ownerId: String, eaz: Int): JSONObject = postJsonBodyOp(
+        "eaz-stripe-checkout",
+        JSONObject().put("eaz", eaz),
+        mapOf("owner_id" to ownerId)
+    )
+
     /** GET ?op=get-shop-create-product-catalog&region=EU — online-only catalog + mock_urls for Shop Create Product */
     suspend fun getShopCreateProductCatalog(region: String): JSONObject = call(
         "get-shop-create-product-catalog",
@@ -1658,9 +1671,18 @@ class CreatorApi(
         return call("list-products-for-promotion", params)
     }
 
-    private suspend fun postJsonBodyOp(op: String, body: JSONObject): JSONObject =
+    private suspend fun postJsonBodyOp(
+        op: String,
+        body: JSONObject,
+        queryParams: Map<String, String> = emptyMap(),
+    ): JSONObject =
         withContext(Dispatchers.IO) {
-            val url = "$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}"
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=$op&_t=${System.currentTimeMillis()}")
+                queryParams.forEach { (k, v) ->
+                    if (v.isNotBlank()) append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}")
+                }
+            }
             val request = Request.Builder()
                 .url(url)
                 .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString().toByteArray()))
