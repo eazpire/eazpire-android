@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
@@ -57,6 +59,7 @@ fun CreatorLevelBadge(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val economyRefreshTick by EazBalanceRefreshBus.tick.collectAsState()
     var shareUrl by remember { mutableStateOf<String?>(null) }
     var levelNum by remember { mutableStateOf(1) }
     var levelName by remember { mutableStateOf(translationStore.t("creator.overview.loading", "Loading…")) }
@@ -67,7 +70,7 @@ fun CreatorLevelBadge(
 
     if (isLoggedIn && !ownerId.isNullOrBlank()) {
         val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
-        LaunchedEffect(ownerId) {
+        LaunchedEffect(ownerId, economyRefreshTick) {
             levelLoadFailed = false
             shareUrl = getActiveRefUrl(api, ownerId!!)
             try {

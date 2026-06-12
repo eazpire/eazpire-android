@@ -5,12 +5,17 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,8 +44,19 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 private const val CREATOR_BASE_URL = "https://www.eazpire.com"
+
+private fun isStarterFooterMode(data: JSONObject): Boolean {
+    if (!data.optBoolean("ok", false)) return false
+    if (data.optBoolean("is_creator", false)) return false
+    if (data.optBoolean("eaz_wallet_active", false)) return false
+    return data.has("trial_generate_cap") && data.has("trial_upload_cap")
+}
+
+private fun formatEazBalance(bal: Double): String =
+    if (bal % 1.0 == 0.0) "%.0f".format(bal) else "%.1f".format(bal)
 
 /** Footer 1:1 wie Web .creator-global-footer */
 @Composable
@@ -56,6 +72,9 @@ fun CreatorFooter(
     val langCode by localeStore.languageCode.collectAsState(initial = "en")
     val balanceRefreshTick by EazBalanceRefreshBus.tick.collectAsState()
     var eazBalance by remember { mutableStateOf("…") }
+    var starterMode by remember { mutableStateOf(false) }
+    var generateCount by remember { mutableStateOf("0/5") }
+    var uploadCount by remember { mutableStateOf("0/20") }
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
 
@@ -64,18 +83,43 @@ fun CreatorFooter(
             try {
                 val r = withContext(Dispatchers.IO) { api.getBalance(ownerId) }
                 if (r.optBoolean("ok", false)) {
-                    val bal = r.optDouble("balance_total", r.optDouble("balance_eaz", r.optDouble("balance", 0.0)))
-                    eazBalance = if (bal % 1.0 == 0.0) "%.0f".format(bal) else "%.1f".format(bal)
+                    starterMode = isStarterFooterMode(r)
+                    if (starterMode) {
+                        val gu = r.optInt("trial_generate_used", 0)
+                        val gc = r.optInt("trial_generate_cap", 5)
+                        val uu = r.optInt("trial_upload_used", 0)
+                        val uc = r.optInt("trial_upload_cap", 20)
+                        generateCount = "$gu/$gc"
+                        uploadCount = "$uu/$uc"
+                    } else {
+                        val bal = r.optDouble(
+                            "balance_total",
+                            r.optDouble("balance_eaz", r.optDouble("balance", 0.0))
+                        )
+                        eazBalance = formatEazBalance(bal)
+                    }
                 } else {
+                    starterMode = false
                     eazBalance = "0.00"
                 }
             } catch (_: Exception) {
+                starterMode = false
                 eazBalance = "0.00"
             }
         } else {
+            starterMode = false
             eazBalance = "0.00"
         }
     }
+
+    val generateTitle = translationStore?.t(
+        "creator.settings.eaz_starter_generate_short",
+        "Starter generations used"
+    ) ?: "Starter generations used"
+    val uploadTitle = translationStore?.t(
+        "creator.settings.eaz_starter_upload_short",
+        "Starter uploads used"
+    ) ?: "Starter uploads used"
 
     Row(
         modifier = modifier
@@ -95,7 +139,7 @@ fun CreatorFooter(
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
                 text = "© ${java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)} ",
@@ -133,11 +177,11 @@ fun CreatorFooter(
                 }
             )
         }
-        // Right: LANG (flag only, clickable) + coin + balance (wie .creator-global-footer__balance)
+        // Right: LANG (flag only, clickable) + starter slots or EAZ balance
         Row(
             modifier = Modifier.padding(start = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val flagCode = localeStore.getFlagCountryForLanguage(langCode)
             Box(
@@ -157,32 +201,72 @@ fun CreatorFooter(
                     )
                     .padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data("https://pub-2ffb11d4a361463498b9a842a87a870c.r2.dev/brand/coin/eaz-coin-logo.png")
-                        .build(),
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp)
-                )
-                Text(
-                    text = eazBalance,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = EazColors.Orange
-                )
-                Text(
-                    text = "EAZ",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
-                    ),
-                    color = Color.White.copy(alpha = 0.72f)
-                )
+                if (starterMode) {
+                    FooterStarterSlot(
+                        icon = Icons.Default.AutoAwesome,
+                        count = generateCount,
+                        contentDescription = generateTitle
+                    )
+                    FooterStarterSlot(
+                        icon = Icons.Default.Upload,
+                        count = uploadCount,
+                        contentDescription = uploadTitle
+                    )
+                } else {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data("https://pub-2ffb11d4a361463498b9a842a87a870c.r2.dev/brand/coin/eaz-coin-logo.png")
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = eazBalance,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = EazColors.Orange
+                    )
+                    Text(
+                        text = "EAZ",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = Color.White.copy(alpha = 0.72f)
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun FooterStarterSlot(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    count: String,
+    contentDescription: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = EazColors.Orange,
+            modifier = Modifier.size(14.dp)
+        )
+        Text(
+            text = count,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            ),
+            color = EazColors.Orange
+        )
     }
 }

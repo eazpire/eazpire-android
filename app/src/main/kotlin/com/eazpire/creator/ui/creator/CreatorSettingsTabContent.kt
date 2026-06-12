@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.creatorcodes.CreatorCodeAvailableHintStore
 import com.eazpire.creator.auth.SecureTokenStore
@@ -411,6 +412,7 @@ private fun CreatorSettingsCreatorCodesContent(
                             redeemMessage = resp.optString("message", if (resp.optBoolean("ok", false)) "Welcome!" else resp.optString("error", "Error"))
                             redeemError = !resp.optBoolean("ok", false)
                             if (resp.optBoolean("ok", false)) {
+                                EazBalanceRefreshBus.requestRefresh()
                                 reload()
                                 onRequestSettingsTab(4)
                             }
