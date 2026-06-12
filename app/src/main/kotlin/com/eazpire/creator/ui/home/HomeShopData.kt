@@ -59,8 +59,41 @@ suspend fun loadHomeCarouselFromWorker(
             personalizableMode = personalizableMode,
             countryCode = countryCode,
         )
-        ShopifyProductsApi.parseHomeCarouselProductsResponse(j)
+        val parsed = ShopifyProductsApi.parseHomeCarouselProductsResponse(j)
+        if (parsed.isNotEmpty() || chipId != "all") return@runCatching parsed
+        loadHomeCarouselAllFallback(sectionId, limit)
     }.getOrElse { emptyList() }
+}
+
+/** Worker slot collections can be empty for chip `all`; Storefront falls back to the full catalog. */
+private suspend fun loadHomeCarouselAllFallback(
+    sectionId: String,
+    limit: Int,
+): List<ShopifyProductsApi.ProductItem> {
+    val def = HOME_PRODUCT_SECTIONS.find { it.id == sectionId } ?: return emptyList()
+    val baseHandle = def.baseCollectionHandle ?: return emptyList()
+    val api = ShopifyProductsApi()
+    return when (sectionId) {
+        "new_arrivals", "bestseller" ->
+            loadHomeSectionForChip(
+                api,
+                baseHandle,
+                limit.coerceIn(1, HOME_MAX_PRODUCTS),
+                chipId = "all",
+                initialOnly = false,
+            )
+        else -> emptyList()
+    }
+}
+
+fun resolveHomeSectionProducts(
+    pools: HomeCategoryPools,
+    chipId: String,
+): List<ShopifyProductsApi.ProductItem> {
+    val direct = pools[chipId].orEmpty()
+    if (direct.isNotEmpty()) return direct
+    if (chipId != "all") return emptyList()
+    return pools.values.flatten().distinctBy { it.handle }
 }
 
 suspend fun loadHomeCarouselCategoryPools(

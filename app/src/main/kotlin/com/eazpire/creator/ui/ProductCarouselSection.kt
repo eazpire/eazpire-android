@@ -41,6 +41,7 @@ import com.eazpire.creator.ui.home.catalogAvailabilityFromJson
 import com.eazpire.creator.ui.home.loadShopCreatorsForHome
 import com.eazpire.creator.ui.home.catalogPreviewUrlsFromJson
 import com.eazpire.creator.ui.home.loadHomeCarouselFromWorker
+import com.eazpire.creator.ui.home.resolveHomeSectionProducts
 import com.eazpire.creator.ui.home.loadHomePromotionsFromWorker
 import com.eazpire.creator.ui.home.matchesHomeCategory
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +103,7 @@ fun ProductCarouselSection(
         buildList {
             addAll(promoProducts)
             HOME_PRODUCT_SECTIONS.forEach { def ->
-                addAll(sectionPools[def.id]?.get(selectedCategory).orEmpty())
+                addAll(resolveHomeSectionProducts(sectionPools[def.id].orEmpty(), selectedCategory))
             }
         }.distinctBy { it.handle }
     }
@@ -335,7 +336,7 @@ fun ProductCarouselSection(
         }
 
         HOME_PRODUCT_SECTIONS.forEach { def ->
-            val products = sectionPools[def.id]?.get(selectedCategory).orEmpty()
+            val products = resolveHomeSectionProducts(sectionPools[def.id].orEmpty(), selectedCategory)
             val visibleProducts = filterCarouselProducts(products)
             val sectionLoading =
                 (homePoolsBootstrapping && !sectionPools.containsKey(def.id)) ||
