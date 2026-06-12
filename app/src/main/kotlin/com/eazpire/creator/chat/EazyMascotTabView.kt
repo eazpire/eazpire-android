@@ -94,6 +94,11 @@ fun EazyMascotTabView(
     var lockedMascots by remember { mutableStateOf<List<LockedMascot>>(emptyList()) }
     var mood by remember { mutableStateOf<JSONObject?>(null) }
     var nextLevels by remember { mutableStateOf<Map<Int, JSONObject>>(emptyMap()) }
+    var happyStreakDays by remember { mutableStateOf(0) }
+    var playStreakDays by remember { mutableStateOf(0) }
+    var winStreakDays by remember { mutableStateOf(0) }
+    var happyClaimAvailable by remember { mutableStateOf(false) }
+    var eazDiscountPct by remember { mutableStateOf(0.0) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(ownerId) {
@@ -130,14 +135,13 @@ fun EazyMascotTabView(
                             }
                         }
                     }
-                    val active = mascots.find { it.isActive }
-                if (active != null) {
-                    val qr = withContext(Dispatchers.IO) { api.mascotQuests(ownerId) }
-                    if (qr.optBoolean("ok", false)) {
-                        quests = parseQuests(qr.optJSONArray("quests"))
-                    }
+                    happyStreakDays = inv.optInt("happy_streak_days", 0)
+                    playStreakDays = inv.optInt("play_streak_days", 0)
+                    winStreakDays = inv.optInt("win_streak_days", 0)
+                    happyClaimAvailable = inv.optBoolean("happy_claim_available", false)
+                    eazDiscountPct = inv.optDouble("eaz_discount_pct", 0.0)
+                    quests = emptyList()
                 }
-            }
         } catch (_: Exception) {
             error = t("eazy_chat.chat_network_error_retry", "Network error. Please try again.")
         }
@@ -296,21 +300,51 @@ fun EazyMascotTabView(
             }
         }
 
-        // Quests
-        if (quests.isNotEmpty()) {
+        EazyMascotSection(
+            title = t("eazy_chat.mascot_daily_rewards", "Daily rewards"),
+            count = null,
+            accent = MascotAccent,
+            defaultOpen = true
+        ) {
+            MascotRewardRow(
+                title = t("eazy_chat.mascot_reward_games", "Daily games"),
+                detail = t("eazy_chat.mascot_reward_games_detail", "+10 XP per play, +15 XP on win"),
+                streak = "$playStreakDays/5"
+            )
+            MascotRewardRow(
+                title = t("eazy_chat.mascot_reward_win_streak", "Win streak"),
+                detail = t("eazy_chat.mascot_reward_win_streak_detail", "+100 XP bonus at 5 days in a row"),
+                streak = "$winStreakDays/5"
+            )
+            MascotRewardRow(
+                title = t("eazy_chat.mascot_reward_happy", "Happy bonus"),
+                detail = if (happyClaimAvailable) {
+                    t("eazy_chat.mascot_reward_happy_available", "Available today — pet Eazy when happy")
+                } else {
+                    t("eazy_chat.mascot_reward_happy_unavailable", "Pet Eazy when mood is happy (+15 XP/day)")
+                },
+                streak = "$happyStreakDays/5"
+            )
+        }
+
+        val discountPct = if (eazDiscountPct > 0) {
+            (eazDiscountPct * 100).toInt()
+        } else {
+            ((active.level - 1).coerceAtLeast(0)) * 2
+        }
+        if (discountPct > 0) {
             EazyMascotSection(
-                title = t("eazy_chat.mascot_quests", "Quests"),
-                count = "${quests.count { !it.completed }} ${t("eazy_chat.mascot_open", "open")}",
-                accent = MascotAccent,
-                defaultOpen = true
+                title = t("eazy_chat.mascot_active_bonuses", "Active bonuses"),
+                count = "1",
+                accent = Color(0xFF22C55E),
+                defaultOpen = false
             ) {
-                quests.forEach { q ->
-                    MascotQuestCard(
-                        quest = q,
-                        t = t,
-                        onClaim = { /* TODO */ }
-                    )
-                }
+                Text(
+                    text = t("eazy_chat.mascot_eaz_discount", "EAZ discount: {{pct}}% on all EAZ costs")
+                        .replace("{{pct}}", discountPct.toString()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MascotText
+                )
             }
         }
 
@@ -404,6 +438,32 @@ private fun EazyMascotSection(
                 content()
             }
         }
+    }
+}
+
+@Composable
+private fun MascotRewardRow(
+    title: String,
+    detail: String,
+    streak: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(MascotCard)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = MascotText)
+            Text(streak, style = MaterialTheme.typography.labelMedium, color = MascotGold)
+        }
+        Text(detail, style = MaterialTheme.typography.bodySmall, color = MascotMuted)
     }
 }
 

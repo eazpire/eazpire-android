@@ -232,12 +232,15 @@ private fun EazCostsSubPanel(
 
     val freeLbl = translationStore.t("creator.settings.eaz_cost_free", "Free")
 
+    val discountPct = EazCostCatalog.mascotDiscountPct(balanceData)
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         EazCostCatalog.items.forEach { item ->
             val cost = EazCostCatalog.resolveCost(balanceData, item.feature)
+            val baseCost = EazCostCatalog.resolveBaseCost(balanceData, item.feature)
             val active = EazCostCatalog.isFeatureActive(balanceData, item.feature)
             val isFree = !active || cost <= 0
-            val priceText = if (isFree) freeLbl else "${EazCostCatalog.fmtEaz(cost)} EAZ"
+            val hasDiscount = !isFree && discountPct > 0 && baseCost > cost + 1e-9
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -252,12 +255,42 @@ private fun EazCostsSubPanel(
                     color = Color.White.copy(alpha = 0.88f),
                     modifier = Modifier.weight(1f)
                 )
-                Text(
-                    priceText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = EazColors.Orange,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                )
+                if (isFree) {
+                    Text(
+                        freeLbl,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = EazColors.Orange,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                } else if (hasDiscount) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${EazCostCatalog.fmtEaz(baseCost)} EAZ",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White.copy(alpha = 0.45f),
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                        )
+                        Text(
+                            "-${(discountPct * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF4ADE80),
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                        Text(
+                            "${EazCostCatalog.fmtEaz(cost)} EAZ",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = EazColors.Orange,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    }
+                } else {
+                    Text(
+                        "${EazCostCatalog.fmtEaz(cost)} EAZ",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = EazColors.Orange,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                }
             }
         }
     }

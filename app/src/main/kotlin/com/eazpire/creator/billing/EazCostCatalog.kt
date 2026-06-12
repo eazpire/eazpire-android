@@ -44,6 +44,21 @@ object EazCostCatalog {
         return defaultCost(feature)
     }
 
+    fun resolveBaseCost(balance: JSONObject?, feature: String): Double {
+        val base = balance?.optJSONObject("eaz_costs_base")
+        if (base != null && base.has(feature)) {
+            val n = base.optDouble(feature, Double.NaN)
+            if (!n.isNaN() && n >= 0) return n
+        }
+        return resolveCost(balance, feature)
+    }
+
+    fun mascotDiscountPct(balance: JSONObject?): Double {
+        if (balance == null || !balance.has("mascot_eaz_discount_pct")) return 0.0
+        val n = balance.optDouble("mascot_eaz_discount_pct", 0.0)
+        return if (n.isFinite() && n > 0) n else 0.0
+    }
+
     fun isFeatureActive(balance: JSONObject?, feature: String): Boolean {
         val active = balance?.optJSONObject("eaz_feature_active")
         if (active != null && active.has(feature)) {
