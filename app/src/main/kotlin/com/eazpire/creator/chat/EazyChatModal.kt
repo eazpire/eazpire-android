@@ -85,6 +85,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,6 +94,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -106,6 +108,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -847,12 +851,18 @@ fun EazyChatModal(
             dismissOnClickOutside = true
         )
     ) {
+        val dialogView = LocalView.current
+        SideEffect {
+            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            if (window != null) {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+            }
+        }
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .imePadding()
         ) {
             val isWideLayout = maxWidth > 600.dp
             var sidebarOpen by remember(isWideLayout) { mutableStateOf(isWideLayout) }
@@ -914,7 +924,7 @@ fun EazyChatModal(
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .fillMaxWidth(),
+                                .fillMaxSize(),
                     ) {
                     when (selectedTab) {
                             EazySidebarTab.Chat -> {
@@ -1105,11 +1115,52 @@ fun EazyChatModal(
                                             }
                                         }
 
+                                        val listState = rememberLazyListState()
+                                        LaunchedEffect(messages.size) {
+                                            if (messages.isNotEmpty()) {
+                                                listState.animateScrollToItem(messages.size - 1)
+                                            }
+                                        }
+
+                                        LazyColumn(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxWidth(),
+                                            state = listState,
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            if (isLoading && messages.isEmpty()) {
+                                                item {
+                                                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                                        CircularProgressIndicator(color = LocalEazyModalPalette.current.accent, modifier = Modifier.size(32.dp))
+                                                    }
+                                                }
+                                            }
+                                            items(messages) { msg ->
+                                                ChatBubble(message = msg, isUser = msg.role == "user")
+                                            }
+                                            if (isTyping) {
+                                                item {
+                                                    ChatBubble(
+                                                        message = ChatMessage("typing", "assistant", "..."),
+                                                        isUser = false,
+                                                        isTyping = true
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(LocalEazyModalPalette.current.header)
+                                                .imePadding()
+                                        ) {
                                         AnimatedVisibility(drawerExpanded) {
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .background(LocalEazyModalPalette.current.header)
                                                     .padding(8.dp)
                                             ) {
                                                 Row(
@@ -1209,7 +1260,6 @@ fun EazyChatModal(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable { drawerExpanded = !drawerExpanded }
-                                                .background(LocalEazyModalPalette.current.header)
                                                 .padding(vertical = 6.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -1222,7 +1272,7 @@ fun EazyChatModal(
                                                         .background(LocalEazyModalPalette.current.muted)
                                                 )
                                                 Icon(
-                                                    imageVector = if (drawerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                    imageVector = if (drawerExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                                                     contentDescription = null,
                                                     tint = LocalEazyModalPalette.current.muted,
                                                     modifier = Modifier.size(20.dp)
@@ -1238,7 +1288,6 @@ fun EazyChatModal(
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .background(LocalEazyModalPalette.current.header)
                                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                                             ) {
                                                 Row(
@@ -1271,42 +1320,6 @@ fun EazyChatModal(
                                                             .height(4.dp)
                                                             .clip(RoundedCornerShape(2.dp))
                                                             .background(if (pct <= 10) LocalEazyModalPalette.current.muted else LocalEazyModalPalette.current.accent)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        val listState = rememberLazyListState()
-                                        LaunchedEffect(messages.size) {
-                                            if (messages.isNotEmpty()) {
-                                                listState.animateScrollToItem(messages.size - 1)
-                                            }
-                                        }
-
-                                        LazyColumn(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxWidth(),
-                                            state = listState,
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                                        ) {
-                                            if (isLoading && messages.isEmpty()) {
-                                                item {
-                                                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                                        CircularProgressIndicator(color = LocalEazyModalPalette.current.accent, modifier = Modifier.size(32.dp))
-                                                    }
-                                                }
-                                            }
-                                            items(messages) { msg ->
-                                                ChatBubble(message = msg, isUser = msg.role == "user")
-                                            }
-                                            if (isTyping) {
-                                                item {
-                                                    ChatBubble(
-                                                        message = ChatMessage("typing", "assistant", "..."),
-                                                        isUser = false,
-                                                        isTyping = true
                                                     )
                                                 }
                                             }
@@ -1415,6 +1428,7 @@ fun EazyChatModal(
                                                     modifier = Modifier.size(24.dp)
                                                 )
                                             }
+                                        }
                                         }
                                     }
                                 }
@@ -1882,7 +1896,7 @@ private fun EazyFunctionsGrid(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         categories.forEach { (cat, defs) ->
