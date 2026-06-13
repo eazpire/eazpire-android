@@ -60,6 +60,12 @@ class CreatorApi(
         return call("get-balance", params)
     }
 
+    /** GET ?op=get-trial-starter-pack&owner_id= — Starter Pack quotas + previews */
+    suspend fun getTrialStarterPack(ownerId: String): JSONObject = call(
+        "get-trial-starter-pack",
+        mapOf("owner_id" to ownerId)
+    )
+
     /** GET ?op=get-transactions&owner_id=&limit= */
     suspend fun getTransactions(ownerId: String, limit: Int = 200): JSONObject = call(
         "get-transactions",

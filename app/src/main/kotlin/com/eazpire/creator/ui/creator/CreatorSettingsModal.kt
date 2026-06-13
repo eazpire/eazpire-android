@@ -68,6 +68,7 @@ fun CreatorSettingsModal(
     onDismiss: () -> Unit,
     onLoginClick: () -> Unit = {},
     initialTab: Int = 0,
+    initialEazSub: String? = null,
     initialRedeemCode: String? = null,
     onInitialRedeemCodeConsumed: () -> Unit = {},
     pendingWearPairToken: String? = null,
@@ -186,6 +187,7 @@ fun CreatorSettingsModal(
                     initialRedeemCode = if (currentTab == codesTabIndex) initialRedeemCode else null,
                     onInitialRedeemCodeConsumed = onInitialRedeemCodeConsumed,
                     onRequestSettingsTab = { currentTab = it },
+                    initialEazSub = if (currentTab == 6) initialEazSub else null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)

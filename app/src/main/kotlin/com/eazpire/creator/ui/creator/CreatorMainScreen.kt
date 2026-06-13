@@ -114,6 +114,7 @@ fun CreatorMainScreen(
     var wearPairTokenForSettings by remember { mutableStateOf<String?>(null) }
     var creatorCodesPrefill by remember { mutableStateOf<String?>(null) }
     var creatorSettingsInitialTab by remember { mutableIntStateOf(0) }
+    var creatorSettingsInitialEazSub by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(pendingWearPairToken) {
         val t = pendingWearPairToken?.trim().orEmpty()
@@ -529,7 +530,12 @@ fun CreatorMainScreen(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
                 onLanguageClick = { languageModalVisible = true },
-                onTermsClick = { termsModalVisible = true }
+                onTermsClick = { termsModalVisible = true },
+                onBalanceClick = { starter ->
+                    creatorSettingsInitialTab = 6
+                    creatorSettingsInitialEazSub = if (starter) "starter" else "balance"
+                    creatorSettingsVisible = true
+                }
             )
         }
 
@@ -611,6 +617,7 @@ fun CreatorMainScreen(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
                 initialTab = creatorSettingsInitialTab,
+                initialEazSub = creatorSettingsInitialEazSub,
                 initialRedeemCode = creatorCodesPrefill,
                 onInitialRedeemCodeConsumed = { creatorCodesPrefill = null },
                 pendingWearPairToken = wearPairTokenForSettings,
@@ -620,6 +627,7 @@ fun CreatorMainScreen(
                     wearPairTokenForSettings = null
                     creatorCodesPrefill = null
                     creatorSettingsInitialTab = 0
+                    creatorSettingsInitialEazSub = null
                 },
                 onLoginClick = onAccountClick,
             )

@@ -4,6 +4,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import coil.compose.AsyncImage
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -57,7 +63,34 @@ import java.util.Locale
 private const val SETTINGS_TAB_CREATOR_CODES = 2
 private const val DAY_MS = 86_400_000L
 
-private enum class EazSettingsSubTab { Balance, Logs, Buy, Costs }
+private enum class EazSettingsSubTab { Starter, Balance, Logs, Buy, Costs }
+
+private fun isStarterPackEligible(data: JSONObject?): Boolean {
+    if (data == null || !data.optBoolean("ok", false)) return false
+    if (data.optBoolean("is_creator", false)) return false
+    if (data.optBoolean("eaz_wallet_active", false)) return false
+    if (!data.optBoolean("trial_mode", false)) return false
+    if (data.optInt("display_level", 1) != 1) return false
+    val xpLevel = data.optInt("xp_level", data.optInt("xp_derived_level", 1))
+    if (xpLevel != 1) return false
+    return data.has("trial_generate_cap") && data.has("trial_upload_cap")
+}
+
+private fun starterSummaryLine(
+    used: Int,
+    cap: Int,
+    remaining: Int,
+    translationStore: TranslationStore,
+): String {
+    val tpl = translationStore.t(
+        "creator.settings.eaz_starter_summary_tpl",
+        "{{used}} used · {{remaining}} left (max {{cap}})"
+    )
+    return tpl
+        .replace("{{used}}", used.toString())
+        .replace("{{remaining}}", remaining.toString())
+        .replace("{{cap}}", cap.toString())
+}
 
 private enum class EazLogFilter(val key: String) {
     All("all"),
@@ -71,6 +104,7 @@ fun CreatorSettingsEazPanel(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onRequestSettingsTab: (Int) -> Unit = {},
+    initialEazSub: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -84,12 +118,36 @@ fun CreatorSettingsEazPanel(
     var checkoutLoading by remember { mutableStateOf(false) }
     val balanceRefreshTick by EazBalanceRefreshBus.tick.collectAsState()
 
-    val tabs = listOf(
-        EazSettingsSubTab.Balance,
-        EazSettingsSubTab.Logs,
-        EazSettingsSubTab.Buy,
-        EazSettingsSubTab.Costs
-    )
+    val starterEligible = isStarterPackEligible(balanceData)
+    val tabs = remember(starterEligible) {
+        buildList {
+            if (starterEligible) add(EazSettingsSubTab.Starter)
+            add(EazSettingsSubTab.Balance)
+            add(EazSettingsSubTab.Logs)
+            add(EazSettingsSubTab.Buy)
+            add(EazSettingsSubTab.Costs)
+        }
+    }
+    var pendingInitialSub by remember(initialEazSub) { mutableStateOf(initialEazSub) }
+
+    LaunchedEffect(pendingInitialSub, tabs, starterEligible) {
+        val sub = pendingInitialSub ?: return@LaunchedEffect
+        val target = when (sub) {
+            "starter" -> EazSettingsSubTab.Starter
+            "logs" -> EazSettingsSubTab.Logs
+            "buy" -> EazSettingsSubTab.Buy
+            "costs" -> EazSettingsSubTab.Costs
+            else -> EazSettingsSubTab.Balance
+        }
+        val idx = tabs.indexOf(target)
+        if (idx >= 0) {
+            subTab = idx
+            pendingInitialSub = null
+        } else if (sub == "starter") {
+            subTab = tabs.indexOf(EazSettingsSubTab.Balance).coerceAtLeast(0)
+            pendingInitialSub = null
+        }
+    }
 
     suspend fun reloadBalance() {
         if (ownerId.isBlank()) {
@@ -169,6 +227,7 @@ fun CreatorSettingsEazPanel(
         ) {
             tabs.forEachIndexed { index, tab ->
                 val label = when (tab) {
+                    EazSettingsSubTab.Starter -> translationStore.t("creator.settings.eaz_tab_starter", "Starter Pack")
                     EazSettingsSubTab.Balance -> translationStore.t("creator.settings.eaz_tab_balance", "Balance")
                     EazSettingsSubTab.Logs -> translationStore.t("creator.settings.eaz_tab_logs", "Logs")
                     EazSettingsSubTab.Buy -> translationStore.t("creator.settings.eaz_tab_buy", "Buy EAZ")
@@ -193,7 +252,14 @@ fun CreatorSettingsEazPanel(
             }
         }
 
-        when (tabs[subTab]) {
+        when (tabs.getOrNull(subTab)) {
+            EazSettingsSubTab.Starter -> EazStarterSubPanel(
+                ownerId = ownerId,
+                api = api,
+                balanceData = balanceData,
+                translationStore = translationStore,
+                onEnterCreatorCode = { onRequestSettingsTab(SETTINGS_TAB_CREATOR_CODES) },
+            )
             EazSettingsSubTab.Balance -> EazBalanceSubPanel(
                 balanceData = balanceData,
                 isLoading = isLoading,
@@ -221,6 +287,7 @@ fun CreatorSettingsEazPanel(
                 }
             )
             EazSettingsSubTab.Costs -> EazCostsSubPanel(balanceData, isLoading, translationStore)
+            null -> Unit
         }
     }
 }
@@ -272,17 +339,19 @@ private fun EazBalanceSubPanel(
 
     if (walletLocked) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            EazStatRow(
-                translationStore.t("creator.settings.eaz_total_label", "Total balance"),
-                "—"
+            Text(
+                text = translationStore.t("creator.settings.eaz_starter_heading", "Starter Pack"),
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
             )
-            EazStatRow(
-                translationStore.t("creator.settings.eaz_free_label", "Free EAZ"),
-                "— / 0"
-            )
-            EazStatRow(
-                translationStore.t("creator.settings.eaz_purchased_label", "Purchased EAZ"),
-                "—"
+            EazStarterSummaryCards(data, translationStore)
+            Text(
+                text = translationStore.t(
+                    "creator.settings.eaz_starter_info_body",
+                    "To generate more designs and uploads beyond this Starter Pack, you need to reach Level 2 and unlock EAZ with a Creator Code. You can get a Creator Code by making a sale in the shop, purchasing one, or receiving one from another creator."
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.72f),
             )
         }
         Button(
@@ -852,6 +921,203 @@ private fun EazCostsSubPanel(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun EazStarterSummaryCards(
+    balanceData: JSONObject?,
+    translationStore: TranslationStore,
+) {
+    val data = balanceData
+    val genLine = if (data != null && data.has("trial_generate_cap")) {
+        starterSummaryLine(
+            data.optInt("trial_generate_used", 0),
+            data.optInt("trial_generate_cap", 0),
+            data.optInt("trial_generate_remaining", 0),
+            translationStore,
+        )
+    } else {
+        "—"
+    }
+    val upLine = if (data != null && data.has("trial_upload_cap")) {
+        starterSummaryLine(
+            data.optInt("trial_upload_used", 0),
+            data.optInt("trial_upload_cap", 0),
+            data.optInt("trial_upload_remaining", 0),
+            translationStore,
+        )
+    } else {
+        "—"
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        EazStarterSummaryCard(
+            label = translationStore.t("creator.settings.eaz_starter_generate_label", "Design generations"),
+            value = genLine,
+            modifier = Modifier.weight(1f),
+        )
+        EazStarterSummaryCard(
+            label = translationStore.t("creator.settings.eaz_starter_upload_label", "Uploads"),
+            value = upLine,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun EazStarterSummaryCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.65f))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = EazColors.Orange, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun EazStarterSubPanel(
+    ownerId: String,
+    api: CreatorApi,
+    balanceData: JSONObject?,
+    translationStore: TranslationStore,
+    onEnterCreatorCode: () -> Unit,
+) {
+    var loading by remember(ownerId) { mutableStateOf(true) }
+    var generatedItems by remember { mutableStateOf<List<String>>(emptyList()) }
+    var uploadedItems by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showGenerated by remember { mutableStateOf(true) }
+
+    LaunchedEffect(ownerId) {
+        if (ownerId.isBlank()) {
+            loading = false
+            return@LaunchedEffect
+        }
+        loading = true
+        try {
+            val resp = withContext(Dispatchers.IO) { api.getTrialStarterPack(ownerId) }
+            if (resp.optBoolean("ok", false) && resp.optBoolean("starter_pack_applicable", false)) {
+                generatedItems = jsonPreviewUrls(resp.optJSONArray("generated_items"))
+                uploadedItems = jsonPreviewUrls(resp.optJSONArray("uploaded_items"))
+            } else {
+                generatedItems = emptyList()
+                uploadedItems = emptyList()
+            }
+        } catch (_: Exception) {
+            generatedItems = emptyList()
+            uploadedItems = emptyList()
+        } finally {
+            loading = false
+        }
+    }
+
+    EazWalletLockBanner(translationStore)
+
+    Text(
+        text = translationStore.t("creator.settings.eaz_starter_heading", "Starter Pack"),
+        style = MaterialTheme.typography.titleSmall,
+        color = Color.White,
+    )
+    EazStarterSummaryCards(balanceData, translationStore)
+    Text(
+        text = translationStore.t(
+            "creator.settings.eaz_starter_info_body",
+            "To generate more designs and uploads beyond this Starter Pack, you need to reach Level 2 and unlock EAZ with a Creator Code. You can get a Creator Code by making a sale in the shop, purchasing one, or receiving one from another creator."
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = Color.White.copy(alpha = 0.72f),
+    )
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = { showGenerated = true },
+            colors = if (showGenerated) {
+                ButtonDefaults.outlinedButtonColors(containerColor = EazColors.Orange.copy(alpha = 0.25f))
+            } else {
+                ButtonDefaults.outlinedButtonColors()
+            },
+        ) {
+            Text(
+                translationStore.t("creator.settings.eaz_starter_kind_generated", "Generated"),
+                color = if (showGenerated) EazColors.Orange else Color.White.copy(alpha = 0.75f),
+            )
+        }
+        OutlinedButton(
+            onClick = { showGenerated = false },
+            colors = if (!showGenerated) {
+                ButtonDefaults.outlinedButtonColors(containerColor = EazColors.Orange.copy(alpha = 0.25f))
+            } else {
+                ButtonDefaults.outlinedButtonColors()
+            },
+        ) {
+            Text(
+                translationStore.t("creator.settings.eaz_starter_kind_uploaded", "Uploaded"),
+                color = if (!showGenerated) EazColors.Orange else Color.White.copy(alpha = 0.75f),
+            )
+        }
+    }
+
+    if (loading) {
+        CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.padding(12.dp))
+    } else {
+        val items = if (showGenerated) generatedItems else uploadedItems
+        if (items.isEmpty()) {
+            Text(
+                text = translationStore.t("creator.settings.eaz_starter_grid_empty", "Nothing here yet."),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.65f),
+            )
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 72.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(items) { url ->
+                    AsyncImage(
+                        model = url,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp)),
+                    )
+                }
+            }
+        }
+    }
+
+    Button(
+        onClick = onEnterCreatorCode,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+    ) {
+        Text(
+            translationStore.t("creator.settings.eaz_enter_creator_code_cta", "Enter Creator Code"),
+            color = Color.White,
+        )
+    }
+}
+
+private fun jsonPreviewUrls(arr: JSONArray?): List<String> {
+    if (arr == null) return emptyList()
+    return buildList {
+        for (i in 0 until arr.length()) {
+            val url = arr.optJSONObject(i)?.optString("preview_url", "")?.trim().orEmpty()
+            if (url.isNotBlank()) add(url)
         }
     }
 }

@@ -78,6 +78,7 @@ fun CreatorSettingsTabContent(
     initialRedeemCode: String? = null,
     onInitialRedeemCodeConsumed: () -> Unit = {},
     onRequestSettingsTab: (Int) -> Unit = {},
+    initialEazSub: String? = null,
     modifier: Modifier = Modifier
 ) {
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
@@ -108,11 +109,12 @@ fun CreatorSettingsTabContent(
             )
             3 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
             4 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
-            5 -> CreatorSettingsLevelContent(ownerId, api, translationStore)
+            5 -> CreatorSettingsLevelPanel(ownerId, api, translationStore)
             6 -> CreatorSettingsEazPanel(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
                 onRequestSettingsTab = onRequestSettingsTab,
+                initialEazSub = initialEazSub,
             )
             7 -> CreatorSettingsPayoutContent(ownerId, api, translationStore)
             8 -> CreatorSettingsInterestsContent(ownerId, api, translationStore)
@@ -871,114 +873,6 @@ private fun CreatorSettingsNamesContent(
     }
 }
 
-@Composable
-private fun CreatorSettingsLevelContent(
-    ownerId: String,
-    api: CreatorApi,
-    translationStore: TranslationStore
-) {
-    var level by remember { mutableStateOf(0) }
-    var xpCurrent by remember { mutableStateOf(0) }
-    var xpNext by remember { mutableStateOf(0) }
-    var features by remember { mutableStateOf<List<String>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(ownerId) {
-        if (ownerId.isBlank()) {
-            isLoading = false
-            return@LaunchedEffect
-        }
-        isLoading = true
-        try {
-            val resp = withContext(Dispatchers.IO) { api.getLevel(ownerId) }
-            if (resp.optBoolean("ok", false)) {
-                level = resp.optInt("level", resp.optInt("current_level", 1)).coerceIn(1, 10)
-                xpCurrent = resp.optInt("xp_current", 0)
-                xpNext = resp.optInt("xp_next", 100).coerceAtLeast(0)
-                val arr = resp.optJSONArray("features")
-                features = (0 until (arr?.length() ?: 0)).mapNotNull { i ->
-                    arr?.optString(i, null)?.takeIf { it.isNotBlank() }
-                }
-            }
-        } catch (_: Exception) {}
-        isLoading = false
-    }
-
-    if (isLoading) {
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.padding(24.dp))
-        }
-        return
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(EazColors.Orange.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(Icons.Default.Star, null, Modifier.size(32.dp), tint = EazColors.Orange)
-        Column {
-            Text(
-                text = translationStore.t("creator.level_panel.level_label", "Level"),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.8f)
-            )
-            Text(
-                text = level.toString(),
-                style = MaterialTheme.typography.headlineMedium,
-                color = EazColors.Orange
-            )
-        }
-    }
-
-    Text(
-        text = translationStore.t("creator.level_panel.xp_label", "XP"),
-        style = MaterialTheme.typography.titleSmall,
-        color = Color.White,
-        modifier = Modifier.padding(top = 20.dp)
-    )
-    Text(
-        text = "$xpCurrent / $xpNext ${translationStore.t("creator.level_panel.xp_label", "XP")}",
-        style = MaterialTheme.typography.bodyMedium,
-        color = Color.White.copy(alpha = 0.8f),
-        modifier = Modifier.padding(top = 4.dp)
-    )
-    val progress = if (xpNext > 0) (xpCurrent.toFloat() / xpNext).coerceIn(0f, 1f) else 0f
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp)
-            .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-            .padding(2.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(progress)
-                .background(EazColors.Orange, RoundedCornerShape(4.dp))
-                .padding(vertical = 6.dp)
-        )
-    }
-
-    if (features.isNotEmpty()) {
-        Text(
-            text = translationStore.t("creator.level_panel.current_features", "Current features"),
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White,
-            modifier = Modifier.padding(top = 20.dp)
-        )
-        features.forEach { f ->
-            Text(
-                text = "• $f",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.8f),
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-    }
-}
 
 @Composable
 private fun CreatorSettingsPayoutContent(

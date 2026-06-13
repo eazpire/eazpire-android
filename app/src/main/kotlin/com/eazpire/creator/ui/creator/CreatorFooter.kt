@@ -52,6 +52,10 @@ private fun isStarterFooterMode(data: JSONObject): Boolean {
     if (!data.optBoolean("ok", false)) return false
     if (data.optBoolean("is_creator", false)) return false
     if (data.optBoolean("eaz_wallet_active", false)) return false
+    if (!data.optBoolean("trial_mode", false)) return false
+    if (data.optInt("display_level", 1) != 1) return false
+    val xpLevel = data.optInt("xp_level", data.optInt("xp_derived_level", 1))
+    if (xpLevel != 1) return false
     return data.has("trial_generate_cap") && data.has("trial_upload_cap")
 }
 
@@ -66,6 +70,7 @@ fun CreatorFooter(
     translationStore: TranslationStore? = null,
     onLanguageClick: () -> Unit = {},
     onTermsClick: (() -> Unit)? = null,
+    onBalanceClick: (starterMode: Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -199,6 +204,10 @@ fun CreatorFooter(
                         Color.White.copy(alpha = 0.08f),
                         RoundedCornerShape(9.dp)
                     )
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onBalanceClick(starterMode) }
                     .padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
