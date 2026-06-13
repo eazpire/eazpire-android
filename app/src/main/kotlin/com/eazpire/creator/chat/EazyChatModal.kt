@@ -862,6 +862,7 @@ fun EazyChatModal(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .navigationBarsPadding()
         ) {
             val isWideLayout = maxWidth > 600.dp
             var sidebarOpen by remember(isWideLayout) { mutableStateOf(isWideLayout) }
@@ -922,8 +923,7 @@ fun EazyChatModal(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxWidth()
-                            .navigationBarsPadding(),
+                            .fillMaxWidth(),
                     ) {
                     when (selectedTab) {
                             EazySidebarTab.Chat -> {

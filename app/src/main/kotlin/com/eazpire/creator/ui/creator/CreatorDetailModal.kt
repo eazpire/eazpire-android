@@ -472,11 +472,15 @@ fun CreatorDetailModal(
             modifier = Modifier.fillMaxSize(),
             color = Color(0xFF070B14)
         ) {
-            Column(Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding()
                         .background(Color(0xFF0F172A))
                         .padding(horizontal = 8.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -671,7 +675,6 @@ fun CreatorDetailModal(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
                         .background(Color(0xFF070B14))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
