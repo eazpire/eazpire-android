@@ -112,8 +112,7 @@ fun CreatorSettingsModal(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding(),
+                .statusBarsPadding(),
         ) {
         Row(modifier = Modifier.fillMaxSize()) {
             // Icons-only Sidebar (fix, schmal)
@@ -191,6 +190,7 @@ fun CreatorSettingsModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                        .navigationBarsPadding()
                         .background(Color(0xFF0B1220))
                 )
             }

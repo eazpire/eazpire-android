@@ -862,7 +862,6 @@ fun EazyChatModal(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding()
         ) {
             val isWideLayout = maxWidth > 600.dp
             var sidebarOpen by remember(isWideLayout) { mutableStateOf(isWideLayout) }
@@ -921,10 +920,10 @@ fun EazyChatModal(
                     }
 
                     Box(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .fillMaxSize(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .navigationBarsPadding(),
                     ) {
                     when (selectedTab) {
                             EazySidebarTab.Chat -> {
@@ -1115,6 +1114,135 @@ fun EazyChatModal(
                                             }
                                         }
 
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(LocalEazyModalPalette.current.header)
+                                        ) {
+                                            AnimatedVisibility(drawerExpanded) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(8.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        IconButton(onClick = {
+                                                            scope.launch {
+                                                                carouselScroll.scrollTo((carouselScroll.value - 200).coerceAtLeast(0))
+                                                            }
+                                                        }) {
+                                                            Text("\u2039", color = LocalEazyModalPalette.current.text)
+                                                        }
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .horizontalScroll(carouselScroll)
+                                                        ) {
+                                                            val defs = EazyChatFeatureCatalog.forContext(chatContext).filter { fnVisibility[it.id] != false }
+                                                            defs.forEach { def ->
+                                                                val cd = t(def.labelKey, def.defaultLabel)
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .padding(horizontal = 4.dp)
+                                                                        .size(48.dp)
+                                                                        .clip(RoundedCornerShape(10.dp))
+                                                                        .border(1.dp, LocalEazyModalPalette.current.muted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                                                        .clickable {
+                                                                            drawerExpanded = false
+                                                                            scope.launch {
+                                                                                chatStore.setTyping(true)
+                                                                                val u = chatStore.getUserId(ownerId)
+                                                                                val msgList = chatStore.messages.value.map { it.role to it.content }
+                                                                                try {
+                                                                                    val resp = withContext(Dispatchers.IO) {
+                                                                                        api.chatCompletion(
+                                                                                            userId = u,
+                                                                                            messages = msgList,
+                                                                                            conversationId = chatStore.conversationId.value,
+                                                                                            context = mapOf(
+                                                                                                "page" to pagePath,
+                                                                                                "locale" to java.util.Locale.getDefault().language
+                                                                                            ),
+                                                                                            functionTrigger = def.id
+                                                                                        )
+                                                                                    }
+                                                                                    chatStore.setTyping(false)
+                                                                                    val rl = resp.optJSONObject("rate_limit")
+                                                                                    if (rl != null) {
+                                                                                        chatStore.setRateLimit(
+                                                                                            RateLimitState(
+                                                                                                remaining = rl.optInt("remaining", 30),
+                                                                                                limit = rl.optInt("limit", 30),
+                                                                                                resetAt = rl.optLong("reset_at", 0),
+                                                                                                resetIn = rl.optInt("reset_in", 0)
+                                                                                            )
+                                                                                        )
+                                                                                        if (rl.optInt("remaining", 30) <= 0) chatStore.setLimitReached(true)
+                                                                                    }
+                                                                                    if (resp.optBoolean("ok", false)) {
+                                                                                        val reply = resp.optString("text", "")
+                                                                                        if (reply.isNotBlank()) {
+                                                                                            chatStore.addMessage(ChatMessage("a${System.currentTimeMillis()}", "assistant", reply))
+                                                                                            resp.optString("conversation_id", "").takeIf { it.isNotBlank() }?.let { chatStore.setConversationId(it) }
+                                                                                        }
+                                                                                    }
+                                                                                } catch (_: Exception) {
+                                                                                    chatStore.setTyping(false)
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        .padding(8.dp),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    Icon(
+                                                                        eazyFeatureIcon(def.id),
+                                                                        contentDescription = cd,
+                                                                        tint = LocalEazyModalPalette.current.text,
+                                                                        modifier = Modifier.size(26.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                        IconButton(onClick = {
+                                                            scope.launch {
+                                                                carouselScroll.scrollTo(carouselScroll.value + 200)
+                                                            }
+                                                        }) {
+                                                            Text("\u203A", color = LocalEazyModalPalette.current.text)
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { drawerExpanded = !drawerExpanded }
+                                                    .padding(vertical = 6.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .width(40.dp)
+                                                            .height(4.dp)
+                                                            .clip(RoundedCornerShape(2.dp))
+                                                            .background(LocalEazyModalPalette.current.muted)
+                                                    )
+                                                    Icon(
+                                                        imageVector = if (drawerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                        contentDescription = null,
+                                                        tint = LocalEazyModalPalette.current.muted,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
                                         val listState = rememberLazyListState()
                                         LaunchedEffect(messages.size) {
                                             if (messages.isNotEmpty()) {
@@ -1157,129 +1285,6 @@ fun EazyChatModal(
                                                 .background(LocalEazyModalPalette.current.header)
                                                 .imePadding()
                                         ) {
-                                        AnimatedVisibility(drawerExpanded) {
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(8.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    IconButton(onClick = {
-                                                        scope.launch {
-                                                            carouselScroll.scrollTo((carouselScroll.value - 200).coerceAtLeast(0))
-                                                        }
-                                                    }) {
-                                                        Text("\u2039", color = LocalEazyModalPalette.current.text)
-                                                    }
-                                                    Row(
-                                                        modifier = Modifier
-                                                            .weight(1f)
-                                                            .horizontalScroll(carouselScroll)
-                                                    ) {
-                                                        val defs = EazyChatFeatureCatalog.forContext(chatContext).filter { fnVisibility[it.id] != false }
-                                                        defs.forEach { def ->
-                                                            val cd = t(def.labelKey, def.defaultLabel)
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .padding(horizontal = 4.dp)
-                                                                    .size(48.dp)
-                                                                    .clip(RoundedCornerShape(10.dp))
-                                                                    .border(1.dp, LocalEazyModalPalette.current.muted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                                                                    .clickable {
-                                                                        drawerExpanded = false
-                                                                        scope.launch {
-                                                                            chatStore.setTyping(true)
-                                                                            val u = chatStore.getUserId(ownerId)
-                                                                            val msgList = chatStore.messages.value.map { it.role to it.content }
-                                                                            try {
-                                                                                val resp = withContext(Dispatchers.IO) {
-                                                                                    api.chatCompletion(
-                                                                                        userId = u,
-                                                                                        messages = msgList,
-                                                                                        conversationId = chatStore.conversationId.value,
-                                                                                        context = mapOf(
-                                                                                            "page" to pagePath,
-                                                                                            "locale" to java.util.Locale.getDefault().language
-                                                                                        ),
-                                                                                        functionTrigger = def.id
-                                                                                    )
-                                                                                }
-                                                                                chatStore.setTyping(false)
-                                                                                val rl = resp.optJSONObject("rate_limit")
-                                                                                if (rl != null) {
-                                                                                    chatStore.setRateLimit(
-                                                                                        RateLimitState(
-                                                                                            remaining = rl.optInt("remaining", 30),
-                                                                                            limit = rl.optInt("limit", 30),
-                                                                                            resetAt = rl.optLong("reset_at", 0),
-                                                                                            resetIn = rl.optInt("reset_in", 0)
-                                                                                        )
-                                                                                    )
-                                                                                    if (rl.optInt("remaining", 30) <= 0) chatStore.setLimitReached(true)
-                                                                                }
-                                                                                if (resp.optBoolean("ok", false)) {
-                                                                                    val reply = resp.optString("text", "")
-                                                                                    if (reply.isNotBlank()) {
-                                                                                        chatStore.addMessage(ChatMessage("a${System.currentTimeMillis()}", "assistant", reply))
-                                                                                        resp.optString("conversation_id", "").takeIf { it.isNotBlank() }?.let { chatStore.setConversationId(it) }
-                                                                                    }
-                                                                                }
-                                                                            } catch (_: Exception) {
-                                                                                chatStore.setTyping(false)
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    .padding(8.dp),
-                                                                contentAlignment = Alignment.Center
-                                                            ) {
-                                                                Icon(
-                                                                    eazyFeatureIcon(def.id),
-                                                                    contentDescription = cd,
-                                                                    tint = LocalEazyModalPalette.current.text,
-                                                                    modifier = Modifier.size(26.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                    IconButton(onClick = {
-                                                        scope.launch {
-                                                            carouselScroll.scrollTo(carouselScroll.value + 200)
-                                                        }
-                                                    }) {
-                                                        Text("\u203A", color = LocalEazyModalPalette.current.text)
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable { drawerExpanded = !drawerExpanded }
-                                                .padding(vertical = 6.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .width(40.dp)
-                                                        .height(4.dp)
-                                                        .clip(RoundedCornerShape(2.dp))
-                                                        .background(LocalEazyModalPalette.current.muted)
-                                                )
-                                                Icon(
-                                                    imageVector = if (drawerExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                                                    contentDescription = null,
-                                                    tint = LocalEazyModalPalette.current.muted,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                        }
-
                                         if (rateLimit != null) {
                                             val rl = rateLimit!!
                                             val rem = rl.remaining
