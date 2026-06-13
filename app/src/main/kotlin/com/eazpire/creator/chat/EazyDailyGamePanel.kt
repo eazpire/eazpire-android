@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -47,6 +48,7 @@ private fun parseMemorySession(j: JSONObject): Pair<MemoryDeckUi, MemoryTimingUi
             serverNowMs = timing.optLong("server_now_ms"),
             maxWrongMoves = timing.optInt("max_wrong_moves", 5).coerceIn(1, 20),
             memoryWrongMoves = timing.optInt("memory_wrong_moves", 0).coerceAtLeast(0),
+            playStarted = timing.optBoolean("play_started", false),
         )
     return d to t
 }
@@ -93,6 +95,37 @@ fun EazyDailyGamePanel(
     var resumeConnect by remember { mutableStateOf(false) }
     var memorySession by remember { mutableStateOf<Pair<MemoryDeckUi, MemoryTimingUi>?>(null) }
     var connectSession by remember { mutableStateOf<ConnectSessionUi?>(null) }
+    var showConnectTutorial by remember { mutableStateOf(false) }
+    val appContext = LocalContext.current.applicationContext
+
+    fun beginConnectGame() {
+        val oid = ownerId ?: return
+        scope.launch {
+            busy = true
+            showConnectTutorial = false
+            status = t("eazy_chat.games_loading", "Loading…")
+            try {
+                val j = api.postDailyGameConnectBegin(shop, oid)
+                val parsed = parseConnectSession(j)
+                if (j.optBoolean("ok", false) && parsed != null) {
+                    connectSession = parsed
+                    status = ""
+                } else {
+                    status =
+                        j.optString(
+                            "message",
+                            t("eazy_chat.games_outcome_failed", "Could not complete play."),
+                        )
+                    playEnabled = true
+                }
+            } catch (_: Exception) {
+                status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
+                playEnabled = true
+            } finally {
+                busy = false
+            }
+        }
+    }
 
     fun applyStateJson(j: JSONObject) {
         todaySlug = j.optString("today_game_slug", j.optString("game_slug", "memory_match"))
@@ -181,6 +214,7 @@ fun EazyDailyGamePanel(
     LaunchedEffect(ownerId, canPlay, isLoggedIn) {
         memorySession = null
         connectSession = null
+        showConnectTutorial = false
         resumeMemory = false
         resumeConnect = false
         if (!canPlay) return@LaunchedEffect
@@ -334,6 +368,33 @@ fun EazyDailyGamePanel(
         return
     }
 
+    if (showConnectTutorial) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            prizeLine?.let { line ->
+                Text(text = line, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
+            }
+            EazyConnectTutorial(
+                onStartGame = { skipNext ->
+                    if (skipNext) {
+                        EazyConnectTutorialPrefs.setDismissed(appContext, true)
+                    }
+                    beginConnectGame()
+                },
+                t = t,
+            )
+            if (busy) {
+                CircularProgressIndicator(color = LocalEazyModalPalette.current.accent)
+            }
+        }
+        return
+    }
+
     val connSess = connectSession
     if (connSess != null) {
         val oid = ownerId ?: return
@@ -436,18 +497,13 @@ fun EazyDailyGamePanel(
                     status = t("eazy_chat.games_loading", "Loading…")
                     try {
                         if (todaySlug == "connect_four_5x5") {
-                            val j = api.postDailyGameConnectBegin(shop, oid)
-                            val parsed = parseConnectSession(j)
-                            if (j.optBoolean("ok", false) && parsed != null) {
-                                connectSession = parsed
-                                status = ""
+                            if (EazyConnectTutorialPrefs.isDismissed(appContext)) {
+                                beginConnectGame()
                             } else {
-                                status =
-                                    j.optString(
-                                        "message",
-                                        t("eazy_chat.games_outcome_failed", "Could not complete play."),
-                                    )
-                                playEnabled = true
+                                busy = false
+                                playEnabled = false
+                                showConnectTutorial = true
+                                status = ""
                             }
                         } else {
                             val j = api.postDailyGameMemoryBegin(shop, oid)

@@ -384,6 +384,17 @@ class CreatorApi(
             },
         )
 
+    /** POST ?op=daily-game-play memory_action start_play — anchor server deadline when the round begins. */
+    suspend fun postDailyGameMemoryStartPlay(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("memory_action", "start_play")
+            },
+        )
+
     /** POST ?op=daily-game-play memory_action finish */
     suspend fun postDailyGameMemoryFinish(
         shop: String,
@@ -1144,6 +1155,52 @@ class CreatorApi(
         "list-redeemed-codes",
         mapOf("owner_id" to ownerId, "limit" to limit.toString()),
     )
+
+    /** GET ?op=get-creator-community-settings&owner_id=xxx */
+    suspend fun getCreatorCommunitySettings(ownerId: String): JSONObject = call(
+        "get-creator-community-settings",
+        mapOf("owner_id" to ownerId),
+    )
+
+    /** POST ?op=set-creator-community-opt-in&owner_id=xxx */
+    suspend fun setCreatorCommunityOptIn(
+        ownerId: String,
+        role: String,
+        enabled: Boolean,
+        communityOwnerId: String? = null,
+    ): JSONObject {
+        val body = mutableMapOf<String, Any>("role" to role, "enabled" to enabled)
+        communityOwnerId?.trim()?.takeIf { it.isNotBlank() }?.let { body["community_owner_id"] = it }
+        return postJson("set-creator-community-opt-in", body, mapOf("owner_id" to ownerId))
+    }
+
+    /** GET ?op=list-creator-community-members&owner_id=xxx */
+    suspend fun listCreatorCommunityMembers(ownerId: String): JSONObject = call(
+        "list-creator-community-members",
+        mapOf("owner_id" to ownerId),
+    )
+
+    /** GET ?op=get-community-designs&owner_id=xxx */
+    suspend fun getCommunityDesigns(ownerId: String): JSONObject = call(
+        "get-community-designs",
+        mapOf("owner_id" to ownerId),
+    )
+
+    /** POST ?op=claim-community-design&owner_id=xxx */
+    suspend fun claimCommunityDesign(ownerId: String, communityDesignId: Long): JSONObject =
+        postJson(
+            "claim-community-design",
+            mapOf("community_design_id" to communityDesignId),
+            mapOf("owner_id" to ownerId),
+        )
+
+    /** POST ?op=dismiss-community-design&owner_id=xxx */
+    suspend fun dismissCommunityDesign(ownerId: String, communityDesignId: Long): JSONObject =
+        postJson(
+            "dismiss-community-design",
+            mapOf("community_design_id" to communityDesignId),
+            mapOf("owner_id" to ownerId),
+        )
 
     /** GET ?op=list-interests → { ok, categories: [{ key, interests: [{ id, name }] }] } */
     suspend fun listInterests(): JSONObject = call("list-interests")

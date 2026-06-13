@@ -55,6 +55,7 @@ data class MemoryTimingUi(
     val serverNowMs: Long,
     val maxWrongMoves: Int = 5,
     val memoryWrongMoves: Int = 0,
+    val playStarted: Boolean = false,
 )
 
 @Composable
@@ -70,21 +71,53 @@ fun EazyMemoryDailyBoard(
 ) {
     val scope = rememberCoroutineScope()
     val n = deck.slotPairKeys.size
-    val skewMs = remember(timing.serverNowMs) { timing.serverNowMs - System.currentTimeMillis() }
-    val deadline = timing.deadlineMs + skewMs
+    var skewMs by remember(timing.serverNowMs) { mutableStateOf(timing.serverNowMs - System.currentTimeMillis()) }
+    var deadline by remember(timing.deadlineMs) { mutableStateOf(timing.deadlineMs + skewMs) }
+    var playStarted by remember(timing.playStarted) { mutableStateOf(timing.playStarted) }
     val maxWrongMoves = timing.maxWrongMoves.coerceIn(1, 20)
 
-    var preview by remember { mutableStateOf(timing.previewGraceMs > 0) }
+    var preview by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
     var submitted by remember { mutableStateOf(false) }
     var wrongMoves by remember {
         mutableIntStateOf(timing.memoryWrongMoves.coerceIn(0, maxWrongMoves))
     }
 
+    val matched = remember { mutableStateMapOf<Int, Boolean>() }
+    var firstPick by remember { mutableStateOf<Int?>(null) }
+    var lock by remember { mutableStateOf(false) }
+    var openMismatch by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    val flipLog = remember { mutableListOf<Int>() }
+
+    fun applyTimingFromServer(timingJson: JSONObject) {
+        val t = timingJson.optJSONObject("memory_timing") ?: timingJson
+        val dl = t.optLong("deadline_ms", 0L)
+        if (dl > 0L) {
+            val srvNow = t.optLong("server_now_ms", System.currentTimeMillis())
+            skewMs = srvNow - System.currentTimeMillis()
+            deadline = dl + skewMs
+            playStarted = true
+        }
+    }
+
     fun submit(forfeit: Boolean, log: List<Int>) {
         if (submitted) return
         submitted = true
         onFinishRequest(forfeit, log)
+    }
+
+    LaunchedEffect(playStarted, shop, ownerId) {
+        if (playStarted || submitted) return@LaunchedEffect
+        try {
+            val j =
+                withContext(Dispatchers.IO) {
+                    api.postDailyGameMemoryStartPlay(shop, ownerId)
+                }
+            if (j.optBoolean("ok", false)) {
+                applyTimingFromServer(j)
+            }
+        } catch (_: Exception) {
+        }
     }
 
     fun handleServerJson(j: JSONObject) {
@@ -114,8 +147,10 @@ fun EazyMemoryDailyBoard(
         }
     }
 
-    LaunchedEffect(preview, timing.previewGraceMs) {
-        if (preview && timing.previewGraceMs > 0) {
+    LaunchedEffect(playStarted, timing.previewGraceMs) {
+        if (!playStarted) return@LaunchedEffect
+        if (timing.previewGraceMs > 0) {
+            preview = true
             delay(timing.previewGraceMs)
             preview = false
         }
@@ -127,15 +162,9 @@ fun EazyMemoryDailyBoard(
             tick++
         }
         if (!preview && !submitted && System.currentTimeMillis() >= deadline) {
-            submit(true, emptyList())
+            submit(false, flipLog.toList())
         }
     }
-
-    val matched = remember { mutableStateMapOf<Int, Boolean>() }
-    var firstPick by remember { mutableStateOf<Int?>(null) }
-    var lock by remember { mutableStateOf(false) }
-    var openMismatch by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-    val flipLog = remember { mutableListOf<Int>() }
 
     fun imgForSlot(i: Int): String {
         val pk = deck.slotPairKeys.getOrNull(i) ?: return ""

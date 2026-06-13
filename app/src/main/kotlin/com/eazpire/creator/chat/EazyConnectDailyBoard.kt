@@ -151,6 +151,10 @@ fun EazyConnectDailyBoard(
                             .clickable(enabled = !lock && !submitted && v == 0) {
                                 lock = true
                                 statusLine = t("eazy_chat.games_connect_eazy_turn", "Eazy is thinking…")
+                                val snapshot = board.map { it.toList() }
+                                val optimistic = board.map { row -> row.toMutableList() }
+                                optimistic[r][c] = 1
+                                board = optimistic
                                 scope.launch {
                                     try {
                                         val j = api.postDailyGameConnectMove(shop, ownerId, r, c)
@@ -174,6 +178,7 @@ fun EazyConnectDailyBoard(
                                             }
                                         }
                                     } catch (_: Exception) {
+                                        board = snapshot
                                         statusLine = t("eazy_chat.chat_error_unknown", "Something went wrong.")
                                         lock = false
                                     }
