@@ -343,27 +343,28 @@ fun ProductCarouselSection(
                     (selectedCategory != "all" &&
                         loadingCategories.contains(selectedCategory) &&
                         !sectionPools[def.id].orEmpty().containsKey(selectedCategory))
-            item(key = "section_${def.id}") {
-                val displayTitle = t(def.titleKey, def.titleDefault)
-                ProductCarousel(
-                    title = displayTitle,
-                    products = visibleProducts,
-                    collectionHandle = def.viewAllHandle,
-                    onTitleClick = def.viewAllHandle?.let { h ->
-                        onCategoryClick?.let { cb -> { cb(displayTitle, h) } }
-                    },
-                    onProductClick = onProductClick,
-                    modifier = Modifier.padding(bottom = 6.dp),
-                    ownerId = ownerId,
-                    creatorApi = creatorApi,
-                    mockPreviewRevision = mockPreviewRevision,
-                    lazyCardImages = true,
-                    productsLoading = sectionLoading,
-                    alwaysShowTitleRow = true,
-                    onCartClick = { params ->
-                        productModalHandleState?.value = params.handle
-                    },
-                )
+            if (sectionLoading || visibleProducts.isNotEmpty()) {
+                item(key = "section_${def.id}") {
+                    val displayTitle = t(def.titleKey, def.titleDefault)
+                    ProductCarousel(
+                        title = displayTitle,
+                        products = visibleProducts,
+                        collectionHandle = def.viewAllHandle,
+                        onTitleClick = def.viewAllHandle?.let { h ->
+                            onCategoryClick?.let { cb -> { cb(displayTitle, h) } }
+                        },
+                        onProductClick = onProductClick,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                        ownerId = ownerId,
+                        creatorApi = creatorApi,
+                        mockPreviewRevision = mockPreviewRevision,
+                        lazyCardImages = true,
+                        productsLoading = sectionLoading,
+                        onCartClick = { params ->
+                            productModalHandleState?.value = params.handle
+                        },
+                    )
+                }
             }
         }
 
