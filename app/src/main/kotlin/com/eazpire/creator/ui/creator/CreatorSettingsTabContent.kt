@@ -207,6 +207,8 @@ private fun CreatorSettingsCreatorCodesContent(
     var redeemedHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var showUserPickerDialog by remember { mutableStateOf(false) }
     var showPoolDialog by remember { mutableStateOf(false) }
+    var showRecruiterOptInConfirm by remember { mutableStateOf(false) }
+    var showMemberOptInConfirmFor by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -626,6 +628,101 @@ private fun CreatorSettingsCreatorCodesContent(
         )
     }
 
+    if (showRecruiterOptInConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRecruiterOptInConfirm = false },
+            title = {
+                Text(
+                    translationStore.t(
+                        "creator.settings.creator_community_recruiter_opt_in_confirm_title",
+                        "Enable community for recruits",
+                    ),
+                )
+            },
+            text = {
+                Text(
+                    translationStore.t(
+                        "creator.settings.creator_community_recruiter_opt_in_confirm_body",
+                        "When you and a recruit both opt in: you receive AI bonus designs when they create, and you earn 30% of their net creator profit on new sales (they keep 70%). You can turn this off anytime — new sales stop sharing revenue; already published products keep their split.",
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRecruiterOptInConfirm = false
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                api.setCreatorCommunityOptIn(ownerId, "recruiter", true)
+                            }
+                            reload()
+                        }
+                    },
+                ) {
+                    Text(
+                        translationStore.t(
+                            "creator.settings.creator_community_opt_in_confirm_btn",
+                            "Activate",
+                        ),
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRecruiterOptInConfirm = false }) {
+                    Text(translationStore.t("creator.common.cancel", "Cancel"))
+                }
+            },
+        )
+    }
+
+    showMemberOptInConfirmFor?.let { communityOwnerId ->
+        AlertDialog(
+            onDismissRequest = { showMemberOptInConfirmFor = null },
+            title = {
+                Text(
+                    translationStore.t(
+                        "creator.settings.creator_community_member_opt_in_confirm_title",
+                        "Join community program",
+                    ),
+                )
+            },
+            text = {
+                Text(
+                    translationStore.t(
+                        "creator.settings.creator_community_member_opt_in_confirm_body",
+                        "When you and the creator who invited you both opt in: they receive bonus designs when you create, and you keep 70% of your net creator profit on new sales (they receive 30%). You can turn this off anytime — new sales stop sharing revenue; your existing published products keep their split.",
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val owner = communityOwnerId
+                        showMemberOptInConfirmFor = null
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                api.setCreatorCommunityOptIn(ownerId, "member", true, owner)
+                            }
+                            reload()
+                        }
+                    },
+                ) {
+                    Text(
+                        translationStore.t(
+                            "creator.settings.creator_community_opt_in_confirm_btn",
+                            "Activate",
+                        ),
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMemberOptInConfirmFor = null }) {
+                    Text(translationStore.t("creator.common.cancel", "Cancel"))
+                }
+            },
+        )
+    }
+
     if (isCreator) {
         Row(
             modifier = Modifier
@@ -687,11 +784,15 @@ private fun CreatorSettingsCreatorCodesContent(
                 Switch(
                     checked = recruiterOptIn,
                     onCheckedChange = { checked ->
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                api.setCreatorCommunityOptIn(ownerId, "recruiter", checked)
+                        if (checked) {
+                            showRecruiterOptInConfirm = true
+                        } else {
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    api.setCreatorCommunityOptIn(ownerId, "recruiter", false)
+                                }
+                                reload()
                             }
-                            reload()
                         }
                     },
                 )
@@ -717,11 +818,15 @@ private fun CreatorSettingsCreatorCodesContent(
                     Switch(
                         checked = rel.optBoolean("member_opt_in", false),
                         onCheckedChange = { checked ->
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    api.setCreatorCommunityOptIn(ownerId, "member", checked, owner)
+                            if (checked) {
+                                showMemberOptInConfirmFor = owner
+                            } else {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        api.setCreatorCommunityOptIn(ownerId, "member", false, owner)
+                                    }
+                                    reload()
                                 }
-                                reload()
                             }
                         },
                     )
@@ -915,10 +1020,13 @@ private fun CreatorSettingsCommunityContent(tokenStore: SecureTokenStore, transl
     )
 }
 
-private val CREATOR_NAME_CHARS = Regex("^[\\p{L}\\p{N}-]+$")
+private val CREATOR_NAME_CHARS = Regex("^[\\p{L}\\p{N}\\s-]+$")
+
+private fun normalizeCreatorNameInput(name: String): String =
+    name.trim().replace(Regex("\\s+"), " ")
 
 private fun validateCreatorNameInput(name: String): String? {
-    val trimmed = name.trim()
+    val trimmed = normalizeCreatorNameInput(name)
     if (trimmed.isBlank()) return "missing_name"
     if (trimmed.length < 3) return "too_short"
     if (!CREATOR_NAME_CHARS.matches(trimmed)) return "invalid_chars"
@@ -930,7 +1038,7 @@ private fun creatorNameErrorMessage(error: String, translationStore: Translation
     when (error) {
         "invalid_chars" -> translationStore.t(
             "creator.settings_names.invalid_chars",
-            "Only letters, numbers, and hyphens (-) are allowed."
+            "Only letters, numbers, spaces, and hyphens (-) are allowed."
         )
         "name_taken" -> translationStore.t(
             "creator.settings_names.name_taken",
@@ -1019,7 +1127,7 @@ private fun CreatorSettingsNamesContent(
     )
     Button(
         onClick = {
-            val name = newName.trim()
+            val name = normalizeCreatorNameInput(newName)
             if (name.isBlank()) return@Button
             if (names.size >= nameLimit) return@Button
             validateCreatorNameInput(name)?.let { code ->
