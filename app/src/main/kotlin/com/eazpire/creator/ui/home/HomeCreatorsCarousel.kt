@@ -41,6 +41,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+data class ShopCreatorProductPreview(
+    val handle: String,
+    val title: String,
+    val imageUrl: String?,
+    val url: String,
+)
+
 data class ShopCreatorCard(
     val name: String,
     val slug: String,
@@ -48,9 +55,10 @@ data class ShopCreatorCard(
     val ratingAvg: Double,
     val ratingCount: Int,
     val productCount: Int,
+    val products: List<ShopCreatorProductPreview> = emptyList(),
 )
 
-private val HomeCreatorsPanelGradient = Brush.linearGradient(
+internal val HomeCreatorsPanelGradient = Brush.linearGradient(
     colors = listOf(
         Color(0xD134343C),
         Color(0xC744424E),
@@ -69,6 +77,24 @@ suspend fun loadShopCreatorsForHome(
         }.getOrElse { emptyList() }
     }
 
+suspend fun loadShopCreatorsForIndex(
+    creatorApi: CreatorApi,
+    sortTab: String,
+    limit: Int = 48,
+): List<ShopCreatorCard> =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            parseShopCreators(
+                creatorApi.listShopCreators(
+                    sort = sortTab,
+                    limit = limit,
+                    includeProducts = true,
+                    productsPerCreator = 12,
+                ),
+            )
+        }.getOrElse { emptyList() }
+    }
+
 @Composable
 fun HomeCreatorsCarousel(
     creators: List<ShopCreatorCard>,
@@ -77,6 +103,7 @@ fun HomeCreatorsCarousel(
     onSortTabChange: (String) -> Unit,
     labelForKey: (String, String) -> String,
     onCreatorClick: (String) -> Unit,
+    onCreatorsTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -99,6 +126,15 @@ fun HomeCreatorsCarousel(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
+                modifier = Modifier.then(
+                    if (onCreatorsTitleClick != null) {
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onCreatorsTitleClick)
+                    } else {
+                        Modifier
+                    },
+                ),
             )
             Row(
                 modifier = Modifier
@@ -300,6 +336,26 @@ private fun parseShopCreators(json: JSONObject): List<ShopCreatorCard> {
         val o = arr.optJSONObject(i) ?: continue
         val name = o.optString("creator_name", "").trim()
         if (name.isBlank()) continue
+        val productsArr = o.optJSONArray("products")
+        val products = if (productsArr != null) {
+            buildList {
+                for (j in 0 until productsArr.length()) {
+                    val p = productsArr.optJSONObject(j) ?: continue
+                    val handle = p.optString("handle", "").trim()
+                    if (handle.isBlank()) continue
+                    add(
+                        ShopCreatorProductPreview(
+                            handle = handle,
+                            title = p.optString("title", handle).trim().ifBlank { handle },
+                            imageUrl = p.optString("image", "").trim().ifBlank { null },
+                            url = p.optString("url", "/products/$handle").trim().ifBlank { "/products/$handle" },
+                        ),
+                    )
+                }
+            }
+        } else {
+            emptyList()
+        }
         out.add(
             ShopCreatorCard(
                 name = name,
@@ -308,6 +364,7 @@ private fun parseShopCreators(json: JSONObject): List<ShopCreatorCard> {
                 ratingAvg = o.optDouble("rating_avg", 0.0),
                 ratingCount = o.optInt("rating_count", 0),
                 productCount = o.optInt("product_count", 0),
+                products = products,
             ),
         )
     }

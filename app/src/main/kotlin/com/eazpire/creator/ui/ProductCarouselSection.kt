@@ -57,6 +57,7 @@ fun ProductCarouselSection(
     onProductClick: ((ProductClickWithCollection) -> Unit)? = null,
     onHotspotProductClick: ((String) -> Unit)? = null,
     onCreatorClick: ((String) -> Unit)? = null,
+    onCreatorsTitleClick: (() -> Unit)? = null,
     onCreateScratchClick: ((CatalogProduct) -> Unit)? = null,
     productModalHandleState: MutableState<String?>? = null,
     scrollToTopTrigger: Int = 0,
@@ -392,6 +393,7 @@ fun ProductCarouselSection(
                     onSortTabChange = { homeCreatorsSort = it },
                     labelForKey = t,
                     onCreatorClick = onCreatorClick,
+                    onCreatorsTitleClick = onCreatorsTitleClick,
                 )
             }
         }

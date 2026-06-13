@@ -75,6 +75,7 @@ import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.creator.CreatorHeaderEazyStartBubble
 import com.eazpire.creator.ui.creator.CreatorMainScreen
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
+import com.eazpire.creator.ui.home.CreatorsIndexScreen
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.ui.header.FavoriteEditContext
 import com.eazpire.creator.ui.header.FavoritesModal
@@ -335,6 +336,7 @@ fun ShopScreen(
     var shopCreateCatalogProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
     var selectedProductHandle by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCreatorName by rememberSaveable { mutableStateOf<String?>(null) }
+    var showCreatorsIndex by rememberSaveable { mutableStateOf(false) }
     val shopNavHistory = rememberShopNavHistoryController()
     var isCreatorMode by rememberSaveable { mutableStateOf(false) }
 
@@ -347,6 +349,7 @@ fun ShopScreen(
         shopSearchQuery = null
         selectedProductHandle = null
         selectedCreatorName = null
+        showCreatorsIndex = false
         selectedCollection = null
         shopCreateStudioPhase = null
         shopCreateActive = true
@@ -356,6 +359,7 @@ fun ShopScreen(
         shopSearchQuery = null
         selectedProductHandle = null
         selectedCreatorName = null
+        showCreatorsIndex = false
         shopCreateStudioPhase = null
         if (
             handle == SHOP_CREATE_PAGE_HANDLE ||
@@ -376,6 +380,7 @@ fun ShopScreen(
         selectedCollection = null
         selectedProductHandle = null
         selectedCreatorName = null
+        showCreatorsIndex = false
         shopSearchQuery = null
         productModalHandleState.value = null
     }
@@ -531,6 +536,7 @@ fun ShopScreen(
             shopCreateStudioOpen = shopCreateStudioPhase != null,
             selectedProductHandle = selectedProductHandle,
             selectedCreatorName = selectedCreatorName,
+            showCreatorsIndex = showCreatorsIndex,
             productModalHandle = productModalHandleState.value,
         )
 
@@ -543,6 +549,7 @@ fun ShopScreen(
         }
         selectedProductHandle = snapshot.selectedProductHandle
         selectedCreatorName = snapshot.selectedCreatorName
+        showCreatorsIndex = snapshot.showCreatorsIndex
         productModalHandleState.value = snapshot.productModalHandle
     }
 
@@ -553,6 +560,7 @@ fun ShopScreen(
         shopCreateStudioPhase,
         selectedProductHandle,
         selectedCreatorName,
+        showCreatorsIndex,
         productModalHandleState.value,
     ) {
         if (shopNavHistory.isRestoring) {
@@ -589,6 +597,10 @@ fun ShopScreen(
         }
         if (selectedCreatorName != null) {
             selectedCreatorName = null
+            return
+        }
+        if (showCreatorsIndex) {
+            showCreatorsIndex = false
             return
         }
         if (selectedCollection != null) {
@@ -645,6 +657,13 @@ fun ShopScreen(
             else -> uri.path ?: "/"
         }
         when {
+            path == "/creator" || path == "/creator/" -> {
+                showCreatorsIndex = true
+                selectedCreatorName = null
+                selectedProductHandle = null
+                selectedCollection = null
+                shopSearchQuery = null
+            }
             path.startsWith("/creator/") -> {
                 val slug = path.removePrefix("/creator/").trimEnd('/').substringBefore("?")
                 if (slug.isNotBlank()) {
@@ -834,6 +853,10 @@ fun ShopScreen(
                             }
                             selectedCreatorName != null -> {
                                 selectedCreatorName = null
+                                if (!showCreatorsIndex) scrollToTopTrigger++
+                            }
+                            showCreatorsIndex -> {
+                                showCreatorsIndex = false
                                 scrollToTopTrigger++
                             }
                             selectedCollection != null -> selectedCollection = null
@@ -849,16 +872,21 @@ fun ShopScreen(
                     },
                     selectedHandle = if (shopCreateActive) SHOP_MENU_CREATE_HANDLE else selectedCollection?.second
                 )
-                if (shopCreateActive || selectedCollection != null || selectedProductHandle != null || selectedCreatorName != null) {
+                if (shopCreateActive || selectedCollection != null || selectedProductHandle != null || selectedCreatorName != null || showCreatorsIndex) {
+                    val creatorsLabel = translationStore.t("eaz.home.creators", "Creators")
                     CollectionBreadcrumb(
                         categoryTitle = when {
                             shopCreateActive -> translationStore.t("creator.shop_create_product.entry", "Create")
-                            selectedCreatorName != null -> selectedCreatorName!!
+                            selectedCreatorName != null -> creatorsLabel
+                            showCreatorsIndex -> creatorsLabel
                             else -> selectedCollection?.first ?: ""
                         },
                         onHomeClick = { openShopHome() },
-                        productTitle = null,
+                        productTitle = selectedCreatorName,
                         onCollectionClick = when {
+                            selectedCreatorName != null && showCreatorsIndex -> {
+                                { selectedCreatorName = null }
+                            }
                             selectedProductHandle != null && selectedCreatorName != null -> {
                                 { selectedProductHandle = null }
                             }
@@ -938,6 +966,20 @@ fun ShopScreen(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
+                showCreatorsIndex -> CreatorsIndexScreen(
+                    creatorApi = creatorPollApi,
+                    labelForKey = { k, d -> translationStore.t(k, d) },
+                    onCreatorClick = { name ->
+                        selectedCreatorName = name
+                        selectedProductHandle = null
+                        shopSearchQuery = null
+                        selectedCollection = null
+                    },
+                    onProductClick = { handle ->
+                        if (handle.isNotBlank()) productModalHandleState.value = handle
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
                 shopSearchQuery != null -> ShopSearchScreen(
                     searchQuery = shopSearchQuery!!,
                     onBack = { shopSearchQuery = null },
@@ -966,9 +1008,18 @@ fun ShopScreen(
                     onCurrentPageChange = { currentPagePath = it },
                     onCreatorClick = { name ->
                         selectedCreatorName = name
+                        showCreatorsIndex = false
                         selectedProductHandle = null
                         shopSearchQuery = null
                         selectedCollection = null
+                    },
+                    onCreatorsTitleClick = {
+                        showCreatorsIndex = true
+                        selectedCreatorName = null
+                        selectedProductHandle = null
+                        shopSearchQuery = null
+                        selectedCollection = null
+                        productModalHandleState.value = null
                     },
                     onCreateScratchClick = { catalogProduct ->
                         shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(catalogProduct)
@@ -977,6 +1028,7 @@ fun ShopScreen(
                         productModalHandleState.value = null
                         selectedProductHandle = null
                         selectedCreatorName = null
+                        showCreatorsIndex = false
                         shopSearchQuery = null
                         if (handle == SHOP_MENU_CREATE_HANDLE) {
                             openShopCreate()

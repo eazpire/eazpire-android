@@ -1664,13 +1664,22 @@ class CreatorApi(
         call("list-promotions", mapOf("owner_id" to ownerId))
 
     /** GET ?op=list-shop-creators&sort=recommend|new&limit=24 — public homepage creators carousel */
-    suspend fun listShopCreators(sort: String = "recommend", limit: Int = 20): JSONObject =
+    suspend fun listShopCreators(
+        sort: String = "recommend",
+        limit: Int = 20,
+        includeProducts: Boolean = false,
+        productsPerCreator: Int = 12,
+    ): JSONObject =
         call(
             "list-shop-creators",
-            mapOf(
-                "sort" to sort.lowercase(),
-                "limit" to limit.coerceIn(4, 30).toString(),
-            ),
+            buildMap {
+                put("sort", sort.lowercase())
+                put("limit", limit.coerceIn(4, 50).toString())
+                if (includeProducts) {
+                    put("include_products", "1")
+                    put("products_per_creator", productsPerCreator.coerceIn(1, 20).toString())
+                }
+            },
         )
 
     /** GET ?op=list-active-shop-promotion-products — storefront (no JWT); active creator bundle promos; optional country for 4h slot display */

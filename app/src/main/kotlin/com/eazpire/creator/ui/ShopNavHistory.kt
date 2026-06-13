@@ -21,6 +21,7 @@ data class ShopNavSnapshot(
     val shopCreateStudioOpen: Boolean = false,
     val selectedProductHandle: String? = null,
     val selectedCreatorName: String? = null,
+    val showCreatorsIndex: Boolean = false,
     val productModalHandle: String? = null,
 ) {
     companion object {
