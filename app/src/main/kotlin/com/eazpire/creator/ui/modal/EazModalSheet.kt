@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -56,7 +54,7 @@ object EazModalInsets {
     /** Sticky footer when the sheet root does NOT already apply bottom insets. */
     fun stickyFooter(): Modifier = Modifier
         .fillMaxWidth()
-        .windowInsetsPadding(WindowInsets.navigationBars)
+        .navigationBarsPadding()
         .imePadding()
 }
 
