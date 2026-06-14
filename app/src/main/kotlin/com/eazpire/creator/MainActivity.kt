@@ -80,6 +80,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var playInAppUpdateHelper: PlayInAppUpdateHelper
     private val playUpdateHandler = Handler(Looper.getMainLooper())
     private val playUpdateRetryRunnable = Runnable {
+        if (isFinishing || isDestroyed) return@Runnable
         playInAppUpdateHelper.onResume()
     }
 

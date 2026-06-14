@@ -7,8 +7,16 @@ import com.eazpire.creator.notifications.EazNotificationChannels
 import com.eazpire.creator.notifications.NotificationRemoteConfigSync
 
 class EazpireApplication : Application() {
+    companion object {
+        /** Process start — workers skip background notifications during cold-start window. */
+        @Volatile
+        var processStartMs: Long = 0L
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        processStartMs = System.currentTimeMillis()
         EazNotificationChannels.ensure(this)
         CartReminderScheduler.init(this)
         DailyGameReminderScheduler.init(this)

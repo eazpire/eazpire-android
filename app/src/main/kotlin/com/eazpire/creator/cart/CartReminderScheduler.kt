@@ -7,7 +7,10 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.eazpire.creator.notifications.NotificationRemoteConfigRepository
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 /**
@@ -19,6 +22,7 @@ object CartReminderScheduler {
     private const val UNIQUE_NAME = "eaz_cart_abandonment"
 
     private lateinit var appCtx: Context
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun init(context: Context) {
         appCtx = context.applicationContext
@@ -26,24 +30,26 @@ object CartReminderScheduler {
 
     fun onCartCountChanged() {
         if (!::appCtx.isInitialized) return
-        val config = runBlocking { NotificationRemoteConfigRepository.get(appCtx) }
-        if (!config.cartAbandonEnabled) {
-            WorkManager.getInstance(appCtx).cancelUniqueWork(UNIQUE_NAME)
-            return
+        scope.launch {
+            val config = NotificationRemoteConfigRepository.get(appCtx)
+            if (!config.cartAbandonEnabled) {
+                WorkManager.getInstance(appCtx).cancelUniqueWork(UNIQUE_NAME)
+                return@launch
+            }
+            val wm = WorkManager.getInstance(appCtx)
+            if (AppCartStore.itemCount <= 0) {
+                wm.cancelUniqueWork(UNIQUE_NAME)
+                return@launch
+            }
+            val delayMin = config.cartAbandonDelayMinutes.coerceAtLeast(1).toLong()
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val req = OneTimeWorkRequestBuilder<CartReminderWorker>()
+                .setConstraints(constraints)
+                .setInitialDelay(delayMin, TimeUnit.MINUTES)
+                .build()
+            wm.enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.REPLACE, req)
         }
-        val wm = WorkManager.getInstance(appCtx)
-        if (AppCartStore.itemCount <= 0) {
-            wm.cancelUniqueWork(UNIQUE_NAME)
-            return
-        }
-        val delayMin = config.cartAbandonDelayMinutes.coerceAtLeast(1).toLong()
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-        val req = OneTimeWorkRequestBuilder<CartReminderWorker>()
-            .setConstraints(constraints)
-            .setInitialDelay(delayMin, TimeUnit.MINUTES)
-            .build()
-        wm.enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.REPLACE, req)
     }
 }

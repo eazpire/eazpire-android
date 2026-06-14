@@ -1,8 +1,11 @@
 package com.eazpire.creator.notifications
 
+import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -283,8 +286,25 @@ object EazNotificationDisplay {
         }
 
         withContext(Dispatchers.Main) {
-            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            val nm = NotificationManagerCompat.from(context)
+            if (!canPostNotifications(context, nm)) return@withContext
+            try {
+                nm.notify(notificationId, builder.build())
+            } catch (_: SecurityException) {
+                // POST_NOTIFICATIONS denied or revoked — never crash the app.
+            }
         }
+    }
+
+    private fun canPostNotifications(context: Context, nm: NotificationManagerCompat): Boolean {
+        if (!nm.areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= 33) {
+            return ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+        return true
     }
 
     private suspend fun resolveHeroVisual(

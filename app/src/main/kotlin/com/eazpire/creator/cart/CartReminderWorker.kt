@@ -5,11 +5,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.eazpire.creator.EazpireApplication
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.notifications.EazNotificationDisplay
 import com.eazpire.creator.notifications.NotificationPreferencesRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/** Skip background notify briefly after process start (WorkManager can fire before permission UI). */
+private const val COLD_START_GRACE_MS = 12_000L
 
 class CartReminderWorker(
     context: Context,
@@ -22,6 +26,9 @@ class CartReminderWorker(
         if (np.shop["cart_reminder"] == false) return@withContext Result.success()
         // Nur wenn die App nicht im Vordergrund ist (geschlossen / Hintergrund)
         if (ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            return@withContext Result.success()
+        }
+        if (System.currentTimeMillis() - EazpireApplication.processStartMs < COLD_START_GRACE_MS) {
             return@withContext Result.success()
         }
         if (AppCartStore.itemCount <= 0) return@withContext Result.success()

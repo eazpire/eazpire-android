@@ -34,6 +34,7 @@ class PlayInAppUpdateHelper(
     private var installListener: InstallStateUpdatedListener? = null
 
     fun onResume() {
+        if (activity.isFinishing || activity.isDestroyed) return
         appUpdateManager.appUpdateInfo
             .addOnSuccessListener { info -> handleAppUpdateInfo(info) }
             .addOnFailureListener { e ->
@@ -49,6 +50,7 @@ class PlayInAppUpdateHelper(
     }
 
     private fun handleAppUpdateInfo(info: AppUpdateInfo) {
+        if (activity.isFinishing || activity.isDestroyed) return
         if (BuildConfig.DEBUG) {
             logAvailability(info)
         }
