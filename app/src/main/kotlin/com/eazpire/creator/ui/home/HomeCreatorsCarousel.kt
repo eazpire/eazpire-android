@@ -89,7 +89,7 @@ suspend fun loadShopCreatorsForIndex(
                     sort = sortTab,
                     limit = limit,
                     includeProducts = true,
-                    productsPerCreator = 12,
+                    productsPerCreator = 1,
                 ),
             )
         }.getOrElse { emptyList() }

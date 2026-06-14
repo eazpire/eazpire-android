@@ -1,7 +1,5 @@
 package com.eazpire.creator.ui.creator
 
-import android.net.Uri
-import android.widget.VideoView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -9,15 +7,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.viewinterop.AndroidView
@@ -100,64 +94,44 @@ private fun CreatorThemeVideoBackground(
     resumeNonce: Int,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    var videoView by remember { mutableStateOf<VideoView?>(null) }
-
-    fun resumeVideo() {
-        val vv = videoView ?: return
-        try {
-            if (!vv.isPlaying) vv.start()
-        } catch (_: Exception) {
-        }
-    }
+    val videoView = remember { mutableMapOf<String, CreatorThemeCoverVideoView>() }
 
     LaunchedEffect(resumeNonce, videoUrl) {
-        resumeVideo()
+        videoView[videoUrl]?.resumeIfReady()
     }
 
     DisposableEffect(lifecycleOwner, videoUrl) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> resumeVideo()
-                Lifecycle.Event.ON_PAUSE -> {
-                    try {
-                        videoView?.pause()
-                    } catch (_: Exception) {
-                    }
-                }
+                Lifecycle.Event.ON_RESUME -> videoView[videoUrl]?.resumeIfReady()
+                Lifecycle.Event.ON_PAUSE -> videoView[videoUrl]?.setShouldPlay(false)
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            try {
-                videoView?.stopPlayback()
-            } catch (_: Exception) {
-            }
-            videoView = null
+            videoView.values.forEach { it.release() }
+            videoView.clear()
         }
     }
 
     AndroidView(
         factory = { ctx ->
-            VideoView(ctx).apply {
-                setOnPreparedListener { mp ->
-                    mp.isLooping = true
-                    mp.setVolume(0f, 0f)
-                    try {
-                        start()
-                    } catch (_: Exception) {
-                    }
-                }
-                setVideoURI(Uri.parse(videoUrl))
-                videoView = this
+            CreatorThemeCoverVideoView(ctx).also {
+                videoView[videoUrl] = it
+                it.setVideoUrl(videoUrl)
+                it.setShouldPlay(true)
             }
         },
-        update = { vv ->
-            if (vv.tag != videoUrl) {
-                vv.tag = videoUrl
-                vv.setVideoURI(Uri.parse(videoUrl))
-            }
+        update = { view ->
+            videoView[videoUrl] = view
+            view.setVideoUrl(videoUrl)
+            view.setShouldPlay(true)
+        },
+        onRelease = { view ->
+            view.release()
+            videoView.remove(videoUrl)
         },
         modifier = Modifier.fillMaxSize(),
     )

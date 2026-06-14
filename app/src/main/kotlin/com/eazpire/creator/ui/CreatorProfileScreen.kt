@@ -1032,7 +1032,6 @@ private fun CreatorReviewsModal(
                 api.getCreatorReviews(
                     creatorName = creatorName.takeIf { it.isNotBlank() },
                     creatorSlug = creatorSlug.takeIf { it.isNotBlank() },
-                    ownerId = ownerId
                 )
             }
             Log.d(
@@ -1075,11 +1074,19 @@ private fun CreatorReviewsModal(
             }
             reviews = list
             if (list.isEmpty()) {
-                emptyMessage = t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+                emptyMessage = if ((summaryCount ?: 0) > 0) {
+                    t("eaz.creator_profile.reviews_load_error", "Could not load reviews. Please try again.")
+                } else {
+                    t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+                }
             }
         } catch (e: Exception) {
             Log.w("CreatorReviews", "get-creator-reviews failed", e)
-            emptyMessage = t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+            emptyMessage = if ((summaryCount ?: 0) > 0) {
+                t("eaz.creator_profile.reviews_load_error", "Could not load reviews. Please try again.")
+            } else {
+                t("eaz.creator_profile.reviews_empty", "No reviews for this creator yet.")
+            }
         } finally {
             loading = false
         }

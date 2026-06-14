@@ -44,8 +44,12 @@ class EazFirebaseMessagingService : FirebaseMessagingService() {
         scope.launch {
             val jwt = SecureTokenStore(this@EazFirebaseMessagingService).getJwt() ?: return@launch
             try {
-                CreatorApi(jwt = jwt).registerFcmToken(token)
-            } catch (_: Exception) {
+                val res = CreatorApi(jwt = jwt).registerFcmToken(token)
+                com.eazpire.creator.debug.AuthDebugLog.d(
+                    "[PUSH] onNewToken register ok=${res.optBoolean("ok")}"
+                )
+            } catch (e: Exception) {
+                com.eazpire.creator.debug.AuthDebugLog.d("[PUSH] onNewToken register failed: ${e.message}")
             }
         }
     }

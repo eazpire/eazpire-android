@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">eazpire</string>
-    <string name="notification_channel_push_title">Account &amp; creations</string>
-    <string name="notification_channel_push_desc">Same alerts as in-app notifications (generations, publish, etc.)</string>
-    <string name="notification_channel_cart_title">Cart reminders</string>
-    <string name="notification_channel_cart_desc">Reminders when items are left in your cart</string>
     <string name="notification_cart_title">Your cart is waiting</string>
     <string name="notification_cart_body">You still have items in your cart. Tap to continue checkout.</string>
     <string name="notification_daily_game_title">Daily game ready</string>

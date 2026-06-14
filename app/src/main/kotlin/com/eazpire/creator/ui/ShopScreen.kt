@@ -884,11 +884,11 @@ fun ShopScreen(
                         onHomeClick = { openShopHome() },
                         productTitle = selectedCreatorName,
                         onCollectionClick = when {
-                            selectedCreatorName != null && showCreatorsIndex -> {
-                                { selectedCreatorName = null }
-                            }
-                            selectedProductHandle != null && selectedCreatorName != null -> {
-                                { selectedProductHandle = null }
+                            selectedCreatorName != null -> {
+                                {
+                                    selectedCreatorName = null
+                                    showCreatorsIndex = true
+                                }
                             }
                             selectedProductHandle != null && selectedCollection != null -> {
                                 { selectedProductHandle = null }

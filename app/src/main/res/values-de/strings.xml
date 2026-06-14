@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_cart_title">Dein Warenkorb wartet</string>
+    <string name="notification_cart_body">Du hast noch Artikel im Warenkorb. Tippe, um den Kauf fortzusetzen.</string>
+    <string name="notification_daily_game_title">Daily Game bereit</string>
+    <string name="notification_daily_game_body">Dein Daily Game ist wieder verfügbar — wähle ein Spiel und leg los!</string>
+    <string name="notif_cart_promo_60_title">Aktion endet bald</string>
+    <string name="notif_cart_promo_60_body">Dein Aktionspreis im Warenkorb läuft in etwa einer Stunde ab. Schließe jetzt den Kauf ab.</string>
+    <string name="notif_cart_promo_10_title">Letzte Minuten für deinen Aktionspreis</string>
+    <string name="notif_cart_promo_10_body">Dein Aktionspreis läuft in etwa 10 Minuten ab.</string>
+    <string name="notif_prefs_login_required">Melde dich an, um Benachrichtigungseinstellungen zu verwalten.</string>
+    <string name="notif_push_section_title">Push-Benachrichtigungen (Android)</string>
+    <string name="notif_push_section_hint">In-App- und E-Mail-Einstellungen werden im Web verwaltet. Push-Schalter synchronisieren mit deinem Konto.</string>
+    <string name="notif_info_btn">Mehr Informationen</string>
+    <string name="notif_shop_master">Alle Shop-Benachrichtigungen</string>
+    <string name="notif_info_shop_master">Alle Shop-Push-Benachrichtigungen auf einmal ein- oder ausschalten.</string>
+    <string name="notif_shop_cart">Warenkorb-Erinnerungen</string>
+    <string name="notif_info_shop_cart">Erinnerungen, wenn Artikel im Warenkorb liegen, damit du den Kauf abschließen kannst.</string>
+    <string name="notif_shop_orders">Bestell-Updates</string>
+    <string name="notif_info_shop_orders">Updates zu deinen Bestellungen, z. B. Bestätigung, Versand und Lieferstatus.</string>
+    <string name="notif_shop_promotions">Aktionen und Angebote</string>
+    <string name="notif_shop_promotions_new">Neue Aktionen</string>
+    <string name="notif_info_shop_promotions_new">Wenn ein Creator eine neue Shop-Aktion, ein Bundle oder ein Sonderangebot veröffentlicht.</string>
+    <string name="notif_shop_promotions_ending">Aktionen enden bald</string>
+    <string name="notif_info_shop_promotions_ending">Wenn eine Aktion, der du folgst, in den nächsten 24 Stunden endet.</string>
+    <string name="notif_shop_app_promotions">App-Boni &amp; Angebote</string>
+    <string name="notif_info_shop_app_promotions">App-Download-Boni, spezielle App-Angebote und ähnliche Belohnungs-Benachrichtigungen.</string>
+    <string name="notif_shop_daily_game">Daily Game</string>
+    <string name="notif_info_shop_daily_game">Daily-Game-Erinnerungen, Gewinn-Benachrichtigungen und zugehörige Shop-Belohnungen.</string>
+    <string name="notif_creator_master">Alle Creator-Benachrichtigungen</string>
+    <string name="notif_info_creator_master">Alle Creator-Push-Benachrichtigungen auf einmal ein- oder ausschalten.</string>
+    <string name="notif_creator_generations">Generierungen &amp; Jobs</string>
+    <string name="notif_info_creator_generations">Wenn Bild- oder Video-Generierungsjobs starten, Fortschritt machen oder fertig sind.</string>
+    <string name="notif_creator_designs">Design gespeichert</string>
+    <string name="notif_info_creator_designs">Wenn ein Design in deiner Creator-Bibliothek gespeichert oder hochgeladen wird.</string>
+    <string name="notif_creator_publish">Produkt veröffentlicht</string>
+    <string name="notif_info_creator_publish">Wenn ein Produkt veröffentlicht, aktualisiert oder aus dem Shop entfernt wird.</string>
+    <string name="notif_creator_community">Community &amp; Codes</string>
+    <string name="notif_info_creator_community">Community-Aktivität, Creator-Codes, Empfehlungen und Mentor-Nachrichten.</string>
+    <string name="notif_creator_other">Weitere Creator-Updates</string>
+    <string name="notif_info_creator_other">Weitere Creator-Hinweise, die in keine andere Kategorie passen.</string>
+    <string name="notif_test_push_title">Test: %1$s</string>
+    <string name="notif_test_push_body">Tippe, um den zu dieser Benachrichtigungsart verknüpften Bildschirm zu öffnen.</string>
+</resources>

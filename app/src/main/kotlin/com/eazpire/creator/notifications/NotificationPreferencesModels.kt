@@ -68,16 +68,38 @@ data class NotificationPrefs(
 }
 
 object NotificationCategoryMapping {
+    /** Align with worker inferNotificationScope. */
+    fun inferScope(category: String?, audience: String? = null): EazNotificationChannels.PrefScope {
+        val aud = audience?.lowercase()?.trim()
+        if (aud == "shop") return EazNotificationChannels.PrefScope.SHOP
+        if (aud == "creator") return EazNotificationChannels.PrefScope.CREATOR
+        val c = category?.lowercase()?.trim().orEmpty()
+        if (
+            c.contains("shop_") ||
+            c.contains("cart") ||
+            c.contains("abandon") ||
+            c.contains("order") ||
+            c.contains("promotion") ||
+            c.contains("daily_game") ||
+            c.contains("app_install") ||
+            c.contains("app_promotion")
+        ) {
+            return EazNotificationChannels.PrefScope.SHOP
+        }
+        return EazNotificationChannels.PrefScope.CREATOR
+    }
+
     /** Align with worker categoryToShopPreferenceKey. */
     fun categoryToShopKey(category: String?): String {
         val c = category?.lowercase() ?: return "promotions_new"
+        if (c.contains("android_cart_promo")) return "promotions_ending_soon"
         if (c.contains("ending") || c.contains("ends_soon") || c.contains("ending_soon")) {
             return "promotions_ending_soon"
         }
         if (c.contains("daily_game")) return "daily_game"
         if (c.contains("app_install") || c.contains("app_promotion")) return "app_promotions"
         if (c.contains("cart") || c.contains("abandon")) return "cart_reminder"
-        if (c.contains("shop_order")) return "orders"
+        if (c.contains("shop_order") || c.contains("order")) return "orders"
         return "promotions_new"
     }
 

@@ -101,6 +101,8 @@ class MainActivity : ComponentActivity() {
                 AuthDebugLog.d("[TOKEN] After session guard ${tokenStore.sessionDebugSummary()}")
             } catch (e: Exception) {
                 AuthDebugLog.d("[TOKEN] Session guard skipped on start: ${e.message}")
+            } finally {
+                PushTokenRegistrar.syncIfLoggedIn(this@MainActivity)
             }
         }
 

@@ -122,10 +122,12 @@ object EazNotificationDisplay {
         val app = context.applicationContext
         EazNotificationChannels.ensure(app)
         val category = extras["category"]
+        val channelId = extras["android_channel_id"]?.takeIf { it.isNotBlank() }
+            ?: EazNotificationChannels.channelIdForCategory(category, extras["audience"])
         val heroVisual = resolveHeroVisual(app, extras, category)
         postNotification(
             context = app,
-            channelId = EazNotificationChannels.PUSH_IN_APP,
+            channelId = channelId,
             title = title,
             body = body,
             notificationId = notificationId,
@@ -139,13 +141,20 @@ object EazNotificationDisplay {
      * Local test push (same channel and deep link as FCM) — for QA from notification settings.
      * [openTarget]: cart | eazy_jobs | eazy_notifications | eazy_chat
      */
-    fun showTestPushForOpenTarget(context: Context, rowLabel: String, openTarget: String) {
+    fun showTestPushForOpenTarget(
+        context: Context,
+        rowLabel: String,
+        openTarget: String,
+        prefScope: EazNotificationChannels.PrefScope,
+        prefKey: String,
+    ) {
         val title = context.getString(R.string.notif_test_push_title, rowLabel)
         val body = context.getString(R.string.notif_test_push_body)
+        val category = testCategoryForPrefKey(prefScope, prefKey)
         val extras = mapOf(
             "open_target" to openTarget,
-            "category" to "test_local",
-            "notification_id" to "test-${System.currentTimeMillis()}"
+            "category" to category,
+            "notification_id" to "test-${System.currentTimeMillis()}",
         )
         val nid = ((System.currentTimeMillis() % 100_000).toInt() + REQ_PUSH) and 0x7fff_ffff
         showPush(context, title, body, nid, extras)
@@ -169,7 +178,7 @@ object EazNotificationDisplay {
         val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_cart), isRemoteImage = false)
         postNotification(
             context = app,
-            channelId = EazNotificationChannels.CART_REMINDER,
+            channelId = EazNotificationChannels.channelIdForCategory("android_cart_abandon"),
             title = title,
             body = body,
             notificationId = REQ_CART,
@@ -198,7 +207,7 @@ object EazNotificationDisplay {
         val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_shop), isRemoteImage = false)
         postNotification(
             context = app,
-            channelId = EazNotificationChannels.PUSH_IN_APP,
+            channelId = EazNotificationChannels.channelIdForCategory("daily_game_reminder"),
             title = title,
             body = body,
             notificationId = REQ_DAILY_GAME,
@@ -233,7 +242,7 @@ object EazNotificationDisplay {
         val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_cart), isRemoteImage = false)
         postNotification(
             context = app,
-            channelId = EazNotificationChannels.CART_REMINDER,
+            channelId = EazNotificationChannels.channelIdForCategory(category),
             title = title,
             body = body,
             notificationId = notificationId,
@@ -241,6 +250,33 @@ object EazNotificationDisplay {
             extras = extras,
             heroVisual = heroVisual
         )
+    }
+
+    /** Synthetic FCM-like categories so test pushes land on the matching system channel. */
+    private fun testCategoryForPrefKey(
+        prefScope: EazNotificationChannels.PrefScope,
+        prefKey: String,
+    ): String {
+        if (prefScope == EazNotificationChannels.PrefScope.SHOP) {
+            return when (prefKey) {
+                "cart_reminder" -> "android_cart_abandon"
+                "orders" -> "shop_order_update"
+                "promotions_new" -> "shop_promotion_new"
+                "promotions_ending_soon" -> "shop_promotion_ending_soon"
+                "app_promotions" -> "app_install_bonus"
+                "daily_game" -> "daily_game_reminder"
+                "shop_master" -> "shop_promotion_new"
+                else -> "shop_promotion_new"
+            }
+        }
+        return when (prefKey) {
+            "generations" -> "generated"
+            "design_saved" -> "saved"
+            "product_published" -> "published"
+            "community" -> "community_referral"
+            "creator_master", "other" -> "creator_system"
+            else -> "creator_system"
+        }
     }
 
     private data class HeroVisual(val bitmap: Bitmap?, val isRemoteImage: Boolean)

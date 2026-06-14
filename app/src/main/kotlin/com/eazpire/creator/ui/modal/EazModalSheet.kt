@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -28,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -63,9 +65,14 @@ fun EazModalSheetLayout(
     footer: (@Composable () -> Unit)? = null,
     body: @Composable () -> Unit,
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth().fillMaxHeight()) {
         header?.invoke()
-        Box(modifier = Modifier.weight(1f, fill = false).fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clipToBounds(),
+        ) {
             body()
         }
         footer?.invoke()
@@ -137,7 +144,7 @@ fun EazBottomSheet(
                     }
                 )
             if (useExpandedLayout) {
-                Column(columnModifier) {
+                Box(modifier = columnModifier.clipToBounds()) {
                     content()
                 }
             } else {
@@ -171,10 +178,13 @@ fun EazFullScreenDialog(
                 .fillMaxWidth()
                 .statusBarsPadding(),
         ) {
-            Column(modifier = Modifier.fillMaxWidth().height(maxHeight)) {
-                Box(modifier = Modifier.weight(1f, fill = false).fillMaxWidth()) {
-                    content()
-                }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(maxHeight)
+                    .clipToBounds(),
+            ) {
+                content()
             }
         }
     }

@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.R
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.notifications.EazNotificationChannels
 import com.eazpire.creator.notifications.EazNotificationDisplay
 import com.eazpire.creator.notifications.NotificationPrefs
 import com.eazpire.creator.notifications.NotificationPreferencesRepository
@@ -143,6 +144,10 @@ fun NotificationSettingsContent(
             notifRow(
                 context = context,
                 row = row,
+                prefScope = when (scope) {
+                    NotificationScope.Shop -> EazNotificationChannels.PrefScope.SHOP
+                    NotificationScope.Creator -> EazNotificationChannels.PrefScope.CREATOR
+                },
                 labelColor = labelColor,
                 infoColor = infoColor,
                 infoBtnTint = infoBtnTint,
@@ -298,6 +303,7 @@ private fun buildCreatorRows(
 private fun notifRow(
     context: Context,
     row: NotifPrefRowModel,
+    prefScope: EazNotificationChannels.PrefScope,
     labelColor: Color,
     infoColor: Color,
     infoBtnTint: Color,
@@ -333,7 +339,9 @@ private fun notifRow(
                             EazNotificationDisplay.showTestPushForOpenTarget(
                                 context,
                                 label,
-                                row.testOpenTarget
+                                row.testOpenTarget,
+                                prefScope,
+                                row.id,
                             )
                         }
                 )
