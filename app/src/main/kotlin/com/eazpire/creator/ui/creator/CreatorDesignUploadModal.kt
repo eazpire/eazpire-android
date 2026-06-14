@@ -185,7 +185,7 @@ fun CreatorDesignUploadModal(
         sheetState = sheetState,
         containerColor = Color(0xFF0F172A),
         dragHandle = null,
-        maxHeightFraction = 0.88f,
+        fullscreen = true,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),

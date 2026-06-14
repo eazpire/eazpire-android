@@ -1,7 +1,6 @@
 package com.eazpire.creator.ui
 
 import android.util.Log
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.eazpire.creator.ui.modal.EazBottomSheet
@@ -39,7 +38,7 @@ fun ProductModal(
         sheetState = sheetState,
         containerColor = Color.White,
         modifier = modifier.fillMaxWidth(),
-        maxHeightFraction = 0.92f,
+        fullscreen = true,
     ) {
         ProductDetailScreen(
             productHandle = productHandle,
@@ -50,7 +49,7 @@ fun ProductModal(
             onNavigateToCreator = onNavigateToCreator,
             onNavigateToProduct = onNavigateToProduct,
             favoriteEdit = favoriteEdit,
-            modifier = Modifier.fillMaxWidth().fillMaxHeight()
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

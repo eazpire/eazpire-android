@@ -2,15 +2,18 @@ package com.eazpire.creator.ui.modal
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -26,7 +29,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -37,20 +40,13 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 
 /**
- * Unified modal inset + layout helpers.
+ * Modal layout helpers.
  *
- * Rule: never use [Modifier.fillMaxSize] inside sheet/dialog content — it reclaims the full
- * parent slot and ignores inset-aware sizing. Use [EazModalSheetLayout], [eazModalBody], or
- * [fillMaxWidth] + [ColumnScope.weight].
+ * Never use [Modifier.fillMaxSize] / [Modifier.fillMaxHeight] on sheet/dialog ROOT content.
+ * Use [EazModalSheetLayout] (header + weighted body + inset footer) instead.
  */
 object EazModalInsets {
-    /** Full-screen dialog column root (width + height, below status bar). */
-    fun dialogRoot(): Modifier = Modifier
-        .fillMaxWidth()
-        .fillMaxHeight()
-        .statusBarsPadding()
-
-    /** Sticky footer — always apply on bottom action rows. */
+    /** Sticky footer — navigation + keyboard safe area. */
     fun stickyFooter(): Modifier = Modifier
         .fillMaxWidth()
         .navigationBarsPadding()
@@ -58,8 +54,7 @@ object EazModalInsets {
 }
 
 /**
- * Standard modal column: optional header, weighted body, optional inset-aware footer.
- * Use inside [EazBottomSheet] or [EazFullScreenDialog] instead of nested [fillMaxSize] trees.
+ * Standard modal column: optional header, weighted scrollable body, optional inset-aware footer.
  */
 @Composable
 fun EazModalSheetLayout(
@@ -77,11 +72,31 @@ fun EazModalSheetLayout(
     }
 }
 
+/** Body slot inside [EazModalSheetLayout] — width only, height from parent weight. */
+fun Modifier.eazModalBody(): Modifier = fillMaxWidth()
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun rememberSheetContentMaxHeight(
+    fullscreen: Boolean,
+    maxHeightFraction: Float?,
+    constraintsMaxHeight: Dp,
+): Dp? {
+    val density = LocalDensity.current
+    val navBottomDp = with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
+    val available = (constraintsMaxHeight - navBottomDp).coerceAtLeast(0.dp)
+    return when {
+        fullscreen -> available
+        maxHeightFraction != null -> available * maxHeightFraction
+        else -> null
+    }
+}
+
 /**
- * Material3 bottom sheet with consistent safe-area handling.
+ * Material3 bottom sheet — outer height is inset-aware; inner content must use [EazModalSheetLayout].
  *
- * - Disables platform sheet insets ([WindowInsets(0)]).
- * - Bounds expanded content so inner [fillMaxSize] cannot escape inset-aware height.
+ * Do NOT put [Modifier.fillMaxSize] / [Modifier.fillMaxHeight] on sheet content roots.
+ * [maxHeightFraction] is applied to inset-reduced height, not raw screen height.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,48 +109,35 @@ fun EazBottomSheet(
     dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
     maxHeightFraction: Float? = null,
     fullscreen: Boolean = false,
-    applyRootInsets: Boolean = true,
+    @Suppress("UNUSED_PARAMETER") applyRootInsets: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val cappedHeight: Dp? = when {
-        fullscreen -> null
-        maxHeightFraction != null -> {
-            val screenDp = LocalConfiguration.current.screenHeightDp
-            (screenDp * maxHeightFraction).dp
-        }
-        else -> null
-    }
-    val sheetModifier = modifier.then(
-        when {
-            fullscreen -> Modifier.fillMaxHeight()
-            cappedHeight != null -> Modifier.heightIn(max = cappedHeight)
-            else -> Modifier.fillMaxWidth()
-        }
-    )
-    val expandContent = fullscreen || maxHeightFraction != null
+    val useExpandedLayout = fullscreen || maxHeightFraction != null
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        modifier = sheetModifier,
+        modifier = modifier.fillMaxWidth(),
         sheetState = sheetState,
         containerColor = containerColor,
         contentColor = contentColor,
         dragHandle = dragHandle,
         windowInsets = WindowInsets(0),
     ) {
-        val rootModifier = if (applyRootInsets) {
-            Modifier
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val heightCap = rememberSheetContentMaxHeight(
+                fullscreen = fullscreen,
+                maxHeightFraction = maxHeightFraction,
+                constraintsMaxHeight = maxHeight,
+            )
+            val columnModifier = Modifier
                 .fillMaxWidth()
-                .then(if (expandContent) Modifier.fillMaxHeight() else Modifier.wrapContentHeight())
-                .navigationBarsPadding()
-                .imePadding()
-        } else {
-            Modifier
-                .fillMaxWidth()
-                .then(if (expandContent) Modifier.fillMaxHeight() else Modifier.wrapContentHeight())
-        }
-        Column(modifier = rootModifier) {
-            if (expandContent) {
-                Box(modifier = Modifier.weight(1f, fill = true).fillMaxWidth()) {
+                .then(
+                    when {
+                        heightCap != null -> Modifier.height(heightCap)
+                        else -> Modifier.wrapContentHeight()
+                    }
+                )
+            if (useExpandedLayout) {
+                Column(columnModifier) {
                     content()
                 }
             } else {
@@ -145,7 +147,7 @@ fun EazBottomSheet(
     }
 }
 
-/** Full-screen dialog with edge-to-edge window + inset-aware root column. */
+/** Full-screen dialog — content bounded by constraints; footers use [EazModalInsets.stickyFooter]. */
 @Composable
 fun EazFullScreenDialog(
     onDismissRequest: () -> Unit,
@@ -164,20 +166,20 @@ fun EazFullScreenDialog(
             }
             ViewCompat.requestApplyInsets(dialogView)
         }
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight()
-                .statusBarsPadding()
+                .statusBarsPadding(),
         ) {
-            Box(modifier = Modifier.weight(1f, fill = true).fillMaxWidth()) {
-                content()
+            Column(modifier = Modifier.fillMaxWidth().height(maxHeight)) {
+                Box(modifier = Modifier.weight(1f, fill = false).fillMaxWidth()) {
+                    content()
+                }
             }
         }
     }
 }
 
-/** Bottom action row that stays above gesture/3-button navigation and the keyboard. */
 @Composable
 fun EazModalStickyFooter(
     modifier: Modifier = Modifier,
@@ -193,7 +195,6 @@ fun EazModalStickyFooter(
     )
 }
 
-/** Surface wrapper for modal footers (shadow optional via elevation param on call site). */
 @Composable
 fun EazModalFooterSurface(
     modifier: Modifier = Modifier,

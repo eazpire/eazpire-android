@@ -110,12 +110,12 @@ fun CreatorSettingsModal(
         fullscreen = true,
         dragHandle = null
     ) {
-        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             // Icons-only Sidebar (fix, schmal)
             Column(
                 modifier = Modifier
                     .width(56.dp)
-                    .fillMaxHeight()
                     .background(Color(0xFF070B14))
                     .padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -195,6 +195,7 @@ fun CreatorSettingsModal(
                 translationStore = translationStore,
                 onLoginClick = onLoginClick,
             )
+        }
         }
     }
 }

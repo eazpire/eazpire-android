@@ -135,11 +135,11 @@ fun TermsModal(
         sheetState = sheetState,
         containerColor = bgColor,
         modifier = modifier,
-        maxHeightFraction = 0.95f,
+        fullscreen = true,
     ) {
         Column(
-            modifier = modifier
-                .fillMaxSize()
+            modifier = Modifier
+                .fillMaxWidth()
                 .background(bgColor)
         ) {
             // Header – title left, close right
@@ -210,7 +210,8 @@ fun TermsModal(
             // Content area – WebView for HTML content
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .background(bgColor)
             ) {
                 when {

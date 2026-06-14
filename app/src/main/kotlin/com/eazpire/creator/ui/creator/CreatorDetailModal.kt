@@ -447,7 +447,7 @@ fun CreatorDetailModal(
     }
 
     EazFullScreenDialog(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight()) {
+        Column(Modifier.fillMaxWidth()) {
                 Row(
                     Modifier
                         .fillMaxWidth()

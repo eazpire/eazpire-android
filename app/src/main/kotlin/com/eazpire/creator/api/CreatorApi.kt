@@ -886,6 +886,9 @@ class CreatorApi(
     /** GET ?op=get-ui-animation-flags – public UI animation toggles (creator + shop scopes). */
     suspend fun getUiAnimationFlags(): JSONObject = call("get-ui-animation-flags")
 
+    /** GET ?op=get-creator-area-backgrounds – active Creator shell backgrounds (mobile + desktop). */
+    suspend fun getCreatorAreaBackgrounds(): JSONObject = call("get-creator-area-backgrounds")
+
     /** GET ?op=list-customer-mockups&owner_id=xxx → { ok, mockups: [...] } */
     suspend fun listCustomerMockups(ownerId: String, productKey: String? = null): JSONObject = call(
         "list-customer-mockups",

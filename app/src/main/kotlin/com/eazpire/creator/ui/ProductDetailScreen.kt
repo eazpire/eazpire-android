@@ -605,10 +605,15 @@ fun ProductDetailScreen(
     } else {
         Modifier.fillMaxWidth()
     }
+    val layoutHeightModifier = if (showCloseButton) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier.fillMaxWidth().fillMaxHeight()
+    }
 
     if (isLoading) {
         Box(
-            modifier = modifier.fillMaxWidth().fillMaxHeight(),
+            modifier = modifier.then(layoutHeightModifier),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(color = EazColors.Orange)
@@ -622,7 +627,7 @@ fun ProductDetailScreen(
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     if (p == null) {
         Box(
-            modifier = modifier.fillMaxWidth().fillMaxHeight(),
+            modifier = modifier.then(layoutHeightModifier),
             contentAlignment = Alignment.Center
         ) {
             Text(t("product.not_found", "Product not found"), color = EazColors.TextSecondary)
@@ -871,8 +876,8 @@ fun ProductDetailScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxWidth().fillMaxHeight().background(EazColors.Orange)) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+    Box(modifier = modifier.then(layoutHeightModifier).background(EazColors.Orange)) {
+        Column(modifier = layoutHeightModifier) {
         // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
 
         Column(

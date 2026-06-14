@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,24 +33,22 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
-import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.eazpire.creator.R
 import com.eazpire.creator.MainActivity
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.audio.CreatorAudioStore
+import com.eazpire.creator.config.AnimationFlagsRepository
+import com.eazpire.creator.config.CreatorThemeBackgroundRepository
 import com.eazpire.creator.creatorcodes.CreatorCodeAvailableHintStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
@@ -63,13 +60,6 @@ import com.eazpire.creator.ui.header.LanguageChildren
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-private val GalaxyGradient = Brush.verticalGradient(
-    colors = listOf(
-        Color(0x660A0514),
-        Color(0x9905020F)
-    )
-)
 
 @Composable
 fun CreatorMainScreen(
@@ -270,36 +260,26 @@ fun CreatorMainScreen(
         } catch (_: Exception) {}
     }
     val scope = rememberCoroutineScope()
+    var themeBackground by remember { mutableStateOf(CreatorThemeBackgroundRepository.getCached()) }
+    var themeBgVideoEnabled by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        themeBgVideoEnabled = AnimationFlagsRepository.isEnabled(appContext, "creator", "theme_bg_video")
+        themeBackground = CreatorThemeBackgroundRepository.loadMobile(api)
+    }
+
+    LaunchedEffect(currentScreen) {
+        themeBgVideoEnabled = AnimationFlagsRepository.isEnabledCached("creator", "theme_bg_video")
+    }
 
     Box(
         modifier = modifier.fillMaxSize()
     ) {
-        // Galaxy background (wie Web: creator-mobile.css)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(GalaxyGradient)
-        ) {
-            Image(
-                painter = painterResource(R.drawable.galaxy_nebula_bg),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                alpha = 0.85f
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0x660A0514),
-                                Color(0x9905020F)
-                            )
-                        )
-                    )
-            )
-        }
+        CreatorThemeBackgroundLayer(
+            background = themeBackground,
+            videoEnabled = themeBgVideoEnabled,
+            resumeNonce = currentScreen,
+        )
         Column(modifier = Modifier.fillMaxSize()) {
                 CreatorHeader(
                     currentScreen = currentScreen,

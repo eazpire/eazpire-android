@@ -147,7 +147,7 @@ internal fun ShopUploadNativeSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.White,
-        maxHeightFraction = 0.92f,
+        fullscreen = true,
         dragHandle = { ShopSheetDragHandle() }
     ) {
         ShopLightSheetTheme {

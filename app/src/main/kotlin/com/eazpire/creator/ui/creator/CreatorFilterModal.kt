@@ -21,6 +21,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalFooterSurface
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -120,91 +122,120 @@ fun CreatorFilterModal(
         sheetState = sheetState,
         containerColor = Color(0xFF0F172A),
         dragHandle = null,
-        maxHeightFraction = 0.88f,
+        fullscreen = true,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // Header – wie Web creator-filter-modal__header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF02060F).copy(alpha = 0.85f))
-                    .padding(16.dp, 20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(
-                        Icons.Default.FilterList,
-                        contentDescription = null,
-                        tint = EazColors.Orange,
-                        modifier = Modifier.height(20.dp)
-                    )
-                    Text(
-                        translationStore.t("creator.design_modal.filter_title", "Filters"),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color(0xFFE5E7EB)
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.06f))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
-                        .clickable { onDismiss() }
-                        .padding(6.dp)
-                ) {
-                    Text("×", style = MaterialTheme.typography.headlineSmall, color = Color(0xFF9CA3AF))
-                }
-            }
-
-            // Tabs – wie Web (underline für active)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF080F1C).copy(alpha = 0.75f))
-                    .padding(horizontal = 16.dp)
-            ) {
-                val filterTabs = listOf(
-                    "design" to (translationStore.t("creator.filter.design_filter", "Design Filter")),
-                    "product" to (translationStore.t("creator.filter.product_filter", "Product Filter"))
-                )
-                for ((tab, label) in filterTabs) {
-                    val active = filterTab == tab
-                    Box(
+        EazModalSheetLayout(
+            header = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clickable { filterTab = tab },
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .background(Color(0xFF02060F).copy(alpha = 0.85f))
+                            .padding(16.dp, 20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (active) EazColors.Orange else Color.White.copy(alpha = 0.6f)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(
+                                Icons.Default.FilterList,
+                                contentDescription = null,
+                                tint = EazColors.Orange,
+                                modifier = Modifier.height(20.dp)
                             )
-                            if (active) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(2.dp)
-                                        .padding(top = 4.dp)
-                                        .background(EazColors.Orange, RoundedCornerShape(1.dp))
-                                )
+                            Text(
+                                translationStore.t("creator.design_modal.filter_title", "Filters"),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Color(0xFFE5E7EB)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color.White.copy(alpha = 0.06f))
+                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                                .clickable { onDismiss() }
+                                .padding(6.dp)
+                        ) {
+                            Text("×", style = MaterialTheme.typography.headlineSmall, color = Color(0xFF9CA3AF))
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF080F1C).copy(alpha = 0.75f))
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        val filterTabs = listOf(
+                            "design" to (translationStore.t("creator.filter.design_filter", "Design Filter")),
+                            "product" to (translationStore.t("creator.filter.product_filter", "Product Filter"))
+                        )
+                        for ((tab, label) in filterTabs) {
+                            val active = filterTab == tab
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .clickable { filterTab = tab },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        label,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (active) EazColors.Orange else Color.White.copy(alpha = 0.6f)
+                                    )
+                                    if (active) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(2.dp)
+                                                .padding(top = 4.dp)
+                                                .background(EazColors.Orange, RoundedCornerShape(1.dp))
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-
-            // Body – scrollbar wie Web
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-            ) {
+            },
+            footer = {
+                EazModalFooterSurface(
+                    color = Color(0xFF02060F).copy(alpha = 0.9f),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp, 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            onClick = { reset() },
+                            modifier = Modifier.weight(1f),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(translationStore.t("creator.filter.reset", "Reset"), color = Color.White)
+                        }
+                        Button(
+                            onClick = { apply() },
+                            modifier = Modifier.weight(1f),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(translationStore.t("creator.filter.apply", "Apply"), color = Color.White)
+                        }
+                    }
+                }
+            },
+            body = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
                 when (filterTab) {
                     "design" -> {
                         val designCounts = remember(designs) {
@@ -304,34 +335,9 @@ fun CreatorFilterModal(
                         }
                     }
                 }
-            }
-
-            // Footer – wie Web creator-filter-modal__footer
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF02060F).copy(alpha = 0.9f))
-                    .padding(16.dp, 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = { reset() },
-                    modifier = Modifier.weight(1f),
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(translationStore.t("creator.filter.reset", "Reset"), color = Color.White)
                 }
-                Button(
-                    onClick = { apply() },
-                    modifier = Modifier.weight(1f),
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(translationStore.t("creator.filter.apply", "Apply"), color = Color.White)
-                }
-            }
-        }
+            },
+        )
     }
 }
 

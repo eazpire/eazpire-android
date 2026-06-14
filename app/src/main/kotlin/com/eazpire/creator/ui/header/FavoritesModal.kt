@@ -361,14 +361,15 @@ fun FavoritesModal(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.White,
-        maxHeightFraction = 0.9f,
+        fullscreen = true,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-            ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -520,52 +521,53 @@ fun FavoritesModal(
                 }
             }
 
-            if (drawerOpen) {
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .background(Color.Black.copy(alpha = 0.3f))
-                        .clickable { drawerOpen = false },
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxHeight()
-                        .width(280.dp)
-                        .background(Color.White),
-                ) {
-                    FavoritesSidebar(
-                            poolCount = poolItems.size,
-                            lists = lists,
-                            activeView = activeView,
-                            onSelect = { activeView = it; drawerOpen = false },
-                            onNewList = { showCreateListModal = true },
-                            onEditList = { list ->
-                                editListId = list.id
-                                editListName = list.name
-                                editListDescription = list.description
-                                showEditListModal = true
-                            },
-                            onDuplicateList = { listId ->
-                                scope.launch {
-                                    api.duplicateFavoriteList(customerId!!, listId)
-                                    loadLists()
-                                }
-                            },
-                            onDeleteList = { listId ->
-                                scope.launch {
-                                    api.deleteFavoriteList(customerId!!, listId)
-                                    loadLists()
-                                    if (activeView == listId.toString()) {
-                                        activeView = "pool"
-                                        listItems = emptyList()
-                                    }
-                                }
-                            },
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .padding(12.dp),
+                if (drawerOpen) {
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .background(Color.Black.copy(alpha = 0.3f))
+                            .clickable { drawerOpen = false },
                     )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .width(280.dp)
+                            .background(Color.White),
+                    ) {
+                        FavoritesSidebar(
+                                poolCount = poolItems.size,
+                                lists = lists,
+                                activeView = activeView,
+                                onSelect = { activeView = it; drawerOpen = false },
+                                onNewList = { showCreateListModal = true },
+                                onEditList = { list ->
+                                    editListId = list.id
+                                    editListName = list.name
+                                    editListDescription = list.description
+                                    showEditListModal = true
+                                },
+                                onDuplicateList = { listId ->
+                                    scope.launch {
+                                        api.duplicateFavoriteList(customerId!!, listId)
+                                        loadLists()
+                                    }
+                                },
+                                onDeleteList = { listId ->
+                                    scope.launch {
+                                        api.deleteFavoriteList(customerId!!, listId)
+                                        loadLists()
+                                        if (activeView == listId.toString()) {
+                                            activeView = "pool"
+                                            listItems = emptyList()
+                                        }
+                                    }
+                                },
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .padding(12.dp),
+                        )
+                    }
                 }
             }
         }

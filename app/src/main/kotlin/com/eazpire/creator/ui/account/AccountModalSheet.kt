@@ -28,6 +28,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
 import com.eazpire.creator.ui.modal.EazModalFooterSurface
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
+import com.eazpire.creator.ui.modal.eazModalBody
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -92,11 +94,12 @@ fun AccountModalSheet(
         sheetState = sheetState,
         containerColor = Color.White,
         modifier = modifier,
-        maxHeightFraction = 0.95f,
+        fullscreen = true,
     ) {
-        Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-            Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-            Row(
+        Box(modifier = Modifier.fillMaxWidth()) {
+            EazModalSheetLayout(
+                header = {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -131,60 +134,8 @@ fun AccountModalSheet(
                             )
                         }
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        val tabModifier = Modifier.fillMaxWidth().fillMaxHeight()
-                        when (val tab = AccountTab.entries[selectedTab]) {
-                            AccountTab.Profile -> AccountProfileTab(
-                                tokenStore = tokenStore,
-                                translationStore = translationStore,
-                                onSaveActionReady = { footerSaveAction = it },
-                                onSavingStateChange = { footerSaveInProgress = it },
-                                onLogout = {
-                                    ShopSessionGuard.performFullLogout(context, tokenStore)
-                                    onDismiss()
-                                },
-                                modifier = tabModifier
-                            )
-                            AccountTab.Notifications -> NotificationSettingsContent(
-                                scope = NotificationScope.Shop,
-                                tokenStore = tokenStore,
-                                modifier = tabModifier
-                            )
-                            AccountTab.SizeAI -> AccountSizeAITab(
-                                tokenStore = tokenStore,
-                                onSaveActionReady = { action, onMeasurements ->
-                                    footerSaveAction = if (onMeasurements) action else null
-                                    sizeAiMeasurementsSubTab = onMeasurements
-                                },
-                                onSavingStateChange = { footerSaveInProgress = it },
-                                modifier = tabModifier
-                            )
-                            AccountTab.Wardrobe -> AccountWardrobeTab(
-                                tokenStore = tokenStore,
-                                onTotalPriceChange = { wardrobeTotalPrice = it },
-                                onGenerateActionReady = { action, canGen ->
-                                    wardrobeGenerateAction = action
-                                    wardrobeCanGenerate = canGen
-                                },
-                                onSaveActionReady = { action, canSave ->
-                                    wardrobeSaveAction = action
-                                    wardrobeCanSave = canSave
-                                },
-                                modifier = tabModifier
-                            )
-                            AccountTab.Mockups -> AccountMockupsTab(tokenStore = tokenStore, modifier = tabModifier)
-                            AccountTab.Creations -> AccountCreationsTab(tokenStore = tokenStore, modifier = tabModifier)
-                            AccountTab.Community -> AccountCommunityTab(tokenStore = tokenStore, modifier = tabModifier)
-                            AccountTab.Balance -> AccountBalanceTab(tokenStore = tokenStore, modifier = tabModifier)
-                        }
-                    }
-
+                },
+                footer = {
                     val showFooter = selectedTab == 0 || (selectedTab == 2 && sizeAiMeasurementsSubTab) || selectedTab == 3
                     if (showFooter) {
                         EazModalFooterSurface(
@@ -292,19 +243,66 @@ fun AccountModalSheet(
                             }
                         }
                     }
-            }
+                },
+                body = {
+                    val tabModifier = Modifier.eazModalBody().padding(16.dp)
+                    when (AccountTab.entries[selectedTab]) {
+                        AccountTab.Profile -> AccountProfileTab(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore,
+                            onSaveActionReady = { footerSaveAction = it },
+                            onSavingStateChange = { footerSaveInProgress = it },
+                            onLogout = {
+                                ShopSessionGuard.performFullLogout(context, tokenStore)
+                                onDismiss()
+                            },
+                            modifier = tabModifier
+                        )
+                        AccountTab.Notifications -> NotificationSettingsContent(
+                            scope = NotificationScope.Shop,
+                            tokenStore = tokenStore,
+                            modifier = tabModifier
+                        )
+                        AccountTab.SizeAI -> AccountSizeAITab(
+                            tokenStore = tokenStore,
+                            onSaveActionReady = { action, onMeasurements ->
+                                footerSaveAction = if (onMeasurements) action else null
+                                sizeAiMeasurementsSubTab = onMeasurements
+                            },
+                            onSavingStateChange = { footerSaveInProgress = it },
+                            modifier = tabModifier
+                        )
+                        AccountTab.Wardrobe -> AccountWardrobeTab(
+                            tokenStore = tokenStore,
+                            onTotalPriceChange = { wardrobeTotalPrice = it },
+                            onGenerateActionReady = { action, canGen ->
+                                wardrobeGenerateAction = action
+                                wardrobeCanGenerate = canGen
+                            },
+                            onSaveActionReady = { action, canSave ->
+                                wardrobeSaveAction = action
+                                wardrobeCanSave = canSave
+                            },
+                            modifier = tabModifier
+                        )
+                        AccountTab.Mockups -> AccountMockupsTab(tokenStore = tokenStore, modifier = tabModifier)
+                        AccountTab.Creations -> AccountCreationsTab(tokenStore = tokenStore, modifier = tabModifier)
+                        AccountTab.Community -> AccountCommunityTab(tokenStore = tokenStore, modifier = tabModifier)
+                        AccountTab.Balance -> AccountBalanceTab(tokenStore = tokenStore, modifier = tabModifier)
+                    }
+                }
+            )
 
-            androidx.compose.animation.AnimatedVisibility(
+            AnimatedVisibility(
                     visible = drawerOpen,
                     enter = slideInHorizontally(initialOffsetX = { -it }),
                     exit = slideOutHorizontally(targetOffsetX = { -it })
                 ) {
-                    Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-                        Box(modifier = Modifier.width(260.dp).fillMaxHeight()) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Box(modifier = Modifier.width(260.dp)) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .fillMaxHeight()
                                     .background(Color.White)
                                     .verticalScroll(rememberScrollState())
                                     .padding(vertical = 8.dp)
@@ -352,7 +350,6 @@ fun AccountModalSheet(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxHeight()
                                 .clickable { drawerOpen = false }
                         )
                     }

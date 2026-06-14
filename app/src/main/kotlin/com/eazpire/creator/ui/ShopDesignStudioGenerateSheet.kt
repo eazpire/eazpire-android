@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -467,7 +468,7 @@ internal fun ShopDesignStudioGenerateSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.White,
-        maxHeightFraction = 0.95f,
+        fullscreen = true,
         dragHandle = { ShopSheetDragHandle() }
     ) {
         ShopLightSheetTheme {
@@ -476,7 +477,7 @@ internal fun ShopDesignStudioGenerateSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .padding(bottom = 88.dp)
+                        .padding(bottom = 16.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     Row(
@@ -729,6 +730,8 @@ internal fun ShopDesignStudioGenerateSheet(
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
+                            .navigationBarsPadding()
+                            .imePadding()
                             .padding(12.dp)
                             .offset { IntOffset(eazyDragX.roundToInt(), eazyDragY.roundToInt()) }
                             .pointerInput(Unit) {

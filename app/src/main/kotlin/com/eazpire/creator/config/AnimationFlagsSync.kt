@@ -14,13 +14,18 @@ object AnimationFlagsSync {
     fun syncOnAppStart(context: Context) {
         scope.launch {
             val jwt = SecureTokenStore(context).getJwt()
+            val api = CreatorApi(jwt = jwt)
             if (jwt != null) {
                 try {
-                    AnimationFlagsRepository.syncFromServer(context, CreatorApi(jwt = jwt))
+                    AnimationFlagsRepository.syncFromServer(context, api)
                 } catch (_: Exception) {
                 }
             } else {
                 AnimationFlagsRepository.syncFromServerPublic(context)
+            }
+            try {
+                CreatorThemeBackgroundRepository.syncFromServer(api)
+            } catch (_: Exception) {
             }
         }
     }
