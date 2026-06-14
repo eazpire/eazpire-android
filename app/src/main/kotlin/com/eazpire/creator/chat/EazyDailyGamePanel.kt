@@ -73,6 +73,42 @@ private fun parseConnectSession(j: JSONObject): ConnectSessionUi? {
     )
 }
 
+private fun parseNumberRushSession(j: JSONObject): NumberRushSessionUi? {
+    val gridArr = j.optJSONArray("number_rush_grid") ?: return null
+    val timing = j.optJSONObject("number_rush_timing") ?: return null
+    val tappedArr = j.optJSONArray("number_rush_tapped")
+    val tapped =
+        if (tappedArr != null) {
+            buildSet {
+                for (i in 0 until tappedArr.length()) {
+                    add(tappedArr.getInt(i))
+                }
+            }
+        } else {
+            emptySet()
+        }
+    return NumberRushSessionUi(
+        grid = parseNumberRushGrid(gridArr),
+        timing =
+            NumberRushTimingUi(
+                deadlineMs = timing.optLong("deadline_ms"),
+                serverNowMs = timing.optLong("server_now_ms"),
+                playMs = timing.optLong("play_ms", 90_000L),
+                cols = timing.optInt("cols", 4),
+            ),
+        nextExpected = j.optInt("number_rush_next", 1).coerceAtLeast(1),
+        tapped = tapped,
+    )
+}
+
+private fun formatCooldownLabel(sec: Int): String {
+    val s = sec.coerceAtLeast(0)
+    val h = s / 3600
+    val m = (s % 3600) / 60
+    val r = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%d:%02d".format(m, r)
+}
+
 @Composable
 fun EazyDailyGamePanel(
     api: CreatorApi,
@@ -90,11 +126,16 @@ fun EazyDailyGamePanel(
     var status by remember { mutableStateOf("") }
     var prizeLine by remember { mutableStateOf<String?>(null) }
     var playEnabled by remember { mutableStateOf(false) }
-    var todaySlug by remember { mutableStateOf("memory_match") }
+    var selectedSlug by remember { mutableStateOf("memory_match") }
+    var pickerItems by remember { mutableStateOf<List<DailyGamePickerItem>>(emptyList()) }
+    var notifyPush by remember { mutableStateOf(true) }
+    var notifyEmail by remember { mutableStateOf(false) }
     var resumeMemory by remember { mutableStateOf(false) }
     var resumeConnect by remember { mutableStateOf(false) }
+    var resumeNumberRush by remember { mutableStateOf(false) }
     var memorySession by remember { mutableStateOf<Pair<MemoryDeckUi, MemoryTimingUi>?>(null) }
     var connectSession by remember { mutableStateOf<ConnectSessionUi?>(null) }
+    var numberRushSession by remember { mutableStateOf<NumberRushSessionUi?>(null) }
     var showConnectTutorial by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
 
@@ -105,7 +146,7 @@ fun EazyDailyGamePanel(
             showConnectTutorial = false
             status = t("eazy_chat.games_loading", "Loading…")
             try {
-                val j = api.postDailyGameConnectBegin(shop, oid)
+                val j = api.postDailyGameConnectBegin(shop, oid, selectedSlug)
                 val parsed = parseConnectSession(j)
                 if (j.optBoolean("ok", false) && parsed != null) {
                     connectSession = parsed
@@ -128,12 +169,45 @@ fun EazyDailyGamePanel(
     }
 
     fun applyStateJson(j: JSONObject) {
-        todaySlug = j.optString("today_game_slug", j.optString("game_slug", "memory_match"))
+        val gamesArr = j.optJSONArray("games")
+        pickerItems = parseDailyGamePickerItems(gamesArr)
+        if (pickerItems.isEmpty()) {
+            pickerItems =
+                listOf(
+                    DailyGamePickerItem("memory_match", "Memory Match", true, "available", 0),
+                    DailyGamePickerItem("connect_four_5x5", "Connect Four", true, "available", 0),
+                    DailyGamePickerItem("number_rush", "Number Rush", true, "available", 0),
+                )
+        }
+        selectedSlug =
+            j.optString("selected_game_slug", j.optString("today_game_slug", j.optString("game_slug", "memory_match")))
+        val notify = j.optJSONObject("notify")
+        notifyPush = notify?.optBoolean("push_enabled", true) != false
+        notifyEmail = notify?.optBoolean("email_enabled", false) == true
+
+        val selectedState = pickerItems.find { it.slug == selectedSlug }
         val winProb = j.optDouble("win_probability", 0.25)
         prizeLine =
             "${(winProb * 100).toInt()}% ${t("eazy_chat.games_win_chance_suffix", "win chance")} · ${t("eazy_chat.games_random_prizes_hint", "random daily prizes")}"
 
+        if (selectedState?.status == "cooldown") {
+            playEnabled = false
+            status =
+                t("eazy_chat.games_cooldown_wait", "Available again in {{time}}").replace(
+                    "{{time}}",
+                    formatCooldownLabel(selectedState.cooldownRemainingSec),
+                )
+            return
+        }
+
+        if (selectedState != null && !selectedState.available && selectedState.status == "locked") {
+            playEnabled = false
+            status = t("eazy_chat.games_other_in_progress", "Finish your current game first.")
+            return
+        }
+
         if (j.optBoolean("pending_memory", false)) {
+            selectedSlug = "memory_match"
             playEnabled = false
             status =
                 t(
@@ -145,6 +219,7 @@ fun EazyDailyGamePanel(
         }
 
         if (j.optBoolean("pending_connect", false)) {
+            selectedSlug = "connect_four_5x5"
             playEnabled = false
             status =
                 t(
@@ -152,6 +227,18 @@ fun EazyDailyGamePanel(
                     "You have a game in progress — continuing.",
                 )
             resumeConnect = true
+            return
+        }
+
+        if (j.optBoolean("pending_number_rush", false)) {
+            selectedSlug = "number_rush"
+            playEnabled = false
+            status =
+                t(
+                    "eazy_chat.games_nr_resume",
+                    "You have a game in progress — continuing.",
+                )
+            resumeNumberRush = true
             return
         }
 
@@ -214,9 +301,11 @@ fun EazyDailyGamePanel(
     LaunchedEffect(ownerId, canPlay, isLoggedIn) {
         memorySession = null
         connectSession = null
+        numberRushSession = null
         showConnectTutorial = false
         resumeMemory = false
         resumeConnect = false
+        resumeNumberRush = false
         if (!canPlay) return@LaunchedEffect
         loading = true
         status = t("eazy_chat.games_loading", "Loading…")
@@ -245,7 +334,7 @@ fun EazyDailyGamePanel(
         resumeMemory = false
         loading = true
         try {
-            val j = api.postDailyGameMemoryBegin(shop, oid)
+            val j = api.postDailyGameMemoryBegin(shop, oid, selectedSlug)
             val parsed = parseMemorySession(j)
             if (j.optBoolean("ok", false) && parsed != null) {
                 memorySession = parsed
@@ -282,6 +371,33 @@ fun EazyDailyGamePanel(
                     j.optString(
                         "message",
                         t("eazy_chat.games_connect_board_error", "Could not load the game board."),
+                    )
+                playEnabled = true
+            }
+        } catch (_: Exception) {
+            status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
+            playEnabled = true
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(resumeNumberRush, ownerId, canPlay) {
+        val oid = ownerId ?: return@LaunchedEffect
+        if (!canPlay || !resumeNumberRush) return@LaunchedEffect
+        resumeNumberRush = false
+        loading = true
+        try {
+            val j = api.postDailyGameNumberRushBegin(shop, oid)
+            val parsed = parseNumberRushSession(j)
+            if (j.optBoolean("ok", false) && parsed != null) {
+                numberRushSession = parsed
+                status = ""
+            } else {
+                status =
+                    j.optString(
+                        "message",
+                        t("eazy_chat.games_nr_board_error", "Could not load the game board."),
                     )
                 playEnabled = true
             }
@@ -438,42 +554,84 @@ fun EazyDailyGamePanel(
         return
     }
 
-    val introText =
-        if (todaySlug == "connect_four_5x5") {
-            t(
-                "eazy_chat.games_connect_daily_intro",
-                "Place four in a row on the 5×5 grid before Eazy does.",
+    val nrSess = numberRushSession
+    if (nrSess != null) {
+        val oid = ownerId ?: return
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            prizeLine?.let { line ->
+                Text(text = line, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
+            }
+            EazyNumberRushDailyBoard(
+                api = api,
+                shop = shop,
+                ownerId = oid,
+                session = nrSess,
+                onRoundComplete = {
+                    scope.launch {
+                        busy = true
+                        numberRushSession = null
+                        try {
+                            val st = api.getDailyGameState(shop, ownerId)
+                            if (st.optBoolean("ok", false)) applyStateJson(st)
+                        } catch (_: Exception) {
+                            status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
+                            playEnabled = true
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+                t = t,
             )
-        } else {
-            t(
-                "eazy_chat.games_memory_daily_intro",
-                "Flip two tiles at a time. Beat the countdown after the peek.",
-            )
+            if (busy) {
+                CircularProgressIndicator(color = LocalEazyModalPalette.current.accent)
+            }
         }
-    val todayGameLabel =
-        if (todaySlug == "connect_four_5x5") {
-            t("eazy_chat.games_connect_title", "Connect Four")
-        } else {
-            t("eazy_chat.games_memory_title", "Memory Match")
-        }
+        return
+    }
 
     Column(
         modifier =
             Modifier
                 .fillMaxSize()
-                .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(
-            text = todayGameLabel,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = LocalEazyModalPalette.current.accent,
-        )
-        Text(
-            text = introText,
-            style = MaterialTheme.typography.bodyMedium,
-            color = LocalEazyModalPalette.current.text,
+        EazyGamesPickerCarousel(
+            api = api,
+            items = pickerItems,
+            selectedSlug = selectedSlug,
+            notifyPush = notifyPush,
+            notifyEmail = notifyEmail,
+            onSelect = { slug ->
+                selectedSlug = slug
+                val gs = pickerItems.find { it.slug == slug }
+                if (gs?.status == "cooldown") {
+                    playEnabled = false
+                    status =
+                        t("eazy_chat.games_cooldown_wait", "Available again in {{time}}").replace(
+                            "{{time}}",
+                            formatCooldownLabel(gs.cooldownRemainingSec),
+                        )
+                } else if (gs != null && gs.available) {
+                    playEnabled = true
+                    status = ""
+                } else if (gs?.status == "locked") {
+                    playEnabled = false
+                    status = t("eazy_chat.games_other_in_progress", "Finish your current game first.")
+                }
+            },
+            onNotifyChange = { push, email ->
+                notifyPush = push
+                notifyEmail = email
+            },
+            t = t,
         )
         prizeLine?.let { line ->
             Text(text = line, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
@@ -496,7 +654,7 @@ fun EazyDailyGamePanel(
                     busy = true
                     status = t("eazy_chat.games_loading", "Loading…")
                     try {
-                        if (todaySlug == "connect_four_5x5") {
+                        if (selectedSlug == "connect_four_5x5") {
                             if (EazyConnectTutorialPrefs.isDismissed(appContext)) {
                                 beginConnectGame()
                             } else {
@@ -505,8 +663,22 @@ fun EazyDailyGamePanel(
                                 showConnectTutorial = true
                                 status = ""
                             }
+                        } else if (selectedSlug == "number_rush") {
+                            val j = api.postDailyGameNumberRushBegin(shop, oid)
+                            val parsed = parseNumberRushSession(j)
+                            if (j.optBoolean("ok", false) && parsed != null) {
+                                numberRushSession = parsed
+                                status = ""
+                            } else {
+                                status =
+                                    j.optString(
+                                        "message",
+                                        t("eazy_chat.games_nr_board_error", "Could not load the game board."),
+                                    )
+                                playEnabled = true
+                            }
                         } else {
-                            val j = api.postDailyGameMemoryBegin(shop, oid)
+                            val j = api.postDailyGameMemoryBegin(shop, oid, selectedSlug)
                             val parsed = parseMemorySession(j)
                             if (j.optBoolean("ok", false) && parsed != null) {
                                 memorySession = parsed

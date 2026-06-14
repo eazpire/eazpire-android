@@ -71,6 +71,10 @@ object EazNotificationDisplay {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
                     putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Notifications.name)
                 }
+                "eazy_games", "games", "daily_game" -> {
+                    putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
+                    putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Games.name)
+                }
                 "creator_settings_codes", "creator_codes", "creator-codes" -> {
                     putExtra(MainActivity.EXTRA_OPEN_CREATOR_CODES, true)
                     extras["code"]?.trim()?.takeIf { it.isNotBlank() }?.let {
@@ -168,6 +172,34 @@ object EazNotificationDisplay {
             requestCode = REQ_CART,
             extras = extras,
             heroVisual = heroVisual
+        )
+    }
+
+    fun showDailyGameAvailable(context: Context) {
+        scope.launch {
+            showDailyGameAvailableInternal(context)
+        }
+    }
+
+    suspend fun showDailyGameAvailableInternal(context: Context) {
+        val app = context.applicationContext
+        EazNotificationChannels.ensure(app)
+        val title = app.getString(R.string.notification_daily_game_title)
+        val body = app.getString(R.string.notification_daily_game_body)
+        val extras =
+            mapOf(
+                "open_target" to "eazy_games",
+                "category" to "daily_game_reminder",
+            )
+        postNotification(
+            context = app,
+            channelId = EazNotificationChannels.PUSH_IN_APP,
+            title = title,
+            body = body,
+            notificationId = REQ_DAILY_GAME,
+            requestCode = REQ_DAILY_GAME,
+            extras = extras,
+            heroVisual = null,
         )
     }
 

@@ -374,12 +374,13 @@ class CreatorApi(
         postJson("daily-game-play", mapOf("owner_id" to ownerId), mapOf("shop" to shop))
 
     /** POST ?op=daily-game-play memory_action begin */
-    suspend fun postDailyGameMemoryBegin(shop: String, ownerId: String): JSONObject =
+    suspend fun postDailyGameMemoryBegin(shop: String, ownerId: String, gameSlug: String = "memory_match"): JSONObject =
         postDailyGamePlayJson(
             shop,
             JSONObject().apply {
                 put("owner_id", ownerId)
                 put("shop", shop)
+                put("game_slug", gameSlug)
                 put("memory_action", "begin")
             },
         )
@@ -435,12 +436,13 @@ class CreatorApi(
         )
     }
 
-    suspend fun postDailyGameConnectBegin(shop: String, ownerId: String): JSONObject =
+    suspend fun postDailyGameConnectBegin(shop: String, ownerId: String, gameSlug: String = "connect_four_5x5"): JSONObject =
         postDailyGamePlayJson(
             shop,
             JSONObject().apply {
                 put("owner_id", ownerId)
                 put("shop", shop)
+                put("game_slug", gameSlug)
                 put("connect_action", "begin")
             },
         )
@@ -484,6 +486,40 @@ class CreatorApi(
                 put("owner_id", ownerId)
                 put("shop", shop)
                 put("connect_action", "forfeit")
+            },
+        )
+
+    suspend fun postDailyGameNumberRushBegin(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("game_slug", "number_rush")
+                put("number_rush_action", "begin")
+            },
+        )
+
+    suspend fun postDailyGameNumberRushTap(shop: String, ownerId: String, cellIndex: Int): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("game_slug", "number_rush")
+                put("number_rush_action", "tap")
+                put("cell_index", cellIndex)
+            },
+        )
+
+    suspend fun postDailyGameNumberRushForfeit(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("game_slug", "number_rush")
+                put("number_rush_action", "forfeit")
             },
         )
 
@@ -2521,6 +2557,10 @@ class CreatorApi(
         }
         return postJsonBodyOp("save-notification-preferences", body)
     }
+
+    /** POST ?op=save-notification-preferences – raw shop/creator JSON patches (channel objects). */
+    suspend fun saveNotificationPreferencesRaw(body: JSONObject): JSONObject =
+        postJsonBodyOp("save-notification-preferences", body)
 
     /** POST ?op=eazy-conv&new=1 */
     suspend fun eazyConvNew(userId: String): JSONObject =
