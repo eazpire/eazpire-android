@@ -39,14 +39,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
@@ -467,6 +467,7 @@ fun CreatorDetailModal(
             if (window != null) {
                 WindowCompat.setDecorFitsSystemWindows(window, false)
             }
+            ViewCompat.requestApplyInsets(dialogView)
         }
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -476,67 +477,35 @@ fun CreatorDetailModal(
                 Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
-                    .navigationBarsPadding()
             ) {
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .background(Color(0xFF0F172A))
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, null, tint = Color.White)
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                     Column(Modifier.weight(1f)) {
                         Text(
                             tr("creator.detail_modal.title", "Creator profile"),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             color = Color.White
                         )
-                        Text(creatorName, style = MaterialTheme.typography.bodySmall, color = EazColors.Orange)
+                        Text(creatorName, style = MaterialTheme.typography.labelSmall, color = EazColors.Orange)
                     }
                 }
 
-                TabRow(
-                    selectedTabIndex = mainTab,
-                    containerColor = Color(0xFF111827),
-                    contentColor = Color.White,
-                    indicator = { tabPositions ->
-                        if (mainTab < tabPositions.size) {
-                            TabRowDefaults.Indicator(
-                                modifier = Modifier.tabIndicatorOffset(tabPositions[mainTab]),
-                                color = EazColors.Orange
-                            )
-                        }
-                    },
-                    divider = {}
-                ) {
-                    Tab(
-                        selected = mainTab == TAB_AVATAR,
-                        onClick = { mainTab = TAB_AVATAR },
-                        icon = {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = tr("creator.detail_modal.tab_avatar", "Profile photo"),
-                                tint = if (mainTab == TAB_AVATAR) EazColors.Orange else Color.White.copy(alpha = 0.65f)
-                            )
-                        },
-                        text = {}
-                    )
-                    Tab(
-                        selected = mainTab == TAB_COVER,
-                        onClick = { mainTab = TAB_COVER },
-                        icon = {
-                            Icon(
-                                Icons.Default.Image,
-                                contentDescription = tr("creator.detail_modal.tab_cover", "Cover"),
-                                tint = if (mainTab == TAB_COVER) EazColors.Orange else Color.White.copy(alpha = 0.65f)
-                            )
-                        },
-                        text = {}
-                    )
-                }
+                CreatorDetailModalIconTabs(
+                    selectedTab = mainTab,
+                    onTabSelected = { mainTab = it },
+                    tr = tr,
+                )
 
                 if (loading) {
                     Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -549,7 +518,7 @@ fun CreatorDetailModal(
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState())
                             .background(Color(0xFF0B1220))
-                            .padding(16.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
                             if (mainTab == TAB_AVATAR) {
                                 ImageSection(
@@ -676,6 +645,7 @@ fun CreatorDetailModal(
                     Modifier
                         .fillMaxWidth()
                         .background(Color(0xFF070B14))
+                        .windowInsetsPadding(WindowInsets.navigationBars)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -747,6 +717,64 @@ fun CreatorDetailModal(
                 showAssetsSheet = false
             }
         )
+    }
+}
+
+@Composable
+private fun CreatorDetailModalIconTabs(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    tr: (String, String) -> String,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF111827))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = { onTabSelected(TAB_AVATAR) },
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = tr("creator.detail_modal.tab_avatar", "Profile photo"),
+                    tint = if (selectedTab == TAB_AVATAR) EazColors.Orange else Color.White.copy(alpha = 0.65f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            IconButton(
+                onClick = { onTabSelected(TAB_COVER) },
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    Icons.Default.Image,
+                    contentDescription = tr("creator.detail_modal.tab_cover", "Cover"),
+                    tint = if (selectedTab == TAB_COVER) EazColors.Orange else Color.White.copy(alpha = 0.65f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth().height(2.dp)) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(if (selectedTab == TAB_AVATAR) EazColors.Orange else Color.Transparent)
+            )
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(if (selectedTab == TAB_COVER) EazColors.Orange else Color.Transparent)
+            )
+        }
     }
 }
 

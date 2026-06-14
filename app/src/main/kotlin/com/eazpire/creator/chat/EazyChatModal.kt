@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -109,6 +111,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
@@ -857,12 +860,12 @@ fun EazyChatModal(
             if (window != null) {
                 WindowCompat.setDecorFitsSystemWindows(window, false)
             }
+            ViewCompat.requestApplyInsets(dialogView)
         }
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding()
         ) {
             val isWideLayout = maxWidth > 600.dp
             var sidebarOpen by remember(isWideLayout) { mutableStateOf(isWideLayout) }
@@ -1283,6 +1286,7 @@ fun EazyChatModal(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .background(LocalEazyModalPalette.current.header)
+                                                .windowInsetsPadding(WindowInsets.navigationBars)
                                                 .imePadding()
                                         ) {
                                         if (rateLimit != null) {
