@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -138,6 +139,22 @@ fun EazyDailyGamePanel(
     var numberRushSession by remember { mutableStateOf<NumberRushSessionUi?>(null) }
     var showConnectTutorial by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
+    var lastStateJson by remember { mutableStateOf<JSONObject?>(null) }
+
+    fun syncReminderFromState(j: JSONObject?) {
+        val root = j ?: return
+        val sched = root.optJSONObject("notify_schedule")
+        val pushFlag = sched?.optBoolean("notify_push") ?: notifyPush
+        val emailFlag = sched?.optBoolean("notify_email") ?: notifyEmail
+        if (!pushFlag && !emailFlag) {
+            DailyGameReminderScheduler.sync(null, false, false)
+            return
+        }
+        val atMs =
+            sched?.optLong("notify_at_ms")?.takeIf { it > 0 }
+                ?: root.optLong("next_available_ms", 0L).takeIf { it > System.currentTimeMillis() }
+        DailyGameReminderScheduler.sync(atMs, pushFlag, emailFlag)
+    }
 
     fun beginConnectGame() {
         val oid = ownerId ?: return
@@ -169,6 +186,7 @@ fun EazyDailyGamePanel(
     }
 
     fun applyStateJson(j: JSONObject) {
+        lastStateJson = j
         val gamesArr = j.optJSONArray("games")
         pickerItems = parseDailyGamePickerItems(gamesArr)
         if (pickerItems.isEmpty()) {
@@ -197,6 +215,7 @@ fun EazyDailyGamePanel(
                     "{{time}}",
                     formatCooldownLabel(selectedState.cooldownRemainingSec),
                 )
+            syncReminderFromState(j)
             return
         }
 
@@ -271,30 +290,50 @@ fun EazyDailyGamePanel(
                 status = ""
             }
         }
+        syncReminderFromState(j)
     }
 
     fun applyMemoryOutcome(j: JSONObject) {
         memorySession = null
-        when {
-            j.optBoolean("ok", false) && j.optString("outcome") == "win" -> {
-                status = t("eazy_chat.games_outcome_win", "You won a gift card!")
-                playEnabled = false
+        val oid = ownerId ?: return
+        scope.launch {
+            try {
+                val st = api.getDailyGameState(shop, oid)
+                if (st.optBoolean("ok", false)) {
+                    applyStateJson(st)
+                    return@launch
+                }
+            } catch (_: Exception) {
             }
-            j.optString("outcome") == "loss" || j.optBoolean("already_played", false) -> {
-                status = t("eazy_chat.games_outcome_loss", "Not this time. Come back tomorrow.")
-                playEnabled = false
-            }
-            else -> {
-                val oid = ownerId ?: return
-                scope.launch {
-                    try {
-                        val st = api.getDailyGameState(shop, oid)
-                        if (st.optBoolean("ok", false)) applyStateJson(st)
-                    } catch (_: Exception) {
-                        playEnabled = true
-                    }
+            when {
+                j.optBoolean("ok", false) && j.optString("outcome") == "win" -> {
+                    status = t("eazy_chat.games_outcome_win", "You won a gift card!")
+                    playEnabled = false
+                }
+                j.optString("outcome") == "loss" || j.optBoolean("already_played", false) -> {
+                    status = t("eazy_chat.games_outcome_loss", "Not this time. Come back tomorrow.")
+                    playEnabled = false
+                }
+                else -> {
+                    playEnabled = true
                 }
             }
+        }
+    }
+
+    LaunchedEffect(lastStateJson, selectedSlug, pickerItems) {
+        val gs = pickerItems.find { it.slug == selectedSlug }
+        val target = gs?.nextAvailableMs ?: lastStateJson?.optLong("next_available_ms", 0L)?.takeIf { it > 0L }
+        if (gs?.status != "cooldown" || target == null) return@LaunchedEffect
+        while (target > System.currentTimeMillis()) {
+            val sec = ((target - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
+            status =
+                t("eazy_chat.games_cooldown_wait", "Available again in {{time}}").replace(
+                    "{{time}}",
+                    formatCooldownLabel(sec),
+                )
+            playEnabled = false
+            delay(1000)
         }
     }
 
@@ -630,6 +669,7 @@ fun EazyDailyGamePanel(
             onNotifyChange = { push, email ->
                 notifyPush = push
                 notifyEmail = email
+                syncReminderFromState(lastStateJson)
             },
             t = t,
         )

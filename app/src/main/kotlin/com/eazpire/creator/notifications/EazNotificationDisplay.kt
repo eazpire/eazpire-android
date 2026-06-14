@@ -31,6 +31,7 @@ import kotlin.math.min
 object EazNotificationDisplay {
     private const val REQ_PUSH = 1001
     private const val REQ_CART = 1002
+    private const val REQ_DAILY_GAME = 1004
 
     /** Large-icon / hero bitmap size (px). */
     private const val HERO_ICON_DP = 256f
@@ -191,6 +192,7 @@ object EazNotificationDisplay {
                 "open_target" to "eazy_games",
                 "category" to "daily_game_reminder",
             )
+        val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_shop), isRemoteImage = false)
         postNotification(
             context = app,
             channelId = EazNotificationChannels.PUSH_IN_APP,
@@ -199,7 +201,7 @@ object EazNotificationDisplay {
             notificationId = REQ_DAILY_GAME,
             requestCode = REQ_DAILY_GAME,
             extras = extras,
-            heroVisual = null,
+            heroVisual = heroVisual,
         )
     }
 

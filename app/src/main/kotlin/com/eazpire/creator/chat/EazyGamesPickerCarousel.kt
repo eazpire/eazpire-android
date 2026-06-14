@@ -46,20 +46,29 @@ data class DailyGamePickerItem(
     val available: Boolean,
     val status: String,
     val cooldownRemainingSec: Int,
+    val nextAvailableMs: Long? = null,
 )
 
 fun parseDailyGamePickerItems(arr: JSONArray?): List<DailyGamePickerItem> {
     if (arr == null) return emptyList()
     return (0 until arr.length()).mapNotNull { i ->
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        val nextMs = o.optLong("next_available_ms", 0L).takeIf { it > 0L }
         DailyGamePickerItem(
             slug = o.optString("slug", ""),
             title = o.optString("title", o.optString("slug", "Game")),
             available = o.optBoolean("available", true),
             status = o.optString("status", "available"),
             cooldownRemainingSec = o.optInt("cooldown_remaining_sec", 0),
+            nextAvailableMs = nextMs,
         )
     }.filter { it.slug.isNotBlank() }
+}
+
+private fun cooldownSecFromMs(ms: Long?): Int {
+    val target = ms ?: return 0
+    val sec = kotlin.math.ceil((target - System.currentTimeMillis()) / 1000.0).toInt()
+    return sec.coerceAtLeast(0)
 }
 
 private fun formatCooldown(sec: Int): String {
@@ -94,19 +103,18 @@ fun EazyGamesPickerCarousel(
         localItems = items
     }
 
-    LaunchedEffect(localItems.any { it.status == "cooldown" && it.cooldownRemainingSec > 0 }) {
-        while (localItems.any { it.status == "cooldown" && it.cooldownRemainingSec > 0 }) {
+    LaunchedEffect(localItems.any { it.status == "cooldown" && cooldownSecFromMs(it.nextAvailableMs) > 0 }) {
+        while (localItems.any { it.status == "cooldown" && cooldownSecFromMs(it.nextAvailableMs) > 0 }) {
             delay(1000)
             localItems =
                 localItems.map { item ->
-                    if (item.status == "cooldown" && item.cooldownRemainingSec > 0) {
-                        val next = item.cooldownRemainingSec - 1
-                        if (next <= 0) {
-                            item.copy(status = "available", available = true, cooldownRemainingSec = 0)
-                        } else {
-                            item.copy(cooldownRemainingSec = next)
-                        }
-                    } else item
+                    if (item.status != "cooldown") return@map item
+                    val sec = cooldownSecFromMs(item.nextAvailableMs)
+                    if (sec <= 0) {
+                        item.copy(status = "available", available = true, cooldownRemainingSec = 0)
+                    } else {
+                        item.copy(cooldownRemainingSec = sec)
+                    }
                 }
             tick++
         }
