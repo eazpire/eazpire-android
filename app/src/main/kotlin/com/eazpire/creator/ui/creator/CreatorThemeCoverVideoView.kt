@@ -2,6 +2,7 @@ package com.eazpire.creator.ui.creator
 
 import android.content.Context
 import android.graphics.Matrix
+import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.media.MediaPlayer
 import android.net.Uri
@@ -9,7 +10,6 @@ import android.util.AttributeSet
 import android.view.Surface
 import android.view.TextureView
 import android.widget.FrameLayout
-import kotlin.math.max
 
 /**
  * Full-bleed muted loop video — matches web `.creator-theme-bg-video { object-fit: cover }`.
@@ -105,13 +105,13 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
             isLooping = true
             setVolume(0f, 0f)
             setOnVideoSizeChangedListener { _, w, h ->
-                videoWidth = w
-                videoHeight = h
+                this@CreatorThemeCoverVideoView.videoWidth = w
+                this@CreatorThemeCoverVideoView.videoHeight = h
                 applyCoverTransform()
             }
             setOnPreparedListener { mp ->
-                videoWidth = mp.videoWidth
-                videoHeight = mp.videoHeight
+                this@CreatorThemeCoverVideoView.videoWidth = mp.videoWidth
+                this@CreatorThemeCoverVideoView.videoHeight = mp.videoHeight
                 applyCoverTransform()
                 if (shouldPlay) {
                     try {
@@ -124,23 +124,16 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
         }
     }
 
-    /** object-fit: cover — scale to fill viewport, center crop overflow */
+    /** object-fit: cover — same as web `object-fit: cover` / ScaleToFit.FILL */
     private fun applyCoverTransform() {
-        val viewW = textureView.width
-        val viewH = textureView.height
-        if (viewW <= 0 || viewH <= 0 || videoWidth <= 0 || videoHeight <= 0) return
-
-        val scaleX = viewW.toFloat() / videoWidth.toFloat()
-        val scaleY = viewH.toFloat() / videoHeight.toFloat()
-        val scale = max(scaleX, scaleY)
-        val scaledW = videoWidth * scale
-        val scaledH = videoHeight * scale
-        val dx = (viewW - scaledW) / 2f
-        val dy = (viewH - scaledH) / 2f
+        val viewW = width.toFloat()
+        val viewH = height.toFloat()
+        if (viewW <= 0f || viewH <= 0f || videoWidth <= 0 || videoHeight <= 0) return
 
         val matrix = Matrix()
-        matrix.setScale(scale, scale)
-        matrix.postTranslate(dx, dy)
+        val viewRect = RectF(0f, 0f, viewW, viewH)
+        val videoRect = RectF(0f, 0f, videoWidth.toFloat(), videoHeight.toFloat())
+        matrix.setRectToRect(videoRect, viewRect, Matrix.ScaleToFit.FILL)
         textureView.setTransform(matrix)
     }
 

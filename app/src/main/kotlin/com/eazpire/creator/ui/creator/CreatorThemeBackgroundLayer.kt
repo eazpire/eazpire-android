@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -94,44 +97,48 @@ private fun CreatorThemeVideoBackground(
     resumeNonce: Int,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    val videoView = remember { mutableMapOf<String, CreatorThemeCoverVideoView>() }
+    var coverView by remember(videoUrl) { mutableStateOf<CreatorThemeCoverVideoView?>(null) }
 
     LaunchedEffect(resumeNonce, videoUrl) {
-        videoView[videoUrl]?.resumeIfReady()
+        coverView?.setShouldPlay(true)
+        coverView?.resumeIfReady()
     }
 
     DisposableEffect(lifecycleOwner, videoUrl) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> videoView[videoUrl]?.resumeIfReady()
-                Lifecycle.Event.ON_PAUSE -> videoView[videoUrl]?.setShouldPlay(false)
+                Lifecycle.Event.ON_RESUME -> {
+                    coverView?.setShouldPlay(true)
+                    coverView?.resumeIfReady()
+                }
+                Lifecycle.Event.ON_PAUSE -> coverView?.setShouldPlay(false)
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            videoView.values.forEach { it.release() }
-            videoView.clear()
+            coverView?.release()
+            coverView = null
         }
     }
 
     AndroidView(
         factory = { ctx ->
-            CreatorThemeCoverVideoView(ctx).also {
-                videoView[videoUrl] = it
-                it.setVideoUrl(videoUrl)
-                it.setShouldPlay(true)
+            CreatorThemeCoverVideoView(ctx).also { view ->
+                coverView = view
+                view.setVideoUrl(videoUrl)
+                view.setShouldPlay(true)
             }
         },
         update = { view ->
-            videoView[videoUrl] = view
+            coverView = view
             view.setVideoUrl(videoUrl)
             view.setShouldPlay(true)
         },
         onRelease = { view ->
             view.release()
-            videoView.remove(videoUrl)
+            if (coverView === view) coverView = null
         },
         modifier = Modifier.fillMaxSize(),
     )
