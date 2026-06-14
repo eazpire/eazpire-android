@@ -489,37 +489,48 @@ class CreatorApi(
             },
         )
 
-    suspend fun postDailyGameNumberRushBegin(shop: String, ownerId: String): JSONObject =
+    suspend fun postDailyGameSimonBegin(shop: String, ownerId: String): JSONObject =
         postDailyGamePlayJson(
             shop,
             JSONObject().apply {
                 put("owner_id", ownerId)
                 put("shop", shop)
-                put("game_slug", "number_rush")
-                put("number_rush_action", "begin")
+                put("game_slug", "simon_says")
+                put("simon_action", "begin")
             },
         )
 
-    suspend fun postDailyGameNumberRushTap(shop: String, ownerId: String, cellIndex: Int): JSONObject =
+    suspend fun postDailyGameSimonStartInput(shop: String, ownerId: String): JSONObject =
         postDailyGamePlayJson(
             shop,
             JSONObject().apply {
                 put("owner_id", ownerId)
                 put("shop", shop)
-                put("game_slug", "number_rush")
-                put("number_rush_action", "tap")
-                put("cell_index", cellIndex)
+                put("game_slug", "simon_says")
+                put("simon_action", "start_input")
             },
         )
 
-    suspend fun postDailyGameNumberRushForfeit(shop: String, ownerId: String): JSONObject =
+    suspend fun postDailyGameSimonTap(shop: String, ownerId: String, color: Int): JSONObject =
         postDailyGamePlayJson(
             shop,
             JSONObject().apply {
                 put("owner_id", ownerId)
                 put("shop", shop)
-                put("game_slug", "number_rush")
-                put("number_rush_action", "forfeit")
+                put("game_slug", "simon_says")
+                put("simon_action", "tap")
+                put("color", color)
+            },
+        )
+
+    suspend fun postDailyGameSimonForfeit(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("game_slug", "simon_says")
+                put("simon_action", "forfeit")
             },
         )
 
@@ -871,6 +882,9 @@ class CreatorApi(
 
     /** GET ?op=country-product-counts – Returns { ok, counts: { "DE": 1234, ... } } */
     suspend fun getCountryProductCounts(): JSONObject = call("country-product-counts")
+
+    /** GET ?op=get-ui-animation-flags – public UI animation toggles (creator + shop scopes). */
+    suspend fun getUiAnimationFlags(): JSONObject = call("get-ui-animation-flags")
 
     /** GET ?op=list-customer-mockups&owner_id=xxx → { ok, mockups: [...] } */
     suspend fun listCustomerMockups(ownerId: String, productKey: String? = null): JSONObject = call(

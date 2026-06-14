@@ -74,31 +74,22 @@ private fun parseConnectSession(j: JSONObject): ConnectSessionUi? {
     )
 }
 
-private fun parseNumberRushSession(j: JSONObject): NumberRushSessionUi? {
-    val gridArr = j.optJSONArray("number_rush_grid") ?: return null
-    val timing = j.optJSONObject("number_rush_timing") ?: return null
-    val tappedArr = j.optJSONArray("number_rush_tapped")
-    val tapped =
-        if (tappedArr != null) {
-            buildSet {
-                for (i in 0 until tappedArr.length()) {
-                    add(tappedArr.getInt(i))
-                }
-            }
-        } else {
-            emptySet()
-        }
-    return NumberRushSessionUi(
-        grid = parseNumberRushGrid(gridArr),
+private fun parseSimonSession(j: JSONObject): SimonSessionUi? {
+    val timing = j.optJSONObject("simon_timing") ?: return null
+    val stepsArr = j.optJSONArray("simon_playback_steps") ?: return null
+    val steps = List(stepsArr.length()) { stepsArr.getInt(it) }
+    return SimonSessionUi(
         timing =
-            NumberRushTimingUi(
+            SimonTimingUi(
                 deadlineMs = timing.optLong("deadline_ms"),
                 serverNowMs = timing.optLong("server_now_ms"),
-                playMs = timing.optLong("play_ms", 90_000L),
-                cols = timing.optInt("cols", 4),
+                playMsPerRound = timing.optLong("play_ms_per_round", 14_000L),
+                flashMs = timing.optLong("flash_ms", 550L),
             ),
-        nextExpected = j.optInt("number_rush_next", 1).coerceAtLeast(1),
-        tapped = tapped,
+        targetRounds = j.optInt("simon_target_rounds", 7),
+        round = j.optInt("simon_round", 0),
+        playbackSteps = steps,
+        phase = j.optString("simon_phase", "playback"),
     )
 }
 
@@ -133,10 +124,10 @@ fun EazyDailyGamePanel(
     var notifyEmail by remember { mutableStateOf(false) }
     var resumeMemory by remember { mutableStateOf(false) }
     var resumeConnect by remember { mutableStateOf(false) }
-    var resumeNumberRush by remember { mutableStateOf(false) }
+    var resumeSimon by remember { mutableStateOf(false) }
     var memorySession by remember { mutableStateOf<Pair<MemoryDeckUi, MemoryTimingUi>?>(null) }
     var connectSession by remember { mutableStateOf<ConnectSessionUi?>(null) }
-    var numberRushSession by remember { mutableStateOf<NumberRushSessionUi?>(null) }
+    var simonSession by remember { mutableStateOf<SimonSessionUi?>(null) }
     var showConnectTutorial by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
     var lastStateJson by remember { mutableStateOf<JSONObject?>(null) }
@@ -194,7 +185,7 @@ fun EazyDailyGamePanel(
                 listOf(
                     DailyGamePickerItem("memory_match", "Memory Match", true, "available", 0),
                     DailyGamePickerItem("connect_four_5x5", "Connect Four", true, "available", 0),
-                    DailyGamePickerItem("number_rush", "Number Rush", true, "available", 0),
+                    DailyGamePickerItem("simon_says", "Simon Says", true, "available", 0),
                 )
         }
         selectedSlug =
@@ -249,15 +240,15 @@ fun EazyDailyGamePanel(
             return
         }
 
-        if (j.optBoolean("pending_number_rush", false)) {
-            selectedSlug = "number_rush"
+        if (j.optBoolean("pending_simon", false)) {
+            selectedSlug = "simon_says"
             playEnabled = false
             status =
                 t(
-                    "eazy_chat.games_nr_resume",
+                    "eazy_chat.games_simon_resume",
                     "You have a game in progress — continuing.",
                 )
-            resumeNumberRush = true
+            resumeSimon = true
             return
         }
 
@@ -340,11 +331,11 @@ fun EazyDailyGamePanel(
     LaunchedEffect(ownerId, canPlay, isLoggedIn) {
         memorySession = null
         connectSession = null
-        numberRushSession = null
+        simonSession = null
         showConnectTutorial = false
         resumeMemory = false
         resumeConnect = false
-        resumeNumberRush = false
+        resumeSimon = false
         if (!canPlay) return@LaunchedEffect
         loading = true
         status = t("eazy_chat.games_loading", "Loading…")
@@ -421,22 +412,22 @@ fun EazyDailyGamePanel(
         }
     }
 
-    LaunchedEffect(resumeNumberRush, ownerId, canPlay) {
+    LaunchedEffect(resumeSimon, ownerId, canPlay) {
         val oid = ownerId ?: return@LaunchedEffect
-        if (!canPlay || !resumeNumberRush) return@LaunchedEffect
-        resumeNumberRush = false
+        if (!canPlay || !resumeSimon) return@LaunchedEffect
+        resumeSimon = false
         loading = true
         try {
-            val j = api.postDailyGameNumberRushBegin(shop, oid)
-            val parsed = parseNumberRushSession(j)
+            val j = api.postDailyGameSimonBegin(shop, oid)
+            val parsed = parseSimonSession(j)
             if (j.optBoolean("ok", false) && parsed != null) {
-                numberRushSession = parsed
+                simonSession = parsed
                 status = ""
             } else {
                 status =
                     j.optString(
                         "message",
-                        t("eazy_chat.games_nr_board_error", "Could not load the game board."),
+                        t("eazy_chat.games_simon_board_error", "Could not load the game board."),
                     )
                 playEnabled = true
             }
@@ -593,8 +584,8 @@ fun EazyDailyGamePanel(
         return
     }
 
-    val nrSess = numberRushSession
-    if (nrSess != null) {
+    val simonSess = simonSession
+    if (simonSess != null) {
         val oid = ownerId ?: return
         Column(
             modifier =
@@ -606,15 +597,15 @@ fun EazyDailyGamePanel(
             prizeLine?.let { line ->
                 Text(text = line, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
             }
-            EazyNumberRushDailyBoard(
+            EazySimonDailyBoard(
                 api = api,
                 shop = shop,
                 ownerId = oid,
-                session = nrSess,
+                session = simonSess,
                 onRoundComplete = {
                     scope.launch {
                         busy = true
-                        numberRushSession = null
+                        simonSession = null
                         try {
                             val st = api.getDailyGameState(shop, ownerId)
                             if (st.optBoolean("ok", false)) applyStateJson(st)
@@ -703,17 +694,17 @@ fun EazyDailyGamePanel(
                                 showConnectTutorial = true
                                 status = ""
                             }
-                        } else if (selectedSlug == "number_rush") {
-                            val j = api.postDailyGameNumberRushBegin(shop, oid)
-                            val parsed = parseNumberRushSession(j)
+                        } else if (selectedSlug == "simon_says") {
+                            val j = api.postDailyGameSimonBegin(shop, oid)
+                            val parsed = parseSimonSession(j)
                             if (j.optBoolean("ok", false) && parsed != null) {
-                                numberRushSession = parsed
+                                simonSession = parsed
                                 status = ""
                             } else {
                                 status =
                                     j.optString(
                                         "message",
-                                        t("eazy_chat.games_nr_board_error", "Could not load the game board."),
+                                        t("eazy_chat.games_simon_board_error", "Could not load the game board."),
                                     )
                                 playEnabled = true
                             }
