@@ -211,18 +211,6 @@ private fun SlmOverviewScreen(
             color = Color.White,
             modifier = Modifier.padding(top = 24.dp)
         )
-        Text(
-            text = translationStore.t("creator.sales_modal.recent_activity", "Recent activity"),
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
-            modifier = Modifier.padding(top = 16.dp)
-        )
-        Text(
-            text = translationStore.t("creator.sales_modal.no_activity", "No activity yet"),
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.6f),
-            modifier = Modifier.padding(top = 8.dp)
-        )
     }
 }
 
