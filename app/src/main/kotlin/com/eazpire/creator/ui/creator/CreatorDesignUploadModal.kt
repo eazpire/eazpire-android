@@ -188,7 +188,7 @@ fun CreatorDesignUploadModal(
         fullscreen = true,
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
         ) {
             // Header – wie Filter Modal
             Row(

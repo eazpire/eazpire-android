@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -72,7 +73,8 @@ fun ProductCarouselSection(
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }
     val localeStore = remember { LocaleStore(context) }
-    val region = remember { localeStore.getRegionCodeSync() }
+    val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
+    val catalogRegion by localeStore.regionCode.collectAsState(initial = localeStore.getRegionCodeSync())
 
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
     LaunchedEffect(ownerId, reloadTrigger) {
@@ -119,12 +121,6 @@ fun ProductCarouselSection(
     var homeCreatorsSort by remember { mutableStateOf("recommend") }
     var homeCreatorsLoading by remember { mutableStateOf(false) }
 
-    val heroFallbackHandle =
-        remember(sectionPools) {
-            sectionPools["new_arrivals"]?.get("all")?.firstOrNull()?.handle
-                ?: sectionPools["bestseller"]?.get("all")?.firstOrNull()?.handle
-        }
-
     LaunchedEffect(loadCreatorsSection, homeCreatorsSort, reloadTrigger) {
         if (!loadCreatorsSection) return@LaunchedEffect
         homeCreatorsLoading = homeCreators.isEmpty()
@@ -137,7 +133,7 @@ fun ProductCarouselSection(
         }
     }
 
-    LaunchedEffect(region, reloadTrigger) {
+    LaunchedEffect(countryCode, catalogRegion, reloadTrigger) {
         loadCreatorsSection = false
         promoProducts = emptyList()
         sectionPools = emptyMap()
@@ -146,17 +142,16 @@ fun ProductCarouselSection(
         homeHeroImages = emptyList()
         homeCreators = emptyList()
 
-        val countryCode = localeStore.getCountryCodeSync()
         val pools = mutableMapOf<String, HomeCategoryPools>()
         coroutineScope {
             val heroDeferred = async(Dispatchers.IO) {
-                fetchHeroImagesForHome(CreatorApi(), region, heroFallbackHandle)
+                fetchHeroImagesForHome(CreatorApi(), catalogRegion)
             }
             val promoDeferred = async(Dispatchers.IO) {
                 loadHomePromotionsFromWorker(creatorApi, HOME_INITIAL_PRODUCTS, countryCode)
             }
             val scratchDeferred = async(Dispatchers.IO) {
-                loadCreateScratchCatalog(creatorApi, region)
+                loadCreateScratchCatalog(creatorApi, catalogRegion)
             }
             val sectionDeferreds = HOME_PRODUCT_SECTIONS.map { def ->
                 async(Dispatchers.IO) {
@@ -208,14 +203,13 @@ fun ProductCarouselSection(
         }
     }
 
-    LaunchedEffect(selectedCategory, sectionPools, region) {
+    LaunchedEffect(selectedCategory, sectionPools, countryCode, catalogRegion) {
         if (selectedCategory == "all") return@LaunchedEffect
         val chip = selectedCategory
         val defsToLoad = HOME_PRODUCT_SECTIONS.filter { def ->
             !sectionPools[def.id].orEmpty().containsKey(chip)
         }
         if (defsToLoad.isEmpty()) return@LaunchedEffect
-        val countryCode = localeStore.getCountryCodeSync()
         loadingCategories = loadingCategories + chip
         try {
             val updated = sectionPools.toMutableMap()
@@ -291,7 +285,6 @@ fun ProductCarouselSection(
                     },
                     onHotspotProductClick = onHotspotProductClick,
                     productModalHandleState = productModalHandleState,
-                    fallbackProductHandle = heroFallbackHandle,
                     heroImages = homeHeroImages.takeIf { it.isNotEmpty() },
                 )
             }

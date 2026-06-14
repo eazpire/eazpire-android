@@ -89,12 +89,9 @@ private fun rememberSheetContentMaxHeight(
     maxHeightFraction: Float?,
     constraintsMaxHeight: Dp,
 ): Dp? {
-    val density = LocalDensity.current
-    val navBottomDp = with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
-    val available = (constraintsMaxHeight - navBottomDp).coerceAtLeast(0.dp)
     return when {
-        fullscreen -> available
-        maxHeightFraction != null -> available * maxHeightFraction
+        fullscreen -> constraintsMaxHeight
+        maxHeightFraction != null -> constraintsMaxHeight * maxHeightFraction
         else -> null
     }
 }
@@ -144,7 +141,7 @@ fun EazBottomSheet(
                     }
                 )
             if (useExpandedLayout) {
-                Box(modifier = columnModifier.clipToBounds()) {
+                Column(modifier = columnModifier.clipToBounds()) {
                     content()
                 }
             } else {
@@ -176,7 +173,8 @@ fun EazFullScreenDialog(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding(),
+                .statusBarsPadding()
+                .navigationBarsPadding(),
         ) {
             Box(
                 modifier = Modifier

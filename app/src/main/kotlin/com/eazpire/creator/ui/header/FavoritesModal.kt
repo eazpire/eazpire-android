@@ -363,7 +363,7 @@ fun FavoritesModal(
         containerColor = Color.White,
         fullscreen = true,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 Column(
                     modifier = Modifier

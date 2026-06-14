@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -63,6 +64,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -88,6 +91,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
@@ -169,16 +175,25 @@ fun MenuDrawer(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
             dismissOnBackPress = true,
             dismissOnClickOutside = true
         )
     ) {
+        val dialogView = LocalView.current
+        SideEffect {
+            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            if (window != null) {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+            }
+            ViewCompat.requestApplyInsets(dialogView)
+        }
         CompositionLocalProvider(LocalTranslationStore provides translationStore) {
             val t = (translationStore ?: LocalTranslationStore.current)?.let { store ->
                 { k: String, d: String -> store.t(k, d) }
             } ?: { _: String, d: String -> d }
 
-            BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+            BoxWithConstraints(modifier = modifier.fillMaxSize().navigationBarsPadding()) {
                 val density = LocalDensity.current
                 val drawerWidthPx = with(density) { maxWidth.toPx() }
 
@@ -568,7 +583,7 @@ private fun MenuDrawerInteractiveRoot(
     val listExpandedMap = remember { mutableStateMapOf<String, Boolean>() }
     val tileExpandMap = remember { mutableStateMapOf<String, Boolean>() }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier =
                 Modifier
@@ -580,8 +595,8 @@ private fun MenuDrawerInteractiveRoot(
         Column(
             modifier =
                 Modifier
-                    .fillMaxHeight()
                     .fillMaxWidth()
+                    .height(maxHeight)
                     .align(Alignment.CenterStart)
                     .offset { IntOffset(offsetXPx.roundToInt(), 0) }
                     .background(Color(0xFFFEF5ED))
@@ -2412,6 +2427,7 @@ private fun MenuDrawerFooter(
             Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
+                .imePadding()
                 .background(Color.White)
                 .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,

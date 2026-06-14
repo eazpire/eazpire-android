@@ -908,7 +908,8 @@ fun ShopScreen(
                             localeStore = localeStore,
                             translationStore = translationStore,
                             tokenStore = tokenStore,
-                            onWalletClick = { voucherModalVisible = true }
+                            onWalletClick = { voucherModalVisible = true },
+                            onCountryChange = { refreshShopContent() },
                         )
                         GlobalFooter(onTermsClick = { termsModalVisible = true })
                     }

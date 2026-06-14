@@ -605,11 +605,8 @@ fun ProductDetailScreen(
     } else {
         Modifier.fillMaxWidth()
     }
-    val layoutHeightModifier = if (showCloseButton) {
-        Modifier.fillMaxWidth()
-    } else {
-        Modifier.fillMaxWidth().fillMaxHeight()
-    }
+    val layoutHeightModifier = Modifier.fillMaxWidth().fillMaxHeight()
+    val rootBackground = if (showCloseButton) Color.White else EazColors.Orange
 
     if (isLoading) {
         Box(
@@ -876,7 +873,7 @@ fun ProductDetailScreen(
         }
     }
 
-    Box(modifier = modifier.then(layoutHeightModifier).background(EazColors.Orange)) {
+    Box(modifier = modifier.then(layoutHeightModifier).background(rootBackground)) {
         Column(modifier = layoutHeightModifier) {
         // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
 
@@ -1845,8 +1842,8 @@ fun ProductDetailScreen(
         }
         }
 
-        // Main Footer – flush with screen bottom (root already applies systemBarsPadding)
-        if (favoriteEdit == null) {
+        // Main Footer – only on full-page PDP, not in product modal
+        if (!showCloseButton && favoriteEdit == null) {
             GlobalFooter(
                 onTermsClick = onTermsClick,
             )

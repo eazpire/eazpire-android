@@ -185,6 +185,7 @@ fun CollectionScreen(
     var withinSearchQuery by remember { mutableStateOf("") }
     var filterCountProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
     val localeStore = remember { LocaleStore(context) }
+    val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
     val density = LocalDensity.current
 
     val scope = rememberCoroutineScope()
@@ -202,7 +203,7 @@ fun CollectionScreen(
         scope.launch {
             isLoadingMore = true
             try {
-                val country = localeStore.getCountryCodeSync()
+                val country = countryCode
                 val (nextList, cursor, hasMore) = fetchNextCollectionBatch(
                     api = api,
                     creatorApi = creatorApi,
@@ -223,7 +224,7 @@ fun CollectionScreen(
         }
     }
 
-    LaunchedEffect(collectionHandle, initialProductType, reloadTrigger) {
+    LaunchedEffect(collectionHandle, initialProductType, reloadTrigger, countryCode) {
         loadedProducts = emptyList()
         nextCursor = null
         hasMoreFromApi = false
@@ -237,7 +238,7 @@ fun CollectionScreen(
         }
     }
 
-    LaunchedEffect(collectionHandle, reloadTrigger) {
+    LaunchedEffect(collectionHandle, reloadTrigger, countryCode) {
         isLoading = true
         loadedProducts = emptyList()
         nextCursor = null
@@ -246,7 +247,7 @@ fun CollectionScreen(
         if (collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE) {
             val list = withContext(Dispatchers.IO) {
                 try {
-                    val j = creatorApi.listActiveShopPromotionProducts(localeStore.getCountryCodeSync())
+                    val j = creatorApi.listActiveShopPromotionProducts(countryCode)
                     ShopifyProductsApi.parseActivePromotionProductsResponse(j)
                 } catch (_: Exception) {
                     emptyList()
@@ -258,7 +259,7 @@ fun CollectionScreen(
             isLoading = false
             return@LaunchedEffect
         }
-        val country = localeStore.getCountryCodeSync()
+        val country = countryCode
         val (nextList, cursor, hasMore) = fetchNextCollectionBatch(
             api = api,
             creatorApi = creatorApi,
@@ -276,7 +277,7 @@ fun CollectionScreen(
         isLoading = false
     }
 
-    LaunchedEffect(collectionHandle, filterDrawerVisible, productFilters.isEmpty(), loadedProducts.isEmpty()) {
+    LaunchedEffect(collectionHandle, filterDrawerVisible, productFilters.isEmpty(), loadedProducts.isEmpty(), countryCode) {
         if (collectionHandle == EAZ_PROMOTIONS_COLLECTION_HANDLE) {
             if (filterCountProducts.isEmpty() && loadedProducts.isNotEmpty()) {
                 filterCountProducts = loadedProducts
@@ -294,7 +295,7 @@ fun CollectionScreen(
                 if (r.products.isEmpty() && collectionHandle.isNotBlank()) {
                     r = api.getProducts(limit = 250, cursor = null)
                 }
-                api.mergeShopPromotionOverlay(r.products, localeStore.getCountryCodeSync(), creatorApi)
+                api.mergeShopPromotionOverlay(r.products, countryCode, creatorApi)
             }
         }
     }

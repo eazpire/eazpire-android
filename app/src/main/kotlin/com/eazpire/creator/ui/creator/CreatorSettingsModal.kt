@@ -110,7 +110,7 @@ fun CreatorSettingsModal(
         fullscreen = true,
         dragHandle = null
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             // Icons-only Sidebar (fix, schmal)
             Column(

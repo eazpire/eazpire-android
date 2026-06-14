@@ -140,6 +140,7 @@ fun TermsModal(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight()
                 .background(bgColor)
         ) {
             // Header – title left, close right

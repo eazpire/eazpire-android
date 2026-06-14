@@ -10,11 +10,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalInsets
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -139,8 +140,7 @@ fun CreatorAudioModal(
         fullscreen = true,
         dragHandle = null
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -257,6 +257,7 @@ fun CreatorAudioModal(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(EazModalInsets.stickyFooter())
                     .background(Color(0xFF070B14))
                     .padding(16.dp)
             ) {
@@ -319,7 +320,6 @@ fun CreatorAudioModal(
                 translationStore = translationStore,
                 onLoginClick = onLoginClick,
             )
-        }
         }
     }
 

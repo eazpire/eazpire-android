@@ -283,60 +283,40 @@ private fun parseHotspots(obj: JSONObject): List<HeroHotspot> {
 suspend fun fetchHeroImagesForHome(
     api: CreatorApi,
     heroRegion: String,
-    fallbackProductHandle: String?,
-): List<HeroImage> {
-    var heroImages = withContext(Dispatchers.IO) {
-        try {
-            val json = api.getHeroPublishedRandom(limit = 6, region = heroRegion)
-            if (json.optBoolean("ok", false)) {
-                val arr = json.optJSONArray("images") ?: json.optJSONArray("items")
-                if (arr != null) {
-                    (0 until arr.length()).map { i ->
-                        val obj = arr.getJSONObject(i)
-                        val hotspots = parseHotspots(obj)
-                        HeroImage(
-                            id = obj.optString("id", ""),
-                            imageUrl = obj.optString("image_url", "").takeIf { it.isNotBlank() }
-                                ?: obj.optString("thumbnail_url", ""),
-                            thumbnailUrl = obj.optString("thumbnail_url", "").takeIf { it.isNotBlank() },
-                            title = obj.optString("title", "").takeIf { it.isNotBlank() },
-                            link = null,
-                            hotspots = hotspots,
-                        )
-                    }.filter { it.imageUrl.isNotBlank() }
-                } else {
-                    emptyList()
-                }
+): List<HeroImage> = withContext(Dispatchers.IO) {
+    try {
+        val json = api.getHeroPublishedRandom(limit = 6, region = heroRegion)
+        if (json.optBoolean("ok", false)) {
+            val arr = json.optJSONArray("images") ?: json.optJSONArray("items")
+            if (arr != null) {
+                (0 until arr.length()).map { i ->
+                    val obj = arr.getJSONObject(i)
+                    val hotspots = parseHotspots(obj)
+                    HeroImage(
+                        id = obj.optString("id", ""),
+                        imageUrl = obj.optString("image_url", "").takeIf { it.isNotBlank() }
+                            ?: obj.optString("thumbnail_url", ""),
+                        thumbnailUrl = obj.optString("thumbnail_url", "").takeIf { it.isNotBlank() },
+                        title = obj.optString("title", "").takeIf { it.isNotBlank() },
+                        link = null,
+                        hotspots = hotspots,
+                    )
+                }.filter { it.imageUrl.isNotBlank() }
             } else {
                 emptyList()
             }
-        } catch (e: Exception) {
-            debugLog(
-                "HeroCarousel.kt:fetch",
-                "Hero API error",
-                mapOf("error" to (e.message ?: "unknown")),
-                "hero_load",
-            )
+        } else {
             emptyList()
         }
-    }
-    val useFallback = heroImages.isEmpty() || (heroImages.size == 1 && heroImages[0].id == "fallback")
-    if (useFallback) {
-        val handle = fallbackProductHandle?.takeIf { it.isNotBlank() } ?: "gift-card"
-        heroImages = listOf(
-            HeroImage(
-                id = "fallback",
-                imageUrl = "https://picsum.photos/800/600",
-                thumbnailUrl = null,
-                title = "Test",
-                link = null,
-                hotspots = listOf(
-                    HeroHotspot(0.5f, 0.5f, "/products/$handle", "Test Hotspot", handle),
-                ),
-            ),
+    } catch (e: Exception) {
+        debugLog(
+            "HeroCarousel.kt:fetch",
+            "Hero API error",
+            mapOf("error" to (e.message ?: "unknown")),
+            "hero_load",
         )
+        emptyList()
     }
-    return heroImages
 }
 
 @Composable
@@ -344,7 +324,6 @@ fun HeroCarousel(
     onProductClick: ((String) -> Unit)? = null,
     onHotspotProductClick: ((String) -> Unit)? = null,
     productModalHandleState: MutableState<String?>? = null,
-    fallbackProductHandle: String? = null,
     /** When set, skips internal API load (parent caches across LazyColumn dispose). */
     heroImages: List<HeroImage>? = null,
     modifier: Modifier = Modifier,
@@ -358,9 +337,9 @@ fun HeroCarousel(
     val heroRegion by localeStore.regionCode.collectAsState(initial = localeStore.getRegionCodeSync())
     var internalHeroImages by remember { mutableStateOf<List<HeroImage>>(emptyList()) }
 
-    LaunchedEffect(heroRegion, fallbackProductHandle, heroImages) {
+    LaunchedEffect(heroRegion, heroImages) {
         if (heroImages != null) return@LaunchedEffect
-        internalHeroImages = fetchHeroImagesForHome(api, heroRegion, fallbackProductHandle)
+        internalHeroImages = fetchHeroImagesForHome(api, heroRegion)
     }
 
     val displayImages = heroImages ?: internalHeroImages

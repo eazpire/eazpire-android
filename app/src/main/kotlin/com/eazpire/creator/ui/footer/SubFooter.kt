@@ -58,6 +58,8 @@ fun SubFooter(
     translationStore: TranslationStore? = null,
     tokenStore: SecureTokenStore? = null,
     onWalletClick: () -> Unit = {},
+    onCountryChange: (String) -> Unit = {},
+    onLanguageChange: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
@@ -139,8 +141,8 @@ fun SubFooter(
             translationStore = translationStore,
             standardLanguages = languageStandard,
             languageChildren = languageChildren,
-            onCountryChange = { },
-            onLanguageChange = { }
+            onCountryChange = onCountryChange,
+            onLanguageChange = onLanguageChange
         )
         if (ownerId.isNotBlank()) {
             /* 1:1 mit Web: .eaz-wallet-pill.eaz-wallet-pill--footer (eaz-redesign-base.css) */
