@@ -46,6 +46,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalInsets
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
@@ -539,6 +540,7 @@ fun DesignDetailSheet(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .then(EazModalInsets.stickyFooter())
                                         .background(CHeaderFooter)
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -593,6 +595,7 @@ fun DesignDetailSheet(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .then(EazModalInsets.stickyFooter())
                                         .background(CHeaderFooter)
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.SpaceEvenly,

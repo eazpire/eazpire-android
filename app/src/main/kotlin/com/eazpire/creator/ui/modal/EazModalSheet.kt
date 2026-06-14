@@ -44,11 +44,6 @@ import androidx.core.view.WindowCompat
  * [fillMaxWidth] + [ColumnScope.weight].
  */
 object EazModalInsets {
-    /** Scrollable / main body inside a bounded modal column. */
-    fun body(): Modifier = Modifier
-        .weight(1f, fill = false)
-        .fillMaxWidth()
-
     /** Full-screen dialog column root (width + height, below status bar). */
     fun dialogRoot(): Modifier = Modifier
         .fillMaxWidth()
@@ -75,7 +70,7 @@ fun EazModalSheetLayout(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         header?.invoke()
-        Box(modifier = EazModalInsets.body()) {
+        Box(modifier = Modifier.weight(1f, fill = false).fillMaxWidth()) {
             body()
         }
         footer?.invoke()
@@ -174,8 +169,6 @@ fun EazFullScreenDialog(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .statusBarsPadding()
-                .navigationBarsPadding()
-                .imePadding()
         ) {
             Box(modifier = Modifier.weight(1f, fill = true).fillMaxWidth()) {
                 content()
@@ -205,11 +198,13 @@ fun EazModalStickyFooter(
 fun EazModalFooterSurface(
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
+    shadowElevation: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
     Surface(
         modifier = modifier.then(EazModalInsets.stickyFooter()),
         color = color,
+        shadowElevation = shadowElevation,
         content = content,
     )
 }

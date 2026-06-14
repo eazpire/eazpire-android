@@ -97,7 +97,7 @@ fun CreatorSalesModal(
         fullscreen = true,
         dragHandle = null
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
+        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             Column(
                 modifier = Modifier
                     .width(56.dp)

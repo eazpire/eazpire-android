@@ -447,11 +447,7 @@ fun CreatorDetailModal(
     }
 
     EazFullScreenDialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color(0xFF070B14)
-        ) {
-            Column(Modifier.then(EazModalInsets.dialogRoot())) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight()) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -642,7 +638,6 @@ fun CreatorDetailModal(
                 }
             }
         }
-    }
 
     if (showUploadSource) {
         AlertDialog(

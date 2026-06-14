@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,6 +55,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalInsets
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -598,9 +600,15 @@ fun ProductDetailScreen(
         }
     }
 
+    val modalFooterModifier = if (showCloseButton) {
+        EazModalInsets.stickyFooter()
+    } else {
+        Modifier.fillMaxWidth()
+    }
+
     if (isLoading) {
         Box(
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier.fillMaxWidth().fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(color = EazColors.Orange)
@@ -614,7 +622,7 @@ fun ProductDetailScreen(
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     if (p == null) {
         Box(
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier.fillMaxWidth().fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
             Text(t("product.not_found", "Product not found"), color = EazColors.TextSecondary)
@@ -863,8 +871,8 @@ fun ProductDetailScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize().background(EazColors.Orange)) {
-        Column(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxWidth().fillMaxHeight().background(EazColors.Orange)) {
+        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
         // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
 
         Column(
@@ -1446,11 +1454,9 @@ fun ProductDetailScreen(
         if (favoriteEdit != null) {
             val editCtx = favoriteEdit
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
+                modifier = modalFooterModifier
                     .background(Color.White)
                     .padding(horizontal = 12.dp, vertical = 12.dp)
-                    .navigationBarsPadding()
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1513,8 +1519,7 @@ fun ProductDetailScreen(
         } else {
         // PDP Sub-Footer – 2 rows like web (Row 1: qty, fav, share, total | Row 2: price, delivery, cart, buy)
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
+            modifier = modalFooterModifier
                 .background(Color.White)
                 .padding(horizontal = 12.dp)
         ) {

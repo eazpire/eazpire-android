@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalStickyFooter
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -187,9 +188,7 @@ fun CreatorDesignUploadModal(
         maxHeightFraction = 0.88f,
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight()
+            modifier = Modifier.fillMaxWidth(),
         ) {
             // Header – wie Filter Modal
             Row(
@@ -516,12 +515,9 @@ fun CreatorDesignUploadModal(
             }
 
             // Footer – Cancel schmaler, Upload mehr Fläche
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF02060F).copy(alpha = 0.9f))
-                    .padding(16.dp, 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            EazModalStickyFooter(
+                modifier = Modifier.background(Color(0xFF02060F).copy(alpha = 0.9f)).padding(16.dp, 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Button(
                     onClick = onDismiss,
@@ -586,8 +582,6 @@ fun CreatorDesignUploadModal(
             }
         }
     }
-
-    // Creator-Auswahl-Modal (wie Filter Modal)
     if (creatorSelectModalVisible && creatorNames.isNotEmpty()) {
         CreatorSelectModal(
             options = creatorNames,

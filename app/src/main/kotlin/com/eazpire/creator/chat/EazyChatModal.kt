@@ -846,7 +846,7 @@ fun EazyChatModal(
             dismissOnClickOutside = true
         )
     ) {
-        BoxWithConstraints(modifier = EazModalInsets.dialogRoot()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             val isWideLayout = maxWidth > 600.dp
             var sidebarOpen by remember(isWideLayout) { mutableStateOf(isWideLayout) }
             LaunchedEffect(isWideLayout) {
@@ -855,10 +855,11 @@ fun EazyChatModal(
 
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .fillMaxHeight()
                     .background(LocalEazyModalPalette.current.bg)
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1567,7 +1568,8 @@ fun EazyChatModal(
                 if (sidebarOpen) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
+                            .fillMaxHeight()
                             .background(Color.Black.copy(alpha = 0.4f))
                             .clickable(
                                 indication = null,

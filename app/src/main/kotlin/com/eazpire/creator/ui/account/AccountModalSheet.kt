@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -28,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalFooterSurface
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -94,13 +94,9 @@ fun AccountModalSheet(
         modifier = modifier,
         maxHeightFraction = 0.95f,
     ) {
-        Surface(
-            modifier = modifier.fillMaxSize().padding(0.dp),
-            color = Color.White
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Row(
+        Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+            Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+            Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -142,7 +138,7 @@ fun AccountModalSheet(
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        val tabModifier = Modifier.fillMaxSize()
+                        val tabModifier = Modifier.fillMaxWidth().fillMaxHeight()
                         when (val tab = AccountTab.entries[selectedTab]) {
                             AccountTab.Profile -> AccountProfileTab(
                                 tokenStore = tokenStore,
@@ -191,11 +187,9 @@ fun AccountModalSheet(
 
                     val showFooter = selectedTab == 0 || (selectedTab == 2 && sizeAiMeasurementsSubTab) || selectedTab == 3
                     if (showFooter) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
+                        EazModalFooterSurface(
                             shadowElevation = 8.dp,
                             color = Color.White,
-                            tonalElevation = 0.dp
                         ) {
                             Column(
                                 modifier = Modifier
@@ -298,18 +292,19 @@ fun AccountModalSheet(
                             }
                         }
                     }
-                }
+            }
 
-                androidx.compose.animation.AnimatedVisibility(
+            androidx.compose.animation.AnimatedVisibility(
                     visible = drawerOpen,
                     enter = slideInHorizontally(initialOffsetX = { -it }),
                     exit = slideOutHorizontally(targetOffsetX = { -it })
                 ) {
-                    Row(modifier = Modifier.fillMaxSize()) {
+                    Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
                         Box(modifier = Modifier.width(260.dp).fillMaxHeight()) {
                             Column(
                                 modifier = Modifier
-                                    .fillMaxSize()
+                                    .fillMaxWidth()
+                                    .fillMaxHeight()
                                     .background(Color.White)
                                     .verticalScroll(rememberScrollState())
                                     .padding(vertical = 8.dp)
@@ -362,7 +357,6 @@ fun AccountModalSheet(
                         )
                     }
                 }
-            }
         }
     }
 }
