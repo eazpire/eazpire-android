@@ -45,7 +45,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
@@ -444,7 +444,7 @@ fun DesignDetailSheet(
 
     val drawerItemSelected = Color(0xFF1E293B)
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = CContent,

@@ -53,7 +53,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -1907,7 +1907,7 @@ fun ProductDetailScreen(
         val sections = remember(p.bodyHtml) { parseDescriptionSections(p.bodyHtml) }
         var selectedTabIndex by remember { mutableIntStateOf(0) }
 
-        ModalBottomSheet(
+        EazBottomSheet(
             onDismissRequest = { detailsSheetVisible = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
@@ -2006,7 +2006,7 @@ fun ProductDetailScreen(
     }
 
     if (reviewsSheetVisible) {
-        ModalBottomSheet(
+        EazBottomSheet(
             onDismissRequest = { reviewsSheetVisible = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
@@ -2014,7 +2014,6 @@ fun ProductDetailScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 360.dp, max = 680.dp)
-                    .navigationBarsPadding()
             ) {
                 Row(
                     modifier = Modifier

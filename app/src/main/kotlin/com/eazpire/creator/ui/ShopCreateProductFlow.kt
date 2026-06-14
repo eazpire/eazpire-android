@@ -41,7 +41,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -447,11 +447,11 @@ private fun ShopModeBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     BackHandler(onBack = onDismissRequest)
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
         containerColor = Color.White,
-        modifier = Modifier.fillMaxHeight(0.92f),
+        maxHeightFraction = 0.92f,
         dragHandle = {
             Box(
                 modifier = Modifier
@@ -472,7 +472,6 @@ private fun ShopModeBottomSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 16.dp)
             ) {
@@ -712,14 +711,14 @@ private fun ShopCreateFilterDrawer(
         }
     }
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = { dismissAnimated() },
-        sheetState = sheetState
+        sheetState = sheetState,
+        maxHeightFraction = 0.9f,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.9f)
                 .heightIn(min = 450.dp)
         ) {
             Box(
@@ -845,7 +844,6 @@ private fun ShopCreateFilterDrawer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFFF5F5F5))
-                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {

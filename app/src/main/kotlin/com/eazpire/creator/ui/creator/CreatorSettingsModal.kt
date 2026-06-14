@@ -34,7 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.animation.core.RepeatMode
@@ -102,18 +102,15 @@ fun CreatorSettingsModal(
         label = "settingsCodesHintValue",
     )
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color(0xFF070B14),
-        modifier = modifier.fillMaxHeight(1f),
+        modifier = modifier,
+        fullscreen = true,
         dragHandle = null
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding(),
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxSize()) {
             // Icons-only Sidebar (fix, schmal)
             Column(
@@ -190,7 +187,6 @@ fun CreatorSettingsModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .navigationBarsPadding()
                         .background(Color(0xFF0B1220))
                 )
             }

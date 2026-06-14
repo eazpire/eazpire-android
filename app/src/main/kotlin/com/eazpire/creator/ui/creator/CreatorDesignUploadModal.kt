@@ -11,10 +11,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -33,7 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -60,7 +60,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
@@ -97,8 +96,6 @@ fun CreatorDesignUploadModal(
     ownerId: String
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val config = LocalConfiguration.current
-    val maxHeight = (config.screenHeightDp * 0.88f).dp
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -182,16 +179,17 @@ fun CreatorDesignUploadModal(
         return out.toByteArray()
     }
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color(0xFF0F172A),
-        dragHandle = null
+        dragHandle = null,
+        maxHeightFraction = 0.88f,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = maxHeight)
+                .fillMaxHeight()
         ) {
             // Header – wie Filter Modal
             Row(
@@ -611,16 +609,15 @@ private fun CreatorSelectModal(
     translationStore: TranslationStore
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val config = LocalConfiguration.current
-    val maxHeight = (config.screenHeightDp * 0.5f).dp
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color(0xFF0F172A),
-        dragHandle = null
+        dragHandle = null,
+        maxHeightFraction = 0.5f,
     ) {
-        Column(modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -70,7 +70,7 @@ fun LocaleModal(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = sheetContainerColor,
@@ -88,7 +88,6 @@ fun LocaleModal(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .navigationBarsPadding()
                 .padding(horizontal = 16.dp)
         ) {
             Row(

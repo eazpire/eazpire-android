@@ -42,7 +42,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -706,7 +706,7 @@ fun MarketingPromotionsPanel(
     }
 
     if (showSheet) {
-        ModalBottomSheet(
+        EazBottomSheet(
             onDismissRequest = {
                 showSheet = false
                 sheetPage = PromoSheetPage.Form
@@ -729,7 +729,7 @@ fun MarketingPromotionsPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
             ) {
             when (sheetPage) {
                 PromoSheetPage.Form -> {

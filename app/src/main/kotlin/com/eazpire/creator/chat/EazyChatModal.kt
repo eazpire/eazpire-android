@@ -17,13 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -87,7 +82,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
+import com.eazpire.creator.ui.modal.EazFullScreenDialog
+import com.eazpire.creator.ui.modal.EazModalInsets
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,23 +92,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -845,7 +836,7 @@ fun EazyChatModal(
 
     val eazyPalette = remember(chatContext) { eazyPaletteFor(chatContext) }
     CompositionLocalProvider(LocalEazyModalPalette provides eazyPalette) {
-    Dialog(
+    EazFullScreenDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
@@ -854,19 +845,7 @@ fun EazyChatModal(
             dismissOnClickOutside = true
         )
     ) {
-        val dialogView = LocalView.current
-        SideEffect {
-            val window = (dialogView.parent as? DialogWindowProvider)?.window
-            if (window != null) {
-                WindowCompat.setDecorFitsSystemWindows(window, false)
-            }
-            ViewCompat.requestApplyInsets(dialogView)
-        }
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
+        BoxWithConstraints(modifier = EazModalInsets.dialogRoot()) {
             val isWideLayout = maxWidth > 600.dp
             var sidebarOpen by remember(isWideLayout) { mutableStateOf(isWideLayout) }
             LaunchedEffect(isWideLayout) {
@@ -1286,8 +1265,7 @@ fun EazyChatModal(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .background(LocalEazyModalPalette.current.header)
-                                                .windowInsetsPadding(WindowInsets.navigationBars)
-                                                .imePadding()
+                                                .then(EazModalInsets.stickyFooter())
                                         ) {
                                         if (rateLimit != null) {
                                             val rl = rateLimit!!

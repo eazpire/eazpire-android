@@ -1,4 +1,4 @@
-﻿package com.eazpire.creator.ui
+package com.eazpire.creator.ui
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -43,7 +43,6 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults

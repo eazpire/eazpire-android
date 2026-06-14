@@ -27,7 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -87,11 +87,12 @@ fun AccountModalSheet(
     val translationStore = LocalTranslationStore.current
     fun t(key: String, default: String) = translationStore?.t(key, default) ?: default
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.White,
-        modifier = modifier.fillMaxHeight(0.95f)
+        modifier = modifier,
+        maxHeightFraction = 0.95f,
     ) {
         Surface(
             modifier = modifier.fillMaxSize().padding(0.dp),

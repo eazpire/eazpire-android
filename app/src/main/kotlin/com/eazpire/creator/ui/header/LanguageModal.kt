@@ -22,7 +22,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -90,7 +90,7 @@ fun LanguageModal(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = containerColor,
@@ -111,7 +111,6 @@ fun LanguageModal(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .navigationBarsPadding()
                 .padding(horizontal = 16.dp)
         ) {
             Row(
@@ -269,7 +268,7 @@ private fun DialectModal(
 
     val dialectSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = dialectSheetState,
         containerColor = containerColor,
@@ -290,7 +289,6 @@ private fun DialectModal(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .navigationBarsPadding()
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {

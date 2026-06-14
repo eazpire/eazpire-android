@@ -46,7 +46,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -511,7 +511,7 @@ fun AccountCommunityTab(
 
         selectedPartner?.let { partner ->
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-            ModalBottomSheet(
+            EazBottomSheet(
                 onDismissRequest = { selectedPartner = null },
                 sheetState = sheetState,
                 containerColor = LocalCommunityColors.current.sheetContainer
@@ -1187,7 +1187,7 @@ private fun ManageRefLinksModal(
         localActiveId = activeId
     }
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = LocalCommunityColors.current.sheetContainer
     ) {

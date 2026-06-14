@@ -23,7 +23,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -327,14 +327,14 @@ internal fun CollectionFilterDrawer(
         ).size
     }
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        maxHeightFraction = 0.9f,
     ) {
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.9f)
                 .heightIn(min = 450.dp),
         ) {
             Row(
@@ -489,7 +489,6 @@ internal fun CollectionFilterDrawer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFFF5F5F5))
-                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {

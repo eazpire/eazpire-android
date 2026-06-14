@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -38,12 +38,13 @@ fun ProductModal(
     // #endregion
     Log.d("ProductModalDebug", "[8] ProductModal COMPOSING: handle=$productHandle")
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color.White,
         /** Nearly full height so inner Column/weight gets bounded max height (fixes bottom actions in sheet). */
-        modifier = modifier.fillMaxWidth().fillMaxHeight(0.92f)
+        modifier = modifier.fillMaxWidth(),
+        maxHeightFraction = 0.92f,
     ) {
         Box(
             modifier = Modifier

@@ -59,7 +59,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -837,7 +837,7 @@ internal fun ShopPrintifyDesignStudioScreen(
             }
 
             if (isCompact && optionsSheetOpen) {
-                ModalBottomSheet(
+                EazBottomSheet(
                     onDismissRequest = { optionsSheetOpen = false },
                     sheetState = optionsSheetState,
                     containerColor = Color(0xFF0F172A),
@@ -862,8 +862,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = sheetMaxH)
-                            .padding(horizontal = 8.dp)
-                            .navigationBarsPadding(),
+                            .padding(horizontal = 8.dp),
                         showTabRow = optionsSheetShowTabs,
                         optionsTab = optionsTab,
                         designSub = designSub,
@@ -1824,7 +1823,7 @@ private fun StudioDesignPickerDialog(
     }
 
     if (showFilterSheet && isPublic) {
-        ModalBottomSheet(
+        EazBottomSheet(
             onDismissRequest = { showFilterSheet = false },
             sheetState = filterSheetState,
             containerColor = Color(0xFF0F172A)

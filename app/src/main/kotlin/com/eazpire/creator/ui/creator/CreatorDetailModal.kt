@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,15 +40,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.windowInsetsPadding
+import com.eazpire.creator.ui.modal.EazFullScreenDialog
+import com.eazpire.creator.ui.modal.EazModalInsets
+import com.eazpire.creator.ui.modal.EazModalStickyFooter
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -65,13 +63,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
@@ -454,30 +446,12 @@ fun CreatorDetailModal(
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        )
-    ) {
-        val dialogView = LocalView.current
-        SideEffect {
-            val window = (dialogView.parent as? DialogWindowProvider)?.window
-            if (window != null) {
-                WindowCompat.setDecorFitsSystemWindows(window, false)
-            }
-            ViewCompat.requestApplyInsets(dialogView)
-        }
+    EazFullScreenDialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color(0xFF070B14)
         ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-            ) {
+            Column(Modifier.then(EazModalInsets.dialogRoot())) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -641,13 +615,9 @@ fun CreatorDetailModal(
                     }
                 }
 
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF070B14))
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                EazModalStickyFooter(
+                    modifier = Modifier.background(Color(0xFF070B14)).padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,

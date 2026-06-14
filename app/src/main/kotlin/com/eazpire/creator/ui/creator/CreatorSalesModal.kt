@@ -24,7 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -89,19 +89,15 @@ fun CreatorSalesModal(
         }
     }
 
-    ModalBottomSheet(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Color(0xFF070B14),
-        modifier = modifier.fillMaxHeight(1f),
+        modifier = modifier,
+        fullscreen = true,
         dragHandle = null
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-        ) {
+        Row(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .width(56.dp)

@@ -28,7 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
+import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
@@ -203,7 +203,7 @@ fun AutomationsScreen(
     val context = LocalContext.current
 
     if (showCreateSheet) {
-        ModalBottomSheet(
+        EazBottomSheet(
             onDismissRequest = {
                 if (!createSubmitting) showCreateSheet = false
             },
@@ -214,7 +214,6 @@ fun AutomationsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 8.dp)
             ) {
