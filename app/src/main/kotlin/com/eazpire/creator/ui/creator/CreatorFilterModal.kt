@@ -115,8 +115,6 @@ fun CreatorFilterModal(
         onDismiss()
     }
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
