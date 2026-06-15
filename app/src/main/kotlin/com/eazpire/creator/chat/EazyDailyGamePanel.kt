@@ -74,25 +74,6 @@ private fun parseConnectSession(j: JSONObject): ConnectSessionUi? {
     )
 }
 
-private fun parseSimonSession(j: JSONObject): SimonSessionUi? {
-    val timing = j.optJSONObject("simon_timing") ?: return null
-    val stepsArr = j.optJSONArray("simon_playback_steps") ?: return null
-    val steps = List(stepsArr.length()) { stepsArr.getInt(it) }
-    return SimonSessionUi(
-        timing =
-            SimonTimingUi(
-                deadlineMs = timing.optLong("deadline_ms"),
-                serverNowMs = timing.optLong("server_now_ms"),
-                playMsPerRound = timing.optLong("play_ms_per_round", 14_000L),
-                flashMs = timing.optLong("flash_ms", 550L),
-            ),
-        targetRounds = j.optInt("simon_target_rounds", 7),
-        round = j.optInt("simon_round", 0),
-        playbackSteps = steps,
-        phase = j.optString("simon_phase", "playback"),
-    )
-}
-
 private fun formatCooldownLabel(sec: Int): String {
     val s = sec.coerceAtLeast(0)
     val h = s / 3600
