@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -100,6 +101,7 @@ private fun CreatorThemeVideoBackground(
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var coverView by remember(videoUrl) { mutableStateOf<CreatorThemeCoverVideoView?>(null) }
+    var videoPlaying by remember(videoUrl) { mutableStateOf(false) }
     var videoFailed by remember(videoUrl) { mutableStateOf(false) }
 
     LaunchedEffect(resumeNonce, videoUrl) {
@@ -121,13 +123,11 @@ private fun CreatorThemeVideoBackground(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            coverView?.release()
-            coverView = null
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (!posterUrl.isNullOrBlank()) {
+        if (!videoPlaying && !videoFailed && !posterUrl.isNullOrBlank()) {
             AsyncImage(
                 model = posterUrl,
                 contentDescription = null,
@@ -137,27 +137,39 @@ private fun CreatorThemeVideoBackground(
             )
         }
         if (!videoFailed) {
-            AndroidView(
-                factory = { ctx ->
-                    CreatorThemeCoverVideoView(ctx).also { view ->
+            key(videoUrl) {
+                AndroidView(
+                    factory = { ctx ->
+                        CreatorThemeCoverVideoView(ctx).also { view ->
+                            coverView = view
+                            view.onPlaybackReady = { videoPlaying = true }
+                            view.onPlaybackError = { videoFailed = true }
+                            view.setVideoUrl(videoUrl)
+                            view.setShouldPlay(true)
+                        }
+                    },
+                    update = { view ->
                         coverView = view
+                        view.onPlaybackReady = { videoPlaying = true }
                         view.onPlaybackError = { videoFailed = true }
-                        view.setVideoUrl(videoUrl)
                         view.setShouldPlay(true)
-                    }
-                },
-                update = { view ->
-                    coverView = view
-                    view.onPlaybackError = { videoFailed = true }
-                    view.setVideoUrl(videoUrl)
-                    view.setShouldPlay(true)
-                },
-                onRelease = { view ->
-                    view.onPlaybackError = null
-                    view.release()
-                    if (coverView === view) coverView = null
-                },
+                    },
+                    onRelease = { view ->
+                        view.onPlaybackReady = null
+                        view.onPlaybackError = null
+                        view.release()
+                        if (coverView === view) coverView = null
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        } else if (!posterUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = posterUrl,
+                contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                alpha = 0.85f,
             )
         }
     }
