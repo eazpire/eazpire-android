@@ -1,18 +1,30 @@
 package com.eazpire.creator.ui.creator
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -21,14 +33,16 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -41,8 +55,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
@@ -57,6 +75,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private data class JourneyTabItem(val label: String, val icon: ImageVector)
+
+private data class JourneyNodeItem(
+    val nodeKey: String,
+    val category: String,
+    val title: String,
+    val cost: Double,
+    val committed: Double,
+    val minLevel: Int,
+    val unlocked: Boolean,
+    val lockedReason: String,
+)
+
+private val JOURNEY_CATEGORY_ORDER = listOf(
+    "product", "design_type", "variant", "market", "channel",
+    "design_slot", "creator_name", "automation", "promotion", "hero", "social",
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -205,11 +239,8 @@ fun CreatorJourneyModal(
                                     data = journeyData,
                                     translationStore = translationStore,
                                     busy = actionBusy,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .verticalScroll(rememberScrollState())
-                                        .padding(16.dp),
-                                    onCommit = { nodeKey, amount ->
+                                    modifier = Modifier.fillMaxSize(),
+                                    onCommitRequest = { nodeKey, amount ->
                                         if (ownerId.isNullOrBlank()) return@JourneyUnlockTreePanel
                                         scope.launch {
                                             actionBusy = true
@@ -343,71 +374,283 @@ private fun JourneyOverviewPanel(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun JourneyUnlockTreePanel(
     data: JSONObject?,
     translationStore: TranslationStore,
     busy: Boolean,
     modifier: Modifier = Modifier,
-    onCommit: (String, Double) -> Unit,
+    onCommitRequest: (String, Double) -> Unit,
     onUnlock: (String) -> Unit,
 ) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
-    val nodes = data?.optJSONArray("nodes") ?: JSONArray()
+    fun tpl(key: String, fallback: String, vars: Map<String, String>): String {
+        var s = t(key, fallback)
+        vars.forEach { (k, v) -> s = s.replace("{{ $k }}", v).replace("{{$k}}", v) }
+        return s
+    }
+    fun categoryLabel(cat: String): String =
+        if (cat == "all") t("creator.journey.cat_all", "All")
+        else t("creator.journey.cat_$cat", cat.replace('_', ' '))
+
     val balance = data?.optDouble("balance_eaz", 0.0) ?: 0.0
     val isCreator = data?.optBoolean("is_creator", false) == true
+    var treeFilter by remember { mutableStateOf("all") }
+    var commitTarget by remember { mutableStateOf<JourneyNodeItem?>(null) }
+    var commitAmount by remember { mutableStateOf("") }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (i in 0 until nodes.length()) {
-            val n = nodes.getJSONObject(i)
-            val nodeKey = n.optString("node_key")
-            val title = n.optString("product_key")
-                .ifBlank { n.optString("design_type") }
-                .ifBlank { n.optString("region_code") }
-                .ifBlank { n.optString("channel_id") }
-                .ifBlank { nodeKey }
-            val cost = n.optDouble("cost_eaz", 0.0)
-            val committed = n.optDouble("eaz_committed", 0.0)
-            val unlocked = n.optBoolean("unlocked", false)
-            val lockedReason = n.optString("locked_reason", "")
-            val progress = if (cost > 0) (committed / cost).toFloat().coerceIn(0f, 1f) else if (unlocked) 1f else 0f
+    val nodes = remember(data) {
+        val arr = data?.optJSONArray("nodes") ?: JSONArray()
+        buildList {
+            for (i in 0 until arr.length()) {
+                val n = arr.getJSONObject(i)
+                val meta = n.optJSONObject("metadata")
+                val title = meta?.optString("title")?.takeIf { it.isNotBlank() }
+                    ?: n.optString("product_key").takeIf { it.isNotBlank() }
+                    ?: n.optString("design_type").takeIf { it.isNotBlank() }
+                    ?: n.optString("region_code").takeIf { it.isNotBlank() }
+                    ?: n.optString("channel_id").takeIf { it.isNotBlank() }
+                    ?: n.optString("node_key")
+                add(
+                    JourneyNodeItem(
+                        nodeKey = n.optString("node_key"),
+                        category = n.optString("category", "other"),
+                        title = title,
+                        cost = n.optDouble("cost_eaz", 0.0),
+                        committed = n.optDouble("eaz_committed", 0.0),
+                        minLevel = n.optInt("min_level", 2),
+                        unlocked = n.optBoolean("unlocked", false),
+                        lockedReason = n.optString("locked_reason", ""),
+                    )
+                )
+            }
+        }
+    }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF111827), RoundedCornerShape(12.dp))
-                    .padding(12.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text(title, color = Color.White, modifier = Modifier.weight(1f))
-                    Text("Lv.${n.optInt("min_level", 2)}", color = EazColors.Orange, fontSize = 12.sp)
+    val filterCats = remember(nodes) {
+        listOf("all") + JOURNEY_CATEGORY_ORDER.filter { cat -> nodes.any { it.category == cat } }
+    }
+
+    val sections = remember(nodes, treeFilter) {
+        if (treeFilter == "all") {
+            JOURNEY_CATEGORY_ORDER.mapNotNull { cat ->
+                val items = nodes.filter { it.category == cat }
+                if (items.isEmpty()) null else cat to items
+            }
+        } else {
+            listOf(treeFilter to nodes.filter { it.category == treeFilter })
+        }
+    }
+
+    Column(modifier = modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
+            items(filterCats.size) { idx ->
+                val cat = filterCats[idx]
+                FilterChip(
+                    selected = treeFilter == cat,
+                    onClick = { treeFilter = cat },
+                    label = { Text(categoryLabel(cat), fontSize = 12.sp) },
+                )
+            }
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(156.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            sections.forEach { (cat, items) ->
+                if (treeFilter == "all" && items.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            text = categoryLabel(cat),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color.White,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                        )
+                    }
                 }
-                LinearProgressIndicator(
-                    progress = progress,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                items(items, key = { it.nodeKey }) { node ->
+                    JourneyGridCard(
+                        node = node,
+                        isCreator = isCreator,
+                        busy = busy,
+                        translationStore = translationStore,
+                        onCommitClick = {
+                            commitTarget = node
+                            commitAmount = if (balance > 0) {
+                                String.format(java.util.Locale.US, "%.2f", balance)
+                            } else ""
+                        },
+                        onUnlockClick = { onUnlock(node.nodeKey) },
+                    )
+                }
+            }
+        }
+    }
+
+    commitTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { commitTarget = null },
+            title = { Text(t("creator.journey.commit_modal_title", "Commit EAZ")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(t("creator.journey.commit_modal_hint", "How much EAZ do you want to allocate?"), fontSize = 13.sp)
+                    Text(target.title, color = EazColors.Orange, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    Text(
+                        tpl("creator.journey.commit_modal_available", "Available: {{ amount }} EAZ", mapOf("amount" to balance.toString())),
+                        fontSize = 12.sp,
+                        color = Color(0xFF9CA3AF),
+                    )
+                    OutlinedTextField(
+                        value = commitAmount,
+                        onValueChange = { commitAmount = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val amt = commitAmount.toDoubleOrNull() ?: 0.0
+                        if (amt > 0) {
+                            onCommitRequest(target.nodeKey, amt)
+                            commitTarget = null
+                        }
+                    },
+                    enabled = !busy && (commitAmount.toDoubleOrNull() ?: 0.0) > 0,
+                ) { Text(t("creator.journey.commit_confirm", "Confirm")) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { commitTarget = null }) {
+                    Text(t("creator.journey.commit_cancel", "Cancel"))
+                }
+            },
+            containerColor = Color(0xFF0B1220),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xFFE5E7EB),
+        )
+    }
+}
+
+@Composable
+private fun JourneyGridCard(
+    node: JourneyNodeItem,
+    isCreator: Boolean,
+    busy: Boolean,
+    translationStore: TranslationStore,
+    onCommitClick: () -> Unit,
+    onUnlockClick: () -> Unit,
+) {
+    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
+    fun tpl(key: String, fallback: String, vars: Map<String, String>): String {
+        var s = t(key, fallback)
+        vars.forEach { (k, v) -> s = s.replace("{{ $k }}", v).replace("{{$k}}", v) }
+        return s
+    }
+
+    val locked = !node.unlocked && node.lockedReason in listOf("level_required", "creator_code_required")
+    val canAct = !node.unlocked && isCreator && node.lockedReason.isEmpty() && node.cost > 0
+    val unlockReady = canAct && node.committed + 1e-9 >= node.cost
+    val pulse = rememberInfiniteTransition(label = "unlockPulse")
+    val unlockScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = if (unlockReady) 1.04f else 1f,
+        animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),
+        label = "unlockScale",
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                1.dp,
+                if (node.unlocked) Color(0xFF34D399).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.1f),
+                RoundedCornerShape(14.dp),
+            )
+            .background(Color(0xFF111827), RoundedCornerShape(14.dp))
+            .then(if (locked) Modifier else Modifier)
+            .padding(bottom = 10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .background(
+                    Brush.linearGradient(listOf(Color(0xFF1F2937), Color(0xFF111827), Color(0xFF0B1220))),
+                    RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.42f)
+                    .aspectRatio(1f)
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp)),
+            )
+        }
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = node.title,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Start,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = tpl(
+                        "creator.journey.eaz_badge",
+                        "{{ committed }}/{{ cost }} EAZ",
+                        mapOf(
+                            "committed" to node.committed.toInt().toString(),
+                            "cost" to node.cost.toInt().toString(),
+                        ),
+                    ),
+                    fontSize = 10.sp,
                     color = EazColors.Orange,
-                    trackColor = Color(0xFF374151),
+                    modifier = Modifier
+                        .background(EazColors.Orange.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
                 )
                 Text(
-                    "${committed.toInt()} / ${cost.toInt()} EAZ" +
-                        if (unlocked) " · ${t("creator.journey.unlocked", "Unlocked")}" else "",
+                    text = tpl("creator.journey.level_badge", "Level {{ n }}", mapOf("n" to node.minLevel.toString())),
+                    fontSize = 10.sp,
                     color = Color(0xFF9CA3AF),
-                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
                 )
-                if (!unlocked && isCreator && lockedReason.isEmpty() && cost > 0) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                        OutlinedButton(
-                            onClick = { if (balance > 0) onCommit(nodeKey, balance) },
-                            enabled = !busy && balance > 0,
-                        ) {
-                            Text(t("creator.journey.commit_all", "Commit available EAZ"), fontSize = 11.sp)
-                        }
-                        if (committed < cost) {
-                            Button(onClick = { onUnlock(nodeKey) }, enabled = !busy) {
-                                Text(t("creator.journey.unlock_now", "Unlock now"), fontSize = 11.sp)
-                            }
-                        }
-                    }
+            }
+            if (node.unlocked) {
+                Text(
+                    t("creator.journey.unlocked", "Unlocked"),
+                    fontSize = 10.sp,
+                    color = Color(0xFF6EE7B7),
+                )
+            } else if (node.lockedReason == "creator_code_required") {
+                Text(t("creator.journey.code_hint_short", "Creator Code required"), fontSize = 10.sp, color = Color(0xFF9CA3AF))
+            } else if (node.lockedReason == "level_required") {
+                Text(t("creator.journey.level_required", "Higher level required"), fontSize = 10.sp, color = Color(0xFF9CA3AF))
+            }
+            if (canAct) {
+                OutlinedButton(onClick = onCommitClick, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                    Text(t("creator.journey.commit_eaz", "Commit"), fontSize = 11.sp)
+                }
+                Button(
+                    onClick = onUnlockClick,
+                    enabled = !busy && unlockReady,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .scale(if (unlockReady) unlockScale else 1f),
+                ) {
+                    Text(t("creator.journey.unlock_now", "Unlock now"), fontSize = 11.sp)
                 }
             }
         }
