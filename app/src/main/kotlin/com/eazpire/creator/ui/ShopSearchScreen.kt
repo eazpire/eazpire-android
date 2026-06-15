@@ -76,7 +76,7 @@ fun ShopSearchScreen(
 
     val api = remember { ShopifyProductsApi() }
     val context = LocalContext.current
-    val tokenStore = remember { SecureTokenStore(context) }
+    val tokenStore = remember { SecureTokenStore.get(context) }
     val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }

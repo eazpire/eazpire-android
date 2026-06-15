@@ -10,6 +10,7 @@ import com.eazpire.creator.ui.parseMockupTryOnInfo
 import com.eazpire.creator.ui.parseProductColorHexMap
 import com.eazpire.creator.ui.resolveMockupImageUrl
 import com.eazpire.creator.ui.resolveProductColorHex
+import com.eazpire.creator.perf.EazPerfTrace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -278,6 +279,7 @@ object CustomerMockPreviewStore {
         }
 
         val colorMap = runCatching {
+            EazPerfTrace.incrementCounter("mock_color_variant_api")
             val colorsResp = api.getColorVariants(info.productKey)
             if (colorsResp.optBoolean("ok", false)) parseProductColorHexMap(colorsResp) else emptyMap()
         }.getOrDefault(emptyMap())

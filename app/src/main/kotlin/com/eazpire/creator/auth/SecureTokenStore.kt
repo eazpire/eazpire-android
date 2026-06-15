@@ -7,13 +7,14 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.eazpire.creator.debug.AuthDebugLog
+import com.eazpire.creator.perf.EazPerfTrace
 
 /**
  * Speichert JWT und Shopify access_token sicher via EncryptedSharedPreferences.
  * Zusätzlich Spiegel in normalem SharedPreferences, damit Sessions App-Updates überleben,
  * wenn der Keystore-/Encrypted-Prefs-Zustand nach einem Update nicht mehr lesbar ist.
  */
-class SecureTokenStore(context: Context) {
+class SecureTokenStore private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val backupPrefs: SharedPreferences =
         appContext.getSharedPreferences(BACKUP_PREFS_NAME, Context.MODE_PRIVATE)
@@ -42,18 +43,19 @@ class SecureTokenStore(context: Context) {
         }
     }
 
-    private fun createEncryptedPrefs(context: Context): SharedPreferences {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        return EncryptedSharedPreferences.create(
-            context,
-            ENCRYPTED_PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    }
+    private fun createEncryptedPrefs(context: Context): SharedPreferences =
+        EazPerfTrace.measureSection("SecureTokenStore.init") {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                ENCRYPTED_PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }
 
     /** After updates, encrypted prefs may be empty while the plain backup still holds the session. */
     private fun ensureSessionHydrated(encrypted: SharedPreferences) {
@@ -239,6 +241,17 @@ class SecureTokenStore(context: Context) {
     }
 
     companion object {
+        @Volatile
+        private var instance: SecureTokenStore? = null
+
+        /** Process-wide singleton — Keystore init runs once per cold start. */
+        fun get(context: Context): SecureTokenStore {
+            val app = context.applicationContext
+            return instance ?: synchronized(this) {
+                instance ?: SecureTokenStore(app).also { instance = it }
+            }
+        }
+
         private const val ENCRYPTED_PREFS_NAME = "eazpire_auth_prefs"
         private const val BACKUP_PREFS_NAME = "eazpire_auth_backup_v1"
         private const val KEY_JWT = "jwt"

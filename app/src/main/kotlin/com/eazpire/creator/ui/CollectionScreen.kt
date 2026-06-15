@@ -161,7 +161,7 @@ fun CollectionScreen(
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val context = LocalContext.current
     val api = remember { ShopifyProductsApi() }
-    val tokenStore = remember { SecureTokenStore(context) }
+    val tokenStore = remember { SecureTokenStore.get(context) }
     val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }

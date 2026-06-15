@@ -23,7 +23,7 @@ object PushTokenRegistrar {
      */
     fun syncIfLoggedIn(context: Context, jwtWaitAttempt: Int = 0) {
         val app = context.applicationContext
-        val jwt = SecureTokenStore(app).getJwt()
+        val jwt = SecureTokenStore.get(app).getJwt()
         if (jwt.isNullOrBlank()) {
             if (jwtWaitAttempt < MAX_JWT_WAIT_ATTEMPTS) {
                 Handler(Looper.getMainLooper()).postDelayed({

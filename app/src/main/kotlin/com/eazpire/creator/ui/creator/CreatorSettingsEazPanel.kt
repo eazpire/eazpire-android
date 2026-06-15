@@ -50,6 +50,7 @@ import com.eazpire.creator.auth.SecureTokenStore
 import androidx.compose.runtime.collectAsState
 import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.billing.EazCostCatalog
+import com.eazpire.creator.billing.EazEarnedConvertBlock
 import com.eazpire.creator.billing.EazPackageCatalog
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -119,6 +120,7 @@ fun CreatorSettingsEazPanel(
     var balanceData by remember { mutableStateOf<JSONObject?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var checkoutLoading by remember { mutableStateOf(false) }
+    var showSkillTree by remember { mutableStateOf(false) }
     val balanceRefreshTick by EazBalanceRefreshBus.tick.collectAsState()
 
     val starterEligible = isStarterPackEligible(balanceData)
@@ -273,7 +275,8 @@ fun CreatorSettingsEazPanel(
                 onBuyClick = {
                     if (walletLocked) onRequestSettingsTab(SETTINGS_TAB_CREATOR_CODES)
                     else subTab = tabs.indexOf(EazSettingsSubTab.Buy)
-                }
+                },
+                onOpenSkillTree = { showSkillTree = true },
             )
             EazSettingsSubTab.Logs -> EazLogsSubPanel(
                 ownerId = ownerId,
@@ -294,6 +297,15 @@ fun CreatorSettingsEazPanel(
             EazSettingsSubTab.Costs -> EazCostsSubPanel(balanceData, isLoading, translationStore)
             null -> Unit
         }
+    }
+
+    if (showSkillTree) {
+        EazEconomySkillTreeModal(
+            ownerId = ownerId,
+            api = api,
+            translationStore = translationStore,
+            onDismiss = { showSkillTree = false },
+        )
     }
 }
 
@@ -322,6 +334,7 @@ private fun EazBalanceSubPanel(
     ownerId: String,
     api: CreatorApi,
     onBuyClick: () -> Unit,
+    onOpenSkillTree: () -> Unit,
 ) {
     if (walletLocked) {
         EazWalletLockBanner(translationStore)
@@ -416,7 +429,19 @@ private fun EazBalanceSubPanel(
                 api = api,
                 earnedAvailable = earnedAvail,
                 eazCentsPerEaz = data.optDouble("eaz_cents_per_eaz", 0.0),
-                translationStore = translationStore,
+                minConvertEaz = data.optDouble("min_convert_eaz", 50.0),
+                translate = { k, d -> translationStore.t(k, d) },
+                onConverted = { /* parent reloads via refresh bus */ },
+            )
+        }
+
+        OutlinedButton(
+            onClick = onOpenSkillTree,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                translationStore.t("creator.settings.eaz_skill_tree_cta", "EAZ Skill Tree"),
+                color = EazColors.Orange
             )
         }
 
@@ -445,127 +470,6 @@ private fun EazBalanceSubPanel(
                 translationStore.t("creator.settings.eaz_buy_cta", "Buy EAZ"),
                 color = Color.White
             )
-        }
-    }
-}
-
-@Composable
-private fun EazEarnedConvertBlock(
-    ownerId: String,
-    api: CreatorApi,
-    earnedAvailable: Double,
-    eazCentsPerEaz: Double,
-    translationStore: TranslationStore,
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var amountText by remember { mutableStateOf("") }
-    var converting by remember { mutableStateOf(false) }
-
-    val amount = amountText.toDoubleOrNull() ?: 0.0
-    val previewCents = if (amount > 0 && eazCentsPerEaz > 0) (amount * eazCentsPerEaz).toLong() else 0L
-
-    fun runConvert(op: String) {
-        if (ownerId.isBlank() || amount <= 0 || amount > earnedAvailable) {
-            Toast.makeText(
-                context,
-                translationStore.t("creator.settings.eaz_convert_fail", "Conversion failed."),
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-        scope.launch {
-            converting = true
-            try {
-                val resp = withContext(Dispatchers.IO) {
-                    when (op) {
-                        "fiat" -> api.convertEazToFiat(ownerId, amount)
-                        else -> api.convertEazToGiftCard(ownerId, amount)
-                    }
-                }
-                if (resp.optBoolean("ok", false)) {
-                    amountText = ""
-                    EazBalanceRefreshBus.requestRefresh()
-                    Toast.makeText(
-                        context,
-                        translationStore.t("creator.settings.eaz_convert_success", "Conversion complete."),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else {
-                    Toast.makeText(
-                        context,
-                        translationStore.t("creator.settings.eaz_convert_fail", "Conversion failed."),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            } catch (_: Exception) {
-                Toast.makeText(
-                    context,
-                    translationStore.t("creator.settings.eaz_convert_fail", "Conversion failed."),
-                    Toast.LENGTH_SHORT
-                ).show()
-            } finally {
-                converting = false
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            translationStore.t(
-                "creator.settings.eaz_convert_hint",
-                "Convert available earned EAZ to fiat balance or a shop gift card."
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.72f)
-        )
-        OutlinedTextField(
-            value = amountText,
-            onValueChange = { amountText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-            label = {
-                Text(translationStore.t("creator.settings.eaz_convert_amount_label", "Amount (EAZ)"))
-            },
-            singleLine = true,
-            enabled = !converting,
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = EazColors.Orange,
-                unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
-            )
-        )
-        if (previewCents > 0) {
-            Text(
-                translationStore.t("creator.settings.eaz_convert_preview", "≈ {{amount}} fiat")
-                    .replace("{{amount}}", String.format("%.2f", previewCents / 100.0)),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.65f)
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { runConvert("fiat") },
-                enabled = !converting,
-                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
-            ) {
-                Text(
-                    translationStore.t("creator.settings.eaz_convert_fiat", "Convert to fiat"),
-                    color = Color.White
-                )
-            }
-            OutlinedButton(
-                onClick = { runConvert("gc") },
-                enabled = !converting,
-            ) {
-                Text(translationStore.t("creator.settings.eaz_convert_gift_card", "Convert to gift card"))
-            }
         }
     }
 }

@@ -6,6 +6,7 @@ import com.eazpire.creator.chat.DailyGameReminderScheduler
 import com.eazpire.creator.config.AnimationFlagsSync
 import com.eazpire.creator.notifications.EazNotificationChannels
 import com.eazpire.creator.notifications.NotificationRemoteConfigSync
+import com.eazpire.creator.perf.EazPerfTrace
 
 class EazpireApplication : Application() {
     companion object {
@@ -18,10 +19,13 @@ class EazpireApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         processStartMs = System.currentTimeMillis()
+        EazPerfTrace.init(this)
+        EazPerfTrace.mark("application_onCreate_start")
         EazNotificationChannels.ensure(this)
         CartReminderScheduler.init(this)
         DailyGameReminderScheduler.init(this)
         NotificationRemoteConfigSync.syncOnAppStart(this)
         AnimationFlagsSync.syncOnAppStart(this)
+        EazPerfTrace.mark("application_onCreate_end")
     }
 }

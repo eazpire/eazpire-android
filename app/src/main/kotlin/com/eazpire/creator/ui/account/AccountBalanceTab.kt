@@ -37,7 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
-import com.eazpire.creator.util.DebugLog
+import com.eazpire.creator.i18n.LocalTranslationStore
 import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
@@ -45,7 +45,7 @@ import java.util.Locale
 /**
  * Balance & Payouts – matches web (theme/sections/account-balance-payouts.liquid).
  * No page title in content (header has it).
- * Subtabs: Overview, Payout Settings, Community, Payout History, Request Payout.
+ * Subtabs: Overview, Payout Settings, Community, Payout History, Request Payout, EAZ.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,14 +57,18 @@ fun AccountBalanceTab(
     val ownerId = remember { tokenStore.getOwnerId() ?: "" }
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
 
+    val translationStore = LocalTranslationStore.current
+    fun t(key: String, default: String) = translationStore?.t(key, default) ?: default
+
     var activeSubtab by remember { mutableStateOf("overview") }
-    val subtabs = listOf("overview", "payout-settings", "community", "payout-history", "request-payout")
+    val subtabs = listOf("overview", "payout-settings", "community", "payout-history", "request-payout", "eaz")
     val subtabLabels = mapOf(
         "overview" to "Overview",
         "payout-settings" to "Payout Settings",
         "community" to "Community",
         "payout-history" to "Payout History",
-        "request-payout" to "Request Payout"
+        "request-payout" to "Request Payout",
+        "eaz" to t("content.account_balance_eaz_tab", "EAZ"),
     )
 
     Column(
@@ -100,11 +104,21 @@ fun AccountBalanceTab(
         }
 
         when (activeSubtab) {
-            "overview" -> BalanceOverviewPanel(ownerId = ownerId, api = api)
+            "overview" -> BalanceOverviewPanel(
+                ownerId = ownerId,
+                api = api,
+                t = ::t,
+                onOpenEazTab = { activeSubtab = "eaz" },
+            )
             "payout-settings" -> PayoutSettingsPanel(ownerId = ownerId, api = api)
-            "community" -> BalanceCommunityPanel(ownerId = ownerId, api = api)
+            "community" -> BalanceCommunityPanel(ownerId = ownerId, api = api, t = ::t)
             "payout-history" -> PayoutHistoryPanel(ownerId = ownerId, api = api)
             "request-payout" -> RequestPayoutPanel(ownerId = ownerId, api = api)
+            "eaz" -> AccountBalanceEazPanel(
+                ownerId = ownerId,
+                api = api,
+                t = ::t,
+            )
         }
     }
 }
@@ -112,7 +126,9 @@ fun AccountBalanceTab(
 @Composable
 private fun BalanceOverviewPanel(
     ownerId: String,
-    api: com.eazpire.creator.api.CreatorApi
+    api: com.eazpire.creator.api.CreatorApi,
+    t: (String, String) -> String,
+    onOpenEazTab: () -> Unit,
 ) {
     var days by remember { mutableStateOf(30) }
     var overview by remember { mutableStateOf<JSONObject?>(null) }
@@ -171,6 +187,12 @@ private fun BalanceOverviewPanel(
                 BalanceKpiCard("Community Sales", fmtMoney(network, currency), Modifier.weight(1f))
                 BalanceKpiCard("Paid Out", fmtMoney(paidOut, currency), Modifier.weight(1f))
             }
+            AccountEazOverviewTeaser(
+                ownerId = ownerId,
+                api = api,
+                t = t,
+                onOpenEazTab = onOpenEazTab,
+            )
         }
         shopCredits?.let { sc ->
             if (sc.optBoolean("ok", false)) {
@@ -240,7 +262,7 @@ private fun BalanceOverviewPanel(
 }
 
 @Composable
-private fun BalanceKpiCard(label: String, value: String, modifier: Modifier = Modifier) {
+internal fun BalanceKpiCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(8.dp)) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(label, style = androidx.compose.material3.MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
@@ -310,7 +332,11 @@ private fun PayoutSettingsPanel(ownerId: String, api: com.eazpire.creator.api.Cr
 }
 
 @Composable
-private fun BalanceCommunityPanel(ownerId: String, api: com.eazpire.creator.api.CreatorApi) {
+private fun BalanceCommunityPanel(
+    ownerId: String,
+    api: com.eazpire.creator.api.CreatorApi,
+    t: (String, String) -> String,
+) {
     var communityDays by remember { mutableStateOf(30) }
     var overview by remember { mutableStateOf<JSONObject?>(null) }
     var isLoading by remember { mutableStateOf(false) }
@@ -349,6 +375,15 @@ private fun BalanceCommunityPanel(ownerId: String, api: com.eazpire.creator.api.
             CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.padding(24.dp))
         }
     } else {
+        Text(
+            t(
+                "content.account_balance_eaz_community_hint",
+                "New community earnings are credited as EAZ (see EAZ tab). Statistics here remain in fiat."
+            ),
+            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+            color = EazColors.TextSecondary,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
         overview?.let { ov ->
             val count = ov.optInt("networkCount", 0)
             val profit = ov.optDouble("networkAmount", 0.0)

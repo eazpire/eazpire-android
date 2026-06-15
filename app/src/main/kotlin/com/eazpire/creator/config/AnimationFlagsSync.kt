@@ -13,7 +13,7 @@ object AnimationFlagsSync {
 
     fun syncOnAppStart(context: Context) {
         scope.launch {
-            val jwt = SecureTokenStore(context).getJwt()
+            val jwt = SecureTokenStore.get(context).getJwt()
             val api = CreatorApi(jwt = jwt)
             if (jwt != null) {
                 try {

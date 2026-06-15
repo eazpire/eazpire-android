@@ -48,8 +48,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.MainActivity
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.auth.ShopSessionGuard
-import com.eazpire.creator.push.PushTokenRegistrar
+import com.eazpire.creator.auth.ShopSessionCoordinator
 import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.debug.langDebug
@@ -79,6 +78,7 @@ import com.eazpire.creator.ui.home.CreatorsIndexScreen
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.ui.header.FavoriteEditContext
 import com.eazpire.creator.ui.header.FavoritesModal
+import com.eazpire.creator.perf.EazPerfTrace
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
 import com.eazpire.creator.ui.header.SHOP_CREATE_CATALOG_HANDLE
@@ -124,13 +124,13 @@ fun ShopScreen(
     val languageCode by localeStore.languageCode.collectAsState(initial = java.util.Locale.getDefault().language.lowercase())
     val catalogRegion by localeStore.regionCode.collectAsState(initial = "EU")
 
+    SideEffect {
+        EazPerfTrace.mark("main_first_compose")
+    }
+
     var sessionEpoch by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
-        AuthDebugLog.d("[TOKEN] ShopScreen start ${tokenStore.sessionDebugSummary()}")
-        ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
-        ShopSessionGuard.validateLegacyShopifySessionIfNeeded(context, tokenStore)
-        PushTokenRegistrar.syncIfLoggedIn(context)
-        AuthDebugLog.d("[TOKEN] ShopScreen ready ${tokenStore.sessionDebugSummary()}")
+        AuthDebugLog.d("[TOKEN] ShopScreen compose ${tokenStore.sessionDebugSummary()}")
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -139,9 +139,8 @@ fun ShopScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 sessionRefreshScope.launch {
-                    ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
-                    ShopSessionGuard.validateLegacyShopifySessionIfNeeded(context, tokenStore)
-                    PushTokenRegistrar.syncIfLoggedIn(context)
+                    ShopSessionCoordinator.refreshSession(context, tokenStore, reason = "resume")
+                    ShopSessionCoordinator.syncPushIfLoggedIn(context)
                 }
             }
         }
@@ -1005,6 +1004,7 @@ fun ShopScreen(
                     )
                 }
                 else -> ProductCarouselSection(
+                    tokenStore = tokenStore,
                     modifier = Modifier.fillMaxSize(),
                     onCurrentPageChange = { currentPagePath = it },
                     onCreatorClick = { name ->

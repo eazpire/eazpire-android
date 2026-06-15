@@ -28,3 +28,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "eazpire"
 include(":app")
+include(":benchmark")

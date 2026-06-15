@@ -20,10 +20,7 @@ class CreatorApi(
     private val baseUrl: String = "https://creator-engine.eazpire.workers.dev",
     private val jwt: String? = null
 ) {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val client: OkHttpClient = CreatorHttpClient.instance
 
     /**
      * Ruft eine Operation auf (GET oder POST).
@@ -38,7 +35,9 @@ class CreatorApi(
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = buildString {
             append("$baseUrl/apps/creator-dispatch?op=$op")
-            if (method == "GET") append("&_t=${System.currentTimeMillis()}")
+            if (method == "GET" && CreatorHttpClient.shouldCacheBust(op)) {
+                append("&_t=${System.currentTimeMillis()}")
+            }
             params.forEach { (k, v) ->
                 if (v.isNotBlank()) append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}")
             }
@@ -74,6 +73,34 @@ class CreatorApi(
 
     suspend fun getEazEconomyTree(ownerId: String): JSONObject =
         call("get-eaz-economy-tree", mapOf("owner_id" to ownerId))
+
+    suspend fun getEarnedBalance(ownerId: String): JSONObject =
+        call("get-earned-balance", mapOf("owner_id" to ownerId))
+
+    suspend fun getEarnedTransactions(
+        ownerId: String,
+        limit: Int = 100,
+        filter: String = "all",
+    ): JSONObject = call(
+        "get-earned-transactions",
+        mapOf(
+            "owner_id" to ownerId,
+            "limit" to limit.coerceIn(1, 500).toString(),
+            "filter" to filter,
+        )
+    )
+
+    suspend fun activateEazEconomySkill(ownerId: String, skillKey: String): JSONObject =
+        postJsonBodyOp(
+            "activate-eaz-economy-skill",
+            JSONObject().put("owner_id", ownerId).put("skill_key", skillKey)
+        )
+
+    suspend fun redeemKickstarterEazBonus(ownerId: String, code: String): JSONObject =
+        postJsonBodyOp(
+            "redeem-kickstarter-eaz-bonus",
+            JSONObject().put("owner_id", ownerId).put("code", code)
+        )
 
     /** GET ?op=get-trial-starter-pack&owner_id= — Starter Pack quotas + previews */
     suspend fun getTrialStarterPack(ownerId: String): JSONObject = call(

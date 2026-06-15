@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.auth.ShopSessionGuard
+import com.eazpire.creator.auth.ShopSessionCoordinator
 import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.debug.initDebugLog
 import com.eazpire.creator.debug.initLangSwitchDebug
@@ -33,6 +33,7 @@ import androidx.lifecycle.lifecycleScope
 import com.eazpire.creator.ui.ShopScreen
 import com.eazpire.creator.update.PlayInAppUpdateHelper
 import com.eazpire.creator.api.WearPairApi
+import com.eazpire.creator.perf.EazPerfTrace
 import com.eazpire.creator.wear.sync.WearAuthSync
 import kotlinx.coroutines.launch
 
@@ -86,24 +87,33 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        EazPerfTrace.mark("mainActivity_onCreate_start")
         // API 35+: Edge-to-edge ist Standard; setDecorFitsSystemWindows(true) reicht oft nicht mehr zuverlässig.
         // Insets werden in Compose auf der Root-Surface gesetzt (systemBarsPadding).
         WindowCompat.setDecorFitsSystemWindows(window, false)
         initDebugLog(this)
         initLangSwitchDebug(this)
-        val tokenStore = SecureTokenStore(this)
+        val tokenStore = SecureTokenStore.get(this)
+        EazPerfTrace.mark("mainActivity_tokenStore_ready")
         AuthDebugLog.d("[TOKEN] App start ${tokenStore.sessionDebugSummary()}")
         // Session refresh off main thread — avoids ANR/crash on slow network at cold start.
         lifecycleScope.launch {
             try {
-                ShopSessionGuard.refreshAccessTokenIfNeeded(this@MainActivity, tokenStore)
-                ShopSessionGuard.validateLegacyShopifySessionIfNeeded(this@MainActivity, tokenStore)
+                EazPerfTrace.measureSectionSuspend("MainActivity.sessionGuard") {
+                    ShopSessionCoordinator.refreshSession(
+                        this@MainActivity,
+                        tokenStore,
+                        reason = "cold_start",
+                        force = true,
+                    )
+                }
                 AuthDebugLog.d("[TOKEN] After session guard ${tokenStore.sessionDebugSummary()}")
             } catch (e: Exception) {
                 AuthDebugLog.d("[TOKEN] Session guard skipped on start: ${e.message}")
             } finally {
-                PushTokenRegistrar.syncIfLoggedIn(this@MainActivity)
+                ShopSessionCoordinator.syncPushIfLoggedIn(this@MainActivity)
             }
+            EazPerfTrace.mark("mainActivity_sessionGuard_done")
         }
 
         if (!tokenStore.getJwt().isNullOrBlank()) {
@@ -114,6 +124,7 @@ class MainActivity : ComponentActivity() {
         consumeIntentExtras(intent)
         requestNotificationPermissionAndSyncPush()
         playInAppUpdateHelper = PlayInAppUpdateHelper(this, playInAppUpdateLauncher)
+        EazPerfTrace.mark("mainActivity_setContent")
         setContent {
             EazpireCreatorTheme {
                 Surface(
@@ -144,8 +155,9 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         playInAppUpdateHelper.onResume()
         // Wear OS: re-push session when reviewer returns from phone login (Data Layer).
-        if (!SecureTokenStore(this).getJwt().isNullOrBlank()) {
-            WearAuthSync.push(this, SecureTokenStore(this))
+        val tokenStore = SecureTokenStore.get(this)
+        if (!tokenStore.getJwt().isNullOrBlank()) {
+            WearAuthSync.push(this, tokenStore)
         }
         // Play Core ist manchmal beim ersten Frame noch nicht bereit — zweite Prüfung nach kurzer Verzögerung.
         playUpdateHandler.removeCallbacks(playUpdateRetryRunnable)

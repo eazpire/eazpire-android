@@ -16,7 +16,7 @@ object NotificationRemoteConfigSync {
 
     fun syncOnAppStart(context: Context) {
         scope.launch {
-            val jwt = SecureTokenStore(context).getJwt() ?: return@launch
+            val jwt = SecureTokenStore.get(context).getJwt() ?: return@launch
             try {
                 NotificationRemoteConfigRepository.syncFromServer(context, CreatorApi(jwt = jwt))
             } catch (_: Exception) {

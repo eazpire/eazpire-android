@@ -42,7 +42,7 @@ class EazFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         scope.launch {
-            val jwt = SecureTokenStore(this@EazFirebaseMessagingService).getJwt() ?: return@launch
+            val jwt = SecureTokenStore.get(this@EazFirebaseMessagingService).getJwt() ?: return@launch
             try {
                 val res = CreatorApi(jwt = jwt).registerFcmToken(token)
                 com.eazpire.creator.debug.AuthDebugLog.d(
