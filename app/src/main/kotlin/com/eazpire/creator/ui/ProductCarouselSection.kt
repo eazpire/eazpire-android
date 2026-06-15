@@ -19,42 +19,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
-import com.eazpire.creator.perf.EazPerfTrace
-import com.eazpire.creator.ui.home.HOME_INITIAL_CREATORS
-import com.eazpire.creator.ui.home.HOME_INITIAL_PRODUCTS
-import com.eazpire.creator.ui.home.HOME_MAX_PRODUCTS
 import com.eazpire.creator.ui.home.HOME_PRODUCT_SECTIONS
-import com.eazpire.creator.ui.home.HomeCategoryPools
 import com.eazpire.creator.ui.home.HomeCategoryStrip
 import com.eazpire.creator.ui.home.HomeCarouselFilterModal
 import com.eazpire.creator.ui.home.HomeCreateScratchCarousel
-import com.eazpire.creator.ui.HeroImage
-import com.eazpire.creator.ui.fetchHeroImagesForHome
 import com.eazpire.creator.ui.home.HomeCreatorsCarousel
-import com.eazpire.creator.ui.home.ShopCreatorCard
-import com.eazpire.creator.ui.home.catalogAvailabilityFromJson
-import com.eazpire.creator.ui.home.loadShopCreatorsForHome
-import com.eazpire.creator.ui.home.catalogPreviewUrlsFromJson
-import com.eazpire.creator.ui.home.loadHomeCarouselFromWorker
-import com.eazpire.creator.ui.home.resolveHomeSectionProducts
-import com.eazpire.creator.ui.home.loadHomePromotionsFromWorker
+import com.eazpire.creator.ui.home.HomeViewModel
+import com.eazpire.creator.ui.home.HomeViewModelFactory
 import com.eazpire.creator.ui.home.matchesHomeCategory
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.joinAll
-import java.util.concurrent.atomic.AtomicBoolean
-import org.json.JSONArray
+import com.eazpire.creator.ui.home.resolveHomeSectionProducts
 
 @Composable
 fun ProductCarouselSection(
@@ -71,7 +54,12 @@ fun ProductCarouselSection(
     reloadTrigger: Int = 0,
     modifier: Modifier = Modifier,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    val homeViewModel: HomeViewModel = viewModel(
+        factory = remember(tokenStore) { HomeViewModelFactory(tokenStore, context.applicationContext) },
+    )
+    val homeState by homeViewModel.state.collectAsState()
     val store = LocalTranslationStore.current
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId().orEmpty() }
@@ -93,7 +81,6 @@ fun ProductCarouselSection(
     var filterModalVisible by remember { mutableStateOf(false) }
     var productFilters by remember { mutableStateOf(PlpTriFilterSelection()) }
     var withinSearchQuery by remember { mutableStateOf("") }
-    var loadingCategories by remember { mutableStateOf(setOf<String>()) }
 
     fun filterCarouselProducts(list: List<ShopifyProductsApi.ProductItem>): List<ShopifyProductsApi.ProductItem> {
         return applyCollectionWithinSearchFilter(
@@ -102,240 +89,28 @@ fun ProductCarouselSection(
         )
     }
 
-    var promoProducts by remember { mutableStateOf<List<ShopifyProductsApi.ProductItem>>(emptyList()) }
-    var sectionPools by remember { mutableStateOf<Map<String, HomeCategoryPools>>(emptyMap()) }
-    var createScratchCatalog by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
-
-    val homeFilterPool = remember(selectedCategory, sectionPools, promoProducts) {
+    val homeFilterPool = remember(selectedCategory, homeState.sectionPools, homeState.promoProducts) {
         buildList {
-            addAll(promoProducts)
+            addAll(homeState.promoProducts)
             HOME_PRODUCT_SECTIONS.forEach { def ->
-                addAll(resolveHomeSectionProducts(sectionPools[def.id].orEmpty(), selectedCategory))
+                addAll(resolveHomeSectionProducts(homeState.sectionPools[def.id].orEmpty(), selectedCategory))
             }
         }.distinctBy { it.handle }
     }
 
     val filterActive = !productFilters.isEmpty() || withinSearchQuery.isNotBlank()
-    /** Creators load only after promo + product carousels (top → bottom). */
-    var loadCreatorsSection by remember { mutableStateOf(false) }
-
-    /** Cached in parent so LazyColumn scroll-off does not re-fetch hero / creators. */
-    var homeHeroImages by remember { mutableStateOf<List<HeroImage>>(emptyList()) }
-    var homeCreators by remember { mutableStateOf<List<ShopCreatorCard>>(emptyList()) }
-    var homeCreatorsSort by remember { mutableStateOf("recommend") }
-    var homeCreatorsLoading by remember { mutableStateOf(false) }
-
-    LaunchedEffect(loadCreatorsSection, homeCreatorsSort, reloadTrigger) {
-        if (!loadCreatorsSection) return@LaunchedEffect
-        homeCreatorsLoading = homeCreators.isEmpty()
-        val initial = loadShopCreatorsForHome(creatorApi, homeCreatorsSort, HOME_INITIAL_CREATORS)
-        homeCreators = initial
-        homeCreatorsLoading = false
-        if (initial.size < 20) {
-            val full = loadShopCreatorsForHome(creatorApi, homeCreatorsSort, 20)
-            if (full.size > initial.size) homeCreators = full
-        }
-    }
 
     LaunchedEffect(countryCode, catalogRegion, reloadTrigger) {
-        if (reloadTrigger > 0) {
-            EazPerfTrace.resetHomeBootstrap()
-        }
-        loadCreatorsSection = false
-        promoProducts = emptyList()
-        sectionPools = emptyMap()
-        createScratchCatalog = emptyList()
-        homeHeroImages = emptyList()
-        homeCreators = emptyList()
-
-        EazPerfTrace.mark(
-            "home_bootstrap_start",
-            mapOf(
-                "country" to countryCode,
-                "region" to catalogRegion,
-                "reload" to reloadTrigger,
-            ),
-        )
-
-        val reportedInteractive = AtomicBoolean(false)
-        fun maybeReportInteractive(reason: String) {
-            if (!reportedInteractive.compareAndSet(false, true)) return
-            EazPerfTrace.mark("home_interactive", mapOf("reason" to reason))
-            EazPerfTrace.logHomeBootstrapSummary(if (reloadTrigger > 0) "reload_interactive" else "cold_interactive")
-            EazPerfTrace.logColdStartSummary()
-            (context as? ComponentActivity)?.reportFullyDrawn()
-        }
-
-        EazPerfTrace.measureSectionSuspend("home.bootstrap.initial") {
-            coroutineScope {
-                val heroDeferred = async(Dispatchers.IO) {
-                    EazPerfTrace.measureSectionSuspend("home.fetch.hero") {
-                        EazPerfTrace.incrementCounter("home_api_calls")
-                        fetchHeroImagesForHome(CreatorApi(), catalogRegion)
-                    }
-                }
-                val promoDeferred = async(Dispatchers.IO) {
-                    EazPerfTrace.measureSectionSuspend("home.fetch.promotions") {
-                        EazPerfTrace.incrementCounter("home_api_calls")
-                        loadHomePromotionsFromWorker(creatorApi, HOME_INITIAL_PRODUCTS, countryCode)
-                    }
-                }
-                val scratchDeferred = async(Dispatchers.IO) {
-                    EazPerfTrace.measureSectionSuspend("home.fetch.scratch") {
-                        EazPerfTrace.incrementCounter("home_api_calls")
-                        loadCreateScratchCatalog(creatorApi, catalogRegion)
-                    }
-                }
-                val sectionDeferreds = HOME_PRODUCT_SECTIONS.map { def ->
-                    async(Dispatchers.IO) {
-                        val products = EazPerfTrace.measureSectionSuspend("home.fetch.${def.id}") {
-                            EazPerfTrace.incrementCounter("home_api_calls")
-                            loadHomeCarouselFromWorker(
-                                creatorApi,
-                                def.id,
-                                chipId = "all",
-                                limit = HOME_INITIAL_PRODUCTS.coerceAtMost(HOME_MAX_PRODUCTS),
-                                countryCode = countryCode,
-                            )
-                        }
-                        def.id to products
-                    }
-                }
-
-                val heroJob = launch {
-                    homeHeroImages = heroDeferred.await()
-                    if (homeHeroImages.isNotEmpty()) {
-                        EazPerfTrace.mark("home_first_content", mapOf("hero_count" to homeHeroImages.size))
-                        maybeReportInteractive("hero")
-                    }
-                }
-                val promoJob = launch {
-                    promoProducts = promoDeferred.await()
-                    if (promoProducts.isNotEmpty()) {
-                        EazPerfTrace.mark("home_first_content", mapOf("promo_count" to promoProducts.size))
-                        maybeReportInteractive("promotions")
-                    }
-                }
-                val scratchJob = launch {
-                    createScratchCatalog = scratchDeferred.await()
-                }
-
-                val sectionUiJobs = sectionDeferreds.map { deferred ->
-                    launch {
-                        val (id, products) = deferred.await()
-                        sectionPools = sectionPools + (id to mapOf("all" to products))
-                        if (products.isNotEmpty()) {
-                            EazPerfTrace.mark(
-                                "home_first_content",
-                                mapOf("section" to id, "count" to products.size),
-                            )
-                            maybeReportInteractive("section_$id")
-                        }
-                    }
-                }
-
-                heroJob.join()
-                promoJob.join()
-                scratchJob.join()
-                sectionUiJobs.joinAll()
-                loadCreatorsSection = true
-                EazPerfTrace.mark("home_bootstrap_end", mapOf("sections" to HOME_PRODUCT_SECTIONS.size))
-            }
-        }
-
-        launch(Dispatchers.IO) {
-            EazPerfTrace.measureSectionSuspend("home.bootstrap.background") {
-                coroutineScope {
-                    val updated = sectionPools.toMutableMap()
-                    HOME_PRODUCT_SECTIONS.map { def ->
-                        async {
-                            val fullProducts = EazPerfTrace.measureSectionSuspend("home.fetch.${def.id}.full") {
-                                EazPerfTrace.incrementCounter("home_api_calls")
-                                loadHomeCarouselFromWorker(
-                                    creatorApi,
-                                    def.id,
-                                    chipId = "all",
-                                    limit = HOME_MAX_PRODUCTS,
-                                    countryCode = countryCode,
-                                )
-                            }
-                            def.id to fullProducts
-                        }
-                    }.awaitAll().forEach { (id, fullProducts) ->
-                        updated[id] = mapOf("all" to fullProducts)
-                    }
-                    sectionPools = updated.toMap()
-                    EazPerfTrace.mark("home_background_fill_done")
-                }
-                val promos = EazPerfTrace.measureSectionSuspend("home.fetch.promotions.full") {
-                    EazPerfTrace.incrementCounter("home_api_calls")
-                    loadHomePromotionsFromWorker(creatorApi, HOME_MAX_PRODUCTS, countryCode)
-                }
-                if (promos.isNotEmpty()) promoProducts = promos
-            }
-            EazPerfTrace.logHomeBootstrapSummary(if (reloadTrigger > 0) "reload_complete" else "cold_complete")
-        }
+        homeViewModel.ensureBootstrap(countryCode, catalogRegion, reloadTrigger, activity)
     }
 
-    LaunchedEffect(selectedCategory, sectionPools, countryCode, catalogRegion) {
-        if (selectedCategory == "all") return@LaunchedEffect
-        val chip = selectedCategory
-        val defsToLoad = HOME_PRODUCT_SECTIONS.filter { def ->
-            !sectionPools[def.id].orEmpty().containsKey(chip)
-        }
-        if (defsToLoad.isEmpty()) return@LaunchedEffect
-        loadingCategories = loadingCategories + chip
-        try {
-            val updated = sectionPools.toMutableMap()
-            coroutineScope {
-                defsToLoad.map { def ->
-                    async(Dispatchers.IO) {
-                        val products = EazPerfTrace.measureSectionSuspend("home.fetch.${def.id}.$chip") {
-                            EazPerfTrace.incrementCounter("home_api_calls")
-                            loadHomeCarouselFromWorker(
-                                creatorApi,
-                                def.id,
-                                chipId = chip,
-                                limit = HOME_INITIAL_PRODUCTS.coerceAtMost(HOME_MAX_PRODUCTS),
-                                countryCode = countryCode,
-                            )
-                        }
-                        def.id to products
-                    }
-                }.forEach { deferred ->
-                    val (id, products) = deferred.await()
-                    val chipMap = updated[id].orEmpty().toMutableMap()
-                    chipMap[chip] = products
-                    updated[id] = chipMap
-                    sectionPools = updated.toMap()
-                }
-            }
-            loadingCategories = loadingCategories - chip
-            coroutineScope {
-                defsToLoad.map { def ->
-                    async(Dispatchers.IO) {
-                        val products = EazPerfTrace.measureSectionSuspend("home.fetch.${def.id}.$chip.full") {
-                            EazPerfTrace.incrementCounter("home_api_calls")
-                            loadHomeCarouselFromWorker(
-                                creatorApi,
-                                def.id,
-                                chipId = chip,
-                                limit = HOME_MAX_PRODUCTS,
-                                countryCode = countryCode,
-                            )
-                        }
-                        def.id to products
-                    }
-                }.forEach { deferred ->
-                    val (id, products) = deferred.await()
-                    val chipMap = updated[id].orEmpty().toMutableMap()
-                    chipMap[chip] = products
-                    updated[id] = chipMap
-                    sectionPools = updated.toMap()
-                }
-            }
-        } finally {
-            loadingCategories = loadingCategories - chip
+    LaunchedEffect(homeState.loadCreatorsSection, homeState.homeCreatorsSort, reloadTrigger) {
+        homeViewModel.loadCreators(reloadTrigger)
+    }
+
+    LaunchedEffect(selectedCategory, countryCode) {
+        if (selectedCategory != "all") {
+            homeViewModel.loadCategoryChip(countryCode, selectedCategory)
         }
     }
 
@@ -347,8 +122,8 @@ fun ProductCarouselSection(
         if (scrollToTopTrigger > 0) listState.animateScrollToItem(0)
     }
 
-    val createScratchProducts = remember(createScratchCatalog, selectedCategory) {
-        createScratchCatalog
+    val createScratchProducts = remember(homeState.createScratchCatalog, selectedCategory) {
+        homeState.createScratchCatalog
             .filter { it.matchesHomeCategory(selectedCategory) }
             .take(16)
     }
@@ -365,7 +140,7 @@ fun ProductCarouselSection(
                     },
                     onHotspotProductClick = onHotspotProductClick,
                     productModalHandleState = productModalHandleState,
-                    heroImages = homeHeroImages.takeIf { it.isNotEmpty() },
+                    heroImages = homeState.heroImages.takeIf { it.isNotEmpty() },
                 )
             }
 
@@ -380,10 +155,10 @@ fun ProductCarouselSection(
                 )
             }
 
-        if (promoProducts.isNotEmpty()) {
+        if (homeState.promoProducts.isNotEmpty()) {
             item(key = "promotions") {
                 val promoTitle = t("eaz.shop.promotions_title", "Promotions")
-                val visiblePromos = filterCarouselProducts(promoProducts)
+                val visiblePromos = filterCarouselProducts(homeState.promoProducts)
                 if (visiblePromos.isNotEmpty()) {
                 ProductCarousel(
                     title = promoTitle,
@@ -410,13 +185,13 @@ fun ProductCarouselSection(
         }
 
         HOME_PRODUCT_SECTIONS.forEach { def ->
-            val products = resolveHomeSectionProducts(sectionPools[def.id].orEmpty(), selectedCategory)
+            val products = resolveHomeSectionProducts(homeState.sectionPools[def.id].orEmpty(), selectedCategory)
             val visibleProducts = filterCarouselProducts(products)
             val sectionLoading =
-                !sectionPools.containsKey(def.id) ||
+                !homeState.sectionPools.containsKey(def.id) ||
                     (selectedCategory != "all" &&
-                        loadingCategories.contains(selectedCategory) &&
-                        !sectionPools[def.id].orEmpty().containsKey(selectedCategory))
+                        homeState.loadingCategories.contains(selectedCategory) &&
+                        !homeState.sectionPools[def.id].orEmpty().containsKey(selectedCategory))
             if (sectionLoading || visibleProducts.isNotEmpty()) {
                 item(key = "section_${def.id}") {
                     val displayTitle = t(def.titleKey, def.titleDefault)
@@ -457,13 +232,13 @@ fun ProductCarouselSection(
             }
         }
 
-        if (loadCreatorsSection && onCreatorClick != null) {
+        if (homeState.loadCreatorsSection && onCreatorClick != null) {
             item(key = "creators") {
                 HomeCreatorsCarousel(
-                    creators = homeCreators,
-                    sortTab = homeCreatorsSort,
-                    loading = homeCreatorsLoading,
-                    onSortTabChange = { homeCreatorsSort = it },
+                    creators = homeState.homeCreators,
+                    sortTab = homeState.homeCreatorsSort,
+                    loading = homeState.homeCreatorsLoading,
+                    onSortTabChange = { homeViewModel.setCreatorsSort(it) },
                     labelForKey = t,
                     onCreatorClick = onCreatorClick,
                     onCreatorsTitleClick = onCreatorsTitleClick,
@@ -497,40 +272,5 @@ fun ProductCarouselSection(
                 labelForKey = t,
             )
         }
-    }
-}
-
-private suspend fun loadCreateScratchCatalog(creatorApi: CreatorApi, region: String): List<CatalogProduct> =
-    runCatching {
-        val data = creatorApi.getShopCreateProductCatalog(region)
-        if (!data.optBoolean("ok", false)) return@runCatching emptyList()
-        val arr = data.optJSONArray("products") ?: JSONArray()
-        val list = mutableListOf<CatalogProduct>()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val pk = o.optString("product_key", "").trim()
-            if (pk.isEmpty()) continue
-            val availability = catalogAvailabilityFromJson(o)
-            if (availability != "available") continue
-            list.add(
-                CatalogProduct(
-                    productKey = pk,
-                    title = o.optString("title", pk).ifBlank { pk },
-                    mockUrls = catalogPreviewUrlsFromJson(o),
-                    catalogAvailability = availability,
-                    categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
-                    categoryKey = o.optString("category_key", "").trim().ifBlank { null },
-                    categoryGroup = o.optString("category_group", "").trim().ifBlank { null },
-                    audience = parseCatalogAudience(o.optJSONArray("audience")),
-                ),
-            )
-        }
-        list
-    }.getOrElse { emptyList() }
-
-private fun parseCatalogAudience(arr: JSONArray?): List<String> {
-    if (arr == null) return emptyList()
-    return (0 until arr.length()).mapNotNull { i ->
-        arr.optString(i, "").trim().takeIf { it.isNotEmpty() }
     }
 }

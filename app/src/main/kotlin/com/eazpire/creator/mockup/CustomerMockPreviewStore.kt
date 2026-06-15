@@ -278,11 +278,7 @@ object CustomerMockPreviewStore {
             return@withContext base
         }
 
-        val colorMap = runCatching {
-            EazPerfTrace.incrementCounter("mock_color_variant_api")
-            val colorsResp = api.getColorVariants(info.productKey)
-            if (colorsResp.optBoolean("ok", false)) parseProductColorHexMap(colorsResp) else emptyMap()
-        }.getOrDefault(emptyMap())
+        val colorMap = ColorVariantsCache.getOrLoad(api, info.productKey)
 
         val colorNames = product.rotationColorNames
         val poolSize = kotlin.math.max(
@@ -327,10 +323,7 @@ object CustomerMockPreviewStore {
         val cached = info.cachedByColor.values.firstOrNull { it.isNotBlank() }
         if (cached != null) return@withContext cached
 
-        val colorMap = runCatching {
-            val r = api.getColorVariants(info.productKey)
-            if (r.optBoolean("ok", false)) parseProductColorHexMap(r) else emptyMap()
-        }.getOrDefault(emptyMap())
+        val colorMap = ColorVariantsCache.getOrLoad(api, info.productKey)
         val color = colorName.ifBlank { "White" }
         resolveMockupImageUrl(info, color, ownerId, colorMap) ?: fallbackUrl
     }

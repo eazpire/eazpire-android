@@ -34,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
@@ -118,6 +119,7 @@ private const val EAZ_COIN_URL =
     "https://pub-2ffb11d4a361463498b9a842a87a870c.r2.dev/brand/coin/eaz-coin-logo.png"
 
 private fun journeyCategoryIcon(category: String): ImageVector = when (category) {
+    "eaz_economy" -> Icons.Default.AccountBalance
     "product" -> Icons.Default.ShoppingCart
     "design_type" -> Icons.Default.Layers
     "market" -> Icons.Default.Store
@@ -254,6 +256,8 @@ fun CreatorJourneyModal(
                             )
                             1 -> JourneyUnlockTreePanel(
                                 data = journeyData,
+                                ownerId = ownerId,
+                                api = api,
                                 translationStore = translationStore,
                                 busy = actionBusy,
                                 modifier = Modifier.fillMaxSize(),
@@ -712,6 +716,8 @@ private fun JourneyOverviewPanel(
 @Composable
 private fun JourneyUnlockTreePanel(
     data: JSONObject?,
+    ownerId: String?,
+    api: CreatorApi,
     translationStore: TranslationStore,
     busy: Boolean,
     modifier: Modifier = Modifier,
@@ -761,17 +767,19 @@ private fun JourneyUnlockTreePanel(
     }
 
     val filterCats = remember(nodes) {
-        JOURNEY_CATEGORY_ORDER.filter { cat -> nodes.any { it.category == cat } }
-            .ifEmpty { listOf("product") }
+        buildList {
+            add("eaz_economy")
+            addAll(JOURNEY_CATEGORY_ORDER.filter { cat -> nodes.any { it.category == cat } })
+        }
     }
-    var treeFilter by remember(filterCats) { mutableStateOf(filterCats.first()) }
+    var treeFilter by remember { mutableStateOf("eaz_economy") }
 
     LaunchedEffect(filterCats) {
-        if (treeFilter !in filterCats) treeFilter = filterCats.first()
+        if (treeFilter !in filterCats) treeFilter = filterCats.firstOrNull() ?: "eaz_economy"
     }
 
     val filteredNodes = remember(nodes, treeFilter) {
-        nodes.filter { it.category == treeFilter }
+        if (treeFilter == "eaz_economy") emptyList() else nodes.filter { it.category == treeFilter }
     }
 
     val levelRows = remember(filteredNodes) {
@@ -835,6 +843,17 @@ private fun JourneyUnlockTreePanel(
             }
         }
 
+        if (treeFilter == "eaz_economy" && !ownerId.isNullOrBlank()) {
+            EazEconomySkillTreePanel(
+                ownerId = ownerId,
+                api = api,
+                translationStore = translationStore,
+                embedded = true,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+            )
+        } else {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(156.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -871,6 +890,7 @@ private fun JourneyUnlockTreePanel(
                     )
                 }
             }
+        }
         }
     }
 

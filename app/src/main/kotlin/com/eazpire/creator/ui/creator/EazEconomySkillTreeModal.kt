@@ -66,21 +66,24 @@ fun EazEconomySkillTreeModal(
     onDismiss: () -> Unit,
 ) {
     EazFullScreenDialog(onDismissRequest = onDismiss) {
-        EazEconomySkillTreeContent(
+        EazEconomySkillTreePanel(
             ownerId = ownerId,
             api = api,
             translationStore = translationStore,
+            embedded = false,
             onDismiss = onDismiss,
         )
     }
 }
 
 @Composable
-private fun EazEconomySkillTreeContent(
+fun EazEconomySkillTreePanel(
     ownerId: String,
     api: CreatorApi,
     translationStore: TranslationStore,
-    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    embedded: Boolean = false,
+    onDismiss: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -110,24 +113,30 @@ private fun EazEconomySkillTreeContent(
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0F1117))
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                translationStore.t("creator.eaz_economy.title", "EAZ Skill Tree"),
-                style = MaterialTheme.typography.titleLarge,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
+            .then(
+                if (embedded) Modifier else Modifier.background(Color(0xFF0F1117))
             )
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.7f))
+            .padding(if (embedded) 0.dp else 16.dp)
+    ) {
+        if (!embedded) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    translationStore.t("creator.eaz_economy.title", "EAZ Skill Tree"),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                if (onDismiss != null) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.7f))
+                    }
+                }
             }
         }
 

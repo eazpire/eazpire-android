@@ -1841,6 +1841,24 @@ class CreatorApi(
         return call("list-home-carousel-products", params)
     }
 
+    /** GET ?op=list-home-carousel-bootstrap — all home carousel pools in one round-trip. */
+    suspend fun listHomeCarouselBootstrap(
+        slots: List<String> = listOf("promotions", "new-arrivals", "bestseller", "personalizable"),
+        category: String = "all",
+        limit: Int = 24,
+        personalizableMode: String = "shoppable",
+        countryCode: String? = null,
+    ): JSONObject {
+        val params = mutableMapOf(
+            "slots" to slots.joinToString(","),
+            "category" to category,
+            "limit" to limit.coerceIn(1, 100).toString(),
+        )
+        if (slots.any { it == "personalizable" }) params["personalizable_mode"] = personalizableMode
+        countryCode?.takeIf { it.isNotBlank() }?.let { params["country"] = it }
+        return call("list-home-carousel-bootstrap", params)
+    }
+
     /** POST ?op=resolve-promo-cart — cart line promo prices for country + slot */
     suspend fun resolvePromoCart(countryCode: String, lines: JSONArray): JSONObject =
         postJsonBodyOp(

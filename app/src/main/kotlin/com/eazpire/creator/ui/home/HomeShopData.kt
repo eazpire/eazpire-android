@@ -8,6 +8,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 /** Per global home category chip — product lists for one carousel row. */
@@ -39,6 +40,73 @@ fun homeCarouselWorkerSlot(sectionId: String): String = when (sectionId) {
     "bestseller" -> "bestseller"
     "personalizable" -> "personalizable"
     else -> sectionId
+}
+
+fun homeCarouselSectionIdFromWorkerSlot(slot: String): String? = when (slot.trim().lowercase()) {
+    "new-arrivals" -> "new_arrivals"
+    "bestseller" -> "bestseller"
+    "personalizable" -> "personalizable"
+    else -> null
+}
+
+/** Parse worker `list-home-carousel-bootstrap` pools → promos + section lists. */
+fun parseHomeCarouselBootstrapResponse(
+    json: JSONObject,
+): Pair<List<ShopifyProductsApi.ProductItem>, Map<String, List<ShopifyProductsApi.ProductItem>>> {
+    if (!json.optBoolean("ok", false)) return emptyList<ShopifyProductsApi.ProductItem>() to emptyMap()
+    val pools = json.optJSONObject("pools") ?: return emptyList<ShopifyProductsApi.ProductItem>() to emptyMap()
+    var promos = emptyList<ShopifyProductsApi.ProductItem>()
+    val sections = mutableMapOf<String, List<ShopifyProductsApi.ProductItem>>()
+    for (slot in pools.keys()) {
+        val entry = pools.optJSONObject(slot) ?: continue
+        val products = ShopifyProductsApi.parseHomeCarouselProductsResponse(
+            JSONObject()
+                .put("ok", entry.optBoolean("ok", true))
+                .put("products", entry.optJSONArray("products") ?: JSONArray()),
+        )
+        when (slot.trim().lowercase()) {
+            "promotions" -> promos = products
+            else -> homeCarouselSectionIdFromWorkerSlot(slot)?.let { sections[it] = products }
+        }
+    }
+    return promos to sections
+}
+
+suspend fun loadCreateScratchCatalogFromWorker(creatorApi: CreatorApi, region: String): List<CatalogProduct> =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            val data = creatorApi.getShopCreateProductCatalog(region)
+            if (!data.optBoolean("ok", false)) return@runCatching emptyList()
+            val arr = data.optJSONArray("products") ?: JSONArray()
+            val list = mutableListOf<CatalogProduct>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val pk = o.optString("product_key", "").trim()
+                if (pk.isEmpty()) continue
+                val availability = catalogAvailabilityFromJson(o)
+                if (availability != "available") continue
+                list.add(
+                    CatalogProduct(
+                        productKey = pk,
+                        title = o.optString("title", pk).ifBlank { pk },
+                        mockUrls = catalogPreviewUrlsFromJson(o),
+                        catalogAvailability = availability,
+                        categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
+                        categoryKey = o.optString("category_key", "").trim().ifBlank { null },
+                        categoryGroup = o.optString("category_group", "").trim().ifBlank { null },
+                        audience = parseCatalogAudience(o.optJSONArray("audience")),
+                    ),
+                )
+            }
+            list
+        }.getOrElse { emptyList() }
+    }
+
+private fun parseCatalogAudience(arr: JSONArray?): List<String> {
+    if (arr == null) return emptyList()
+    return (0 until arr.length()).mapNotNull { i ->
+        arr.optString(i, "").trim().takeIf { it.isNotEmpty() }
+    }
 }
 
 /** Worker `list-home-carousel-products` — same sorting/dedupe as web home carousels. */
