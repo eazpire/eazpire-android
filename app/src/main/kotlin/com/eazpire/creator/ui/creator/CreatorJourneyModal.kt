@@ -11,13 +11,16 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
@@ -52,7 +56,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-private data class JourneyTab(val id: Int, val labelKey: String, val fallback: String)
+private data class JourneyTabItem(val label: String, val icon: ImageVector)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,12 +77,10 @@ fun CreatorJourneyModal(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val tabs = listOf(
-        JourneyTab(0, "creator.journey.nav_overview", "Overview"),
-        JourneyTab(1, "creator.journey.nav_unlock_tree", "Unlock Tree"),
-        JourneyTab(2, "creator.journey.nav_level", "Level"),
+        JourneyTabItem(translationStore.t("creator.journey.nav_overview", "Overview"), Icons.Default.Home),
+        JourneyTabItem(translationStore.t("creator.journey.nav_unlock_tree", "Unlock Tree"), Icons.Default.Star),
+        JourneyTabItem(translationStore.t("creator.journey.nav_level", "Level"), Icons.Default.TrendingUp),
     )
-
-    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
 
     suspend fun reload() {
         if (ownerId.isNullOrBlank()) {
@@ -106,130 +108,139 @@ fun CreatorJourneyModal(
         fullscreen = true,
         dragHandle = null,
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF070B14))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column {
-                    Text(
-                        text = t("creator.journey.title", "Creator Journey"),
-                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp),
-                        color = Color.White,
-                    )
-                    Text(
-                        text = t("creator.journey.subtitle", "Grow your creator studio"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF9CA3AF),
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = t("creator.common.close", "Close"), tint = Color.White)
-                }
-            }
-
+        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 Column(
                     modifier = Modifier
                         .width(56.dp)
+                        .fillMaxHeight()
                         .background(Color(0xFF070B14))
                         .padding(vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    tabs.forEach { tab ->
-                        val active = tab.id == currentTab
+                    tabs.forEachIndexed { i, tab ->
+                        val isActive = i == currentTab
                         Icon(
-                            Icons.Default.Star,
-                            contentDescription = t(tab.labelKey, tab.fallback),
-                            tint = if (active) EazColors.Orange else Color.White.copy(alpha = 0.7f),
+                            tab.icon,
+                            contentDescription = tab.label,
+                            tint = if (isActive) EazColors.Orange else Color.White.copy(alpha = 0.7f),
                             modifier = Modifier
-                                .padding(8.dp)
+                                .size(40.dp)
                                 .background(
-                                    if (active) EazColors.Orange.copy(alpha = 0.2f) else Color.Transparent,
+                                    if (isActive) EazColors.Orange.copy(alpha = 0.2f) else Color.Transparent,
                                     RoundedCornerShape(10.dp),
                                 )
                                 .clickable(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() },
-                                ) { currentTab = tab.id },
+                                ) { currentTab = i }
+                                .padding(8.dp),
                         )
                     }
                 }
 
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .background(Color(0xFF0B1220))
-                        .padding(16.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    if (loading) {
-                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = EazColors.Orange)
+                Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF070B14))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = translationStore.t("creator.journey.title", "Creator Journey"),
+                                style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp),
+                                color = Color.White,
+                            )
+                            Text(
+                                text = tabs[currentTab].label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF9CA3AF),
+                            )
                         }
-                        return@Column
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        }
                     }
 
-                    when (currentTab) {
-                        0 -> JourneyOverviewPanel(
-                            data = journeyData,
-                            translationStore = translationStore,
-                            busy = actionBusy,
-                            onSaveStarter = { productKey, regionCode ->
-                                if (ownerId.isNullOrBlank()) return@JourneyOverviewPanel
-                                scope.launch {
-                                    actionBusy = true
-                                    try {
-                                        withContext(Dispatchers.IO) {
-                                            api.setStarterSelection(ownerId, productKey, regionCode)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(Color(0xFF0B1220)),
+                    ) {
+                        if (loading) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = EazColors.Orange)
+                            }
+                        } else {
+                            when (currentTab) {
+                                0 -> JourneyOverviewPanel(
+                                    data = journeyData,
+                                    translationStore = translationStore,
+                                    busy = actionBusy,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(16.dp),
+                                    onSaveStarter = { productKey, regionCode ->
+                                        if (ownerId.isNullOrBlank()) return@JourneyOverviewPanel
+                                        scope.launch {
+                                            actionBusy = true
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    api.setStarterSelection(ownerId, productKey, regionCode)
+                                                }
+                                                reload()
+                                            } finally {
+                                                actionBusy = false
+                                            }
                                         }
-                                        reload()
-                                    } finally {
-                                        actionBusy = false
-                                    }
-                                }
-                            },
-                        )
-                        1 -> JourneyUnlockTreePanel(
-                            data = journeyData,
-                            translationStore = translationStore,
-                            busy = actionBusy,
-                            onCommit = { nodeKey, amount ->
-                                if (ownerId.isNullOrBlank()) return@JourneyUnlockTreePanel
-                                scope.launch {
-                                    actionBusy = true
-                                    try {
-                                        withContext(Dispatchers.IO) {
-                                            api.commitCreatorUnlock(ownerId, nodeKey, amount)
+                                    },
+                                )
+                                1 -> JourneyUnlockTreePanel(
+                                    data = journeyData,
+                                    translationStore = translationStore,
+                                    busy = actionBusy,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(16.dp),
+                                    onCommit = { nodeKey, amount ->
+                                        if (ownerId.isNullOrBlank()) return@JourneyUnlockTreePanel
+                                        scope.launch {
+                                            actionBusy = true
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    api.commitCreatorUnlock(ownerId, nodeKey, amount)
+                                                }
+                                                reload()
+                                            } finally {
+                                                actionBusy = false
+                                            }
                                         }
-                                        reload()
-                                    } finally {
-                                        actionBusy = false
-                                    }
-                                }
-                            },
-                            onUnlock = { nodeKey ->
-                                if (ownerId.isNullOrBlank()) return@JourneyUnlockTreePanel
-                                scope.launch {
-                                    actionBusy = true
-                                    try {
-                                        withContext(Dispatchers.IO) {
-                                            api.unlockCreatorNode(ownerId, nodeKey)
+                                    },
+                                    onUnlock = { nodeKey ->
+                                        if (ownerId.isNullOrBlank()) return@JourneyUnlockTreePanel
+                                        scope.launch {
+                                            actionBusy = true
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    api.unlockCreatorNode(ownerId, nodeKey)
+                                                }
+                                                reload()
+                                            } finally {
+                                                actionBusy = false
+                                            }
                                         }
-                                        reload()
-                                    } finally {
-                                        actionBusy = false
-                                    }
-                                }
-                            },
-                        )
-                        2 -> CreatorSettingsLevelPanel(ownerId.orEmpty(), api, translationStore)
+                                    },
+                                )
+                                2 -> CreatorSettingsLevelPanel(ownerId.orEmpty(), api, translationStore)
+                            }
+                        }
                     }
                 }
             }
@@ -242,89 +253,93 @@ private fun JourneyOverviewPanel(
     data: JSONObject?,
     translationStore: TranslationStore,
     busy: Boolean,
+    modifier: Modifier = Modifier,
     onSaveStarter: (String, String) -> Unit,
 ) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
-    if (data == null) {
-        Text(t("creator.mobile.loading", "Loading…"), color = Color(0xFF9CA3AF))
-        return
-    }
-
-    val isCreator = data.optBoolean("is_creator", false)
-    if (!isCreator) {
-        Text(
-            t("creator.journey.code_hint", "Redeem a Creator Code to unlock EAZ progression and the full tree."),
-            color = Color(0xFF9CA3AF),
-            modifier = Modifier.padding(bottom = 12.dp),
-        )
-    }
-
-    val starter = data.optJSONObject("starter")
-    val selection = starter?.optJSONObject("selection")
-    Text(
-        t("creator.journey.starter_title", "Starter setup"),
-        style = MaterialTheme.typography.titleMedium,
-        color = Color.White,
-    )
-    if (selection != null) {
-        Text(
-            "${selection.optString("product_key")} · ${selection.optString("region_code")}",
-            color = EazColors.Orange,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-    } else {
-        val keys = starter?.optJSONArray("product_keys") ?: JSONArray()
-        var productKey by remember(keys) {
-            mutableStateOf(if (keys.length() > 0) keys.optString(0) else "")
+    Column(modifier = modifier) {
+        if (data == null) {
+            Text(t("creator.mobile.loading", "Loading…"), color = Color(0xFF9CA3AF))
+            return@Column
         }
-        val nodes = data.optJSONArray("nodes") ?: JSONArray()
-        val regions = remember(productKey, nodes) {
-            buildList {
-                for (i in 0 until nodes.length()) {
-                    val n = nodes.getJSONObject(i)
-                    if (n.optString("category") == "market" && n.optString("product_key") == productKey) {
-                        add(n.optString("region_code"))
-                    }
-                }
-            }.ifEmpty { listOf("EU") }
-        }
-        var regionCode by remember(productKey) { mutableStateOf(regions.firstOrNull() ?: "EU") }
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-            if (keys.length() == 0) {
-                Text(t("creator.journey.starter_empty", "No starter products configured"), color = Color(0xFF9CA3AF))
-            } else {
-                Text(t("creator.journey.starter_product", "Starter product") + ": $productKey", color = Color.White)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (i in 0 until keys.length()) {
-                        val k = keys.optString(i)
-                        OutlinedButton(onClick = { productKey = k; regionCode = regions.firstOrNull() ?: "EU" }) {
-                            Text(k, fontSize = 11.sp)
+        val isCreator = data.optBoolean("is_creator", false)
+        if (!isCreator) {
+            Text(
+                t("creator.journey.code_hint", "Redeem a Creator Code to unlock EAZ progression and the full tree."),
+                color = Color(0xFF9CA3AF),
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+        }
+
+        val starter = data.optJSONObject("starter")
+        val selection = starter?.optJSONObject("selection")
+        Text(
+            t("creator.journey.starter_title", "Starter setup"),
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+        )
+        if (selection != null) {
+            Text(
+                "${selection.optString("product_key")} · ${selection.optString("region_code")}",
+                color = EazColors.Orange,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        } else {
+            val keys = starter?.optJSONArray("product_keys") ?: JSONArray()
+            var productKey by remember(keys) {
+                mutableStateOf(if (keys.length() > 0) keys.optString(0) else "")
+            }
+            val nodes = data.optJSONArray("nodes") ?: JSONArray()
+            val regions = remember(productKey, nodes) {
+                buildList {
+                    for (i in 0 until nodes.length()) {
+                        val n = nodes.getJSONObject(i)
+                        if (n.optString("category") == "market" && n.optString("product_key") == productKey) {
+                            add(n.optString("region_code"))
                         }
                     }
-                }
-                Text(t("creator.journey.starter_region", "Starter region") + ": $regionCode", color = Color.White)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    regions.forEach { rc ->
-                        OutlinedButton(onClick = { regionCode = rc }) { Text(rc, fontSize = 11.sp) }
+                }.ifEmpty { listOf("EU") }
+            }
+            var regionCode by remember(productKey) { mutableStateOf(regions.firstOrNull() ?: "EU") }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                Text(t("creator.journey.starter_hint", "Choose your first product and region before publishing."), color = Color(0xFF9CA3AF))
+                if (keys.length() == 0) {
+                    Text(t("creator.journey.starter_empty", "No starter products configured"), color = Color(0xFF9CA3AF))
+                } else {
+                    Text(t("creator.journey.starter_product", "Starter product") + ": $productKey", color = Color.White)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (i in 0 until keys.length()) {
+                            val k = keys.optString(i)
+                            OutlinedButton(onClick = { productKey = k; regionCode = regions.firstOrNull() ?: "EU" }) {
+                                Text(k, fontSize = 11.sp)
+                            }
+                        }
                     }
-                }
-                Button(
-                    onClick = { if (productKey.isNotBlank()) onSaveStarter(productKey, regionCode) },
-                    enabled = !busy && productKey.isNotBlank(),
-                ) {
-                    Text(t("creator.journey.starter_save", "Save starter selection"))
+                    Text(t("creator.journey.starter_region", "Starter region") + ": $regionCode", color = Color.White)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        regions.forEach { rc ->
+                            OutlinedButton(onClick = { regionCode = rc }) { Text(rc, fontSize = 11.sp) }
+                        }
+                    }
+                    Button(
+                        onClick = { if (productKey.isNotBlank()) onSaveStarter(productKey, regionCode) },
+                        enabled = !busy && productKey.isNotBlank(),
+                    ) {
+                        Text(t("creator.journey.starter_save", "Save starter selection"))
+                    }
                 }
             }
         }
-    }
 
-    if (isCreator && data.has("balance_eaz")) {
-        Text(
-            "${t("creator.journey.balance_label", "Available EAZ")}: ${data.opt("balance_eaz")}",
-            color = Color(0xFF9CA3AF),
-            modifier = Modifier.padding(top = 16.dp),
-        )
+        if (isCreator && data.has("balance_eaz")) {
+            Text(
+                "${t("creator.journey.balance_label", "Available EAZ")}: ${data.opt("balance_eaz")}",
+                color = Color(0xFF9CA3AF),
+                modifier = Modifier.padding(top = 16.dp),
+            )
+        }
     }
 }
 
@@ -333,6 +348,7 @@ private fun JourneyUnlockTreePanel(
     data: JSONObject?,
     translationStore: TranslationStore,
     busy: Boolean,
+    modifier: Modifier = Modifier,
     onCommit: (String, Double) -> Unit,
     onUnlock: (String) -> Unit,
 ) {
@@ -341,7 +357,7 @@ private fun JourneyUnlockTreePanel(
     val balance = data?.optDouble("balance_eaz", 0.0) ?: 0.0
     val isCreator = data?.optBoolean("is_creator", false) == true
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         for (i in 0 until nodes.length()) {
             val n = nodes.getJSONObject(i)
             val nodeKey = n.optString("node_key")
@@ -378,7 +394,7 @@ private fun JourneyUnlockTreePanel(
                     color = Color(0xFF9CA3AF),
                     fontSize = 12.sp,
                 )
-                if (!unlocked && isCreator && lockedReason.isBlank() && cost > 0) {
+                if (!unlocked && isCreator && lockedReason.isEmpty() && cost > 0) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                         OutlinedButton(
                             onClick = { if (balance > 0) onCommit(nodeKey, balance) },
