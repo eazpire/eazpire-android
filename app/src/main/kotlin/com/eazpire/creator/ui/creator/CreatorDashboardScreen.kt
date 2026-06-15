@@ -24,6 +24,7 @@ fun CreatorDashboardScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     onOpenSalesModal: () -> Unit,
+    onOpenJourney: () -> Unit = {},
     onLoginClick: () -> Unit = {},
     onNavigateToGenerator: () -> Unit = {},
     onNavigateToDesigns: () -> Unit = {},
@@ -45,7 +46,8 @@ fun CreatorDashboardScreen(
             translationStore = translationStore,
             tokenStore = tokenStore,
             ownerId = tokenStore.getOwnerId(),
-            isLoggedIn = tokenStore.isLoggedIn()
+            isLoggedIn = tokenStore.isLoggedIn(),
+            onJourneyClick = onOpenJourney,
         )
         CreatorJourneySection(
             translationStore = translationStore,

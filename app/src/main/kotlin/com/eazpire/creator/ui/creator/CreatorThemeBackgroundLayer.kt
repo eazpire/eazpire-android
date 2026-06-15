@@ -50,6 +50,7 @@ fun CreatorThemeBackgroundLayer(
             background != null && background.isVideo && videoEnabled -> {
                 CreatorThemeVideoBackground(
                     videoUrl = background.url!!,
+                    posterUrl = background.posterUrl,
                     resumeNonce = resumeNonce,
                 )
             }
@@ -94,10 +95,12 @@ private fun DefaultGalaxyNebulaBackground() {
 @Composable
 private fun CreatorThemeVideoBackground(
     videoUrl: String,
+    posterUrl: String?,
     resumeNonce: Int,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var coverView by remember(videoUrl) { mutableStateOf<CreatorThemeCoverVideoView?>(null) }
+    var videoFailed by remember(videoUrl) { mutableStateOf(false) }
 
     LaunchedEffect(resumeNonce, videoUrl) {
         coverView?.setShouldPlay(true)
@@ -123,23 +126,39 @@ private fun CreatorThemeVideoBackground(
         }
     }
 
-    AndroidView(
-        factory = { ctx ->
-            CreatorThemeCoverVideoView(ctx).also { view ->
-                coverView = view
-                view.setVideoUrl(videoUrl)
-                view.setShouldPlay(true)
-            }
-        },
-        update = { view ->
-            coverView = view
-            view.setVideoUrl(videoUrl)
-            view.setShouldPlay(true)
-        },
-        onRelease = { view ->
-            view.release()
-            if (coverView === view) coverView = null
-        },
-        modifier = Modifier.fillMaxSize(),
-    )
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (!posterUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = posterUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                alpha = 0.85f,
+            )
+        }
+        if (!videoFailed) {
+            AndroidView(
+                factory = { ctx ->
+                    CreatorThemeCoverVideoView(ctx).also { view ->
+                        coverView = view
+                        view.onPlaybackError = { videoFailed = true }
+                        view.setVideoUrl(videoUrl)
+                        view.setShouldPlay(true)
+                    }
+                },
+                update = { view ->
+                    coverView = view
+                    view.onPlaybackError = { videoFailed = true }
+                    view.setVideoUrl(videoUrl)
+                    view.setShouldPlay(true)
+                },
+                onRelease = { view ->
+                    view.onPlaybackError = null
+                    view.release()
+                    if (coverView === view) coverView = null
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
 }

@@ -56,6 +56,7 @@ fun CreatorLevelBadge(
     tokenStore: SecureTokenStore,
     ownerId: String?,
     isLoggedIn: Boolean,
+    onJourneyClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -227,12 +228,16 @@ fun CreatorLevelBadge(
                         Brush.linearGradient(
                             colors = listOf(EazColors.Orange, Color(0xFFEA580C))
                         )
-                    ),
+                    )
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onJourneyClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Default.Star,
-                    contentDescription = null,
+                    contentDescription = translationStore.t("creator.journey.open_aria", "Open Creator Journey"),
                     tint = Color.White,
                     modifier = Modifier.size(24.dp)
                 )

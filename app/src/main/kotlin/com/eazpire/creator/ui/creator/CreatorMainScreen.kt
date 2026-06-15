@@ -101,6 +101,8 @@ fun CreatorMainScreen(
     var drawerVisible by remember { mutableStateOf(false) }
     var salesModalVisible by remember { mutableStateOf(false) }
     var creatorSettingsVisible by remember { mutableStateOf(false) }
+    var creatorJourneyVisible by remember { mutableStateOf(false) }
+    var creatorJourneyInitialTab by remember { mutableIntStateOf(0) }
     var wearPairTokenForSettings by remember { mutableStateOf<String?>(null) }
     var creatorCodesPrefill by remember { mutableStateOf<String?>(null) }
     var creatorSettingsInitialTab by remember { mutableIntStateOf(0) }
@@ -110,7 +112,7 @@ fun CreatorMainScreen(
         val t = pendingWearPairToken?.trim().orEmpty()
         if (t.isNotBlank()) {
             wearPairTokenForSettings = t
-            creatorSettingsInitialTab = 10
+            creatorSettingsInitialTab = 9
             creatorSettingsVisible = true
             onWearPairTokenConsumed()
         }
@@ -403,6 +405,7 @@ fun CreatorMainScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onOpenSalesModal = { salesModalVisible = true },
+                            onOpenJourney = { creatorJourneyInitialTab = 0; creatorJourneyVisible = true },
                             onLoginClick = onAccountClick,
                             onNavigateToGenerator = { currentScreen = 1 },
                             onNavigateToDesigns = {
@@ -512,7 +515,7 @@ fun CreatorMainScreen(
                 onLanguageClick = { languageModalVisible = true },
                 onTermsClick = { termsModalVisible = true },
                 onBalanceClick = { starter ->
-                    creatorSettingsInitialTab = 6
+                    creatorSettingsInitialTab = 5
                     creatorSettingsInitialEazSub = if (starter) "starter" else "balance"
                     creatorSettingsVisible = true
                 }
@@ -590,6 +593,17 @@ fun CreatorMainScreen(
                 translationStore = translationStore,
                 onDismiss = { salesModalVisible = false },
                 onLoginClick = onAccountClick,
+            )
+        }
+        if (creatorJourneyVisible) {
+            CreatorJourneyModal(
+                tokenStore = tokenStore,
+                translationStore = translationStore,
+                initialTab = creatorJourneyInitialTab,
+                onDismiss = {
+                    creatorJourneyVisible = false
+                    creatorJourneyInitialTab = 0
+                },
             )
         }
         if (creatorSettingsVisible) {

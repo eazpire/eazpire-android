@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** Tab indices: 0 Profile … 9 NFT, 10 Creator Wear */
+/** Tab indices: 0 Profile … 8 NFT, 9 Creator Wear (Level moved to Creator Journey modal) */
 @Composable
 fun CreatorSettingsTabContent(
     currentTab: Int,
@@ -110,17 +110,16 @@ fun CreatorSettingsTabContent(
             )
             3 -> CreatorSettingsCommunityContent(tokenStore, translationStore)
             4 -> CreatorSettingsNamesContent(ownerId, api, translationStore)
-            5 -> CreatorSettingsLevelPanel(ownerId, api, translationStore)
-            6 -> CreatorSettingsEazPanel(
+            5 -> CreatorSettingsEazPanel(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
                 onRequestSettingsTab = onRequestSettingsTab,
                 initialEazSub = initialEazSub,
             )
-            7 -> CreatorSettingsPayoutContent(ownerId, api, translationStore)
-            8 -> CreatorSettingsInterestsContent(ownerId, api, translationStore)
-            9 -> CreatorSettingsNftContent(translationStore)
-            10 -> CreatorSettingsWearContent(
+            6 -> CreatorSettingsPayoutContent(ownerId, api, translationStore)
+            7 -> CreatorSettingsInterestsContent(ownerId, api, translationStore)
+            8 -> CreatorSettingsNftContent(translationStore)
+            9 -> CreatorSettingsWearContent(
                 tokenStore = tokenStore,
                 translationStore = translationStore,
                 pendingPairToken = pendingWearPairToken,

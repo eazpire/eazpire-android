@@ -3,6 +3,7 @@ package com.eazpire.creator
 import android.app.Application
 import com.eazpire.creator.cart.CartReminderScheduler
 import com.eazpire.creator.chat.DailyGameReminderScheduler
+import com.eazpire.creator.config.AnimationFlagsSync
 import com.eazpire.creator.notifications.EazNotificationChannels
 import com.eazpire.creator.notifications.NotificationRemoteConfigSync
 
@@ -21,5 +22,6 @@ class EazpireApplication : Application() {
         CartReminderScheduler.init(this)
         DailyGameReminderScheduler.init(this)
         NotificationRemoteConfigSync.syncOnAppStart(this)
+        AnimationFlagsSync.syncOnAppStart(this)
     }
 }

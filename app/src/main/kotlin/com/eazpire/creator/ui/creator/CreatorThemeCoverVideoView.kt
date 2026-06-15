@@ -26,11 +26,15 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
     private var videoHeight = 0
     private var surfaceReady = false
     private var shouldPlay = true
+    var onPlaybackError: (() -> Unit)? = null
 
     init {
         clipChildren = true
         clipToPadding = true
         addView(textureView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        textureView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            applyCoverTransform()
+        }
         textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
                 surfaceReady = true
@@ -91,12 +95,6 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
         videoUri = null
     }
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val width = MeasureSpec.getSize(widthMeasureSpec)
-        val height = MeasureSpec.getSize(heightMeasureSpec)
-        setMeasuredDimension(width, height)
-    }
-
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         applyCoverTransform()
@@ -111,20 +109,36 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
             isLooping = true
             setVolume(0f, 0f)
             setOnVideoSizeChangedListener { _, w, h ->
-                this@CreatorThemeCoverVideoView.videoWidth = w
-                this@CreatorThemeCoverVideoView.videoHeight = h
-                applyCoverTransform()
+                if (w > 0 && h > 0) {
+                    this@CreatorThemeCoverVideoView.videoWidth = w
+                    this@CreatorThemeCoverVideoView.videoHeight = h
+                    try {
+                        surfaceTexture.setDefaultBufferSize(w, h)
+                    } catch (_: Exception) {
+                    }
+                    applyCoverTransform()
+                }
             }
             setOnPreparedListener { mp ->
-                this@CreatorThemeCoverVideoView.videoWidth = mp.videoWidth
-                this@CreatorThemeCoverVideoView.videoHeight = mp.videoHeight
-                applyCoverTransform()
+                if (mp.videoWidth > 0 && mp.videoHeight > 0) {
+                    this@CreatorThemeCoverVideoView.videoWidth = mp.videoWidth
+                    this@CreatorThemeCoverVideoView.videoHeight = mp.videoHeight
+                    try {
+                        surfaceTexture.setDefaultBufferSize(mp.videoWidth, mp.videoHeight)
+                    } catch (_: Exception) {
+                    }
+                    applyCoverTransform()
+                }
                 if (shouldPlay) {
                     try {
                         mp.start()
                     } catch (_: Exception) {
                     }
                 }
+            }
+            setOnErrorListener { _, _, _ ->
+                onPlaybackError?.invoke()
+                true
             }
             prepareAsync()
         }
@@ -136,29 +150,10 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
         val viewH = height.toFloat()
         if (viewW <= 0f || viewH <= 0f || videoWidth <= 0 || videoHeight <= 0) return
 
-        val videoW = videoWidth.toFloat()
-        val videoH = videoHeight.toFloat()
-        
-        val viewAspect = viewW / viewH
-        val videoAspect = videoW / videoH
-        
-        val scale: Float
-        val dx: Float
-        val dy: Float
-        
-        if (videoAspect > viewAspect) {
-            scale = viewH / videoH
-            dx = (viewW - videoW * scale) * 0.5f
-            dy = 0f
-        } else {
-            scale = viewW / videoW
-            dx = 0f
-            dy = (viewH - videoH * scale) * 0.5f
-        }
-        
         val matrix = Matrix()
-        matrix.setScale(scale, scale)
-        matrix.postTranslate(dx, dy)
+        val viewRect = RectF(0f, 0f, viewW, viewH)
+        val bufferRect = RectF(0f, 0f, videoWidth.toFloat(), videoHeight.toFloat())
+        matrix.setRectToRect(bufferRect, viewRect, Matrix.ScaleToFit.FILL)
         textureView.setTransform(matrix)
     }
 

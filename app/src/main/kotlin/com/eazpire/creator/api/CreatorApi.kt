@@ -264,6 +264,45 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=get-creator-journey&owner_id=xxx */
+    suspend fun getCreatorJourney(ownerId: String): JSONObject = call(
+        "get-creator-journey",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** POST ?op=set-starter-selection */
+    suspend fun setStarterSelection(
+        ownerId: String,
+        productKey: String,
+        regionCode: String,
+    ): JSONObject = postDispatchJson(
+        op = "set-starter-selection",
+        queryParams = mapOf("owner_id" to ownerId),
+        body = JSONObject()
+            .put("product_key", productKey)
+            .put("region_code", regionCode)
+    )
+
+    /** POST ?op=commit-creator-unlock */
+    suspend fun commitCreatorUnlock(
+        ownerId: String,
+        nodeKey: String,
+        amount: Double,
+    ): JSONObject = postDispatchJson(
+        op = "commit-creator-unlock",
+        queryParams = mapOf("owner_id" to ownerId),
+        body = JSONObject()
+            .put("node_key", nodeKey)
+            .put("amount", amount)
+    )
+
+    /** POST ?op=unlock-creator-node */
+    suspend fun unlockCreatorNode(ownerId: String, nodeKey: String): JSONObject = postDispatchJson(
+        op = "unlock-creator-node",
+        queryParams = mapOf("owner_id" to ownerId),
+        body = JSONObject().put("node_key", nodeKey)
+    )
+
     /** GET ?op=get-product-catalog-preferences&owner_id=xxx */
     suspend fun getProductCatalogPreferences(ownerId: String): JSONObject = call(
         "get-product-catalog-preferences",

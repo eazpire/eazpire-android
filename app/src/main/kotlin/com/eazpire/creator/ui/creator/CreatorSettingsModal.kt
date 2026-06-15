@@ -76,7 +76,7 @@ fun CreatorSettingsModal(
     modifier: Modifier = Modifier
 ) {
     val isLoggedIn = tokenStore.isLoggedIn()
-    var currentTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 10)) }
+    var currentTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 9)) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val tabs = listOf(
@@ -85,7 +85,6 @@ fun CreatorSettingsModal(
         SettingsTabItem(translationStore.t("creator.settings.nav_creator_codes", "Creator Codes"), Icons.Default.Lock),
         SettingsTabItem(translationStore.t("creator.settings.nav_community", "Community"), Icons.Default.Groups),
         SettingsTabItem(translationStore.t("creator.settings.nav_creator_names", "Creator Names"), Icons.Default.Star),
-        SettingsTabItem(translationStore.t("creator.settings.nav_level", "Level"), Icons.Default.ExpandLess),
         SettingsTabItem(translationStore.t("creator.settings.nav_eaz", "EAZ"), Icons.Default.Star),
         SettingsTabItem(translationStore.t("creator.settings.nav_payout", "Payout"), Icons.Default.Payments),
         SettingsTabItem(translationStore.t("creator.settings.nav_interests", "Interests"), Icons.Default.Favorite),
@@ -182,7 +181,7 @@ fun CreatorSettingsModal(
                     initialRedeemCode = if (currentTab == codesTabIndex) initialRedeemCode else null,
                     onInitialRedeemCodeConsumed = onInitialRedeemCodeConsumed,
                     onRequestSettingsTab = { currentTab = it },
-                    initialEazSub = if (currentTab == 6) initialEazSub else null,
+                    initialEazSub = if (currentTab == 5) initialEazSub else null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
