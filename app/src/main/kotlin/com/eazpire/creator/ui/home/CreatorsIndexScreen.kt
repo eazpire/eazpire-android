@@ -106,7 +106,7 @@ fun CreatorsIndexScreen(
                     }
                     else -> {
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 168.dp),
+                            columns = GridCells.Fixed(2),
                             contentPadding = PaddingValues(top = 14.dp, bottom = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
