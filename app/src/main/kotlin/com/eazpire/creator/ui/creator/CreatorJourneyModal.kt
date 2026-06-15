@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,6 +70,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -180,34 +185,35 @@ fun CreatorJourneyModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Color(0xFF070B14))
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = { drawerOpen = true }) {
+                    IconButton(
+                        onClick = { drawerOpen = true },
+                        modifier = Modifier.size(40.dp),
+                    ) {
                         Icon(
                             Icons.Default.Menu,
                             contentDescription = translationStore.t("creator.settings.menu_open", "Open menu"),
                             tint = Color.White,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
-                    Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                        Text(
-                            text = translationStore.t("creator.journey.title", "Creator Journey"),
-                            style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp),
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = tabs[currentTab].label,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF9CA3AF),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    Text(
+                        text = translationStore.t("creator.journey.title", "Creator Journey"),
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp),
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
 
@@ -308,6 +314,8 @@ fun CreatorJourneyModal(
                     tabs = tabs,
                     currentTab = currentTab,
                     journeyData = journeyData,
+                    ownerId = ownerId,
+                    api = api,
                     translationStore = translationStore,
                     onTabSelected = { index ->
                         currentTab = index
@@ -325,6 +333,8 @@ private fun JourneyNavDrawer(
     tabs: List<JourneyTabItem>,
     currentTab: Int,
     journeyData: JSONObject?,
+    ownerId: String?,
+    api: CreatorApi,
     translationStore: TranslationStore,
     onTabSelected: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -405,6 +415,12 @@ private fun JourneyNavDrawer(
                 }
             }
 
+            JourneySidebarLevelWidget(
+                ownerId = ownerId,
+                api = api,
+                translationStore = translationStore,
+            )
+
             if (showBalance) {
                 val balanceValue = journeyData?.opt("balance_eaz")?.toString().orEmpty()
                 Row(
@@ -449,6 +465,152 @@ private fun JourneyNavDrawer(
                     interactionSource = remember { MutableInteractionSource() },
                 ) { onDismiss() },
         )
+    }
+}
+
+@Composable
+private fun JourneySidebarLevelWidget(
+    ownerId: String?,
+    api: CreatorApi,
+    translationStore: TranslationStore,
+) {
+    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
+    fun tpl(key: String, fallback: String, vars: Map<String, String>): String {
+        var s = t(key, fallback)
+        vars.forEach { (k, v) -> s = s.replace("{{ $k }}", v).replace("{{$k}}", v) }
+        return s
+    }
+
+    var visible by remember { mutableStateOf(false) }
+    var levelNum by remember { mutableIntStateOf(1) }
+    var xpText by remember { mutableStateOf("—") }
+    var nextText by remember { mutableStateOf<String?>(null) }
+    var progress by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(ownerId) {
+        if (ownerId.isNullOrBlank()) {
+            visible = false
+            return@LaunchedEffect
+        }
+        try {
+            val r = withContext(Dispatchers.IO) { api.getLevel(ownerId) }
+            if (!r.optBoolean("ok", false)) {
+                visible = false
+                return@LaunchedEffect
+            }
+            val lv = r.optInt("current_level", r.optInt("level", 1))
+            val totalXp = r.optInt("total_xp", 0)
+            val thresholds = when {
+                r.has("level_thresholds") && r.getJSONArray("level_thresholds").length() > 0 ->
+                    r.getJSONArray("level_thresholds")
+                r.has("thresholds") && r.getJSONArray("thresholds").length() > 0 ->
+                    r.getJSONArray("thresholds")
+                else -> null
+            }
+            fun xpAt(level: Int): Int {
+                if (thresholds == null) return 0
+                for (i in 0 until thresholds.length()) {
+                    val row = thresholds.getJSONObject(i)
+                    if (row.optInt("level", 0) == level) return row.optInt("xp_required", 0)
+                }
+                return 0
+            }
+            val curReq = xpAt(lv)
+            val nextReq = xpAt(lv + 1).takeIf { it > curReq } ?: (totalXp + 1)
+            val span = (nextReq - curReq).coerceAtLeast(1)
+            progress = ((totalXp - curReq).toFloat() / span.toFloat()).coerceIn(0f, 1f)
+            levelNum = lv
+            xpText = tpl(
+                "creator.journey.float_xp",
+                "{{ current }} / {{ next }} XP",
+                mapOf("current" to totalXp.toString(), "next" to nextReq.toString()),
+            )
+            val rem = (nextReq - totalXp).coerceAtLeast(0)
+            nextText = if (rem > 0 && lv < 10) {
+                tpl(
+                    "creator.journey.float_next",
+                    "Next level {{ n }} · {{ xp }} XP",
+                    mapOf("n" to (lv + 1).toString(), "xp" to rem.toString()),
+                )
+            } else {
+                null
+            }
+            visible = true
+        } catch (_: Exception) {
+            visible = false
+        }
+    }
+
+    if (!visible) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .border(1.dp, EazColors.Orange.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
+            .background(Color(0xFF0A0E14), RoundedCornerShape(14.dp))
+            .padding(horizontal = 8.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier.size(92.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val stroke = 8.dp.toPx()
+                val pad = stroke / 2f
+                val arcSize = Size(size.width - stroke, size.height - stroke)
+                val topLeft = Offset(pad, pad)
+                drawArc(
+                    color = Color.White.copy(alpha = 0.12f),
+                    startAngle = -90f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+                drawArc(
+                    color = EazColors.Orange,
+                    startAngle = -90f,
+                    sweepAngle = 360f * progress,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = t("creator.journey.float_level", "Level"),
+                    color = Color.White.copy(alpha = 0.68f),
+                    fontSize = 9.sp,
+                    letterSpacing = 0.8.sp,
+                )
+                Text(
+                    text = levelNum.toString(),
+                    color = EazColors.Orange,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
+        }
+        Text(
+            text = xpText,
+            color = Color.White.copy(alpha = 0.68f),
+            fontSize = 10.sp,
+            textAlign = TextAlign.Center,
+        )
+        nextText?.let {
+            Text(
+                text = it,
+                color = Color.White.copy(alpha = 0.55f),
+                fontSize = 9.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 11.sp,
+            )
+        }
     }
 }
 
@@ -665,7 +827,7 @@ private fun JourneyUnlockTreePanel(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         lineHeight = 12.sp,
                     )

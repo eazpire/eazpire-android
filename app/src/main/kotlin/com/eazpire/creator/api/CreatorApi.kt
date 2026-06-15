@@ -60,6 +60,21 @@ class CreatorApi(
         return call("get-balance", params)
     }
 
+    suspend fun convertEazToFiat(ownerId: String, amountEaz: Double): JSONObject =
+        postJsonBodyOp(
+            "convert-eaz-to-fiat",
+            JSONObject().put("owner_id", ownerId).put("amount_eaz", amountEaz)
+        )
+
+    suspend fun convertEazToGiftCard(ownerId: String, amountEaz: Double): JSONObject =
+        postJsonBodyOp(
+            "convert-eaz-to-gift-card",
+            JSONObject().put("owner_id", ownerId).put("amount_eaz", amountEaz)
+        )
+
+    suspend fun getEazEconomyTree(ownerId: String): JSONObject =
+        call("get-eaz-economy-tree", mapOf("owner_id" to ownerId))
+
     /** GET ?op=get-trial-starter-pack&owner_id= — Starter Pack quotas + previews */
     suspend fun getTrialStarterPack(ownerId: String): JSONObject = call(
         "get-trial-starter-pack",

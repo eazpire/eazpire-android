@@ -26,6 +26,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,6 +55,7 @@ import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -265,6 +268,8 @@ fun CreatorSettingsEazPanel(
                 isLoading = isLoading,
                 translationStore = translationStore,
                 walletLocked = walletLocked,
+                ownerId = ownerId,
+                api = api,
                 onBuyClick = {
                     if (walletLocked) onRequestSettingsTab(SETTINGS_TAB_CREATOR_CODES)
                     else subTab = tabs.indexOf(EazSettingsSubTab.Buy)
@@ -314,6 +319,8 @@ private fun EazBalanceSubPanel(
     isLoading: Boolean,
     translationStore: TranslationStore,
     walletLocked: Boolean,
+    ownerId: String,
+    api: CreatorApi,
     onBuyClick: () -> Unit,
 ) {
     if (walletLocked) {
@@ -387,6 +394,31 @@ private fun EazBalanceSubPanel(
             translationStore.t("creator.settings.eaz_purchased_label", "Purchased EAZ"),
             "${EazCostCatalog.fmtEaz(purchased)} EAZ"
         )
+        val earnedTotal = data.optDouble("balance_earned_total", 0.0)
+        val earnedAvail = data.optDouble("balance_earned_available", 0.0)
+        val earnedLocked = data.optDouble("balance_earned_locked", 0.0)
+        EazStatRow(
+            translationStore.t("creator.settings.eaz_earned_total_label", "Earned EAZ (total)"),
+            "${EazCostCatalog.fmtEaz(earnedTotal)} EAZ"
+        )
+        EazStatRow(
+            translationStore.t("creator.settings.eaz_earned_available_label", "Earned EAZ (available)"),
+            "${EazCostCatalog.fmtEaz(earnedAvail)} EAZ"
+        )
+        EazStatRow(
+            translationStore.t("creator.settings.eaz_earned_locked_label", "Earned EAZ (locked)"),
+            "${EazCostCatalog.fmtEaz(earnedLocked)} EAZ"
+        )
+
+        if (earnedAvail > 0) {
+            EazEarnedConvertBlock(
+                ownerId = ownerId,
+                api = api,
+                earnedAvailable = earnedAvail,
+                eazCentsPerEaz = data.optDouble("eaz_cents_per_eaz", 0.0),
+                translationStore = translationStore,
+            )
+        }
 
         val refillPrefix = translationStore.t(
             "creator.settings.eaz_refill_prefix",
@@ -413,6 +445,127 @@ private fun EazBalanceSubPanel(
                 translationStore.t("creator.settings.eaz_buy_cta", "Buy EAZ"),
                 color = Color.White
             )
+        }
+    }
+}
+
+@Composable
+private fun EazEarnedConvertBlock(
+    ownerId: String,
+    api: CreatorApi,
+    earnedAvailable: Double,
+    eazCentsPerEaz: Double,
+    translationStore: TranslationStore,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var amountText by remember { mutableStateOf("") }
+    var converting by remember { mutableStateOf(false) }
+
+    val amount = amountText.toDoubleOrNull() ?: 0.0
+    val previewCents = if (amount > 0 && eazCentsPerEaz > 0) (amount * eazCentsPerEaz).toLong() else 0L
+
+    fun runConvert(op: String) {
+        if (ownerId.isBlank() || amount <= 0 || amount > earnedAvailable) {
+            Toast.makeText(
+                context,
+                translationStore.t("creator.settings.eaz_convert_fail", "Conversion failed."),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        scope.launch {
+            converting = true
+            try {
+                val resp = withContext(Dispatchers.IO) {
+                    when (op) {
+                        "fiat" -> api.convertEazToFiat(ownerId, amount)
+                        else -> api.convertEazToGiftCard(ownerId, amount)
+                    }
+                }
+                if (resp.optBoolean("ok", false)) {
+                    amountText = ""
+                    EazBalanceRefreshBus.requestRefresh()
+                    Toast.makeText(
+                        context,
+                        translationStore.t("creator.settings.eaz_convert_success", "Conversion complete."),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        context,
+                        translationStore.t("creator.settings.eaz_convert_fail", "Conversion failed."),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (_: Exception) {
+                Toast.makeText(
+                    context,
+                    translationStore.t("creator.settings.eaz_convert_fail", "Conversion failed."),
+                    Toast.LENGTH_SHORT
+                ).show()
+            } finally {
+                converting = false
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            translationStore.t(
+                "creator.settings.eaz_convert_hint",
+                "Convert available earned EAZ to fiat balance or a shop gift card."
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.72f)
+        )
+        OutlinedTextField(
+            value = amountText,
+            onValueChange = { amountText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+            label = {
+                Text(translationStore.t("creator.settings.eaz_convert_amount_label", "Amount (EAZ)"))
+            },
+            singleLine = true,
+            enabled = !converting,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = EazColors.Orange,
+                unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+            )
+        )
+        if (previewCents > 0) {
+            Text(
+                translationStore.t("creator.settings.eaz_convert_preview", "≈ {{amount}} fiat")
+                    .replace("{{amount}}", String.format("%.2f", previewCents / 100.0)),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.65f)
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { runConvert("fiat") },
+                enabled = !converting,
+                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
+            ) {
+                Text(
+                    translationStore.t("creator.settings.eaz_convert_fiat", "Convert to fiat"),
+                    color = Color.White
+                )
+            }
+            OutlinedButton(
+                onClick = { runConvert("gc") },
+                enabled = !converting,
+            ) {
+                Text(translationStore.t("creator.settings.eaz_convert_gift_card", "Convert to gift card"))
+            }
         }
     }
 }
