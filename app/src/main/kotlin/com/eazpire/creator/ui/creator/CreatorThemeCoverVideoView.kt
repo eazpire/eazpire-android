@@ -12,8 +12,7 @@ import android.view.TextureView
 import android.widget.FrameLayout
 
 /**
- * Full-bleed muted loop video — matches web mobile `.creator-theme-bg-video { object-fit: contain }`.
- * Shows the entire video without cropping, scaled to fit within the container.
+ * Full-bleed muted loop video — matches web `.creator-theme-bg-video { object-fit: cover }`.
  */
 class CreatorThemeCoverVideoView @JvmOverloads constructor(
     context: Context,
@@ -92,6 +91,12 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
         videoUri = null
     }
 
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        val height = MeasureSpec.getSize(heightMeasureSpec)
+        setMeasuredDimension(width, height)
+    }
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         applyCoverTransform()
@@ -125,7 +130,7 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
         }
     }
 
-    /** object-fit: contain — matches web CSS `object-fit: contain` behavior */
+    /** object-fit: cover — matches web CSS `object-fit: cover` behavior */
     private fun applyCoverTransform() {
         val viewW = width.toFloat()
         val viewH = height.toFloat()
@@ -142,13 +147,13 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
         val dy: Float
         
         if (videoAspect > viewAspect) {
-            scale = viewW / videoW
-            dx = 0f
-            dy = (viewH - videoH * scale) * 0.5f
-        } else {
             scale = viewH / videoH
             dx = (viewW - videoW * scale) * 0.5f
             dy = 0f
+        } else {
+            scale = viewW / videoW
+            dx = 0f
+            dy = (viewH - videoH * scale) * 0.5f
         }
         
         val matrix = Matrix()
