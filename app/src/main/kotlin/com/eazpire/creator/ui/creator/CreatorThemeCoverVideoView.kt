@@ -124,16 +124,35 @@ class CreatorThemeCoverVideoView @JvmOverloads constructor(
         }
     }
 
-    /** object-fit: cover — same as web `object-fit: cover` / ScaleToFit.FILL */
+    /** object-fit: cover — matches web CSS `object-fit: cover` behavior */
     private fun applyCoverTransform() {
         val viewW = width.toFloat()
         val viewH = height.toFloat()
         if (viewW <= 0f || viewH <= 0f || videoWidth <= 0 || videoHeight <= 0) return
 
+        val videoW = videoWidth.toFloat()
+        val videoH = videoHeight.toFloat()
+        
+        val viewAspect = viewW / viewH
+        val videoAspect = videoW / videoH
+        
+        val scale: Float
+        val dx: Float
+        val dy: Float
+        
+        if (videoAspect > viewAspect) {
+            scale = viewH / videoH
+            dx = (viewW - videoW * scale) * 0.5f
+            dy = 0f
+        } else {
+            scale = viewW / videoW
+            dx = 0f
+            dy = (viewH - videoH * scale) * 0.5f
+        }
+        
         val matrix = Matrix()
-        val viewRect = RectF(0f, 0f, viewW, viewH)
-        val videoRect = RectF(0f, 0f, videoWidth.toFloat(), videoHeight.toFloat())
-        matrix.setRectToRect(videoRect, viewRect, Matrix.ScaleToFit.FILL)
+        matrix.setScale(scale, scale)
+        matrix.postTranslate(dx, dy)
         textureView.setTransform(matrix)
     }
 
