@@ -21,10 +21,15 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -69,6 +74,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -107,6 +113,8 @@ private data class JourneyNodeItem(
     val minLevel: Int,
     val unlocked: Boolean,
     val lockedReason: String,
+    val imageUrl: String? = null,
+    val catalogIsActive: Int = 2,
 )
 
 private val JOURNEY_CATEGORY_ORDER = listOf(
@@ -760,6 +768,8 @@ private fun JourneyUnlockTreePanel(
                         minLevel = n.optInt("min_level", 2),
                         unlocked = n.optBoolean("unlocked", false),
                         lockedReason = n.optString("locked_reason", ""),
+                        imageUrl = meta?.optString("image_url")?.takeIf { it.isNotBlank() },
+                        catalogIsActive = meta?.optInt("catalog_is_active", 2) ?: 2,
                     )
                 )
             }
@@ -853,6 +863,25 @@ private fun JourneyUnlockTreePanel(
                     .fillMaxSize()
                     .padding(horizontal = 12.dp),
             )
+        } else if (treeFilter == "product") {
+            JourneyProductTreePanel(
+                nodes = filteredNodes,
+                data = data,
+                displayLevel = data?.optInt("display_level", 1) ?: 1,
+                isCreator = isCreator,
+                busy = busy,
+                translationStore = translationStore,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                onCommitClick = { node ->
+                    commitTarget = node
+                    commitAmount = if (balance > 0) {
+                        String.format(java.util.Locale.US, "%.2f", balance)
+                    } else ""
+                },
+                onUnlock = onUnlock,
+            )
         } else {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(156.dp),
@@ -936,6 +965,345 @@ private fun JourneyUnlockTreePanel(
             titleContentColor = Color.White,
             textContentColor = Color(0xFFE5E7EB),
         )
+    }
+}
+
+@Composable
+private fun JourneyUnlockedStrip(
+    nodes: List<JourneyNodeItem>,
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier,
+) {
+    val unlocked = nodes.filter { it.unlocked }
+    if (unlocked.isEmpty()) return
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(unlocked, key = { it.nodeKey }) { node ->
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.width(72.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .border(2.dp, Color(0xFFFBBF24).copy(alpha = 0.75f), RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.04f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (!node.imageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = node.imageUrl,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                Text(
+                    text = node.title,
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 12.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun JourneyProductTreePanel(
+    nodes: List<JourneyNodeItem>,
+    data: JSONObject?,
+    displayLevel: Int,
+    isCreator: Boolean,
+    busy: Boolean,
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier,
+    onCommitClick: (JourneyNodeItem) -> Unit,
+    onUnlock: (String) -> Unit,
+) {
+    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
+    fun tpl(key: String, fallback: String, vars: Map<String, String>): String {
+        var s = t(key, fallback)
+        vars.forEach { (k, v) -> s = s.replace("{{ $k }}", v).replace("{{$k}}", v) }
+        return s
+    }
+    val ps = data?.optJSONObject("product_sections")
+    val previewLevel = ps?.optInt("preview_min_level", 3) ?: 3
+    val premiumLevel = ps?.optInt("premium_min_level", 5) ?: 5
+    val starter = nodes.filter { it.catalogIsActive == 2 }
+    val preview = nodes.filter { it.catalogIsActive == 1 }
+    val offline = nodes.filter { it.catalogIsActive == 0 }
+
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
+        item {
+            JourneyUnlockedStrip(
+                nodes = nodes,
+                translationStore = translationStore,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        if (starter.isNotEmpty()) {
+            item {
+                JourneyProductSection(
+                    title = t("creator.journey.starter_products", "Starter Products"),
+                    subtitle = null,
+                    nodes = starter,
+                    sectionLocked = false,
+                    isCreator = isCreator,
+                    busy = busy,
+                    translationStore = translationStore,
+                    onCommitClick = onCommitClick,
+                    onUnlock = onUnlock,
+                )
+            }
+        }
+        if (preview.isNotEmpty()) {
+            item {
+                JourneyProductSection(
+                    title = tpl("creator.journey.level_row", "Level {{ n }}", mapOf("n" to previewLevel.toString())),
+                    subtitle = null,
+                    nodes = preview,
+                    sectionLocked = displayLevel < previewLevel,
+                    isCreator = isCreator,
+                    busy = busy,
+                    translationStore = translationStore,
+                    onCommitClick = onCommitClick,
+                    onUnlock = onUnlock,
+                )
+            }
+        }
+        if (offline.isNotEmpty()) {
+            item {
+                JourneyProductSection(
+                    title = tpl("creator.journey.level_row", "Level {{ n }}", mapOf("n" to premiumLevel.toString())),
+                    subtitle = t("creator.journey.product_premium_hint", "Premium products available at this level"),
+                    nodes = offline,
+                    sectionLocked = displayLevel < premiumLevel,
+                    isCreator = isCreator,
+                    busy = busy,
+                    translationStore = translationStore,
+                    onCommitClick = onCommitClick,
+                    onUnlock = onUnlock,
+                )
+            }
+        }
+        if (starter.isEmpty() && preview.isEmpty() && offline.isEmpty()) {
+            item {
+                Text(
+                    t("creator.journey.starter_empty", "No items in this category yet."),
+                    color = Color(0xFF9CA3AF),
+                    fontSize = 13.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun JourneyProductSection(
+    title: String,
+    subtitle: String?,
+    nodes: List<JourneyNodeItem>,
+    sectionLocked: Boolean,
+    isCreator: Boolean,
+    busy: Boolean,
+    translationStore: TranslationStore,
+    onCommitClick: (JourneyNodeItem) -> Unit,
+    onUnlock: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = title,
+            color = EazColors.Orange,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                text = subtitle,
+                color = Color(0xFF9CA3AF),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        val rows = nodes.chunked(2)
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            rows.forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    row.forEach { node ->
+                        JourneyProductCard(
+                            node = node,
+                            isCreator = isCreator,
+                            busy = busy,
+                            sectionLocked = sectionLocked,
+                            translationStore = translationStore,
+                            modifier = Modifier.weight(1f),
+                            onCommitClick = { onCommitClick(node) },
+                            onUnlockClick = { onUnlock(node.nodeKey) },
+                        )
+                    }
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JourneyProductCard(
+    node: JourneyNodeItem,
+    isCreator: Boolean,
+    busy: Boolean,
+    sectionLocked: Boolean,
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier,
+    onCommitClick: () -> Unit,
+    onUnlockClick: () -> Unit,
+) {
+    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
+    fun tpl(key: String, fallback: String, vars: Map<String, String>): String {
+        var s = t(key, fallback)
+        vars.forEach { (k, v) -> s = s.replace("{{ $k }}", v).replace("{{$k}}", v) }
+        return s
+    }
+    val levelLocked = sectionLocked || node.lockedReason == "level_required"
+    val canAct = !node.unlocked && isCreator && node.lockedReason.isEmpty() && !levelLocked && !sectionLocked
+    val unlockReady = canAct && node.committed + 1e-9 >= node.cost
+    val progress = if (node.cost > 0) (node.committed / node.cost).toFloat().coerceIn(0f, 1f) else if (node.unlocked) 1f else 0f
+    val alpha = if (sectionLocked || levelLocked) 0.42f else 1f
+
+    Column(
+        modifier = modifier
+            .alpha(alpha)
+            .border(
+                1.dp,
+                if (node.unlocked) Color(0xFFFBBF24).copy(alpha = 0.75f) else Color.White.copy(alpha = 0.12f),
+                RoundedCornerShape(14.dp),
+            )
+            .background(Color(0xFF111827), RoundedCornerShape(14.dp))
+            .padding(bottom = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)),
+        ) {
+            if (!node.imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = node.imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Brush.linearGradient(listOf(Color(0xFF1F2937), Color(0xFF111827)))),
+                )
+            }
+            if (node.unlocked) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(22.dp)
+                        .background(Color(0xFFFBBF24), RoundedCornerShape(999.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("✓", color = Color(0xFF111827), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.72f)),
+            ) {
+                LinearProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = EazColors.Orange,
+                    trackColor = Color.White.copy(alpha = 0.12f),
+                )
+                Text(
+                    text = tpl(
+                        "creator.journey.eaz_badge",
+                        "{{ committed }}/{{ cost }} EAZ",
+                        mapOf(
+                            "committed" to node.committed.toInt().toString(),
+                            "cost" to node.cost.toInt().toString(),
+                        ),
+                    ),
+                    color = EazColors.Orange,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                )
+            }
+        }
+        Text(
+            text = node.title,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            minLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .height(36.dp),
+        )
+        if (canAct && node.cost > 0) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onCommitClick,
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(t("creator.journey.commit_eaz", "Commit"), fontSize = 10.sp)
+                }
+                Button(
+                    onClick = onUnlockClick,
+                    enabled = !busy && unlockReady,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(t("creator.journey.unlock_short", "Unlock"), fontSize = 10.sp)
+                }
+            }
+        }
     }
 }
 
@@ -1043,17 +1411,22 @@ private fun JourneyGridCard(
                 Text(t("creator.journey.level_required", "Higher level required"), fontSize = 10.sp, color = Color(0xFF9CA3AF))
             }
             if (canAct) {
-                OutlinedButton(onClick = onCommitClick, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(t("creator.journey.commit_eaz", "Commit"), fontSize = 11.sp)
-                }
-                Button(
-                    onClick = onUnlockClick,
-                    enabled = !busy && unlockReady,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .scale(if (unlockReady) unlockScale else 1f),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(t("creator.journey.unlock_now", "Unlock now"), fontSize = 11.sp)
+                    OutlinedButton(onClick = onCommitClick, enabled = !busy, modifier = Modifier.weight(1f)) {
+                        Text(t("creator.journey.commit_eaz", "Commit"), fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = onUnlockClick,
+                        enabled = !busy && unlockReady,
+                        modifier = Modifier
+                            .weight(1f)
+                            .scale(if (unlockReady) unlockScale else 1f),
+                    ) {
+                        Text(t("creator.journey.unlock_short", "Unlock"), fontSize = 11.sp)
+                    }
                 }
             }
         }
