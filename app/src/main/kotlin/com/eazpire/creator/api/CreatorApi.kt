@@ -2714,6 +2714,42 @@ class CreatorApi(
             mapOf("reopen" to "1")
         )
 
+    /** POST ?op=eazy-conv – save message (support / ai) */
+    suspend fun eazyConvPostMessage(
+        userId: String,
+        conversationId: String,
+        role: String,
+        content: String,
+        messageType: String = "ai",
+    ): JSONObject = postJson(
+        "eazy-conv",
+        mapOf(
+            "user_id" to userId,
+            "conversation_id" to conversationId,
+            "role" to role,
+            "content" to content,
+            "message_type" to messageType,
+        )
+    )
+
+    /** POST ?op=eazy-support-survey */
+    suspend fun eazySupportSurvey(
+        userId: String,
+        conversationId: String,
+        solved: Boolean,
+        rating: Int?,
+        feedback: String?,
+    ): JSONObject = postJson(
+        "eazy-support-survey",
+        buildMap {
+            put("user_id", userId)
+            put("conversation_id", conversationId)
+            put("solved", solved)
+            rating?.let { put("rating", it) }
+            feedback?.takeIf { it.isNotBlank() }?.let { put("feedback", it) }
+        }
+    )
+
     /** POST ?op=chat-completion – optional function_trigger (Eazy carousel / web startChatFunction) */
     suspend fun chatCompletion(
         userId: String,

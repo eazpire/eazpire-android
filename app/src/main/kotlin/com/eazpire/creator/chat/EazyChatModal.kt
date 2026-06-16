@@ -146,7 +146,9 @@ private data class EazyConvTabItem(
     val id: String,
     val preview: String?,
     val summary: String?,
-    val messageCount: Int = 0
+    val messageCount: Int = 0,
+    val mode: String = "ai",
+    val supportStatus: String? = null,
 )
 
 private data class EazyNotifRow(
@@ -454,7 +456,9 @@ private fun parseConvTabs(arr: JSONArray): List<EazyConvTabItem> {
             id = id,
             preview = pv,
             summary = sm,
-            messageCount = o.optInt("message_count", 0)
+            messageCount = o.optInt("message_count", 0),
+            mode = o.optString("mode", "ai").ifBlank { "ai" },
+            supportStatus = o.optString("support_status", "").takeIf { it.isNotBlank() },
         )
     }
 }
@@ -591,6 +595,40 @@ fun EazyChatModal(
     val totalUnreadNotifs = remember(notifsUser, notifsSysCreator, notifsSysShop) {
         notifsUser.count { !it.isRead } + notifsSysCreator.count { !it.isRead } + notifsSysShop.count { !it.isRead }
     }
+    // ── Support Mode state (mirrors web supportMode / survey flow) ──
+    var supportMode by remember { mutableStateOf(false) }
+    var supportAgentOnline by remember { mutableStateOf(false) }
+    var convSupportMeta by remember { mutableStateOf(EazyConvMeta()) }
+    var supportSurveyStep by remember { mutableStateOf<SupportSurveyStep?>(null) }
+    var supportSurveyData by remember { mutableStateOf(SupportSurveyData()) }
+    val supportSurveyActive = supportSurveyStep != null
+    val isLiveSupportActive = supportMode &&
+        convSupportMeta.supportStatus != "resolved" &&
+        convSupportMeta.supportStatus != "closed"
+
+    // ── Support polling (every 5s when live support is active) ──
+    LaunchedEffect(visible, supportMode, conversationId, ownerId) {
+        if (!visible || !supportMode || conversationId == null || ownerId == null) return@LaunchedEffect
+        val u = chatStore.getUserId(ownerId)
+        while (true) {
+            delay(5_000)
+            if (!supportMode) break
+            try {
+                val afterId = maxNumericMessageId(chatStore.messages.value)
+                val (meta, newMsgs) = pollSupportReplies(api, u, conversationId!!, afterId)
+                convSupportMeta = meta
+                if (meta.supportFirstReplyAt != null) supportAgentOnline = true
+                newMsgs.forEach { chatStore.addMessage(it) }
+                if (meta.supportStatus == "resolved" && !supportSurveyActive) {
+                    supportMode = false
+                    supportAgentOnline = false
+                    supportSurveyStep = SupportSurveyStep.SOLVED
+                    supportSurveyData = SupportSurveyData()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     var historyOpen by remember { mutableStateOf(false) }
     var historyRows by remember { mutableStateOf<List<EazyConvTabItem>>(emptyList()) }
     var loadingHistory by remember { mutableStateOf(false) }
@@ -804,14 +842,26 @@ fun EazyChatModal(
                     val msgs = resp.optJSONArray("messages") ?: JSONArray()
                     conv.optString("id")?.let { cid ->
                         chatStore.setConversationId(cid)
+                        val meta = parseEazyConvMeta(conv)
                         convTabs =
                             listOf(
                                 EazyConvTabItem(
-                                    cid,
-                                    conv.optString("preview", "").trim().ifBlank { null },
-                                    conv.optString("summary", "").trim().ifBlank { null },
+                                    id = cid,
+                                    preview = conv.optString("preview", "").trim().ifBlank { null },
+                                    summary = conv.optString("summary", "").trim().ifBlank { null },
+                                    mode = meta.mode,
+                                    supportStatus = meta.supportStatus,
                                 ),
                             )
+                        // Restore support state when conversation was in support mode
+                        if (isLiveSupportMeta(meta)) {
+                            convSupportMeta = meta
+                            supportMode = true
+                            if (meta.supportFirstReplyAt != null) supportAgentOnline = true
+                        } else if (meta.supportStatus == "resolved") {
+                            supportSurveyStep = SupportSurveyStep.SOLVED
+                            supportSurveyData = SupportSurveyData()
+                        }
                     }
                     chatStore.setMessages(parseMessagesArray(msgs))
                 } else {
@@ -970,13 +1020,23 @@ fun EazyChatModal(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 items(convTabs, key = { it.id }) { tab ->
-                                                    val newChatFb = t("eazy_chat.tab_new_chat", "Chat")
-                                                    val label = tabStripLabel(tab.preview, tab.summary, newChatFb)
+                                                        val newChatFb = t("eazy_chat.tab_new_chat", "Chat")
                                                     val active = tab.id == conversationId
+                                                    val isSupportTab = (active && supportMode) ||
+                                                        (tab.mode == "support" && tab.supportStatus != "closed" && tab.supportStatus != "resolved")
+                                                    val livePrefix = t("chat_live_support_tab", "Live Support:")
+                                                    val baseLabel = tabStripLabel(tab.preview, tab.summary, newChatFb)
+                                                    val label = if (isSupportTab) supportTabPrefixLabel(livePrefix, baseLabel) else baseLabel
+                                                    val tabBg = when {
+                                                        active && isSupportTab -> EazySupportRed.copy(alpha = 0.25f)
+                                                        active -> LocalEazyModalPalette.current.accent.copy(alpha = 0.25f)
+                                                        isSupportTab -> EazySupportRed.copy(alpha = 0.12f)
+                                                        else -> Color.Transparent
+                                                    }
                                                     Row(
                                                         modifier = Modifier
                                                             .clip(RoundedCornerShape(8.dp))
-                                                            .background(if (active) LocalEazyModalPalette.current.accent.copy(alpha = 0.25f) else Color.Transparent)
+                                                            .background(tabBg)
                                                             .clickable {
                                                                 scope.launch {
                                                                     val u = chatStore.getUserId(ownerId)
@@ -1003,7 +1063,11 @@ fun EazyChatModal(
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis,
                                                             style = MaterialTheme.typography.labelMedium,
-                                                            color = if (active) LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.text,
+                                                            color = when {
+                                                                isSupportTab -> EazySupportRedActive
+                                                                active -> LocalEazyModalPalette.current.accent
+                                                                else -> LocalEazyModalPalette.current.text
+                                                            },
                                                             modifier = Modifier.widthIn(max = 120.dp)
                                                         )
                                                         IconButton(
@@ -1227,6 +1291,53 @@ fun EazyChatModal(
                                             }
                                         }
 
+                                        // Online float badge (mirrors web #creator-chat-support-float)
+                                        EazySupportOnlineFloat(
+                                            visible = supportAgentOnline && isLiveSupportActive,
+                                            agentName = EAZY_SUPPORT_AGENT_NAME,
+                                            t = t,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+
+                                        // Support survey panel
+                                        if (supportSurveyStep != null) {
+                                            EazySupportSurveyPanel(
+                                                step = supportSurveyStep!!,
+                                                survey = supportSurveyData,
+                                                t = t,
+                                                onSolved = { solved ->
+                                                    supportSurveyData = supportSurveyData.copy(solved = solved)
+                                                    supportSurveyStep = SupportSurveyStep.RATING
+                                                    chatStore.addMessage(ChatMessage("sv_sol${System.currentTimeMillis()}", "user", if (solved) t("support_yes", "Yes") else t("support_no", "No")))
+                                                },
+                                                onRating = { stars ->
+                                                    supportSurveyData = supportSurveyData.copy(rating = stars)
+                                                    supportSurveyStep = SupportSurveyStep.FEEDBACK_ASK
+                                                    chatStore.addMessage(ChatMessage("sv_rat${System.currentTimeMillis()}", "user", "$stars / 5"))
+                                                },
+                                                onFeedbackChoice = { wantsFeedback ->
+                                                    if (wantsFeedback) {
+                                                        supportSurveyStep = SupportSurveyStep.FEEDBACK_TEXT
+                                                    } else {
+                                                        val snap = supportSurveyData
+                                                        scope.launch {
+                                                            val u = chatStore.getUserId(ownerId)
+                                                            val cid = conversationId
+                                                            if (cid != null) {
+                                                                try { submitSupportSurveyOnServer(api, u, cid, snap) } catch (_: Exception) {}
+                                                            }
+                                                        }
+                                                        supportSurveyStep = null
+                                                        supportMode = false
+                                                        supportAgentOnline = false
+                                                        convSupportMeta = convSupportMeta.copy(mode = "ai", supportStatus = "closed")
+                                                        chatStore.addMessage(ChatMessage("sv_ty${System.currentTimeMillis()}", "assistant", t("support_survey_thanks", "Thank you for your feedback! You can chat with Eazy again now.")))
+                                                    }
+                                                },
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                            )
+                                        }
+
                                         val listState = rememberLazyListState()
                                         LaunchedEffect(messages.size) {
                                             if (messages.isNotEmpty()) {
@@ -1352,8 +1463,35 @@ fun EazyChatModal(
                                                     val text = inputText.trim()
                                                     if (text.isBlank() || isTyping) return@IconButton
                                                     inputText = ""
+                                                    // Survey feedback text step
+                                                    if (supportSurveyStep == SupportSurveyStep.FEEDBACK_TEXT) {
+                                                        supportSurveyData = supportSurveyData.copy(feedback = text)
+                                                        scope.launch {
+                                                            chatStore.addMessage(ChatMessage("u${System.currentTimeMillis()}", "user", text))
+                                                            val u = chatStore.getUserId(ownerId)
+                                                            val cid = conversationId
+                                                            if (cid != null) {
+                                                                try { submitSupportSurveyOnServer(api, u, cid, supportSurveyData) } catch (_: Exception) {}
+                                                            }
+                                                            supportSurveyStep = null
+                                                            supportMode = false
+                                                            supportAgentOnline = false
+                                                            convSupportMeta = convSupportMeta.copy(mode = "ai", supportStatus = "closed")
+                                                            chatStore.addMessage(ChatMessage("sv${System.currentTimeMillis()}", "assistant", t("support_survey_thanks", "Thank you for your feedback! You can chat with Eazy again now.")))
+                                                        }
+                                                        return@IconButton
+                                                    }
                                                     scope.launch {
                                                         chatStore.addMessage(ChatMessage("u${System.currentTimeMillis()}", "user", text))
+                                                        // In support mode: send via eazy-conv POST, not chatCompletion
+                                                        if (isLiveSupportActive) {
+                                                            val u = chatStore.getUserId(ownerId)
+                                                            val cid = conversationId ?: return@launch
+                                                            try {
+                                                                sendSupportMessageOnServer(api, u, cid, text)
+                                                            } catch (_: Exception) {}
+                                                            return@launch
+                                                        }
                                                         chatStore.setTyping(true)
                                                         val u = chatStore.getUserId(ownerId)
                                                         val msgList = chatStore.messages.value.map { it.role to it.content }
@@ -1387,6 +1525,26 @@ fun EazyChatModal(
                                                                 if (reply.isNotBlank()) {
                                                                     chatStore.addMessage(ChatMessage("a${System.currentTimeMillis()}", "assistant", reply))
                                                                     resp.optString("conversation_id", "").takeIf { it.isNotBlank() }?.let { chatStore.setConversationId(it) }
+                                                                }
+                                                                // Handle connect_support action from AI reply
+                                                                val action = resp.optJSONObject("action")
+                                                                if (action?.optString("action") == "connect_support") {
+                                                                    val reason = action.optString("params", "")
+                                                                    // Activate support mode
+                                                                    convSupportMeta = EazyConvMeta(mode = "support", supportStatus = "open")
+                                                                    supportMode = true
+                                                                    supportAgentOnline = false
+                                                                    conversationId?.let { cid ->
+                                                                        convTabs = convTabs.map { tab ->
+                                                                            if (tab.id == cid) tab.copy(mode = "support", supportStatus = "open") else tab
+                                                                        }
+                                                                    }
+                                                                    val cid = conversationId
+                                                                    if (cid != null) {
+                                                                        try {
+                                                                            activateSupportOnServer(api, u, cid, reason, t)
+                                                                        } catch (_: Exception) {}
+                                                                    }
                                                                 }
                                                             }
                                                             conversationId?.let { cid ->
