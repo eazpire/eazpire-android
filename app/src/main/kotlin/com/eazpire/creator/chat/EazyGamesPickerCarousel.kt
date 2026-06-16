@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +39,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
-import androidx.compose.runtime.rememberCoroutineScope
 
 data class DailyGamePickerItem(
     val slug: String,
@@ -82,6 +82,48 @@ private fun formatCooldown(sec: Int): String {
         "%d:%02d".format(m, r)
     }
 }
+
+private fun gamePickerIcon(slug: String): String =
+    when (slug) {
+        "connect_four_5x5" -> "⚫"
+        "simon_says" -> "🎹"
+        else -> "🃏"
+    }
+
+private fun gamePickerTitle(
+    slug: String,
+    t: (String, String) -> String,
+): String =
+    when (slug) {
+        "connect_four_5x5" -> t("eazy_chat.games_connect_title", "Connect Four")
+        "simon_says" -> t("eazy_chat.games_simon_title", "Simon Says")
+        else -> t("eazy_chat.games_memory_title", "Memory Match")
+    }
+
+private fun gamePickerRules(slug: String): List<Pair<String, String>> =
+    when (slug) {
+        "connect_four_5x5" ->
+            listOf(
+                "eazy_chat.games_connect_rules_p1" to "Goal: get four of your marks in a row before Eazy does.",
+                "eazy_chat.games_connect_rules_p2" to "You play X and move first. Eazy plays O.",
+                "eazy_chat.games_connect_rules_p3" to "You have four minutes for the whole round.",
+                "eazy_chat.games_connect_rules_p4" to "Beat Eazy for a chance at daily loot.",
+            )
+        "simon_says" ->
+            listOf(
+                "eazy_chat.games_simon_rules_p1" to "Goal: watch Eazy flash a pad sequence, then tap the same pads in order.",
+                "eazy_chat.games_simon_rules_p2" to "Nine unique pads (color + design) help you remember. Each round adds one more tap.",
+                "eazy_chat.games_simon_rules_p3" to "You get a per-round timer (+2s each round). One wrong pad or running out of time ends the game.",
+                "eazy_chat.games_simon_rules_p4" to "Complete all rounds for a chance at daily loot.",
+            )
+        else ->
+            listOf(
+                "eazy_chat.games_rules_p1" to "Goal: find all matching pairs on the board.",
+                "eazy_chat.games_rules_p2" to "After Start you get a short peek, then the countdown runs.",
+                "eazy_chat.games_rules_p3" to "Each non-matching pair counts as one wrong guess.",
+                "eazy_chat.games_rules_p4" to "Complete in time for a chance to win loot.",
+            )
+    }
 
 @Composable
 fun EazyGamesPickerCarousel(
@@ -129,6 +171,7 @@ fun EazyGamesPickerCarousel(
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
+        tick
         Row(
             modifier =
                 Modifier
@@ -159,15 +202,9 @@ fun EazyGamesPickerCarousel(
                             .padding(vertical = 6.dp, horizontal = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    Text(gamePickerIcon(item.slug), fontSize = 16.sp)
                     Text(
-                        if (item.slug == "connect_four_5x5") "⚫" else "🃏",
-                        fontSize = 16.sp,
-                    )
-                    Text(
-                        when (item.slug) {
-                            "connect_four_5x5" -> t("eazy_chat.games_connect_title", "Connect Four")
-                            else -> t("eazy_chat.games_memory_title", "Memory Match")
-                        },
+                        gamePickerTitle(item.slug, t),
                         fontSize = 9.sp,
                         lineHeight = 10.sp,
                         textAlign = TextAlign.Center,
@@ -199,32 +236,13 @@ fun EazyGamesPickerCarousel(
                         .verticalScroll(rememberScrollState()),
             ) {
                 Text(
-                    when (sel.slug) {
-                        "connect_four_5x5" -> t("eazy_chat.games_connect_title", "Connect Four")
-                        else -> t("eazy_chat.games_memory_title", "Memory Match")
-                    },
+                    gamePickerTitle(sel.slug, t),
                     fontWeight = FontWeight.SemiBold,
                     color = palette.accent,
                     fontSize = 12.sp,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                val ruleKeys =
-                    if (sel.slug == "connect_four_5x5") {
-                        listOf(
-                            "eazy_chat.games_connect_rules_p1" to "Goal: get four of your marks in a row before Eazy does.",
-                            "eazy_chat.games_connect_rules_p2" to "You play X and move first. Eazy plays O.",
-                            "eazy_chat.games_connect_rules_p3" to "You have four minutes for the whole round.",
-                            "eazy_chat.games_connect_rules_p4" to "Beat Eazy for a chance at daily loot.",
-                        )
-                    } else {
-                        listOf(
-                            "eazy_chat.games_rules_p1" to "Goal: find all matching pairs on the board.",
-                            "eazy_chat.games_rules_p2" to "After Start you get a short peek, then the countdown runs.",
-                            "eazy_chat.games_rules_p3" to "Each non-matching pair counts as one wrong guess.",
-                            "eazy_chat.games_rules_p4" to "Complete in time for a chance to win loot.",
-                        )
-                    }
-                ruleKeys.forEach { (key, fb) ->
+                gamePickerRules(sel.slug).forEach { (key, fb) ->
                     Text(
                         t(key, fb),
                         fontSize = 11.sp,
@@ -282,7 +300,8 @@ fun EazyGamesPickerCarousel(
                                         )
                                     },
                                 )
-                            } catch (_: Exception) {}
+                            } catch (_: Exception) {
+                            }
                         }
                     },
                     colors =
@@ -326,7 +345,8 @@ fun EazyGamesPickerCarousel(
                                         )
                                     },
                                 )
-                            } catch (_: Exception) {}
+                            } catch (_: Exception) {
+                            }
                         }
                     },
                     colors =

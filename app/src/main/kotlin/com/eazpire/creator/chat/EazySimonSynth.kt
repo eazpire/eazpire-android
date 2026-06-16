@@ -95,6 +95,6 @@ data class SimonGameMetaUi(
     val melodyId: String,
     val instrument: String,
     val colors: List<String>,
-    val patternIds: List<Int>,
+    val padImages: List<String>,
     val padFreqs: List<Double>,
 )
