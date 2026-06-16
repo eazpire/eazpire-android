@@ -82,14 +82,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import com.eazpire.creator.ui.modal.EazBottomSheet
-import com.eazpire.creator.ui.modal.EazModalFooterSurface
-import com.eazpire.creator.ui.modal.EazModalSheetLayout
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.lazy.LazyListState
-import kotlinx.coroutines.CoroutineScope
+import com.eazpire.creator.ui.modal.EazFullScreenDialog
+import com.eazpire.creator.ui.modal.EazModalInsets
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -529,7 +523,6 @@ private fun eazyFeatureIcon(featureId: String): ImageVector = when (featureId) {
     else -> Icons.Default.Brush
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EazyChatModal(
     visible: Boolean,
@@ -643,16 +636,7 @@ fun EazyChatModal(
     var showDeleteAllHistoryConfirm by remember { mutableStateOf(false) }
     var deleteHistoryTargetId by remember { mutableStateOf<String?>(null) }
     val tabListState = rememberLazyListState()
-    val chatListState = rememberLazyListState()
-    var inputText by remember { mutableStateOf("") }
     val carouselScroll = rememberScrollState()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            chatListState.animateScrollToItem(messages.size - 1)
-        }
-    }
 
     LaunchedEffect(visible, startTab) {
         if (visible) {
