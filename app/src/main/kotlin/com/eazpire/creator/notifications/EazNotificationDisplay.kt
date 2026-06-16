@@ -47,7 +47,7 @@ object EazNotificationDisplay {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Status bar + compact notification app mark (white monochrome). */
-    private fun smallIconRes(): Int = R.drawable.ic_stat_eazpire
+    private fun smallIconRes(): Int = R.drawable.ic_notification
 
     /**
      * Maps FCM `data` (e.g. [open_target]) to MainActivity extras.
@@ -175,7 +175,7 @@ object EazNotificationDisplay {
             "open_target" to "cart",
             "category" to "android_cart_abandon"
         )
-        val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_cart), isRemoteImage = false)
+        val heroVisual = HeroVisual(appLauncherLargeIconBitmap(app), isRemoteImage = false)
         postNotification(
             context = app,
             channelId = EazNotificationChannels.channelIdForCategory("android_cart_abandon"),
@@ -204,7 +204,7 @@ object EazNotificationDisplay {
                 "open_target" to "eazy_games",
                 "category" to "daily_game_reminder",
             )
-        val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_shop), isRemoteImage = false)
+        val heroVisual = HeroVisual(appLauncherLargeIconBitmap(app), isRemoteImage = false)
         postNotification(
             context = app,
             channelId = EazNotificationChannels.channelIdForCategory("daily_game_reminder"),
@@ -239,7 +239,7 @@ object EazNotificationDisplay {
             "open_target" to "cart",
             "category" to category
         )
-        val heroVisual = HeroVisual(fallbackIconBitmap(app, R.drawable.ic_notif_cart), isRemoteImage = false)
+        val heroVisual = HeroVisual(appLauncherLargeIconBitmap(app), isRemoteImage = false)
         postNotification(
             context = app,
             channelId = EazNotificationChannels.channelIdForCategory(category),
@@ -351,8 +351,7 @@ object EazNotificationDisplay {
         resolveHeroImageUrl(extras)?.let { url ->
             loadHeroBitmap(context, url)?.let { return HeroVisual(it, isRemoteImage = true) }
         }
-        val fallbackRes = fallbackIconRes(category)
-        return HeroVisual(fallbackIconBitmap(context, fallbackRes), isRemoteImage = false)
+        return HeroVisual(appLauncherLargeIconBitmap(context), isRemoteImage = false)
     }
 
     fun resolveHeroImageUrl(extras: Map<String, String?>): String? {
@@ -387,7 +386,7 @@ object EazNotificationDisplay {
     @DrawableRes
     fun fallbackIconRes(category: String?): Int {
         val c = category?.lowercase()?.trim().orEmpty()
-        if (c.isEmpty()) return R.drawable.ic_stat_eazpire
+        if (c.isEmpty()) return R.drawable.ic_notification
         if (c.contains("cart") || c.contains("abandon") || c.startsWith("android_cart")) {
             return R.drawable.ic_notif_cart
         }
@@ -410,7 +409,17 @@ object EazNotificationDisplay {
         if (c.contains("gift") || c.contains("referral") || c.contains("community") || c.contains("creator_code")) {
             return R.drawable.ic_notif_community
         }
-        return R.drawable.ic_stat_eazpire
+        return R.drawable.ic_notification
+    }
+
+    /** Orange eazpire app logo for notification large-icon slot. */
+    private fun appLauncherLargeIconBitmap(context: Context): Bitmap? {
+        return try {
+            val d = ContextCompat.getDrawable(context, R.mipmap.ic_launcher) ?: return null
+            drawableToBitmap(d)?.let { fitCenterSquare(it, heroIconSizePx(context)) }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private suspend fun loadHeroBitmap(context: Context, url: String): Bitmap? {

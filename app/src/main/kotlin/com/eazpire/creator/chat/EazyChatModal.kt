@@ -70,20 +70,25 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import com.eazpire.creator.ui.modal.EazFullScreenDialog
-import com.eazpire.creator.ui.modal.EazModalInsets
+import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalFooterSurface
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -104,7 +109,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.CoroutineScope
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -523,6 +528,7 @@ private fun eazyFeatureIcon(featureId: String): ImageVector = when (featureId) {
     else -> Icons.Default.Brush
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EazyChatModal(
     visible: Boolean,
@@ -636,7 +642,16 @@ fun EazyChatModal(
     var showDeleteAllHistoryConfirm by remember { mutableStateOf(false) }
     var deleteHistoryTargetId by remember { mutableStateOf<String?>(null) }
     val tabListState = rememberLazyListState()
+    val chatListState = rememberLazyListState()
     val carouselScroll = rememberScrollState()
+    var inputText by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            chatListState.animateScrollToItem(messages.size - 1)
+        }
+    }
 
     LaunchedEffect(visible, startTab) {
         if (visible) {
@@ -887,14 +902,12 @@ fun EazyChatModal(
 
     val eazyPalette = remember(chatContext) { eazyPaletteFor(chatContext) }
     CompositionLocalProvider(LocalEazyModalPalette provides eazyPalette) {
-    EazFullScreenDialog(
+    EazBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
+        sheetState = sheetState,
+        containerColor = eazyPalette.bg,
+        fullscreen = true,
+        dragHandle = null,
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             val isWideLayout = maxWidth > 600.dp
@@ -909,56 +922,129 @@ fun EazyChatModal(
                     .fillMaxHeight()
                     .background(LocalEazyModalPalette.current.bg)
             ) {
-                Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(LocalEazyModalPalette.current.header)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (!sidebarOpen) {
-                            IconButton(
-                                onClick = { sidebarOpen = true },
-                                modifier = Modifier.size(36.dp)
+                EazModalSheetLayout(
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                    header = {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(LocalEazyModalPalette.current.header)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Default.Menu,
-                                    contentDescription = t("eazy_chat.ui_open_sidebar", "Open menu"),
-                                    tint = LocalEazyModalPalette.current.text.copy(alpha = 0.8f),
-                                    modifier = Modifier.size(20.dp)
+                                if (!sidebarOpen) {
+                                    IconButton(
+                                        onClick = { sidebarOpen = true },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Menu,
+                                            contentDescription = t("eazy_chat.ui_open_sidebar", "Open menu"),
+                                            tint = LocalEazyModalPalette.current.text.copy(alpha = 0.8f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.width(36.dp))
+                                }
+                                Text(
+                                    text = sidebarTabLabel(selectedTab, t),
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = LocalEazyModalPalette.current.text,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                IconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = t("eazy_chat.ui_close_chat", "Close"),
+                                        tint = LocalEazyModalPalette.current.text,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            if (selectedTab == EazySidebarTab.Chat && isLoggedIn && !limitReached) {
+                                EazyChatConvTabsHeader(
+                                    convTabs = convTabs,
+                                    onConvTabsChange = { convTabs = it },
+                                    tabListState = tabListState,
+                                    conversationId = conversationId,
+                                    supportMode = supportMode,
+                                    convSupportMeta = convSupportMeta,
+                                    drawerExpanded = drawerExpanded,
+                                    onDrawerExpandedChange = { drawerExpanded = it },
+                                    carouselScroll = carouselScroll,
+                                    chatContext = chatContext,
+                                    fnVisibility = fnVisibility,
+                                    chatStore = chatStore,
+                                    api = api,
+                                    ownerId = ownerId,
+                                    scope = scope,
+                                    pagePath = pagePath,
+                                    t = t,
+                                    onHistoryClick = {
+                                        historyOpen = true
+                                        scope.launch {
+                                            loadingHistory = true
+                                            val u = chatStore.getUserId(ownerId)
+                                            try {
+                                                val resp = withContext(Dispatchers.IO) {
+                                                    api.getEazyConversation(u, mapOf("list" to "1", "status" to "closed"))
+                                                }
+                                                if (resp.optBoolean("ok", false)) {
+                                                    val arr = resp.optJSONArray("conversations") ?: JSONArray()
+                                                    val curId = conversationId
+                                                    historyRows = parseConvTabs(arr).filter { row ->
+                                                        curId == null || row.id != curId
+                                                    }
+                                                } else historyRows = emptyList()
+                                            } catch (_: Exception) {
+                                                historyRows = emptyList()
+                                            }
+                                            loadingHistory = false
+                                        }
+                                    },
+                                    loadActiveTabs = { loadActiveTabs(it) },
                                 )
                             }
-                        } else {
-                            Spacer(modifier = Modifier.width(36.dp))
                         }
-                        Text(
-                            text = sidebarTabLabel(selectedTab, t),
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = LocalEazyModalPalette.current.text,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = t("eazy_chat.ui_close_chat", "Close"),
-                                tint = LocalEazyModalPalette.current.text,
-                                modifier = Modifier.size(20.dp)
+                    },
+                    footer = {
+                        if (selectedTab == EazySidebarTab.Chat && isLoggedIn && !limitReached) {
+                            EazyChatComposerFooter(
+                                rateLimit = rateLimit,
+                                inputText = inputText,
+                                onInputTextChange = { inputText = it },
+                                isTyping = isTyping,
+                                supportSurveyStep = supportSurveyStep,
+                                supportSurveyData = supportSurveyData,
+                                onSupportSurveyDataChange = { supportSurveyData = it },
+                                onSupportSurveyStepChange = { supportSurveyStep = it },
+                                convSupportMeta = convSupportMeta,
+                                onConvSupportMetaChange = { convSupportMeta = it },
+                                supportMode = supportMode,
+                                onSupportModeChange = { supportMode = it },
+                                onSupportAgentOnlineChange = { supportAgentOnline = it },
+                                isLiveSupportActive = isLiveSupportActive,
+                                conversationId = conversationId,
+                                ownerId = ownerId,
+                                api = api,
+                                chatStore = chatStore,
+                                scope = scope,
+                                pagePath = pagePath,
+                                convTabs = convTabs,
+                                onConvTabsChange = { convTabs = it },
+                                t = t,
                             )
                         }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                    ) {
+                    },
+                    body = {
                     when (selectedTab) {
                             EazySidebarTab.Chat -> {
                                 if (!isLoggedIn) {
@@ -1004,293 +1090,6 @@ fun EazyChatModal(
                                     Column(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(LocalEazyModalPalette.current.header.copy(alpha = 0.5f))
-                                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            LazyRow(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(44.dp),
-                                                state = tabListState,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                items(convTabs, key = { it.id }) { tab ->
-                                                        val newChatFb = t("eazy_chat.tab_new_chat", "Chat")
-                                                    val active = tab.id == conversationId
-                                                    val isSupportTab = (active && supportMode) ||
-                                                        (tab.mode == "support" && tab.supportStatus != "closed" && tab.supportStatus != "resolved")
-                                                    val livePrefix = t("chat_live_support_tab", "Live Support:")
-                                                    val baseLabel = tabStripLabel(tab.preview, tab.summary, newChatFb)
-                                                    val label = if (isSupportTab) supportTabPrefixLabel(livePrefix, baseLabel) else baseLabel
-                                                    val tabBg = when {
-                                                        active && isSupportTab -> EazySupportRed.copy(alpha = 0.25f)
-                                                        active -> LocalEazyModalPalette.current.accent.copy(alpha = 0.25f)
-                                                        isSupportTab -> EazySupportRed.copy(alpha = 0.12f)
-                                                        else -> Color.Transparent
-                                                    }
-                                                    Row(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .background(tabBg)
-                                                            .clickable {
-                                                                scope.launch {
-                                                                    val u = chatStore.getUserId(ownerId)
-                                                                    chatStore.setLoading(true)
-                                                                    try {
-                                                                        val resp = withContext(Dispatchers.IO) {
-                                                                            api.getEazyConversation(u, mapOf("conv_id" to tab.id))
-                                                                        }
-                                                                        if (resp.optBoolean("ok", false)) {
-                                                                            val conv = resp.optJSONObject("conversation")
-                                                                            val msgs = resp.optJSONArray("messages") ?: JSONArray()
-                                                                            conv?.optString("id")?.let { chatStore.setConversationId(it) }
-                                                                            chatStore.setMessages(parseMessagesArray(msgs))
-                                                                        }
-                                                                    } catch (_: Exception) {}
-                                                                    chatStore.setLoading(false)
-                                                                }
-                                                            }
-                                                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            text = label,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = when {
-                                                                isSupportTab -> EazySupportRedActive
-                                                                active -> LocalEazyModalPalette.current.accent
-                                                                else -> LocalEazyModalPalette.current.text
-                                                            },
-                                                            modifier = Modifier.widthIn(max = 120.dp)
-                                                        )
-                                                        IconButton(
-                                                            onClick = {
-                                                                scope.launch {
-                                                                    val u = chatStore.getUserId(ownerId)
-                                                                    withContext(Dispatchers.IO) {
-                                                                        api.eazyConvClose(u, tab.id)
-                                                                    }
-                                                                    val remaining = convTabs.filter { it.id != tab.id }
-                                                                    convTabs = remaining
-                                                                    when {
-                                                                        tab.id == conversationId && remaining.isNotEmpty() -> {
-                                                                            val next = remaining.first().id
-                                                                            val resp = withContext(Dispatchers.IO) {
-                                                                                api.getEazyConversation(u, mapOf("conv_id" to next))
-                                                                            }
-                                                                            if (resp.optBoolean("ok", false)) {
-                                                                                val conv = resp.optJSONObject("conversation")
-                                                                                val msgs = resp.optJSONArray("messages") ?: JSONArray()
-                                                                                conv?.optString("id")?.let { chatStore.setConversationId(it) }
-                                                                                chatStore.setMessages(parseMessagesArray(msgs))
-                                                                            }
-                                                                        }
-                                                                        remaining.isEmpty() -> {
-                                                                            chatStore.clearMessages()
-                                                                            val newR = withContext(Dispatchers.IO) { api.eazyConvNew(u) }
-                                                                            if (newR.optBoolean("ok", false)) {
-                                                                                val c = newR.optJSONObject("conversation")
-                                                                                val nid = c?.optString("id")
-                                                                                if (!nid.isNullOrBlank()) {
-                                                                                    chatStore.setConversationId(nid)
-                                                                                    chatStore.setMessages(emptyList())
-                                                                                    convTabs = listOf(
-                                                                                        EazyConvTabItem(id = nid, preview = null, summary = null)
-                                                                                    )
-                                                                                }
-                                                                            }
-                                                                            loadActiveTabs(u)
-                                                                        }
-                                                                    }
-                                                                }
-                                                            },
-                                                            modifier = Modifier.size(24.dp)
-                                                        ) {
-                                                            Icon(Icons.Default.Close, contentDescription = t("chatCloseTitle", "Close chat"), tint = LocalEazyModalPalette.current.muted, modifier = Modifier.size(14.dp))
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            IconButton(
-                                                onClick = {
-                                                    scope.launch {
-                                                        val u = chatStore.getUserId(ownerId)
-                                                        val newR = withContext(Dispatchers.IO) { api.eazyConvNew(u) }
-                                                        if (newR.optBoolean("ok", false)) {
-                                                            val c = newR.optJSONObject("conversation")
-                                                            val id = c?.optString("id") ?: return@launch
-                                                            chatStore.setConversationId(id)
-                                                            chatStore.setMessages(emptyList())
-                                                            convTabs = listOf(EazyConvTabItem(id, null, null)) + convTabs.filter { it.id != id }
-                                                            loadActiveTabs(u)
-                                                        }
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(Icons.Default.Add, contentDescription = t("eazy_chat.new_chat", "New chat"), tint = LocalEazyModalPalette.current.accent)
-                                            }
-                                            IconButton(onClick = {
-                                                historyOpen = true
-                                                scope.launch {
-                                                    loadingHistory = true
-                                                    val u = chatStore.getUserId(ownerId)
-                                                    try {
-                                                        val resp = withContext(Dispatchers.IO) {
-                                                            api.getEazyConversation(u, mapOf("list" to "1", "status" to "closed"))
-                                                        }
-                                                        if (resp.optBoolean("ok", false)) {
-                                                            val arr = resp.optJSONArray("conversations") ?: JSONArray()
-                                                            val curId = conversationId
-                                                            historyRows = parseConvTabs(arr).filter { row ->
-                                                                curId == null || row.id != curId
-                                                            }
-                                                        } else historyRows = emptyList()
-                                                    } catch (_: Exception) {
-                                                        historyRows = emptyList()
-                                                    }
-                                                    loadingHistory = false
-                                                }
-                                            }) {
-                                                Icon(Icons.Default.History, contentDescription = t("eazy_chat.ui_chat_history", "Chat history"), tint = LocalEazyModalPalette.current.accent)
-                                            }
-                                        }
-
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(LocalEazyModalPalette.current.header)
-                                        ) {
-                                            AnimatedVisibility(drawerExpanded) {
-                                                Column(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(8.dp)
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        IconButton(onClick = {
-                                                            scope.launch {
-                                                                carouselScroll.scrollTo((carouselScroll.value - 200).coerceAtLeast(0))
-                                                            }
-                                                        }) {
-                                                            Text("\u2039", color = LocalEazyModalPalette.current.text)
-                                                        }
-                                                        Row(
-                                                            modifier = Modifier
-                                                                .weight(1f)
-                                                                .horizontalScroll(carouselScroll)
-                                                        ) {
-                                                            val defs = EazyChatFeatureCatalog.forContext(chatContext).filter { fnVisibility[it.id] != false }
-                                                            defs.forEach { def ->
-                                                                val cd = t(def.labelKey, def.defaultLabel)
-                                                                Box(
-                                                                    modifier = Modifier
-                                                                        .padding(horizontal = 4.dp)
-                                                                        .size(48.dp)
-                                                                        .clip(RoundedCornerShape(10.dp))
-                                                                        .border(1.dp, LocalEazyModalPalette.current.muted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                                                                        .clickable {
-                                                                            drawerExpanded = false
-                                                                            scope.launch {
-                                                                                chatStore.setTyping(true)
-                                                                                val u = chatStore.getUserId(ownerId)
-                                                                                val msgList = chatStore.messages.value.map { it.role to it.content }
-                                                                                try {
-                                                                                    val resp = withContext(Dispatchers.IO) {
-                                                                                        api.chatCompletion(
-                                                                                            userId = u,
-                                                                                            messages = msgList,
-                                                                                            conversationId = chatStore.conversationId.value,
-                                                                                            context = mapOf(
-                                                                                                "page" to pagePath,
-                                                                                                "locale" to java.util.Locale.getDefault().language
-                                                                                            ),
-                                                                                            functionTrigger = def.id
-                                                                                        )
-                                                                                    }
-                                                                                    chatStore.setTyping(false)
-                                                                                    val rl = resp.optJSONObject("rate_limit")
-                                                                                    if (rl != null) {
-                                                                                        chatStore.setRateLimit(
-                                                                                            RateLimitState(
-                                                                                                remaining = rl.optInt("remaining", 30),
-                                                                                                limit = rl.optInt("limit", 30),
-                                                                                                resetAt = rl.optLong("reset_at", 0),
-                                                                                                resetIn = rl.optInt("reset_in", 0)
-                                                                                            )
-                                                                                        )
-                                                                                        if (rl.optInt("remaining", 30) <= 0) chatStore.setLimitReached(true)
-                                                                                    }
-                                                                                    if (resp.optBoolean("ok", false)) {
-                                                                                        val reply = resp.optString("text", "")
-                                                                                        if (reply.isNotBlank()) {
-                                                                                            chatStore.addMessage(ChatMessage("a${System.currentTimeMillis()}", "assistant", reply))
-                                                                                            resp.optString("conversation_id", "").takeIf { it.isNotBlank() }?.let { chatStore.setConversationId(it) }
-                                                                                        }
-                                                                                    }
-                                                                                } catch (_: Exception) {
-                                                                                    chatStore.setTyping(false)
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                        .padding(8.dp),
-                                                                    contentAlignment = Alignment.Center
-                                                                ) {
-                                                                    Icon(
-                                                                        eazyFeatureIcon(def.id),
-                                                                        contentDescription = cd,
-                                                                        tint = LocalEazyModalPalette.current.text,
-                                                                        modifier = Modifier.size(26.dp)
-                                                                    )
-                                                                }
-                                                            }
-                                                        }
-                                                        IconButton(onClick = {
-                                                            scope.launch {
-                                                                carouselScroll.scrollTo(carouselScroll.value + 200)
-                                                            }
-                                                        }) {
-                                                            Text("\u203A", color = LocalEazyModalPalette.current.text)
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable { drawerExpanded = !drawerExpanded }
-                                                    .padding(vertical = 6.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .width(40.dp)
-                                                            .height(4.dp)
-                                                            .clip(RoundedCornerShape(2.dp))
-                                                            .background(LocalEazyModalPalette.current.muted)
-                                                    )
-                                                    Icon(
-                                                        imageVector = if (drawerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                                        contentDescription = null,
-                                                        tint = LocalEazyModalPalette.current.muted,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-
                                         // Online float badge (mirrors web #creator-chat-support-float)
                                         EazySupportOnlineFloat(
                                             visible = supportAgentOnline && isLiveSupportActive,
@@ -1338,18 +1137,9 @@ fun EazyChatModal(
                                             )
                                         }
 
-                                        val listState = rememberLazyListState()
-                                        LaunchedEffect(messages.size) {
-                                            if (messages.isNotEmpty()) {
-                                                listState.animateScrollToItem(messages.size - 1)
-                                            }
-                                        }
-
                                         LazyColumn(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxWidth(),
-                                            state = listState,
+                                            modifier = Modifier.fillMaxSize(),
+                                            state = chatListState,
                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                                             verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
@@ -1374,209 +1164,6 @@ fun EazyChatModal(
                                             }
                                         }
 
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(LocalEazyModalPalette.current.header)
-                                                .then(EazModalInsets.stickyFooter())
-                                        ) {
-                                        if (rateLimit != null) {
-                                            val rl = rateLimit!!
-                                            val rem = rl.remaining
-                                            val lim = rl.limit
-                                            val pct = if (lim > 0) (rem.toFloat() / lim * 100).toInt() else 100
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween
-                                                ) {
-                                                    Text(
-                                                        text = "$rem ${t("eazy_chat.ui_messages_of", "of")} $lim ${t("eazy_chat.ui_messages", "messages")}",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = LocalEazyModalPalette.current.muted
-                                                    )
-                                                    if (rl.resetIn > 0) {
-                                                        Text(
-                                                            text = "${t("eazy_chat.ui_reset_in", "Reset in")} ${formatResetTime(rl.resetIn)}",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = LocalEazyModalPalette.current.muted
-                                                        )
-                                                    }
-                                                }
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(4.dp)
-                                                        .clip(RoundedCornerShape(2.dp))
-                                                        .background(LocalEazyModalPalette.current.muted.copy(alpha = 0.2f))
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth(pct / 100f)
-                                                            .height(4.dp)
-                                                            .clip(RoundedCornerShape(2.dp))
-                                                            .background(if (pct <= 10) LocalEazyModalPalette.current.muted else LocalEazyModalPalette.current.accent)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        var inputText by remember { mutableStateOf("") }
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.Bottom
-                                        ) {
-                                            BasicTextField(
-                                                value = inputText,
-                                                onValueChange = { if (it.length <= 500) inputText = it },
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .clip(RoundedCornerShape(24.dp))
-                                                    .background(LocalEazyModalPalette.current.userBubble)
-                                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = LocalEazyModalPalette.current.text),
-                                                cursorBrush = SolidColor(LocalEazyModalPalette.current.accent),
-                                                singleLine = false,
-                                                maxLines = 4,
-                                                decorationBox = { inner ->
-                                                    Box(modifier = Modifier.padding(end = 8.dp)) {
-                                                        if (inputText.isEmpty()) {
-                                                            Text(
-                                                                text = t("eazy_chat.ui_message_placeholder", "Type a message..."),
-                                                                style = MaterialTheme.typography.bodyMedium,
-                                                                color = LocalEazyModalPalette.current.muted
-                                                            )
-                                                        }
-                                                        inner()
-                                                    }
-                                                }
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            IconButton(
-                                                onClick = {
-                                                    val text = inputText.trim()
-                                                    if (text.isBlank() || isTyping) return@IconButton
-                                                    inputText = ""
-                                                    // Survey feedback text step
-                                                    if (supportSurveyStep == SupportSurveyStep.FEEDBACK_TEXT) {
-                                                        supportSurveyData = supportSurveyData.copy(feedback = text)
-                                                        scope.launch {
-                                                            chatStore.addMessage(ChatMessage("u${System.currentTimeMillis()}", "user", text))
-                                                            val u = chatStore.getUserId(ownerId)
-                                                            val cid = conversationId
-                                                            if (cid != null) {
-                                                                try { submitSupportSurveyOnServer(api, u, cid, supportSurveyData) } catch (_: Exception) {}
-                                                            }
-                                                            supportSurveyStep = null
-                                                            supportMode = false
-                                                            supportAgentOnline = false
-                                                            convSupportMeta = convSupportMeta.copy(mode = "ai", supportStatus = "closed")
-                                                            chatStore.addMessage(ChatMessage("sv${System.currentTimeMillis()}", "assistant", t("support_survey_thanks", "Thank you for your feedback! You can chat with Eazy again now.")))
-                                                        }
-                                                        return@IconButton
-                                                    }
-                                                    scope.launch {
-                                                        chatStore.addMessage(ChatMessage("u${System.currentTimeMillis()}", "user", text))
-                                                        // In support mode: send via eazy-conv POST, not chatCompletion
-                                                        if (isLiveSupportActive) {
-                                                            val u = chatStore.getUserId(ownerId)
-                                                            val cid = conversationId ?: return@launch
-                                                            try {
-                                                                sendSupportMessageOnServer(api, u, cid, text)
-                                                            } catch (_: Exception) {}
-                                                            return@launch
-                                                        }
-                                                        chatStore.setTyping(true)
-                                                        val u = chatStore.getUserId(ownerId)
-                                                        val msgList = chatStore.messages.value.map { it.role to it.content }
-                                                        try {
-                                                            val resp = withContext(Dispatchers.IO) {
-                                                                api.chatCompletion(
-                                                                    userId = u,
-                                                                    messages = msgList,
-                                                                    conversationId = conversationId,
-                                                                    context = mapOf(
-                                                                        "page" to pagePath,
-                                                                        "locale" to java.util.Locale.getDefault().language
-                                                                    )
-                                                                )
-                                                            }
-                                                            chatStore.setTyping(false)
-                                                            val rl = resp.optJSONObject("rate_limit")
-                                                            if (rl != null) {
-                                                                chatStore.setRateLimit(
-                                                                    RateLimitState(
-                                                                        remaining = rl.optInt("remaining", 30),
-                                                                        limit = rl.optInt("limit", 30),
-                                                                        resetAt = rl.optLong("reset_at", 0),
-                                                                        resetIn = rl.optInt("reset_in", 0)
-                                                                    )
-                                                                )
-                                                                if (rl.optInt("remaining", 30) <= 0) chatStore.setLimitReached(true)
-                                                            }
-                                                            if (resp.optBoolean("ok", false)) {
-                                                                val reply = resp.optString("text", "")
-                                                                if (reply.isNotBlank()) {
-                                                                    chatStore.addMessage(ChatMessage("a${System.currentTimeMillis()}", "assistant", reply))
-                                                                    resp.optString("conversation_id", "").takeIf { it.isNotBlank() }?.let { chatStore.setConversationId(it) }
-                                                                }
-                                                                // Handle connect_support action from AI reply
-                                                                val action = resp.optJSONObject("action")
-                                                                if (action?.optString("action") == "connect_support") {
-                                                                    val reason = action.optString("params", "")
-                                                                    // Activate support mode
-                                                                    convSupportMeta = EazyConvMeta(mode = "support", supportStatus = "open")
-                                                                    supportMode = true
-                                                                    supportAgentOnline = false
-                                                                    conversationId?.let { cid ->
-                                                                        convTabs = convTabs.map { tab ->
-                                                                            if (tab.id == cid) tab.copy(mode = "support", supportStatus = "open") else tab
-                                                                        }
-                                                                    }
-                                                                    val cid = conversationId
-                                                                    if (cid != null) {
-                                                                        try {
-                                                                            activateSupportOnServer(api, u, cid, reason, t)
-                                                                        } catch (_: Exception) {}
-                                                                    }
-                                                                }
-                                                            }
-                                                            conversationId?.let { cid ->
-                                                                val newChatFb = t("eazy_chat.tab_new_chat", "Chat")
-                                                                convTabs = convTabs.map { tab ->
-                                                                    val emptyPreview = tab.preview == null || !isUsableTabText(tab.preview)
-                                                                    val wasPlaceholder = tab.preview?.trim() == newChatFb
-                                                                    if (tab.id == cid && (emptyPreview || wasPlaceholder)) {
-                                                                        tab.copy(preview = text.take(60))
-                                                                    } else tab
-                                                                }
-                                                            }
-                                                        } catch (_: Exception) {
-                                                            chatStore.setTyping(false)
-                                                            chatStore.addMessage(ChatMessage("err${System.currentTimeMillis()}", "assistant", t("eazy_chat.chat_network_error_retry", "Network error. Please try again.")))
-                                                        }
-                                                    }
-                                                },
-                                                modifier = Modifier
-                                                    .size(48.dp)
-                                                    .clip(CircleShape)
-                                                    .background(LocalEazyModalPalette.current.accent)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Send,
-                                                    contentDescription = t("eazy_chat.ui_send", "Send"),
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                            }
-                                        }
-                                        }
                                     }
                                 }
                             }
@@ -1721,7 +1308,7 @@ fun EazyChatModal(
                             )
                         }
                     }
-                }
+                )
 
                 if (sidebarOpen) {
                     Box(
@@ -2436,6 +2023,537 @@ private fun EazyLocalAsyncJobsPanel(
     }
 }
 
+
+@Composable
+private fun EazyChatConvTabsHeader(
+    convTabs: List<EazyConvTabItem>,
+    onConvTabsChange: (List<EazyConvTabItem>) -> Unit,
+    tabListState: LazyListState,
+    conversationId: String?,
+    supportMode: Boolean,
+    @Suppress("UNUSED_PARAMETER") convSupportMeta: EazyConvMeta,
+    drawerExpanded: Boolean,
+    onDrawerExpandedChange: (Boolean) -> Unit,
+    carouselScroll: ScrollState,
+    chatContext: EazyChatContext,
+    fnVisibility: Map<String, Boolean>,
+    chatStore: EazyChatStore,
+    api: CreatorApi,
+    ownerId: String?,
+    scope: CoroutineScope,
+    pagePath: String,
+    t: (String, String) -> String,
+    onHistoryClick: () -> Unit,
+    loadActiveTabs: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(LocalEazyModalPalette.current.header.copy(alpha = 0.5f))
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LazyRow(
+            modifier = Modifier
+                .weight(1f)
+                .height(44.dp),
+            state = tabListState,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items(convTabs, key = { it.id }) { tab ->
+                val newChatFb = t("eazy_chat.tab_new_chat", "Chat")
+                val active = tab.id == conversationId
+                val isSupportTab = (active && supportMode) ||
+                    (tab.mode == "support" && tab.supportStatus != "closed" && tab.supportStatus != "resolved")
+                val livePrefix = t("chat_live_support_tab", "Live Support:")
+                val baseLabel = tabStripLabel(tab.preview, tab.summary, newChatFb)
+                val label = if (isSupportTab) supportTabPrefixLabel(livePrefix, baseLabel) else baseLabel
+                val tabBg = when {
+                    active && isSupportTab -> EazySupportRed.copy(alpha = 0.25f)
+                    active -> LocalEazyModalPalette.current.accent.copy(alpha = 0.25f)
+                    isSupportTab -> EazySupportRed.copy(alpha = 0.12f)
+                    else -> Color.Transparent
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(tabBg)
+                        .clickable {
+                            scope.launch {
+                                val u = chatStore.getUserId(ownerId)
+                                chatStore.setLoading(true)
+                                try {
+                                    val resp = withContext(Dispatchers.IO) {
+                                        api.getEazyConversation(u, mapOf("conv_id" to tab.id))
+                                    }
+                                    if (resp.optBoolean("ok", false)) {
+                                        val conv = resp.optJSONObject("conversation")
+                                        val msgs = resp.optJSONArray("messages") ?: JSONArray()
+                                        conv?.optString("id")?.let { chatStore.setConversationId(it) }
+                                        chatStore.setMessages(parseMessagesArray(msgs))
+                                    }
+                                } catch (_: Exception) {}
+                                chatStore.setLoading(false)
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = when {
+                            isSupportTab -> EazySupportRedActive
+                            active -> LocalEazyModalPalette.current.accent
+                            else -> LocalEazyModalPalette.current.text
+                        },
+                        modifier = Modifier.widthIn(max = 120.dp)
+                    )
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                val u = chatStore.getUserId(ownerId)
+                                withContext(Dispatchers.IO) {
+                                    api.eazyConvClose(u, tab.id)
+                                }
+                                val remaining = convTabs.filter { it.id != tab.id }
+                                onConvTabsChange(remaining)
+                                when {
+                                    tab.id == conversationId && remaining.isNotEmpty() -> {
+                                        val next = remaining.first().id
+                                        val resp = withContext(Dispatchers.IO) {
+                                            api.getEazyConversation(u, mapOf("conv_id" to next))
+                                        }
+                                        if (resp.optBoolean("ok", false)) {
+                                            val conv = resp.optJSONObject("conversation")
+                                            val msgs = resp.optJSONArray("messages") ?: JSONArray()
+                                            conv?.optString("id")?.let { chatStore.setConversationId(it) }
+                                            chatStore.setMessages(parseMessagesArray(msgs))
+                                        }
+                                    }
+                                    remaining.isEmpty() -> {
+                                        chatStore.clearMessages()
+                                        val newR = withContext(Dispatchers.IO) { api.eazyConvNew(u) }
+                                        if (newR.optBoolean("ok", false)) {
+                                            val c = newR.optJSONObject("conversation")
+                                            val nid = c?.optString("id")
+                                            if (!nid.isNullOrBlank()) {
+                                                chatStore.setConversationId(nid)
+                                                chatStore.setMessages(emptyList())
+                                                onConvTabsChange(
+                                                    listOf(EazyConvTabItem(id = nid, preview = null, summary = null))
+                                                )
+                                            }
+                                        }
+                                        loadActiveTabs(u)
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = t("chatCloseTitle", "Close chat"),
+                            tint = LocalEazyModalPalette.current.muted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        }
+        IconButton(
+            onClick = {
+                scope.launch {
+                    val u = chatStore.getUserId(ownerId)
+                    val newR = withContext(Dispatchers.IO) { api.eazyConvNew(u) }
+                    if (newR.optBoolean("ok", false)) {
+                        val c = newR.optJSONObject("conversation")
+                        val id = c?.optString("id") ?: return@launch
+                        chatStore.setConversationId(id)
+                        chatStore.setMessages(emptyList())
+                        onConvTabsChange(listOf(EazyConvTabItem(id, null, null)) + convTabs.filter { it.id != id })
+                        loadActiveTabs(u)
+                    }
+                }
+            }
+        ) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = t("eazy_chat.new_chat", "New chat"),
+                tint = LocalEazyModalPalette.current.accent
+            )
+        }
+        IconButton(onClick = onHistoryClick) {
+            Icon(
+                Icons.Default.History,
+                contentDescription = t("eazy_chat.ui_chat_history", "Chat history"),
+                tint = LocalEazyModalPalette.current.accent
+            )
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(LocalEazyModalPalette.current.header)
+    ) {
+        AnimatedVisibility(drawerExpanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = {
+                        scope.launch {
+                            carouselScroll.scrollTo((carouselScroll.value - 200).coerceAtLeast(0))
+                        }
+                    }) {
+                        Text("\u2039", color = LocalEazyModalPalette.current.text)
+                    }
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(carouselScroll)
+                    ) {
+                        val defs = EazyChatFeatureCatalog.forContext(chatContext).filter { fnVisibility[it.id] != false }
+                        defs.forEach { def ->
+                            val cd = t(def.labelKey, def.defaultLabel)
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .border(1.dp, LocalEazyModalPalette.current.muted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        onDrawerExpandedChange(false)
+                                        scope.launch {
+                                            chatStore.setTyping(true)
+                                            val u = chatStore.getUserId(ownerId)
+                                            val msgList = chatStore.messages.value.map { it.role to it.content }
+                                            try {
+                                                val resp = withContext(Dispatchers.IO) {
+                                                    api.chatCompletion(
+                                                        userId = u,
+                                                        messages = msgList,
+                                                        conversationId = chatStore.conversationId.value,
+                                                        context = mapOf(
+                                                            "page" to pagePath,
+                                                            "locale" to java.util.Locale.getDefault().language
+                                                        ),
+                                                        functionTrigger = def.id
+                                                    )
+                                                }
+                                                chatStore.setTyping(false)
+                                                val rl = resp.optJSONObject("rate_limit")
+                                                if (rl != null) {
+                                                    chatStore.setRateLimit(
+                                                        RateLimitState(
+                                                            remaining = rl.optInt("remaining", 30),
+                                                            limit = rl.optInt("limit", 30),
+                                                            resetAt = rl.optLong("reset_at", 0),
+                                                            resetIn = rl.optInt("reset_in", 0)
+                                                        )
+                                                    )
+                                                    if (rl.optInt("remaining", 30) <= 0) chatStore.setLimitReached(true)
+                                                }
+                                                if (resp.optBoolean("ok", false)) {
+                                                    val reply = resp.optString("text", "")
+                                                    if (reply.isNotBlank()) {
+                                                        chatStore.addMessage(ChatMessage("a${System.currentTimeMillis()}", "assistant", reply))
+                                                        resp.optString("conversation_id", "").takeIf { it.isNotBlank() }?.let { chatStore.setConversationId(it) }
+                                                    }
+                                                }
+                                            } catch (_: Exception) {
+                                                chatStore.setTyping(false)
+                                            }
+                                        }
+                                    }
+                                    .padding(8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    eazyFeatureIcon(def.id),
+                                    contentDescription = cd,
+                                    tint = LocalEazyModalPalette.current.text,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = {
+                        scope.launch {
+                            carouselScroll.scrollTo(carouselScroll.value + 200)
+                        }
+                    }) {
+                        Text("\u203A", color = LocalEazyModalPalette.current.text)
+                    }
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onDrawerExpandedChange(!drawerExpanded) }
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .width(40.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(LocalEazyModalPalette.current.muted)
+                )
+                Icon(
+                    imageVector = if (drawerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = LocalEazyModalPalette.current.muted,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EazyChatComposerFooter(
+    rateLimit: RateLimitState?,
+    inputText: String,
+    onInputTextChange: (String) -> Unit,
+    isTyping: Boolean,
+    supportSurveyStep: SupportSurveyStep?,
+    supportSurveyData: SupportSurveyData,
+    onSupportSurveyDataChange: (SupportSurveyData) -> Unit,
+    onSupportSurveyStepChange: (SupportSurveyStep?) -> Unit,
+    convSupportMeta: EazyConvMeta,
+    onConvSupportMetaChange: (EazyConvMeta) -> Unit,
+    supportMode: Boolean,
+    onSupportModeChange: (Boolean) -> Unit,
+    onSupportAgentOnlineChange: (Boolean) -> Unit,
+    isLiveSupportActive: Boolean,
+    conversationId: String?,
+    ownerId: String?,
+    api: CreatorApi,
+    chatStore: EazyChatStore,
+    scope: CoroutineScope,
+    pagePath: String,
+    convTabs: List<EazyConvTabItem>,
+    onConvTabsChange: (List<EazyConvTabItem>) -> Unit,
+    t: (String, String) -> String,
+) {
+    EazModalFooterSurface(
+        color = LocalEazyModalPalette.current.header,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            if (rateLimit != null) {
+                val rl = rateLimit
+                val rem = rl.remaining
+                val lim = rl.limit
+                val pct = if (lim > 0) (rem.toFloat() / lim * 100).toInt() else 100
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "$rem ${t("eazy_chat.ui_messages_of", "of")} $lim ${t("eazy_chat.ui_messages", "messages")}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = LocalEazyModalPalette.current.muted
+                        )
+                        if (rl.resetIn > 0) {
+                            Text(
+                                text = "${t("eazy_chat.ui_reset_in", "Reset in")} ${formatResetTime(rl.resetIn)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = LocalEazyModalPalette.current.muted
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(LocalEazyModalPalette.current.muted.copy(alpha = 0.2f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(pct / 100f)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(if (pct <= 10) LocalEazyModalPalette.current.muted else LocalEazyModalPalette.current.accent)
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                BasicTextField(
+                    value = inputText,
+                    onValueChange = { if (it.length <= 500) onInputTextChange(it) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(LocalEazyModalPalette.current.userBubble)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = LocalEazyModalPalette.current.text),
+                    cursorBrush = SolidColor(LocalEazyModalPalette.current.accent),
+                    singleLine = false,
+                    maxLines = 4,
+                    decorationBox = { inner ->
+                        Box(modifier = Modifier.padding(end = 8.dp)) {
+                            if (inputText.isEmpty()) {
+                                Text(
+                                    text = t("eazy_chat.ui_message_placeholder", "Type a message..."),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = LocalEazyModalPalette.current.muted
+                                )
+                            }
+                            inner()
+                        }
+                    }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = {
+                        val text = inputText.trim()
+                        if (text.isBlank() || isTyping) return@IconButton
+                        onInputTextChange("")
+                        if (supportSurveyStep == SupportSurveyStep.FEEDBACK_TEXT) {
+                            onSupportSurveyDataChange(supportSurveyData.copy(feedback = text))
+                            scope.launch {
+                                chatStore.addMessage(ChatMessage("u${System.currentTimeMillis()}", "user", text))
+                                val u = chatStore.getUserId(ownerId)
+                                val cid = conversationId
+                                if (cid != null) {
+                                    try { submitSupportSurveyOnServer(api, u, cid, supportSurveyData.copy(feedback = text)) } catch (_: Exception) {}
+                                }
+                                onSupportSurveyStepChange(null)
+                                onSupportModeChange(false)
+                                onSupportAgentOnlineChange(false)
+                                onConvSupportMetaChange(convSupportMeta.copy(mode = "ai", supportStatus = "closed"))
+                                chatStore.addMessage(ChatMessage("sv${System.currentTimeMillis()}", "assistant", t("support_survey_thanks", "Thank you for your feedback! You can chat with Eazy again now.")))
+                            }
+                            return@IconButton
+                        }
+                        scope.launch {
+                            chatStore.addMessage(ChatMessage("u${System.currentTimeMillis()}", "user", text))
+                            if (isLiveSupportActive) {
+                                val u = chatStore.getUserId(ownerId)
+                                val cid = conversationId ?: return@launch
+                                try {
+                                    sendSupportMessageOnServer(api, u, cid, text)
+                                } catch (_: Exception) {}
+                                return@launch
+                            }
+                            chatStore.setTyping(true)
+                            val u = chatStore.getUserId(ownerId)
+                            val msgList = chatStore.messages.value.map { it.role to it.content }
+                            try {
+                                val resp = withContext(Dispatchers.IO) {
+                                    api.chatCompletion(
+                                        userId = u,
+                                        messages = msgList,
+                                        conversationId = conversationId,
+                                        context = mapOf(
+                                            "page" to pagePath,
+                                            "locale" to java.util.Locale.getDefault().language
+                                        )
+                                    )
+                                }
+                                chatStore.setTyping(false)
+                                val rl = resp.optJSONObject("rate_limit")
+                                if (rl != null) {
+                                    chatStore.setRateLimit(
+                                        RateLimitState(
+                                            remaining = rl.optInt("remaining", 30),
+                                            limit = rl.optInt("limit", 30),
+                                            resetAt = rl.optLong("reset_at", 0),
+                                            resetIn = rl.optInt("reset_in", 0)
+                                        )
+                                    )
+                                    if (rl.optInt("remaining", 30) <= 0) chatStore.setLimitReached(true)
+                                }
+                                if (resp.optBoolean("ok", false)) {
+                                    val reply = resp.optString("text", "")
+                                    if (reply.isNotBlank()) {
+                                        chatStore.addMessage(ChatMessage("a${System.currentTimeMillis()}", "assistant", reply))
+                                        resp.optString("conversation_id", "").takeIf { it.isNotBlank() }?.let { chatStore.setConversationId(it) }
+                                    }
+                                    val action = resp.optJSONObject("action")
+                                    if (action?.optString("action") == "connect_support") {
+                                        val reason = action.optString("params", "")
+                                        onConvSupportMetaChange(EazyConvMeta(mode = "support", supportStatus = "open"))
+                                        onSupportModeChange(true)
+                                        onSupportAgentOnlineChange(false)
+                                        conversationId?.let { cid ->
+                                            onConvTabsChange(
+                                                convTabs.map { tab ->
+                                                    if (tab.id == cid) tab.copy(mode = "support", supportStatus = "open") else tab
+                                                }
+                                            )
+                                        }
+                                        val cid = conversationId
+                                        if (cid != null) {
+                                            try {
+                                                activateSupportOnServer(api, u, cid, reason, t)
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                }
+                                conversationId?.let { cid ->
+                                    val newChatFb = t("eazy_chat.tab_new_chat", "Chat")
+                                    onConvTabsChange(
+                                        convTabs.map { tab ->
+                                            val emptyPreview = tab.preview == null || !isUsableTabText(tab.preview)
+                                            val wasPlaceholder = tab.preview?.trim() == newChatFb
+                                            if (tab.id == cid && (emptyPreview || wasPlaceholder)) {
+                                                tab.copy(preview = text.take(60))
+                                            } else tab
+                                        }
+                                    )
+                                }
+                            } catch (_: Exception) {
+                                chatStore.setTyping(false)
+                                chatStore.addMessage(ChatMessage("err${System.currentTimeMillis()}", "assistant", t("eazy_chat.chat_network_error_retry", "Network error. Please try again.")))
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(LocalEazyModalPalette.current.accent)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = t("eazy_chat.ui_send", "Send"),
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+    }
+}
 @Composable
 private fun ChatBubble(
     message: ChatMessage,

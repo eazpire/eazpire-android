@@ -21,7 +21,7 @@
             android:value="eaz_creator_generations" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_stat_eazpire" />
+            android:resource="@drawable/ic_notification" />
         <meta-data
             android:name="com.google.android.gms.wearable.beta.app"
             android:resource="@xml/wearable_app_desc" />
