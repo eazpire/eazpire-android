@@ -211,6 +211,7 @@ private fun EazyGamesChip(label: String, active: Boolean, palette: EazyModalPale
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EazyGamesCollectionPanel(
     api: CreatorApi,

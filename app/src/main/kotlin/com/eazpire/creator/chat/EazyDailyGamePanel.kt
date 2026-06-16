@@ -400,17 +400,26 @@ fun EazyDailyGamePanel(
         loading = true
         try {
             val j = api.postDailyGameSimonBegin(shop, oid)
-            val parsed = parseSimonSession(j)
-            if (j.optBoolean("ok", false) && parsed != null) {
-                simonSession = parsed
-                status = ""
-            } else {
+            if (j.optBoolean("already_played", false)) {
                 status =
                     j.optString(
                         "message",
-                        t("eazy_chat.games_simon_board_error", "Could not load the game board."),
+                        t("eazy_chat.games_already_played", "You already played today."),
                     )
-                playEnabled = true
+                playEnabled = false
+            } else {
+                val parsed = parseSimonSession(j)
+                if (j.optBoolean("ok", false) && parsed != null) {
+                    simonSession = parsed
+                    status = ""
+                } else {
+                    status =
+                        j.optString(
+                            "message",
+                            t("eazy_chat.games_simon_board_error", "Could not load the game board."),
+                        )
+                    playEnabled = true
+                }
             }
         } catch (_: Exception) {
             status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
@@ -675,17 +684,26 @@ fun EazyDailyGamePanel(
                             }
                         } else if (selectedSlug == "simon_says") {
                             val j = api.postDailyGameSimonBegin(shop, oid)
-                            val parsed = parseSimonSession(j)
-                            if (j.optBoolean("ok", false) && parsed != null) {
-                                simonSession = parsed
-                                status = ""
-                            } else {
+                            if (j.optBoolean("already_played", false)) {
                                 status =
                                     j.optString(
                                         "message",
-                                        t("eazy_chat.games_simon_board_error", "Could not load the game board."),
+                                        t("eazy_chat.games_already_played", "You already played today."),
                                     )
-                                playEnabled = true
+                                playEnabled = false
+                            } else {
+                                val parsed = parseSimonSession(j)
+                                if (j.optBoolean("ok", false) && parsed != null) {
+                                    simonSession = parsed
+                                    status = ""
+                                } else {
+                                    status =
+                                        j.optString(
+                                            "message",
+                                            t("eazy_chat.games_simon_board_error", "Could not load the game board."),
+                                        )
+                                    playEnabled = true
+                                }
                             }
                         } else {
                             val j = api.postDailyGameMemoryBegin(shop, oid, selectedSlug)

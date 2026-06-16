@@ -343,6 +343,7 @@ private fun parseIntList(arr: JSONArray?): List<Int> {
 fun parseSimonSession(j: JSONObject): SimonSessionUi? {
     val timing = j.optJSONObject("simon_timing") ?: return null
     val stepsArr = j.optJSONArray("simon_playback_steps") ?: return null
+    if (stepsArr.length() < 1) return null
     val steps = List(stepsArr.length()) { stepsArr.getInt(it) }
     return SimonSessionUi(
         timing =
