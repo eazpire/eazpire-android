@@ -60,16 +60,6 @@ private enum class GamesHubSection { Play, Collection, Exchange }
 
 private enum class ExchangeTab { Market, MyListings, Trades }
 
-private data class PrizeInventoryItem(
-    val id: Int,
-    val type: String,
-    val name: String,
-    val category: String,
-    val rarity: String,
-    val slug: String,
-    val fulfillmentMode: String?,
-)
-
 private data class TradeListingItem(
     val id: Int,
     val title: String,
@@ -80,29 +70,6 @@ private data class TradeOfferItem(
     val id: Int,
     val label: String,
 )
-
-private fun parseInventoryItems(arr: JSONArray): List<PrizeInventoryItem> {
-    return (0 until arr.length()).mapNotNull { i ->
-        val o = arr.optJSONObject(i) ?: return@mapNotNull null
-        PrizeInventoryItem(
-            id = o.optInt("id"),
-            type = o.optString("type", "prize"),
-            name = o.optString("name", o.optString("slug", "Item")),
-            category = o.optString("category", ""),
-            rarity = o.optString("rarity", "common"),
-            slug = o.optString("slug", ""),
-            fulfillmentMode = o.optString("fulfillment_mode", "").takeIf { it.isNotBlank() },
-        )
-    }
-}
-
-private fun rarityBorderColor(rarity: String): Color = when (rarity.lowercase()) {
-    "legendary" -> Color(0xFFEAB308).copy(alpha = 0.55f)
-    "epic" -> Color(0xFFA855F7).copy(alpha = 0.5f)
-    "rare" -> Color(0xFF3B82F6).copy(alpha = 0.45f)
-    "uncommon" -> Color(0xFF22C55E).copy(alpha = 0.4f)
-    else -> Color.White.copy(alpha = 0.08f)
-}
 
 @Composable
 fun EazyGamesHubPanel(
@@ -377,61 +344,39 @@ private fun EazyGamesCollectionPanel(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(items, key = { "${it.type}-${it.id}" }) { item ->
-                        PrizeCollectionCard(
+                        EazyPrizeCard(
                             item = item,
-                            t = t,
-                            onRedeem = { confirm = Triple("redeem", item.id, item.type) },
-                            onRotate = { confirm = Triple("rotate", item.id, item.type) },
-                            onList = { confirm = Triple("list", item.id, item.type) },
+                            apiBase = AuthConfig.CREATOR_ENGINE_URL,
+                            actions = {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    if (item.type == "prize" && item.fulfillmentMode != "trade_token") {
+                                        EazyGamesActionButton(
+                                            t("eazy_chat.prizes_redeem", "Redeem"),
+                                            filled = true,
+                                            onClick = { confirm = Triple("redeem", item.id, item.type) },
+                                        )
+                                    }
+                                    if (item.type == "prize") {
+                                        EazyGamesActionButton(
+                                            t("eazy_chat.prizes_rotate", "Rotate"),
+                                            filled = true,
+                                            onClick = { confirm = Triple("rotate", item.id, item.type) },
+                                        )
+                                    }
+                                    EazyGamesActionButton(
+                                        t("eazy_chat.exchange_list", "List"),
+                                        filled = false,
+                                        onClick = { confirm = Triple("list", item.id, item.type) },
+                                    )
+                                }
+                            },
                         )
                     }
                 }
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun PrizeCollectionCard(
-    item: PrizeInventoryItem,
-    t: (String, String) -> String,
-    onRedeem: () -> Unit,
-    onRotate: () -> Unit,
-    onList: () -> Unit,
-) {
-    val palette = LocalEazyModalPalette.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(palette.muted.copy(alpha = 0.06f))
-            .border(1.dp, rarityBorderColor(item.rarity), RoundedCornerShape(12.dp))
-            .padding(10.dp),
-    ) {
-        Text(if (item.type == "card") "🃏" else "🎁", fontSize = 14.sp)
-        Text(
-            item.name,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = palette.text,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            "${item.category} · ${item.rarity}",
-            style = MaterialTheme.typography.labelSmall,
-            color = palette.muted,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (item.type == "prize" && item.fulfillmentMode != "trade_token") {
-                EazyGamesActionButton(t("eazy_chat.prizes_redeem", "Redeem"), filled = true, onClick = onRedeem)
-            }
-            if (item.type == "prize") {
-                EazyGamesActionButton(t("eazy_chat.prizes_rotate", "Rotate"), filled = true, onClick = onRotate)
-            }
-            EazyGamesActionButton(t("eazy_chat.exchange_list", "List"), filled = false, onClick = onList)
         }
     }
 }
