@@ -1,28 +1,30 @@
 package com.eazpire.creator.ui.home
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -47,9 +48,13 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.formatCountLabel
 import com.eazpire.creator.ui.components.EazLazyProductImage
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 
+private val CreatorsCardBorder = Color(0x73F97316)
+private val CreatorsCardBg = Color.White
+private val CreatorsPageBg = Color(0xFFF5F5F5)
+private val CreatorsProductAreaBg = Color(0xFFFAFAFA)
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreatorsIndexScreen(
     creatorApi: CreatorApi,
@@ -71,63 +76,55 @@ fun CreatorsIndexScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F5))
-            .padding(horizontal = 16.dp),
+            .background(CreatorsPageBg),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 16.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(HomeCreatorsPanelGradient)
-                .border(1.dp, Color(0x38F97316), RoundedCornerShape(16.dp))
-                .padding(horizontal = 16.dp, vertical = 18.dp),
-        ) {
-            Column {
-                RowHeader(sortTab = sortTab, onSortTabChange = { sortTab = it }, labelForKey = labelForKey)
-                when {
-                    loading -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 32.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.size(32.dp))
-                        }
-                    }
-                    creators.isEmpty() -> {
-                        Text(
-                            text = labelForKey("eaz.home.no_recommended_products", "No creators to show right now."),
-                            modifier = Modifier.padding(top = 16.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White.copy(alpha = 0.7f),
+        CreatorsIndexHeader(
+            sortTab = sortTab,
+            onSortTabChange = { sortTab = it },
+            labelForKey = labelForKey,
+        )
+        Divider(color = Color(0xFFE8E8E8))
+        when {
+            loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = EazColors.Orange, modifier = Modifier.size(32.dp))
+                }
+            }
+            creators.isEmpty() -> {
+                Text(
+                    text = labelForKey("eaz.home.no_recommended_products", "No creators to show right now."),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = EazColors.TextSecondary,
+                )
+            }
+            else -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(creators, key = { "${it.name}::${it.slug}" }) { creator ->
+                        CreatorsIndexCard(
+                            creator = creator,
+                            reviewsLabel = formatCountLabel(
+                                labelForKey("eaz.common.rating_reviews", "{{ count }} reviews"),
+                                creator.ratingCount,
+                            ),
+                            productsLabel = formatCountLabel(
+                                labelForKey("eaz.creator_profile.products_count", "{{ count }} products"),
+                                creator.productCount,
+                            ),
+                            onCreatorClick = { onCreatorClick(creator.name) },
+                            onProductClick = onProductClick,
                         )
-                    }
-                    else -> {
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 168.dp),
-                            contentPadding = PaddingValues(top = 14.dp, bottom = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            items(creators, key = { "${it.name}::${it.slug}" }) { creator ->
-                                CreatorsIndexCard(
-                                    creator = creator,
-                                    reviewsLabel = formatCountLabel(
-                                        labelForKey("eaz.common.rating_reviews", "{{ count }} reviews"),
-                                        creator.ratingCount,
-                                    ),
-                                    productsLabel = formatCountLabel(
-                                        labelForKey("eaz.creator_profile.products_count", "{{ count }} products"),
-                                        creator.productCount,
-                                    ),
-                                    onCreatorClick = { onCreatorClick(creator.name) },
-                                    onProductClick = onProductClick,
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -136,13 +133,16 @@ fun CreatorsIndexScreen(
 }
 
 @Composable
-private fun RowHeader(
+private fun CreatorsIndexHeader(
     sortTab: String,
     onSortTabChange: (String) -> Unit,
     labelForKey: (String, String) -> String,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -150,13 +150,13 @@ private fun RowHeader(
             text = labelForKey("eaz.home.creators", "Creators"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
+            color = EazColors.TextPrimary,
         )
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(999.dp))
-                .background(Color.White.copy(alpha = 0.1f))
-                .border(1.dp, Color(0x40F97316), RoundedCornerShape(999.dp))
+                .background(Color(0xFFF3F3F3))
+                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(999.dp))
                 .padding(3.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -166,20 +166,12 @@ private fun RowHeader(
                     text = labelForKey(key, if (sort == "recommend") "Recommended" else "New"),
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
-                        .background(
-                            if (active) {
-                                Brush.linearGradient(
-                                    colors = listOf(Color(0xFFF97316), Color(0xFFFB923C)),
-                                )
-                            } else {
-                                Brush.linearGradient(colors = listOf(Color.Transparent, Color.Transparent))
-                            },
-                        )
+                        .background(if (active) EazColors.Orange else Color.Transparent)
                         .clickable { onSortTabChange(sort) }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (active) Color.White else Color.White.copy(alpha = 0.75f),
+                    color = if (active) Color.White else EazColors.TextSecondary,
                 )
             }
         }
@@ -197,9 +189,9 @@ private fun CreatorsIndexCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.12f))
-            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(14.dp)),
+            .clip(RoundedCornerShape(12.dp))
+            .background(CreatorsCardBg)
+            .border(1.dp, CreatorsCardBorder, RoundedCornerShape(12.dp)),
     ) {
         Column(
             modifier = Modifier
@@ -212,8 +204,8 @@ private fun CreatorsIndexCard(
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.92f))
-                    .border(2.dp, Color(0x73F97316), CircleShape),
+                    .background(Color.White)
+                    .border(2.dp, CreatorsCardBorder, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 val img = creator.profileImageUrl
@@ -239,7 +231,7 @@ private fun CreatorsIndexCard(
                 text = creator.name,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White,
+                color = EazColors.TextPrimary,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -249,82 +241,101 @@ private fun CreatorsIndexCard(
             Text(
                 text = reviewsLabel,
                 fontSize = 11.sp,
-                color = Color.White.copy(alpha = 0.65f),
+                color = EazColors.TextSecondary,
                 textAlign = TextAlign.Center,
             )
             Text(
                 text = productsLabel,
                 fontSize = 11.sp,
-                color = Color(0xD9FFEDD5),
+                color = EazColors.TextSecondary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
         if (creator.products.isNotEmpty()) {
-            BoxWithConstraints(
+            Divider(color = Color(0xFFE8E8E8))
+            CreatorProductCarousel(
+                products = creator.products,
+                onProductClick = onProductClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.14f))
-                    .border(
-                        width = 0.dp,
-                        color = Color.Transparent,
-                    ),
-            ) {
-                val slideWidth = maxWidth
-                val scroll = rememberScrollState()
-                androidx.compose.foundation.layout.Row(
+                    .background(CreatorsProductAreaBg),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CreatorProductCarousel(
+    products: List<ShopCreatorProductPreview>,
+    onProductClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (products.size == 1) {
+        CreatorProductSlide(
+            product = products[0],
+            onProductClick = onProductClick,
+            modifier = modifier,
+        )
+        return
+    }
+    val pagerState = rememberPagerState(pageCount = { products.size })
+    HorizontalPager(
+        state = pagerState,
+        modifier = modifier,
+    ) { page ->
+        CreatorProductSlide(
+            product = products[page],
+            onProductClick = onProductClick,
+        )
+    }
+}
+
+@Composable
+private fun CreatorProductSlide(
+    product: ShopCreatorProductPreview,
+    onProductClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onProductClick(product.handle) }
+            .padding(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFF0F0F0)),
+            contentAlignment = Alignment.Center,
+        ) {
+            val img = product.imageUrl
+            if (!img.isNullOrBlank()) {
+                EazLazyProductImage(
+                    url = img,
+                    contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(scroll),
-                ) {
-                    creator.products.forEach { product ->
-                        Column(
-                            modifier = Modifier
-                                .width(slideWidth)
-                                .clickable { onProductClick(product.handle) }
-                                .padding(10.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.White.copy(alpha = 0.08f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                val img = product.imageUrl
-                                if (!img.isNullOrBlank()) {
-                                    EazLazyProductImage(
-                                        url = img,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(1f)
-                                            .clip(RoundedCornerShape(10.dp)),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                } else {
-                                    Text(
-                                        "?",
-                                        color = Color.White.copy(alpha = 0.5f),
-                                        modifier = Modifier.padding(32.dp),
-                                    )
-                                }
-                            }
-                            Text(
-                                text = product.title,
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp,
-                                color = Color.White.copy(alpha = 0.92f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
-                    }
-                }
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(10.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Text("?", color = EazColors.TextSecondary, modifier = Modifier.padding(32.dp))
             }
         }
+        Text(
+            text = product.title,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            color = EazColors.TextPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
 }
 
@@ -339,9 +350,9 @@ private fun CreatorRatingStars(rating: Double, modifier: Modifier = Modifier) {
         val hasHalf = rating - full >= 0.25 && full < 5
         repeat(5) { index ->
             val tint = when {
-                index < full -> Color(0xFFFB923C)
-                index == full && hasHalf -> Color(0xFFFB923C).copy(alpha = 0.55f)
-                else -> Color.White.copy(alpha = 0.25f)
+                index < full -> EazColors.Orange
+                index == full && hasHalf -> EazColors.Orange.copy(alpha = 0.55f)
+                else -> Color(0xFFDDDDDD)
             }
             Icon(
                 Icons.Default.Star,
@@ -355,7 +366,7 @@ private fun CreatorRatingStars(rating: Double, modifier: Modifier = Modifier) {
                 text = "%.1f".format(rating),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White.copy(alpha = 0.9f),
+                color = EazColors.TextPrimary,
                 modifier = Modifier.padding(start = 4.dp),
             )
         }

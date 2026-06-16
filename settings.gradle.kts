@@ -28,4 +28,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "eazpire"
 include(":app")
-include(":benchmark")
+// Macrobenchmark is local-only; CI builds :app only (see build.yml).
+if (System.getenv("CI") != "true") {
+    include(":benchmark")
+}

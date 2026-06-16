@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -163,6 +164,7 @@ fun EazySimonDailyBoard(
     session: SimonSessionUi,
     onRoundComplete: () -> Unit,
     t: (String, String) -> String,
+    modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
     val synth = remember(session.gameMeta) { EazySimonSynth.fromGameMeta(session.gameMeta) }
@@ -259,30 +261,13 @@ fun EazySimonDailyBoard(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         tick
-        Text(
-            text =
-                t("eazy_chat.games_simon_round_label", "Round {{r}} of {{t}}")
-                    .replace("{{r}}", (round + 1).toString())
-                    .replace("{{t}}", targetRounds.toString()),
-            style = MaterialTheme.typography.bodySmall,
-            color = LocalEazyModalPalette.current.muted,
-        )
-        if (statusLine.isNotBlank()) {
-            Text(
-                text = statusLine,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = LocalEazyModalPalette.current.accent,
-            )
-        }
-
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -360,29 +345,50 @@ fun EazySimonDailyBoard(
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            if (phase == "input" && deadline > 0L) {
-                val secLeft = ((deadline - System.currentTimeMillis()).coerceAtLeast(0L) / 1000L).toInt()
+            Text(
+                text =
+                    t("eazy_chat.games_simon_round_label", "Round {{r}} of {{t}}")
+                        .replace("{{r}}", (round + 1).toString())
+                        .replace("{{t}}", targetRounds.toString()),
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalEazyModalPalette.current.muted,
+            )
+            if (statusLine.isNotBlank()) {
                 Text(
-                    text = "${t("eazy_chat.games_simon_timer", "Time left")}: ${secLeft}s",
-                    style = MaterialTheme.typography.bodySmall,
-                    color =
-                        if (secLeft <= 5) LocalEazyModalPalette.current.accent
-                        else LocalEazyModalPalette.current.muted,
-                    fontWeight = if (secLeft <= 5) FontWeight.Bold else FontWeight.Normal,
+                    text = statusLine,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalEazyModalPalette.current.accent,
                 )
-            } else {
-                Text(text = "", style = MaterialTheme.typography.bodySmall)
             }
-            OutlinedButton(
-                onClick = { finishRound(true) },
-                enabled = !submitted && !tapInFlight,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(t("eazy_chat.games_simon_forfeit", "Give up"))
+                if (phase == "input" && deadline > 0L) {
+                    val secLeft = ((deadline - System.currentTimeMillis()).coerceAtLeast(0L) / 1000L).toInt()
+                    Text(
+                        text = "${t("eazy_chat.games_simon_timer", "Time left")}: ${secLeft}s",
+                        style = MaterialTheme.typography.bodySmall,
+                        color =
+                            if (secLeft <= 5) LocalEazyModalPalette.current.accent
+                            else LocalEazyModalPalette.current.muted,
+                        fontWeight = if (secLeft <= 5) FontWeight.Bold else FontWeight.Normal,
+                    )
+                } else {
+                    Text(text = "", style = MaterialTheme.typography.bodySmall)
+                }
+                OutlinedButton(
+                    onClick = { finishRound(true) },
+                    enabled = !submitted && !tapInFlight,
+                ) {
+                    Text(t("eazy_chat.games_simon_forfeit", "Give up"))
+                }
             }
         }
     }

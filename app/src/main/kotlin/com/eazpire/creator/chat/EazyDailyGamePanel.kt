@@ -572,17 +572,15 @@ fun EazyDailyGamePanel(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            prizeLine?.let { line ->
-                Text(text = line, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
-            }
             EazySimonDailyBoard(
                 api = api,
                 shop = shop,
                 ownerId = oid,
                 session = simonSess,
+                modifier = Modifier.weight(1f),
                 onRoundComplete = {
                     scope.launch {
                         busy = true
