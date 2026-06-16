@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -88,7 +89,8 @@ fun CreatorsIndexScreen(
             loading -> {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
+                        .weight(1f)
                         .padding(vertical = 32.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -109,7 +111,9 @@ fun CreatorsIndexScreen(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                 ) {
                     items(creators, key = { "${it.name}::${it.slug}" }) { creator ->
                         CreatorsIndexCard(

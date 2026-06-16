@@ -96,12 +96,11 @@ fun ShopSearchScreen(
     val scope = rememberCoroutineScope()
     val gridState = rememberLazyGridState()
     val nearEnd = rememberProductListNearEnd(gridState)
-    val loadMoreLabel = store?.t("eaz.product_list.load_more", "Load more") ?: "Load more"
 
-    fun loadMore(forceAfterCap: Boolean = false) {
+    fun loadMore() {
         if (loadingMore || searchQuery.isBlank()) return
-        if (autoLoadPaused && !forceAfterCap) return
-        if (!forceAfterCap && products.size >= PRODUCT_LIST_MAX_AUTO) {
+        if (autoLoadPaused) return
+        if (products.size >= PRODUCT_LIST_MAX_AUTO) {
             autoLoadPaused = true
             return
         }
@@ -121,7 +120,7 @@ fun ShopSearchScreen(
                 products = merged.values.toList()
                 nextCursor = r.nextCursor
                 hasMore = r.hasNextPage && r.nextCursor != null
-                if (products.size >= PRODUCT_LIST_MAX_AUTO && !forceAfterCap) {
+                if (products.size >= PRODUCT_LIST_MAX_AUTO) {
                     autoLoadPaused = true
                 }
             } finally {
@@ -149,8 +148,7 @@ fun ShopSearchScreen(
     ProductListAutoLoadEffect(
         enabled = !loading && products.isNotEmpty(),
         nearEnd = nearEnd,
-        autoLoadPaused = autoLoadPaused,
-        hasMore = hasMore,
+        hasMore = hasMore && !autoLoadPaused && products.size < PRODUCT_LIST_MAX_AUTO,
         loading = loadingMore,
         onLoadMore = { loadMore() },
     )
@@ -224,13 +222,7 @@ fun ShopSearchScreen(
                         )
                     }
                     item(key = "search-footer") {
-                        ProductListInfiniteFooter(
-                            visible = loadingMore && !autoLoadPaused,
-                            loading = loadingMore,
-                            showLoadMore = autoLoadPaused && hasMore,
-                            loadMoreLabel = loadMoreLabel,
-                            onLoadMore = { loadMore(forceAfterCap = true) },
-                        )
+                        ProductListInfiniteFooter(loading = loadingMore)
                     }
                 }
             }

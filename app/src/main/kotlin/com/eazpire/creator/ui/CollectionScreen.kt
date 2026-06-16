@@ -193,10 +193,10 @@ fun CollectionScreen(
     val nearEnd = rememberProductListNearEnd(gridState)
     val usesInfiniteScroll = productFilters.isEmpty() && withinSearchQuery.isBlank()
 
-    fun loadMore(forceAfterCap: Boolean = false) {
+    fun loadMore() {
         if (isLoadingMore) return
-        if (autoLoadPaused && !forceAfterCap) return
-        if (!forceAfterCap && loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
+        if (autoLoadPaused) return
+        if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
             autoLoadPaused = true
             return
         }
@@ -215,7 +215,7 @@ fun CollectionScreen(
                 loadedProducts = nextList
                 nextCursor = cursor
                 hasMoreFromApi = hasMore
-                if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO && !forceAfterCap) {
+                if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
                     autoLoadPaused = true
                 }
             } finally {
@@ -313,13 +313,12 @@ fun CollectionScreen(
         applyCollectionWithinSearchFilter(filteredProducts, withinSearchQuery)
     }
     val currentSortLabel = COLLECTION_SORT_OPTIONS.find { it.value == sortBy }?.label?.let { t("collection.sort_$sortBy", it) } ?: t("collection.sort_by", "Sort by")
-    val loadMoreLabel = t("eaz.product_list.load_more", "Load more")
+    val canAutoLoadMore = hasMoreFromApi && !autoLoadPaused && loadedProducts.size < PRODUCT_LIST_MAX_AUTO
 
     ProductListAutoLoadEffect(
         enabled = usesInfiniteScroll && !isLoading,
         nearEnd = nearEnd,
-        autoLoadPaused = autoLoadPaused,
-        hasMore = hasMoreFromApi,
+        hasMore = canAutoLoadMore,
         loading = isLoadingMore,
         onLoadMore = { loadMore() },
     )
@@ -373,13 +372,7 @@ fun CollectionScreen(
                 }
                 if (usesInfiniteScroll) {
                     item(key = "infinite-footer") {
-                        ProductListInfiniteFooter(
-                            visible = isLoadingMore && !autoLoadPaused,
-                            loading = isLoadingMore,
-                            showLoadMore = autoLoadPaused && hasMoreFromApi,
-                            loadMoreLabel = loadMoreLabel,
-                            onLoadMore = { loadMore(forceAfterCap = true) },
-                        )
+                        ProductListInfiniteFooter(loading = isLoadingMore)
                     }
                 }
             }

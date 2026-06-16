@@ -169,12 +169,11 @@ fun CreatorProfileScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val nearEnd = rememberLazyListNearEnd(listState)
-    val loadMoreLabel = t("eaz.product_list.load_more", "Load more")
 
-    fun loadMore(forceAfterCap: Boolean = false) {
+    fun loadMore() {
         if (isLoadingMore || !profileReady) return
-        if (autoLoadPaused && !forceAfterCap) return
-        if (!forceAfterCap && loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
+        if (autoLoadPaused) return
+        if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
             autoLoadPaused = true
             return
         }
@@ -204,7 +203,7 @@ fun CreatorProfileScreen(
                 batch.products.forEach { merged.putIfAbsent(it.handle, it) }
                 loadedProducts = merged.values.toList()
                 nextOffset += batch.products.size
-                if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO && !forceAfterCap) {
+                if (loadedProducts.size >= PRODUCT_LIST_MAX_AUTO) {
                     autoLoadPaused = true
                 }
             } finally {
@@ -368,8 +367,7 @@ fun CreatorProfileScreen(
     ProductListAutoLoadEffect(
         enabled = usesServerPaging && !productsLoading && filteredSortedProducts.isNotEmpty(),
         nearEnd = nearEnd,
-        autoLoadPaused = autoLoadPaused,
-        hasMore = hasMoreProducts,
+        hasMore = hasMoreProducts && !autoLoadPaused && loadedProducts.size < PRODUCT_LIST_MAX_AUTO,
         loading = isLoadingMore,
         onLoadMore = { loadMore() },
     )
@@ -475,13 +473,7 @@ fun CreatorProfileScreen(
                             }
                             if (usesServerPaging) {
                                 item(key = "creator-profile-footer") {
-                                    ProductListInfiniteFooter(
-                                        visible = isLoadingMore && !autoLoadPaused,
-                                        loading = isLoadingMore,
-                                        showLoadMore = autoLoadPaused && hasMoreProducts,
-                                        loadMoreLabel = loadMoreLabel,
-                                        onLoadMore = { loadMore(forceAfterCap = true) },
-                                    )
+                                    ProductListInfiniteFooter(loading = isLoadingMore)
                                 }
                             }
                         }
