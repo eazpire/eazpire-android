@@ -11,6 +11,9 @@
 *.aab
 cmdline-tools-download.zip
 
+# Android Studio may regenerate this with JetBrains JDK 21 — breaks CI (JDK 17 only)
+gradle/gradle-daemon-jvm.properties
+
 # Play upload signing — never commit (see repo root .gitignore)
 keystore.properties
 *.jks
