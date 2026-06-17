@@ -64,11 +64,36 @@ private fun parseGameMeta(obj: JSONObject?): SimonGameMetaUi? {
     val imagesArr = obj.optJSONArray("pad_images")
     val freqsArr = obj.optJSONArray("pad_freqs")
     val colors =
-        if (colorsArr != null) List(colorsArr.length()) { colorsArr.getString(it) } else emptyList()
+        if (colorsArr != null) {
+            buildList {
+                for (i in 0 until colorsArr.length()) {
+                    colorsArr.optString(i, "").takeIf { it.isNotBlank() }?.let { add(it) }
+                }
+            }
+        } else {
+            emptyList()
+        }
     val images =
-        if (imagesArr != null) List(imagesArr.length()) { imagesArr.getString(it) } else emptyList()
+        if (imagesArr != null) {
+            buildList {
+                for (i in 0 until imagesArr.length()) {
+                    imagesArr.optString(i, "").takeIf { it.isNotBlank() }?.let { add(it) }
+                }
+            }
+        } else {
+            emptyList()
+        }
     val freqs =
-        if (freqsArr != null) List(freqsArr.length()) { freqsArr.getDouble(it) } else emptyList()
+        if (freqsArr != null) {
+            buildList {
+                for (i in 0 until freqsArr.length()) {
+                    val v = freqsArr.optDouble(i, Double.NaN)
+                    if (!v.isNaN()) add(v)
+                }
+            }
+        } else {
+            emptyList()
+        }
     return SimonGameMetaUi(
         melodyId = obj.optString("melody_id", ""),
         instrument = obj.optString("instrument", "piano"),
@@ -344,7 +369,13 @@ fun parseSimonSession(j: JSONObject): SimonSessionUi? {
     val timing = j.optJSONObject("simon_timing") ?: return null
     val stepsArr = j.optJSONArray("simon_playback_steps") ?: return null
     if (stepsArr.length() < 1) return null
-    val steps = List(stepsArr.length()) { stepsArr.getInt(it) }
+    val steps = buildList {
+        for (i in 0 until stepsArr.length()) {
+            val step = stepsArr.optInt(i, -1)
+            if (step >= 0) add(step)
+        }
+    }
+    if (steps.isEmpty()) return null
     return SimonSessionUi(
         timing =
             SimonTimingUi(

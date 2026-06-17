@@ -12,6 +12,13 @@ object CreatorHttpClient {
             .build()
     }
 
+    /** Daily mini-games (Simon begin) can be slow on cold D1 — allow extra read time. */
+    val dailyGameInstance: OkHttpClient by lazy {
+        instance.newBuilder()
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+    }
+
     /** Read-mostly home carousel ops — skip cache-busting query param for HTTP/CDN reuse. */
     val cacheableGetOps: Set<String> = setOf(
         "list-home-carousel-products",

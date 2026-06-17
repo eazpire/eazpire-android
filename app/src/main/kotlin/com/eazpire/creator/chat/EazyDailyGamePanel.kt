@@ -82,6 +82,44 @@ private fun formatCooldownLabel(sec: Int): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%d:%02d".format(m, r)
 }
 
+private fun dailyGameErrorMessage(j: JSONObject, t: (String, String) -> String): String {
+    val message = j.optString("message", "").trim()
+    if (message.isNotBlank()) return message
+    return when (j.optString("error", "")) {
+        "unauthorized" -> t("eazy_chat.games_login", "Sign in to play the daily game.")
+        "play_in_progress" -> t("eazy_chat.games_other_in_progress", "Finish your current game first.")
+        "daily_game_schema_missing", "customer_db_unavailable" ->
+            t("eazy_chat.games_schema_unavailable", "Daily games are temporarily unavailable. Please try again soon.")
+        "invalid_json", "empty_response" ->
+            t("eazy_chat.games_outcome_failed", "Could not complete play.")
+        else -> t("eazy_chat.chat_error_unknown", "Something went wrong.")
+    }
+}
+
+private fun applySimonBeginResponse(
+    j: JSONObject,
+    t: (String, String) -> String,
+    onSession: (SimonSessionUi) -> Unit,
+): Pair<String, Boolean> {
+    if (j.optBoolean("already_played", false)) {
+        return j.optString(
+            "message",
+            t("eazy_chat.games_already_played", "You already played today."),
+        ) to false
+    }
+    val parsed = parseSimonSession(j)
+    if (j.optBoolean("ok", false) && parsed != null) {
+        onSession(parsed)
+        return "" to true
+    }
+    return dailyGameErrorMessage(
+        j,
+        t,
+    ).ifBlank {
+        t("eazy_chat.games_simon_board_error", "Could not load the game board.")
+    } to true
+}
+
 @Composable
 fun EazyDailyGamePanel(
     api: CreatorApi,
@@ -400,29 +438,13 @@ fun EazyDailyGamePanel(
         loading = true
         try {
             val j = api.postDailyGameSimonBegin(shop, oid)
-            if (j.optBoolean("already_played", false)) {
-                status =
-                    j.optString(
-                        "message",
-                        t("eazy_chat.games_already_played", "You already played today."),
-                    )
-                playEnabled = false
-            } else {
-                val parsed = parseSimonSession(j)
-                if (j.optBoolean("ok", false) && parsed != null) {
-                    simonSession = parsed
-                    status = ""
-                } else {
-                    status =
-                        j.optString(
-                            "message",
-                            t("eazy_chat.games_simon_board_error", "Could not load the game board."),
-                        )
-                    playEnabled = true
-                }
-            }
-        } catch (_: Exception) {
-            status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
+            val (msg, keepPlayEnabled) = applySimonBeginResponse(j, t) { simonSession = it }
+            status = msg
+            playEnabled = keepPlayEnabled
+        } catch (e: Exception) {
+            status =
+                t("eazy_chat.games_outcome_failed", "Could not complete play.") +
+                    (e.message?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
             playEnabled = true
         } finally {
             loading = false
@@ -684,27 +706,9 @@ fun EazyDailyGamePanel(
                             }
                         } else if (selectedSlug == "simon_says") {
                             val j = api.postDailyGameSimonBegin(shop, oid)
-                            if (j.optBoolean("already_played", false)) {
-                                status =
-                                    j.optString(
-                                        "message",
-                                        t("eazy_chat.games_already_played", "You already played today."),
-                                    )
-                                playEnabled = false
-                            } else {
-                                val parsed = parseSimonSession(j)
-                                if (j.optBoolean("ok", false) && parsed != null) {
-                                    simonSession = parsed
-                                    status = ""
-                                } else {
-                                    status =
-                                        j.optString(
-                                            "message",
-                                            t("eazy_chat.games_simon_board_error", "Could not load the game board."),
-                                        )
-                                    playEnabled = true
-                                }
-                            }
+                            val (msg, keepPlayEnabled) = applySimonBeginResponse(j, t) { simonSession = it }
+                            status = msg
+                            playEnabled = keepPlayEnabled
                         } else {
                             val j = api.postDailyGameMemoryBegin(shop, oid, selectedSlug)
                             val parsed = parseMemorySession(j)
@@ -728,8 +732,10 @@ fun EazyDailyGamePanel(
                                 playEnabled = true
                             }
                         }
-                    } catch (_: Exception) {
-                        status = t("eazy_chat.chat_error_unknown", "Something went wrong.")
+                    } catch (e: Exception) {
+                        status =
+                            t("eazy_chat.games_outcome_failed", "Could not complete play.") +
+                                (e.message?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
                         playEnabled = true
                     } finally {
                         busy = false

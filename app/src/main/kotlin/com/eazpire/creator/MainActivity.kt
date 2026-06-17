@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
                         this@MainActivity,
                         tokenStore,
                         reason = "cold_start",
-                        force = true,
+                        force = false,
                     )
                 }
                 AuthDebugLog.d("[TOKEN] After session guard ${tokenStore.sessionDebugSummary()}")

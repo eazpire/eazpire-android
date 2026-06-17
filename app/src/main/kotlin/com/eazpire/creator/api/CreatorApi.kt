@@ -8,9 +8,10 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /**
  * Creator API Client – analog zu creatorApiFetch im Web.
@@ -21,6 +22,25 @@ class CreatorApi(
     private val jwt: String? = null
 ) {
     private val client: OkHttpClient = CreatorHttpClient.instance
+    private val dailyGameClient: OkHttpClient = CreatorHttpClient.dailyGameInstance
+
+    private fun parseJsonResponse(response: Response): JSONObject {
+        val raw = response.body?.string().orEmpty()
+        if (raw.isBlank()) {
+            return JSONObject()
+                .put("ok", false)
+                .put("error", "empty_response")
+                .put("message", "Empty server response.")
+        }
+        return try {
+            JSONObject(raw)
+        } catch (_: JSONException) {
+            JSONObject()
+                .put("ok", false)
+                .put("error", "invalid_json")
+                .put("message", "Invalid server response.")
+        }
+    }
 
     /**
      * Ruft eine Operation auf (GET oder POST).
@@ -754,8 +774,8 @@ class CreatorApi(
                     .addHeader("Content-Type", "application/json")
                     .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
                     .build()
-            val response = client.newCall(request).execute()
-            JSONObject(response.body?.string() ?: "{}")
+            val response = dailyGameClient.newCall(request).execute()
+            parseJsonResponse(response)
         }
 
     /**

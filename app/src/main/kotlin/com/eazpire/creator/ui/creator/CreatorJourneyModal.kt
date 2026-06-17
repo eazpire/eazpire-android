@@ -298,7 +298,15 @@ fun CreatorJourneyModal(
                                     }
                                 },
                             )
-                            2 -> CreatorSettingsLevelPanel(ownerId.orEmpty(), api, translationStore)
+                            2 -> CreatorSettingsLevelPanel(
+                                ownerId = ownerId.orEmpty(),
+                                api = api,
+                                translationStore = translationStore,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(16.dp),
+                            )
                         }
                     }
                 }
@@ -351,10 +359,6 @@ private fun JourneyNavDrawer(
     onTabSelected: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val scrollState = rememberScrollState()
-    val showBalance = journeyData?.optBoolean("is_creator", false) == true &&
-        journeyData.has("balance_eaz")
-
     Row(modifier = Modifier.fillMaxHeight()) {
         Column(
             modifier = Modifier
@@ -366,12 +370,7 @@ private fun JourneyNavDrawer(
                     interactionSource = remember { MutableInteractionSource() },
                 ) { },
         ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(scrollState)
-                    .padding(top = 16.dp, bottom = 8.dp),
-            ) {
+            Column(modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) {
                 tabs.forEachIndexed { index, tab ->
                     val isActive = index == currentTab
                     Row(
@@ -427,6 +426,11 @@ private fun JourneyNavDrawer(
                 }
             }
 
+            Spacer(modifier = Modifier.weight(1f))
+
+            val showBalance = journeyData?.optBoolean("is_creator", false) == true &&
+                journeyData.has("balance_eaz")
+
             JourneySidebarLevelWidget(
                 ownerId = ownerId,
                 api = api,
@@ -466,6 +470,8 @@ private fun JourneyNavDrawer(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
 
         Box(

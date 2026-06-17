@@ -9,6 +9,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -84,6 +85,7 @@ class HomeViewModel(
             loadedLocaleKey = localeKey
 
             launch(Dispatchers.IO) {
+                delay(2_500)
                 repository.bootstrapBackground(
                     creatorApi = api,
                     countryCode = countryCode,
