@@ -4,12 +4,6 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.forEachGesture
 import androidx.compose.foundation.layout.Box
@@ -289,28 +283,10 @@ fun EazyMascotIcon(
     musicParty: Boolean = false,
     bassPulse: Float = 0f,
 ) {
-    val infinite = rememberInfiniteTransition(label = "eazyMusic")
-    val danceRot by infinite.animateFloat(
-        initialValue = -6f,
-        targetValue = 6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(420, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "danceRot",
-    )
-    val danceY by infinite.animateFloat(
-        initialValue = -2f,
-        targetValue = 2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(320, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "danceY",
-    )
-    val pulseScale = 1f + bassPulse.coerceIn(0f, 1f) * 0.14f
-    val partyRot = if (musicParty) danceRot else 0f
-    val partyY = if (musicParty) danceY else 0f
+    val pulse = bassPulse.coerceIn(0f, 1f)
+    val pulseScale = 1f + pulse * 0.14f
+    val partyRot = if (musicParty) pulse * 8f else 0f
+    val partyY = if (musicParty) pulse * (-2.5f) else 0f
 
     Canvas(
         modifier = modifier
@@ -356,29 +332,57 @@ private fun drawEazyMascot(ds: DrawScope, musicParty: Boolean = false) {
         ds.drawCircle(EazyOrange, 5f, Offset(90f, 54f))
         ds.drawCircle(Brush.linearGradient(listOf(EazyOrangeLight, EazyOrange), Offset.Zero, Offset(128f, 128f)), 7f, Offset(50f, 28f))
         if (musicParty) {
-            ds.drawRoundRect(
-                color = Color(0xFF1E293B),
-                topLeft = Offset(44f, 48f),
-                size = androidx.compose.ui.geometry.Size(52f, 16f),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+            val capCrown = Path().apply {
+                addOval(Rect(38f, 8f, 72f, 32f))
+            }
+            drawPath(capCrown, Color(0xFFFB923C))
+            drawPath(
+                Path().apply { addOval(Rect(41f, 10f, 68f, 28f)) },
+                Color(0xFFFDBA74)
             )
-            ds.drawLine(
-                color = Color(0xFF0F172A),
-                start = Offset(70f, 48f),
-                end = Offset(70f, 38f),
-                strokeWidth = 2.5f,
+            val brim = Path().apply {
+                moveTo(68f, 20f)
+                cubicTo(88f, 22f, 108f, 26f, 122f, 32f)
+                lineTo(122f, 38f)
+                cubicTo(102f, 32f, 84f, 28f, 66f, 26f)
+                close()
+            }
+            drawPath(brim, Color(0xFFC2410C))
+            drawPath(
+                Path().apply {
+                    moveTo(68f, 20f)
+                    cubicTo(88f, 21f, 104f, 24f, 118f, 28f)
+                    lineTo(118f, 31f)
+                    cubicTo(100f, 27f, 82f, 24f, 66f, 23f)
+                    close()
+                },
+                Color(0xFFEA580C)
             )
-            ds.drawRoundRect(
-                color = Color(0xFF111827),
-                topLeft = Offset(38f, 18f),
-                size = androidx.compose.ui.geometry.Size(54f, 14f),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f),
-            )
-            ds.drawRoundRect(
+            drawLine(
                 color = Color(0xFF374151),
-                topLeft = Offset(34f, 10f),
-                size = androidx.compose.ui.geometry.Size(62f, 12f),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+                start = Offset(48f, 58f),
+                end = Offset(64f, 58f),
+                strokeWidth = 2.2f,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
+            drawRoundRect(
+                color = Color(0xFF020617),
+                topLeft = Offset(64f, 52f),
+                size = androidx.compose.ui.geometry.Size(20f, 12f),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(5f, 5f)
+            )
+            drawRoundRect(
+                color = Color(0xFF111827),
+                topLeft = Offset(67f, 54.5f),
+                size = androidx.compose.ui.geometry.Size(14f, 7f),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.5f, 3.5f)
+            )
+            drawRoundRect(
+                color = Color(0xFF94A3B8),
+                topLeft = Offset(63.5f, 51.5f),
+                size = androidx.compose.ui.geometry.Size(21f, 13f),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(5f, 5f),
+                style = Stroke(width = 1.1f)
             )
         }
     }

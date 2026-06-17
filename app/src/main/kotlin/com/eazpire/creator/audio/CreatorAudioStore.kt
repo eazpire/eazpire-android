@@ -244,7 +244,8 @@ class CreatorAudioStore(context: Context) {
             count++
         }
         if (count == 0) return 0f
-        return (sum / count / 128f).coerceIn(0f, 1f)
+        val raw = (sum / count / 128f).coerceIn(0f, 1f)
+        return (raw * 1.65f).coerceIn(0f, 1f)
     }
 
     private fun waveformToBars(waveform: ByteArray, barCount: Int): List<Float> {

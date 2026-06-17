@@ -51,6 +51,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -421,9 +422,11 @@ fun CreatorHeader(
                     val forwardDist = abs(phase - index)
                     val reverseDist = abs(phase - (cycleLen - 1 - index))
                     val waveStrength = if (audioIsPlaying) {
-                        (1f - minOf(forwardDist, reverseDist).coerceAtMost(2) * 0.45f).coerceAtLeast(0f)
+                        val base = (1f - minOf(forwardDist, reverseDist).coerceAtMost(2) * 0.45f).coerceAtLeast(0f)
+                        base * (0.35f + audioBassLevel.coerceIn(0f, 1f) * 0.65f)
                     } else 0f
-                    val dotOffsetY = waveStrength * 4f * direction
+                    val dotTravel = 3f + audioBassLevel.coerceIn(0f, 1f) * 7f
+                    val dotOffsetY = waveStrength * dotTravel * direction
                     Box(
                         modifier = Modifier
                             .offset(y = dotOffsetY.dp)
@@ -499,14 +502,13 @@ fun CreatorHeader(
                     currentScreen == 4 && automationsTitleOverride != null -> automationsTitleOverride
                     else -> screenLabels.getOrElse(currentScreen) { "" }
                 }
-                val bassShakeX = if (audioIsPlaying) audioBassLevel * 3.5f else 0f
-                val bassShakeY = if (audioIsPlaying) audioBassLevel * 2f else 0f
+                val titleScale = if (audioIsPlaying) 1f + audioBassLevel.coerceIn(0f, 1f) * 0.1f else 1f
                 Text(
                     text = titleText,
-                    modifier = Modifier.offset(
-                        x = (if (musicWaveTick % 2 == 0) bassShakeX else -bassShakeX).dp,
-                        y = (if (musicWaveTick % 3 == 0) bassShakeY else -bassShakeY).dp,
-                    ),
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = titleScale
+                        scaleY = titleScale
+                    },
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
