@@ -47,6 +47,7 @@ import com.eazpire.creator.MainActivity
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.audio.CreatorAudioStore
+import com.eazpire.creator.audio.CreatorMusicRewardLoop
 import com.eazpire.creator.config.AnimationFlagsRepository
 import com.eazpire.creator.config.CreatorThemeBackgroundRepository
 import com.eazpire.creator.creatorcodes.CreatorCodeAvailableHintStore
@@ -243,6 +244,13 @@ fun CreatorMainScreen(
         if (ownerId.isBlank()) return@LaunchedEffect
         audioStore.bindOwner(ownerId)
         try {
+            val listRes = withContext(Dispatchers.IO) { api.listAudioFiles() }
+            val arr = listRes.optJSONArray("files") ?: org.json.JSONArray()
+            audioStore.list.value = (0 until arr.length()).mapNotNull { i ->
+                CreatorAudioStore.parseItem(arr.getJSONObject(i))
+            }
+        } catch (_: Exception) {}
+        try {
             val res = withContext(Dispatchers.IO) { api.getCreatorAudio(ownerId) }
             if (res.optBoolean("ok", false)) {
                 val url = res.optString("url", "").takeIf { it.isNotBlank() }
@@ -277,6 +285,7 @@ fun CreatorMainScreen(
     Box(
         modifier = modifier.fillMaxSize()
     ) {
+        CreatorMusicRewardLoop(audioStore = audioStore, api = api, ownerId = ownerId)
         CreatorThemeBackgroundLayer(
             background = themeBackground,
             videoEnabled = themeBgVideoEnabled,

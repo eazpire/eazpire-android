@@ -188,9 +188,12 @@ fun CreatorCreationsScreen(
 
     var currentTab by remember { mutableStateOf("designs") }
     var designsActivityFilter by remember { mutableStateOf("active") }
+  /** Full merged design list (active + inactive); activity tab filters client-side only. */
     var designs by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
     var products by remember { mutableStateOf<List<CreationProduct>>(emptyList()) }
     var productBadgesByDesignId by remember { mutableStateOf<Map<String, CreationProductBadge>>(emptyMap()) }
+    var designsLoadedOnce by remember { mutableStateOf(false) }
+    var productsLoadedOnce by remember { mutableStateOf(false) }
     var designsLoading by remember { mutableStateOf(false) }
     var productsLoading by remember { mutableStateOf(false) }
     var designsSearch by remember { mutableStateOf(TextFieldValue("")) }
@@ -290,148 +293,53 @@ fun CreatorCreationsScreen(
         uploadModalVisible = true
     }
 
-    LaunchedEffect(ownerId, currentTab, designsRefreshTrigger, designsActivityFilter) {
+    LaunchedEffect(ownerId) {
+        designsLoadedOnce = false
+        productsLoadedOnce = false
+        designs = emptyList()
+        products = emptyList()
+        productBadgesByDesignId = emptyMap()
+        designsLoading = false
+        productsLoading = false
+    }
+
+    LaunchedEffect(ownerId, designsRefreshTrigger) {
         if (ownerId.isBlank()) {
             designsLoading = false
-            productsLoading = false
             return@LaunchedEffect
         }
+        val showBlockingSpinner = !designsLoadedOnce
+        if (showBlockingSpinner) designsLoading = true
         try {
-        when (currentTab) {
-            "designs" -> {
-                designsLoading = true
-                try {
-                    val designsResult = withContext(Dispatchers.IO) {
-                        val listRes = api.listDesigns(ownerId, 200)
-                        val genRes = api.listGenerated(ownerId, 100)
-                        val jobsRes = api.listJobs(ownerId, 50)
-                        val badgesRes = api.getCreationsProductBadges(ownerId, "EU", shop)
-
-                        val savedJobIds = mutableSetOf<String>()
-                        val savingJobIds = mutableSetOf<String>()
-                        val savingKvJobs = mutableListOf<JSONObject>()
-                        (jobsRes.optJSONArray("items") ?: JSONArray()).let { arr ->
-                            for (i in 0 until arr.length()) {
-                                val obj = arr.optJSONObject(i) ?: continue
-                                val jid = obj.optString("job_id", "").trim()
-                                if (jid.isBlank()) continue
-                                val saving = obj.optBoolean("saving", false)
-                                val saved = obj.optBoolean("saved", false)
-                                val done = obj.optBoolean("done", false)
-                                if (saving && !saved) {
-                                    savingJobIds.add(jid)
-                                    if (done) savingKvJobs.add(obj)
-                                }
-                            }
-                        }
-                        val merged = mutableListOf<CreationDesign>()
-
-                        (listRes.optJSONArray("items") ?: JSONArray()).let { arr ->
-                            for (i in 0 until arr.length()) {
-                                val obj = arr.optJSONObject(i) ?: continue
-                                parseSavedCreationDesign(obj)?.let { d ->
-                                    d.jobId?.let { savedJobIds.add(it) }
-                                    merged.add(d)
-                                }
-                            }
-                        }
-
-                        (genRes.optJSONArray("items") ?: JSONArray()).let { arr ->
-                            for (i in 0 until arr.length()) {
-                                val obj = arr.optJSONObject(i) ?: continue
-                                val jid = obj.optString("job_id", "").trim()
-                                if (jid.isNotBlank() && savedJobIds.contains(jid)) continue
-                                parseGeneratedCreationDesign(obj, savingToLibrary = savingJobIds.contains(jid))?.let { merged.add(it) }
-                            }
-                        }
-
-                        savingKvJobs.forEach { obj ->
-                            val jid = obj.optString("job_id", "").trim()
-                            if (jid.isBlank() || savedJobIds.contains(jid)) return@forEach
-                            if (merged.any { it.jobId == jid }) return@forEach
-                            parseKvSavingCreationDesign(obj)?.let { merged.add(it) }
-                        }
-
-                        val activityFiltered = merged.filter { d ->
-                            val ls = d.effectiveLibraryStatus()
-                            if (designsActivityFilter == "active") ls == "active" else ls == "inactive"
-                        }.sortedByDescending { it.createdAt }
-
-                        val badgeMap = parseCreationProductBadges(badgesRes)
-                        activityFiltered to badgeMap
-                    }
-                    designs = designsResult.first
-                    productBadgesByDesignId = designsResult.second
-                } catch (_: Exception) {
-                    designs = emptyList()
-                } finally {
-                    designsLoading = false
-                }
+            val designsResult = withContext(Dispatchers.IO) {
+                fetchAllCreationsDesignsMerged(api, ownerId, shop)
             }
-            "products" -> {
-                productsLoading = true
-                try {
-                    val resp = withContext(Dispatchers.IO) {
-                        api.getPublishedProducts(ownerId, shop)
-                    }
-                    products = if (resp.optBoolean("ok", false)) {
-                        (resp.optJSONArray("products") ?: JSONArray()).let { arr ->
-                            fun toImageStr(v: Any?): String? = when (v) {
-                                is String -> v.takeIf { it.isNotBlank() }
-                                is JSONObject -> (v.optString("src", "").takeIf { it.isNotBlank() }
-                                    ?: v.optString("url", "").takeIf { it.isNotBlank() }
-                                    ?: v.optString("image_url", "").takeIf { it.isNotBlank() }
-                                    ?: v.optString("preview_url", "").takeIf { it.isNotBlank() })
-                                else -> null
-                            }
-                            fun resolveProductImageUrl(obj: JSONObject): String? {
-                                val fi = obj.opt("featured_image")
-                                val featuredStr = when (fi) {
-                                    is JSONObject -> toImageStr(fi) ?: fi.optString("src", "").takeIf { it.isNotBlank() }
-                                    else -> toImageStr(fi)
-                                }
-                                return toImageStr(obj.opt("image_url")) ?: featuredStr
-                                    ?: toImageStr(obj.opt("preview_url")) ?: toImageStr(obj.opt("thumbnail_url"))
-                                    ?: toImageStr(obj.opt("main_image")) ?: toImageStr(obj.opt("product_image"))
-                                    ?: obj.optJSONArray("images")?.opt(0)?.let { toImageStr(it) }
-                                    ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image")?.let { toImageStr(it) }
-                                    ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image_url")?.let { toImageStr(it) }
-                            }
-                            (0 until arr.length()).mapNotNull { i ->
-                                val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-                                val productKey = obj.optString("product_key", "")
-                                val storefront = obj.optString("storefront_url").takeIf { it.isNotBlank() }
-                                val img = normalizeImageUrl(resolveProductImageUrl(obj))
-                                val title = obj.optString("product_name", "")
-                                    .ifBlank { obj.optString("title", "") }
-                                    .ifBlank { productKey.ifBlank { "Product" } }
-                                CreationProduct(
-                                    id = obj.optString("shopify_product_id", "")
-                                        .ifBlank { obj.optString("product_key", "") + "-product" },
-                                    title = title,
-                                    productName = title,
-                                    productKey = productKey,
-                                    imageUrl = img,
-                                    storefrontUrl = storefront,
-                                    shopifyHandle = obj.optString("shopify_handle").takeIf { it.isNotBlank() },
-                                    publishedAt = (obj.opt("last_published_at") as? Number)?.toLong()
-                                        ?: (obj.optString("last_published_at").takeIf { it.isNotBlank() }?.let { try { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(it)?.time } catch (_: Exception) { null } }),
-                                    publishedCount = obj.optInt("published_count", 0)
-                                )
-                            }.sortedByDescending { it.publishedAt ?: 0L }
-                        }
-                    } else emptyList()
-                } catch (_: Exception) {
-                    products = emptyList()
-                } finally {
-                    productsLoading = false
-                }
-            }
-        }
-        } catch (e: Exception) {
-            designs = emptyList()
-            products = emptyList()
+            designs = designsResult.first
+            productBadgesByDesignId = designsResult.second
+            designsLoadedOnce = true
+        } catch (_: Exception) {
+            if (!designsLoadedOnce) designs = emptyList()
+        } finally {
             designsLoading = false
+        }
+    }
+
+    LaunchedEffect(ownerId, currentTab) {
+        if (ownerId.isBlank() || currentTab != "products") {
+            if (ownerId.isBlank()) productsLoading = false
+            return@LaunchedEffect
+        }
+        if (productsLoadedOnce) return@LaunchedEffect
+        productsLoading = true
+        try {
+            val list = withContext(Dispatchers.IO) {
+                fetchPublishedCreationsProducts(api, ownerId, shop)
+            }
+            products = list
+            productsLoadedOnce = true
+        } catch (_: Exception) {
+            products = emptyList()
+        } finally {
             productsLoading = false
         }
     }
@@ -443,9 +351,18 @@ fun CreatorCreationsScreen(
         designsRefreshTrigger++
     }
 
-    val filteredDesigns = remember(designs, designsSearch.text, creationsFilter) {
+    val activityFilteredDesigns = remember(designs, designsActivityFilter) {
+        designs
+            .filter { d ->
+                val ls = d.effectiveLibraryStatus()
+                if (designsActivityFilter == "active") ls == "active" else ls == "inactive"
+            }
+            .sortedByDescending { it.createdAt }
+    }
+
+    val filteredDesigns = remember(activityFilteredDesigns, designsSearch.text, creationsFilter) {
         val q = designsSearch.text.trim().lowercase()
-        var list = if (q.isBlank()) designs else designs.filter { d ->
+        var list = if (q.isBlank()) activityFilteredDesigns else activityFilteredDesigns.filter { d ->
             (d.title.lowercase().contains(q) || (d.prompt?.lowercase()?.contains(q) == true))
         }
         val f = creationsFilter
@@ -592,7 +509,6 @@ fun CreatorCreationsScreen(
                     onDesignsActivityChange = { key ->
                         if (designsActivityFilter != key) {
                             designsActivityFilter = key
-                            designsRefreshTrigger++
                         }
                     },
                     designsCount = filteredDesigns.size,
@@ -604,8 +520,9 @@ fun CreatorCreationsScreen(
                         .fillMaxSize(),
                 ) {
                     val bulkBottomPad = if (bulkSelectedKeys.isNotEmpty()) 118.dp else 0.dp
+                    val showDesignsSpinner = designsLoading && !designsLoadedOnce
                     when {
-                        designsLoading -> {
+                        showDesignsSpinner -> {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(color = EazColors.Orange)
                             }
@@ -616,7 +533,7 @@ fun CreatorCreationsScreen(
                                     Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.5f))
                                     Spacer(Modifier.size(8.dp))
                                     Text(
-                                        if (designs.isEmpty()) translationStore.t("creator.creations.no_designs", "No designs found.") else translationStore.t("creator.mobile.no_search_results", "No search results."),
+                                        if (activityFilteredDesigns.isEmpty()) translationStore.t("creator.creations.no_designs", "No designs found.") else translationStore.t("creator.mobile.no_search_results", "No search results."),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = Color.White.copy(alpha = 0.7f)
                                     )
@@ -1178,6 +1095,125 @@ fun CreatorCreationsScreen(
             tokenStore = tokenStore,
             onRequestGeneratorPrefill = onRequestGeneratorPrefill
         )
+    }
+}
+
+/** Parallel API fetch + merge (active + inactive); matches web creator-creations-screen.js. */
+private suspend fun fetchAllCreationsDesignsMerged(
+    api: com.eazpire.creator.api.CreatorApi,
+    ownerId: String,
+    shop: String,
+): Pair<List<CreationDesign>, Map<String, CreationProductBadge>> = coroutineScope {
+    val listRes = async { api.listDesigns(ownerId, 200) }
+    val genRes = async { api.listGenerated(ownerId, 100) }
+    val jobsRes = async { api.listJobs(ownerId, 50) }
+    val badgesRes = async { api.getCreationsProductBadges(ownerId, "EU", shop) }
+
+    val savedJobIds = mutableSetOf<String>()
+    val savingJobIds = mutableSetOf<String>()
+    val savingKvJobs = mutableListOf<JSONObject>()
+    (jobsRes.await().optJSONArray("items") ?: JSONArray()).let { arr ->
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val jid = obj.optString("job_id", "").trim()
+            if (jid.isBlank()) continue
+            val saving = obj.optBoolean("saving", false)
+            val saved = obj.optBoolean("saved", false)
+            val done = obj.optBoolean("done", false)
+            if (saving && !saved) {
+                savingJobIds.add(jid)
+                if (done) savingKvJobs.add(obj)
+            }
+        }
+    }
+    val merged = mutableListOf<CreationDesign>()
+
+    (listRes.await().optJSONArray("items") ?: JSONArray()).let { arr ->
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            parseSavedCreationDesign(obj)?.let { d ->
+                d.jobId?.let { savedJobIds.add(it) }
+                merged.add(d)
+            }
+        }
+    }
+
+    (genRes.await().optJSONArray("items") ?: JSONArray()).let { arr ->
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val jid = obj.optString("job_id", "").trim()
+            if (jid.isNotBlank() && savedJobIds.contains(jid)) continue
+            parseGeneratedCreationDesign(obj, savingToLibrary = savingJobIds.contains(jid))?.let { merged.add(it) }
+        }
+    }
+
+    savingKvJobs.forEach { obj ->
+        val jid = obj.optString("job_id", "").trim()
+        if (jid.isBlank() || savedJobIds.contains(jid)) return@forEach
+        if (merged.any { it.jobId == jid }) return@forEach
+        parseKvSavingCreationDesign(obj)?.let { merged.add(it) }
+    }
+
+    merged.sortedByDescending { it.createdAt } to parseCreationProductBadges(badgesRes.await())
+}
+
+private suspend fun fetchPublishedCreationsProducts(
+    api: com.eazpire.creator.api.CreatorApi,
+    ownerId: String,
+    shop: String,
+): List<CreationProduct> {
+    val resp = api.getPublishedProducts(ownerId, shop)
+    if (!resp.optBoolean("ok", false)) return emptyList()
+    return (resp.optJSONArray("products") ?: JSONArray()).let { arr ->
+        fun toImageStr(v: Any?): String? = when (v) {
+            is String -> v.takeIf { it.isNotBlank() }
+            is JSONObject -> (v.optString("src", "").takeIf { it.isNotBlank() }
+                ?: v.optString("url", "").takeIf { it.isNotBlank() }
+                ?: v.optString("image_url", "").takeIf { it.isNotBlank() }
+                ?: v.optString("preview_url", "").takeIf { it.isNotBlank() })
+            else -> null
+        }
+        fun resolveProductImageUrl(obj: JSONObject): String? {
+            val fi = obj.opt("featured_image")
+            val featuredStr = when (fi) {
+                is JSONObject -> toImageStr(fi) ?: fi.optString("src", "").takeIf { it.isNotBlank() }
+                else -> toImageStr(fi)
+            }
+            return toImageStr(obj.opt("image_url")) ?: featuredStr
+                ?: toImageStr(obj.opt("preview_url")) ?: toImageStr(obj.opt("thumbnail_url"))
+                ?: toImageStr(obj.opt("main_image")) ?: toImageStr(obj.opt("product_image"))
+                ?: obj.optJSONArray("images")?.opt(0)?.let { toImageStr(it) }
+                ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image")?.let { toImageStr(it) }
+                ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image_url")?.let { toImageStr(it) }
+        }
+        (0 until arr.length()).mapNotNull { i ->
+            val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+            val productKey = obj.optString("product_key", "")
+            val storefront = obj.optString("storefront_url").takeIf { it.isNotBlank() }
+            val img = normalizeImageUrl(resolveProductImageUrl(obj))
+            val title = obj.optString("product_name", "")
+                .ifBlank { obj.optString("title", "") }
+                .ifBlank { productKey.ifBlank { "Product" } }
+            CreationProduct(
+                id = obj.optString("shopify_product_id", "")
+                    .ifBlank { obj.optString("product_key", "") + "-product" },
+                title = title,
+                productName = title,
+                productKey = productKey,
+                imageUrl = img,
+                storefrontUrl = storefront,
+                shopifyHandle = obj.optString("shopify_handle").takeIf { it.isNotBlank() },
+                publishedAt = (obj.opt("last_published_at") as? Number)?.toLong()
+                    ?: (obj.optString("last_published_at").takeIf { it.isNotBlank() }?.let {
+                        try {
+                            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(it)?.time
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }),
+                publishedCount = obj.optInt("published_count", 0)
+            )
+        }.sortedByDescending { it.publishedAt ?: 0L }
     }
 }
 

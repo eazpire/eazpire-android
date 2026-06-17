@@ -45,12 +45,25 @@ class CreatorAudioStore(context: Context) {
     /** Echte Audio-Levels vom Visualizer (16 Balken, 0f–1f), leer wenn nicht verfügbar */
     val visualizerLevels = MutableStateFlow<List<Float>>(emptyList())
 
+    /** Bass-Energie 0f–1f für UI-Reaktionen */
+    val bassLevel = MutableStateFlow(0f)
+
     private var mediaPlayer: MediaPlayer? = null
     private var visualizer: Visualizer? = null
     @Volatile
     private var appIsActive: Boolean = true
 
     fun getItem(id: String): CreatorAudioItem? = list.value.find { it.id == id }
+
+    /** Aktives Track-Item: Playback, Auswahl oder Remote-Bootstrap. */
+    fun resolvePlaybackItem(): CreatorAudioItem? {
+        currentPlaybackItem.value?.takeIf { it.url.isNotBlank() }?.let { return it }
+        currentPlaybackId.value?.let { getItem(it) }?.let { return it }
+        selectedId.value?.let { getItem(it) }?.let { return it }
+        return null
+    }
+
+    fun hasResolvableAudio(): Boolean = resolvePlaybackItem() != null
 
     fun select(id: String?) {
         selectedId.value = id
@@ -130,16 +143,21 @@ class CreatorAudioStore(context: Context) {
 
     fun resume() {
         if (!appIsActive) return
+        val mp = mediaPlayer ?: run {
+            resolvePlaybackItem()?.let { play(it) }
+            return
+        }
         if (prefsOwnerId.isNotBlank()) {
             autoplayPrefs.setSuppressed(prefsOwnerId, false)
         }
-        mediaPlayer?.start()
+        mp.start()
         isPlaying.value = true
     }
 
     fun togglePlay(item: CreatorAudioItem?) {
         if (item == null) return
-        if (currentPlaybackId.value == item.id) {
+        val mp = mediaPlayer
+        if (currentPlaybackId.value == item.id && mp != null) {
             if (isPlaying.value) pause() else resume()
         } else {
             play(item)
@@ -170,6 +188,7 @@ class CreatorAudioStore(context: Context) {
         isPlaying.value = false
         currentPositionSec.value = 0
         visualizerLevels.value = emptyList()
+        bassLevel.value = 0f
     }
 
     private fun attachVisualizer(mp: MediaPlayer) {
@@ -188,13 +207,18 @@ class CreatorAudioStore(context: Context) {
                             store.visualizerLevels.value = store.waveformToBars(waveform, 16)
                         }
                     }
-                    override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
-                }, Visualizer.getMaxCaptureRate() / 2, true, false)
+                    override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {
+                        if (fft != null && fft.size >= 4) {
+                            store.bassLevel.value = store.fftToBassLevel(fft)
+                        }
+                    }
+                }, Visualizer.getMaxCaptureRate() / 2, true, true)
                 enabled = true
             }
             visualizer = viz
         } catch (_: Exception) {
             visualizerLevels.value = emptyList()
+            bassLevel.value = 0f
         }
     }
 
@@ -204,6 +228,23 @@ class CreatorAudioStore(context: Context) {
             visualizer?.release()
         } catch (_: Exception) {}
         visualizer = null
+    }
+
+    private fun fftToBassLevel(fft: ByteArray): Float {
+        var sum = 0f
+        var count = 0
+        val end = minOf(8, fft.size / 2)
+        for (i in 0 until end) {
+            val idx = i * 2
+            if (idx + 1 >= fft.size) break
+            val re = fft[idx].toInt()
+            val im = fft[idx + 1].toInt()
+            val mag = kotlin.math.sqrt((re * re + im * im).toFloat())
+            sum += mag
+            count++
+        }
+        if (count == 0) return 0f
+        return (sum / count / 128f).coerceIn(0f, 1f)
     }
 
     private fun waveformToBars(waveform: ByteArray, barCount: Int): List<Float> {

@@ -32,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,9 +72,12 @@ import com.eazpire.creator.chat.EazyGuideModeStore
 import com.eazpire.creator.creatorcodes.creatorCodeHintPulse
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -227,6 +231,21 @@ fun CreatorHeader(
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     val scope = rememberCoroutineScope()
     val boomScale = remember { Animatable(1f) }
+
+    val audioIsPlaying = audioStore?.isPlaying?.collectAsState()?.value ?: false
+    val audioBassLevel = audioStore?.bassLevel?.collectAsState()?.value ?: 0f
+    var musicWaveTick by remember { mutableStateOf(0) }
+
+    LaunchedEffect(audioIsPlaying) {
+        if (!audioIsPlaying) {
+            musicWaveTick = 0
+            return@LaunchedEffect
+        }
+        while (true) {
+            delay(140L)
+            musicWaveTick++
+        }
+    }
 
     LaunchedEffect(eazyDocked) {
         if (eazyDocked) {
@@ -396,9 +415,20 @@ fun CreatorHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val dotCount = screenLabels.size
+                val cycleLen = (dotCount * 2).coerceAtLeast(1)
                 screenLabels.forEachIndexed { index, _ ->
+                    val direction = if (index % 2 == 0) 1f else -1f
+                    val phase = musicWaveTick % cycleLen
+                    val forwardDist = abs(phase - index)
+                    val reverseDist = abs(phase - (cycleLen - 1 - index))
+                    val waveStrength = if (audioIsPlaying) {
+                        (1f - minOf(forwardDist, reverseDist).coerceAtMost(2) * 0.45f).coerceAtLeast(0f)
+                    } else 0f
+                    val dotOffsetY = waveStrength * 4f * direction
                     Box(
                         modifier = Modifier
+                            .offset(y = dotOffsetY.dp)
                             .size(8.dp)
                             .background(
                                 color = if (index == currentScreen) EazColors.Orange else Color.White.copy(alpha = 0.2f),
@@ -416,19 +446,49 @@ fun CreatorHeader(
                 Box(modifier = Modifier.weight(1f)) {
                     audioStore?.let { store ->
                         val isPlaying by store.isPlaying.collectAsState()
-                        val currentPlaybackId by store.currentPlaybackId.collectAsState()
-                        val currentPlaybackItem by store.currentPlaybackItem.collectAsState()
                         val visualizerLevels by store.visualizerLevels.collectAsState()
-                        val hasAudio = currentPlaybackId != null || !(currentPlaybackItem?.url.isNullOrBlank())
+                        val hasAudio = store.hasResolvableAudio()
                         CreatorAudioWidget(
                             isPlaying = isPlaying,
                             hasAudio = hasAudio,
                             visualizerLevels = visualizerLevels,
                             onOpenModal = onAudioModalOpen,
                             onPlayPause = {
-                                val item = store.getItem(currentPlaybackId as? String ?: "")
-                                    ?: currentPlaybackItem
-                                store.togglePlay(item)
+                                val item = store.resolvePlaybackItem()
+                                if (item != null) {
+                                    store.togglePlay(item)
+                                } else if (ownerId.isNotBlank()) {
+                                    scope.launch {
+                                        try {
+                                            val res = withContext(Dispatchers.IO) {
+                                                api.getCreatorAudio(ownerId)
+                                            }
+                                            if (res.optBoolean("ok", false)) {
+                                                val url = res.optString("url", "").takeIf { it.isNotBlank() }
+                                                val audioId = res.optString("audio_id", "").takeIf { it.isNotBlank() }
+                                                if (url != null && audioId != null) {
+                                                    val remote = com.eazpire.creator.audio.CreatorAudioItem(
+                                                        id = audioId,
+                                                        title = "",
+                                                        url = url,
+                                                        durationSec = 0,
+                                                        ownerId = ownerId,
+                                                        coverUrl = null,
+                                                    )
+                                                    store.play(remote)
+                                                } else {
+                                                    onAudioModalOpen()
+                                                }
+                                            } else {
+                                                onAudioModalOpen()
+                                            }
+                                        } catch (_: Exception) {
+                                            onAudioModalOpen()
+                                        }
+                                    }
+                                } else {
+                                    onAudioModalOpen()
+                                }
                             },
                             onSeekBack = { store.seekBack() },
                             onSeekForward = { store.seekForward() },
@@ -436,12 +496,19 @@ fun CreatorHeader(
                         )
                     }
                 }
+                val titleText = when {
+                    currentScreen == 3 && marketingTitleOverride != null -> marketingTitleOverride
+                    currentScreen == 4 && automationsTitleOverride != null -> automationsTitleOverride
+                    else -> screenLabels.getOrElse(currentScreen) { "" }
+                }
+                val bassShakeX = if (audioIsPlaying) audioBassLevel * 3.5f else 0f
+                val bassShakeY = if (audioIsPlaying) audioBassLevel * 2f else 0f
                 Text(
-                    text = when {
-                        currentScreen == 3 && marketingTitleOverride != null -> marketingTitleOverride
-                        currentScreen == 4 && automationsTitleOverride != null -> automationsTitleOverride
-                        else -> screenLabels.getOrElse(currentScreen) { "" }
-                    },
+                    text = titleText,
+                    modifier = Modifier.offset(
+                        x = (if (musicWaveTick % 2 == 0) bassShakeX else -bassShakeX).dp,
+                        y = (if (musicWaveTick % 3 == 0) bassShakeY else -bassShakeY).dp,
+                    ),
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
@@ -506,7 +573,9 @@ fun CreatorHeader(
                                     eazyLookLeft && !showStartGenerationBubble
                                 EazyMascotIcon(
                                     modifier = Modifier.fillMaxSize(),
-                                    lookLeft = faceBubble
+                                    lookLeft = faceBubble,
+                                    musicParty = audioIsPlaying,
+                                    bassPulse = if (audioIsPlaying) audioBassLevel else 0f,
                                 )
                             }
                         }

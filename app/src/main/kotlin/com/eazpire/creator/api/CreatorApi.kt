@@ -2904,6 +2904,10 @@ class CreatorApi(
     suspend fun setCreatorAudio(ownerId: String, audioId: String): JSONObject =
         postJson("set-creator-audio", mapOf("audio_id" to audioId), mapOf("owner_id" to ownerId))
 
+    /** POST ?op=creator-music-reward&owner_id=xxx – Free EAZ while listening (10s windows) */
+    suspend fun postCreatorMusicReward(ownerId: String): JSONObject =
+        postJson("creator-music-reward", emptyMap(), mapOf("owner_id" to ownerId))
+
     /** POST ?op=delete-audio-file&owner_id=xxx – Body: { audio_id } */
     suspend fun deleteAudioFile(ownerId: String, audioId: String): JSONObject =
         postJson("delete-audio-file", mapOf("audio_id" to audioId), mapOf("owner_id" to ownerId))
