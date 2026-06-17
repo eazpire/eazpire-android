@@ -1,19 +1,12 @@
 package com.eazpire.creator.chat
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -26,15 +19,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -47,6 +39,10 @@ data class SimonTimingUi(
     val serverNowMs: Long,
     val playMsPerRound: Long,
     val flashMs: Long,
+    val gapMs: Long = 480L,
+    val introMs: Long = 1400L,
+    val roundBreakMs: Long = 1200L,
+    val preloadMinMs: Long = 900L,
 )
 
 data class SimonSessionUi(
@@ -134,6 +130,8 @@ fun EazySimonDailyBoard(
     var phase by remember(session.phase) { mutableStateOf(session.phase) }
     var gameMeta by remember(session.gameMeta) { mutableStateOf(session.gameMeta) }
     var litPad by remember { mutableIntStateOf(-1) }
+    var pressedPad by remember { mutableIntStateOf(-1) }
+    var boardReady by remember { mutableStateOf(session.phase == "input") }
     var lock by remember { mutableStateOf(true) }
     var submitted by remember { mutableStateOf(false) }
     var tapInFlight by remember { mutableStateOf(false) }
@@ -158,17 +156,27 @@ fun EazySimonDailyBoard(
         }
     }
 
+    suspend fun flashPad(idx: Int, userPress: Boolean = false) {
+        if (userPress) pressedPad = idx else litPad = idx
+        synth.playPad(idx)
+        delay(timing.flashMs)
+        if (userPress) {
+            if (pressedPad == idx) pressedPad = -1
+        } else if (litPad == idx) {
+            litPad = -1
+        }
+    }
+
     suspend fun runPlayback(steps: List<Int>) {
         lock = true
         phase = "playback"
+        boardReady = true
         statusLine = t("eazy_chat.games_simon_watch", "Watch Eazy's sequence…")
+        delay(timing.gapMs)
         for (idx in steps) {
             if (submitted) return
-            litPad = idx
-            synth.playPad(idx)
-            delay(timing.flashMs)
-            litPad = -1
-            delay(280)
+            flashPad(idx, userPress = false)
+            delay(timing.gapMs)
         }
         val start = api.postDailyGameSimonStartInput(shop, ownerId)
         if (start.optBoolean("ok", false)) {
@@ -184,6 +192,10 @@ fun EazySimonDailyBoard(
                         serverNowMs = j.optLong("server_now_ms"),
                         playMsPerRound = j.optLong("play_ms_per_round", timing.playMsPerRound),
                         flashMs = j.optLong("flash_ms", timing.flashMs),
+                        gapMs = j.optLong("gap_ms", timing.gapMs),
+                        introMs = j.optLong("intro_ms", timing.introMs),
+                        roundBreakMs = j.optLong("round_break_ms", timing.roundBreakMs),
+                        preloadMinMs = j.optLong("preload_min_ms", timing.preloadMinMs),
                     ),
                 )
             }
@@ -192,11 +204,24 @@ fun EazySimonDailyBoard(
         }
     }
 
+    suspend fun prepareBoardThenPlayback(steps: List<Int>) {
+        boardReady = false
+        lock = true
+        statusLine = t("eazy_chat.games_simon_get_ready", "Get ready…")
+        delay(timing.preloadMinMs)
+        if (submitted) return
+        boardReady = true
+        delay(timing.introMs)
+        if (submitted) return
+        runPlayback(steps)
+    }
+
     LaunchedEffect(session.playbackSteps, session.phase) {
         if (session.phase == "playback" && session.playbackSteps.isNotEmpty()) {
-            runPlayback(session.playbackSteps)
+            prepareBoardThenPlayback(session.playbackSteps)
         } else if (session.phase == "input") {
             applyTiming(session.timing)
+            boardReady = true
             lock = false
             statusLine = t("eazy_chat.games_simon_your_turn", "Your turn — repeat the sequence!")
         }
@@ -225,89 +250,82 @@ fun EazySimonDailyBoard(
         ) {
             items((0 until 9).toList()) { idx ->
                 val lit = litPad == idx
+                val pressed = pressedPad == idx
                 val baseColor =
                     gameMeta?.colors?.getOrNull(idx)?.let { parseHexColor(it, Color(0xFFEA580C)) }
                         ?: Color(0xFFEA580C)
                 val imageUrl = gameMeta?.padImages?.getOrNull(idx).orEmpty()
-                val canTap = !lock && !submitted && !tapInFlight && phase == "input"
-                Box(
-                    modifier =
-                        Modifier
-                            .aspectRatio(1f)
-                            .alpha(if (lit) 1f else 0.78f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(baseColor)
-                            .clickable(enabled = canTap) {
-                                if (tapInFlight) return@clickable
-                                tapInFlight = true
-                                litPad = idx
-                                synth.playPad(idx)
-                                scope.launch {
-                                    val flashJob = async {
-                                        delay(timing.flashMs)
-                                        if (litPad == idx) litPad = -1
+                val canTap = boardReady && !lock && !submitted && !tapInFlight && phase == "input"
+                EazySimonPad(
+                    baseColor = baseColor,
+                    imageUrl = imageUrl.takeIf { it.isNotBlank() },
+                    lit = lit,
+                    pressed = pressed,
+                    enabled = canTap,
+                    boardReady = boardReady,
+                    onClick = {
+                        if (tapInFlight || !canTap) return@EazySimonPad
+                        tapInFlight = true
+                        scope.launch {
+                            val flashJob = async {
+                                flashPad(idx, userPress = true)
+                            }
+                            try {
+                                val j = api.postDailyGameSimonTap(shop, ownerId, idx)
+                                parseGameMeta(j.optJSONObject("simon_game"))?.let { gameMeta = it }
+                                j.optJSONObject("simon_timing")?.let { tj ->
+                                    applyTiming(
+                                        SimonTimingUi(
+                                            deadlineMs = tj.optLong("deadline_ms"),
+                                            serverNowMs = tj.optLong("server_now_ms"),
+                                            playMsPerRound = tj.optLong("play_ms_per_round", timing.playMsPerRound),
+                                            flashMs = tj.optLong("flash_ms", timing.flashMs),
+                                            gapMs = tj.optLong("gap_ms", timing.gapMs),
+                                            introMs = tj.optLong("intro_ms", timing.introMs),
+                                            roundBreakMs = tj.optLong("round_break_ms", timing.roundBreakMs),
+                                            preloadMinMs = tj.optLong("preload_min_ms", timing.preloadMinMs),
+                                        ),
+                                    )
+                                }
+                                when {
+                                    j.optString("outcome") == "win" -> {
+                                        submitted = true
+                                        synth.playWin()
+                                        onRoundComplete()
                                     }
-                                    try {
-                                        val j = api.postDailyGameSimonTap(shop, ownerId, idx)
-                                        parseGameMeta(j.optJSONObject("simon_game"))?.let { gameMeta = it }
-                                        j.optJSONObject("simon_timing")?.let { tj ->
-                                            applyTiming(
-                                                SimonTimingUi(
-                                                    deadlineMs = tj.optLong("deadline_ms"),
-                                                    serverNowMs = tj.optLong("server_now_ms"),
-                                                    playMsPerRound = tj.optLong("play_ms_per_round", timing.playMsPerRound),
-                                                    flashMs = tj.optLong("flash_ms", timing.flashMs),
-                                                ),
-                                            )
-                                        }
-                                        when {
-                                            j.optString("outcome") == "win" -> {
-                                                submitted = true
-                                                synth.playWin()
-                                                onRoundComplete()
-                                            }
-                                            j.optString("outcome") == "loss" -> {
-                                                submitted = true
-                                                synth.playWrong()
-                                                onRoundComplete()
-                                            }
-                                            j.optString("simon_status") == "round_complete" -> {
-                                                round = j.optInt("simon_round", round + 1)
-                                                playbackSteps = parseIntList(j.optJSONArray("simon_playback_steps"))
-                                                tapInFlight = false
-                                                runPlayback(playbackSteps)
-                                            }
-                                            j.optBoolean("ok", false) -> {
-                                                tapInFlight = false
-                                                lock = false
-                                            }
-                                            else -> {
-                                                tapInFlight = false
-                                                lock = false
-                                            }
-                                        }
-                                    } catch (_: Exception) {
+                                    j.optString("outcome") == "loss" -> {
+                                        submitted = true
+                                        synth.playWrong()
+                                        onRoundComplete()
+                                    }
+                                    j.optString("simon_status") == "round_complete" -> {
+                                        round = j.optInt("simon_round", round + 1)
+                                        playbackSteps = parseIntList(j.optJSONArray("simon_playback_steps"))
+                                        tapInFlight = false
+                                        statusLine =
+                                            t("eazy_chat.games_simon_round_done", "Nice! Next round…")
+                                        delay(timing.roundBreakMs)
+                                        runPlayback(playbackSteps)
+                                    }
+                                    j.optBoolean("ok", false) -> {
                                         tapInFlight = false
                                         lock = false
-                                    } finally {
-                                        flashJob.await()
+                                    }
+                                    else -> {
+                                        tapInFlight = false
+                                        lock = false
                                     }
                                 }
-                            },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (imageUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = imageUrl,
-                            contentDescription = null,
-                            modifier =
-                                Modifier
-                                    .fillMaxSize()
-                                    .padding(10.dp),
-                            contentScale = ContentScale.Fit,
-                        )
-                    }
-                }
+                            } catch (_: Exception) {
+                                tapInFlight = false
+                                lock = false
+                            } finally {
+                                flashJob.await()
+                            }
+                        }
+                    },
+                    modifier = Modifier.aspectRatio(1f),
+                )
             }
         }
 
@@ -382,7 +400,11 @@ fun parseSimonSession(j: JSONObject): SimonSessionUi? {
                 deadlineMs = timing.optLong("deadline_ms"),
                 serverNowMs = timing.optLong("server_now_ms"),
                 playMsPerRound = timing.optLong("play_ms_per_round", 10_000L),
-                flashMs = timing.optLong("flash_ms", 550L),
+                flashMs = timing.optLong("flash_ms", 620L),
+                gapMs = timing.optLong("gap_ms", 480L),
+                introMs = timing.optLong("intro_ms", 1400L),
+                roundBreakMs = timing.optLong("round_break_ms", 1200L),
+                preloadMinMs = timing.optLong("preload_min_ms", 900L),
             ),
         targetRounds = j.optInt("simon_target_rounds", 7),
         round = j.optInt("simon_round", 0),
