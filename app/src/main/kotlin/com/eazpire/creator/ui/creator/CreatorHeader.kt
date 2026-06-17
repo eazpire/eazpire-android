@@ -77,7 +77,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
 @Composable
 internal fun CreatorHeaderEazyStartBubble(
@@ -232,18 +231,10 @@ fun CreatorHeader(
     val boomScale = remember { Animatable(1f) }
 
     val audioIsPlaying = audioStore?.isPlaying?.collectAsState()?.value ?: false
-    val audioBassLevel = audioStore?.bassLevel?.collectAsState()?.value ?: 0f
-    var musicWaveTick by remember { mutableStateOf(0) }
+    val partyVisuals = audioStore?.musicParty?.visuals?.collectAsState()?.value
 
-    LaunchedEffect(audioIsPlaying) {
-        if (!audioIsPlaying) {
-            musicWaveTick = 0
-            return@LaunchedEffect
-        }
-        while (true) {
-            delay(140L)
-            musicWaveTick++
-        }
+    LaunchedEffect(screenLabels.size, audioStore) {
+        audioStore?.musicParty?.setDotCount(screenLabels.size)
     }
 
     LaunchedEffect(eazyDocked) {
@@ -414,22 +405,24 @@ fun CreatorHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val dotCount = screenLabels.size
-                val cycleLen = (dotCount * 2).coerceAtLeast(1)
                 screenLabels.forEachIndexed { index, _ ->
                     val direction = if (index % 2 == 0) 1f else -1f
-                    val phase = musicWaveTick % cycleLen
-                    val forwardDist = abs(phase - index)
-                    val reverseDist = abs(phase - (cycleLen - 1 - index))
-                    val waveStrength = if (audioIsPlaying) {
-                        val base = (1f - minOf(forwardDist, reverseDist).coerceAtMost(2) * 0.45f).coerceAtLeast(0f)
-                        base * (0.35f + audioBassLevel.coerceIn(0f, 1f) * 0.65f)
-                    } else 0f
-                    val dotTravel = 3f + audioBassLevel.coerceIn(0f, 1f) * 7f
-                    val dotOffsetY = waveStrength * dotTravel * direction
+                    val intensity = if (audioIsPlaying) partyVisuals?.intensity ?: 0f else 0f
+                    val smooth = if (audioIsPlaying) partyVisuals?.smoothBass ?: 0f else 0f
+                    val energies = partyVisuals?.dotEnergies.orEmpty()
+                    val energy = energies.getOrNull(index) ?: 0f
+                    val activeDotIndex = partyVisuals?.activeDotIndex ?: 0
+                    val active = energy * intensity + smooth * 0.18f * if (index == activeDotIndex) 1f else 0f
+                    val dotTravel = 3f + intensity * 7f
+                    val dotOffsetY = active * dotTravel * direction
+                    val dotScale = 1f + active * (intensity * 0.2f)
                     Box(
                         modifier = Modifier
                             .offset(y = dotOffsetY.dp)
+                            .graphicsLayer {
+                                scaleX = dotScale
+                                scaleY = dotScale
+                            }
                             .size(8.dp)
                             .background(
                                 color = if (index == currentScreen) EazColors.Orange else Color.White.copy(alpha = 0.2f),
@@ -502,7 +495,7 @@ fun CreatorHeader(
                     currentScreen == 4 && automationsTitleOverride != null -> automationsTitleOverride
                     else -> screenLabels.getOrElse(currentScreen) { "" }
                 }
-                val titleScale = if (audioIsPlaying) 1f + audioBassLevel.coerceIn(0f, 1f) * 0.1f else 1f
+                val titleScale = if (audioIsPlaying) partyVisuals?.titleScale ?: 1f else 1f
                 Text(
                     text = titleText,
                     modifier = Modifier.graphicsLayer {
@@ -575,7 +568,9 @@ fun CreatorHeader(
                                     modifier = Modifier.fillMaxSize(),
                                     lookLeft = faceBubble,
                                     musicParty = audioIsPlaying,
-                                    bassPulse = if (audioIsPlaying) audioBassLevel else 0f,
+                                    bassPulse = if (audioIsPlaying) partyVisuals?.intensity ?: 0f else 0f,
+                                    eazyRotateDeg = if (audioIsPlaying) partyVisuals?.eazyRotateDeg ?: 0f else 0f,
+                                    eazyScale = if (audioIsPlaying) partyVisuals?.eazyScale ?: 1f else 1f,
                                 )
                             }
                         }

@@ -282,10 +282,12 @@ fun EazyMascotIcon(
     lookLeft: Boolean = false,
     musicParty: Boolean = false,
     bassPulse: Float = 0f,
+    eazyRotateDeg: Float = 0f,
+    eazyScale: Float = 1f,
 ) {
     val pulse = bassPulse.coerceIn(0f, 1f)
-    val pulseScale = 1f + pulse * 0.14f
-    val partyRot = if (musicParty) pulse * 8f else 0f
+    val pulseScale = eazyScale.coerceIn(0.85f, 1.2f)
+    val partyRot = if (musicParty) eazyRotateDeg else 0f
     val partyY = if (musicParty) pulse * (-2.5f) else 0f
 
     Canvas(

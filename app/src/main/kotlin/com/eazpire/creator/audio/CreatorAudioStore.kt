@@ -48,6 +48,8 @@ class CreatorAudioStore(context: Context) {
     /** Bass-Energie 0f–1f für UI-Reaktionen */
     val bassLevel = MutableStateFlow(0f)
 
+    val musicParty = CreatorMusicPartyBeat()
+
     private var mediaPlayer: MediaPlayer? = null
     private var visualizer: Visualizer? = null
     @Volatile
@@ -189,6 +191,7 @@ class CreatorAudioStore(context: Context) {
         currentPositionSec.value = 0
         visualizerLevels.value = emptyList()
         bassLevel.value = 0f
+        musicParty.reset()
     }
 
     private fun attachVisualizer(mp: MediaPlayer) {
@@ -209,7 +212,9 @@ class CreatorAudioStore(context: Context) {
                     }
                     override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {
                         if (fft != null && fft.size >= 4) {
-                            store.bassLevel.value = store.fftToBassLevel(fft)
+                            val bass = store.fftToBassLevel(fft)
+                            store.bassLevel.value = bass
+                            store.musicParty.onBass(bass)
                         }
                     }
                 }, Visualizer.getMaxCaptureRate() / 2, true, true)
@@ -219,6 +224,7 @@ class CreatorAudioStore(context: Context) {
         } catch (_: Exception) {
             visualizerLevels.value = emptyList()
             bassLevel.value = 0f
+            musicParty.reset()
         }
     }
 
