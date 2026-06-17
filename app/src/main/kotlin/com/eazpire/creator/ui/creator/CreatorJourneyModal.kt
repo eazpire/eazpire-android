@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -57,6 +56,7 @@ import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1199,47 +1199,168 @@ private fun JourneyProductCard(
     onCommitClick: () -> Unit,
     onUnlockClick: () -> Unit,
 ) {
-    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
-    fun tpl(key: String, fallback: String, vars: Map<String, String>): String {
-        var s = t(key, fallback)
-        vars.forEach { (k, v) -> s = s.replace("{{ $k }}", v).replace("{{$k}}", v) }
-        return s
-    }
     val levelLocked = sectionLocked || node.lockedReason == "level_required"
     val canAct = !node.unlocked && isCreator && node.lockedReason.isEmpty() && !levelLocked && !sectionLocked
     val unlockReady = canAct && node.committed + 1e-9 >= node.cost
-    val progress = if (node.cost > 0) (node.committed / node.cost).toFloat().coerceIn(0f, 1f) else if (node.unlocked) 1f else 0f
+    val hasAction = canAct && node.cost > 0
     val alpha = if (sectionLocked || levelLocked) 0.42f else 1f
 
     Column(
-        modifier = modifier
-            .alpha(alpha)
-            .border(
-                1.dp,
-                if (node.unlocked) Color(0xFFFBBF24).copy(alpha = 0.75f) else Color.White.copy(alpha = 0.12f),
-                RoundedCornerShape(14.dp),
-            )
-            .background(Color(0xFF111827), RoundedCornerShape(14.dp))
-            .padding(bottom = 10.dp),
+        modifier = modifier.alpha(alpha),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        JourneyTreeSkillStack(
+            node = node,
+            translationStore = translationStore,
+            hasAction = hasAction,
+            unlockReady = unlockReady,
+            busy = busy,
+            onCommitClick = onCommitClick,
+            onUnlockClick = onUnlockClick,
+        )
+    }
+}
+
+@Composable
+private fun JourneyGridCard(
+    node: JourneyNodeItem,
+    isCreator: Boolean,
+    busy: Boolean,
+    translationStore: TranslationStore,
+    onCommitClick: () -> Unit,
+    onUnlockClick: () -> Unit,
+) {
+    val locked = !node.unlocked && node.lockedReason in listOf("level_required", "creator_code_required")
+    val canAct = !node.unlocked && isCreator && node.lockedReason.isEmpty() && node.cost > 0
+    val unlockReady = canAct && node.committed + 1e-9 >= node.cost
+    val hasAction = canAct
+    val pulse = rememberInfiniteTransition(label = "unlockPulse")
+    val unlockScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = if (unlockReady) 1.04f else 1f,
+        animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),
+        label = "unlockScale",
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (locked) 0.62f else 1f)
+            .then(if (unlockReady) Modifier.scale(unlockScale) else Modifier),
+    ) {
+        JourneyTreeSkillStack(
+            node = node,
+            translationStore = translationStore,
+            hasAction = hasAction,
+            unlockReady = unlockReady,
+            busy = busy,
+            onCommitClick = onCommitClick,
+            onUnlockClick = onUnlockClick,
+        )
+        if (!node.unlocked && node.lockedReason == "creator_code_required") {
+            Text(
+                translationStore.t("creator.journey.code_hint_short", "Creator Code required"),
+                fontSize = 10.sp,
+                color = Color(0xFF9CA3AF),
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+            )
+        } else if (!node.unlocked && node.lockedReason == "level_required") {
+            Text(
+                translationStore.t("creator.journey.level_required", "Higher level required"),
+                fontSize = 10.sp,
+                color = Color(0xFF9CA3AF),
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun JourneyTreeSkillStack(
+    node: JourneyNodeItem,
+    translationStore: TranslationStore,
+    hasAction: Boolean,
+    unlockReady: Boolean,
+    busy: Boolean,
+    onCommitClick: () -> Unit,
+    onUnlockClick: () -> Unit,
+) {
+    val frameShape = if (hasAction) {
+        RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    } else {
+        RoundedCornerShape(16.dp)
+    }
+    val borderColor = when {
+        node.unlocked -> Color(0xFFFFC83C).copy(alpha = 0.85f)
+        else -> Color(0xFFFF9D00).copy(alpha = 0.35f)
+    }
+    val frameBrush = Brush.linearGradient(listOf(Color(0xFF1E2330), Color(0xFF0C1018)))
+
+    Column(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)),
+                .border(2.dp, borderColor, frameShape)
+                .background(frameBrush, frameShape)
+                .clip(frameShape),
         ) {
-            if (!node.imageUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = node.imageUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = node.title,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
                 )
-            } else {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Brush.linearGradient(listOf(Color(0xFF1F2937), Color(0xFF111827)))),
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (!node.imageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = node.imageUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.42f)
+                                .aspectRatio(1f)
+                                .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp)),
+                        )
+                    }
+                }
+                Text(
+                    text = journeyEazBadgeLabel(translationStore, node.committed, node.cost, node.unlocked),
+                    color = EazColors.Orange,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .padding(bottom = 10.dp)
+                        .background(EazColors.Orange.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
+                        .border(1.dp, EazColors.Orange.copy(alpha = 0.28f), RoundedCornerShape(999.dp))
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
                 )
             }
             if (node.unlocked) {
@@ -1254,201 +1375,82 @@ private fun JourneyProductCard(
                     Text("✓", color = Color(0xFF111827), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.72f)),
-            ) {
-                LinearProgressIndicator(
-                    progress = progress,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp),
-                    color = EazColors.Orange,
-                    trackColor = Color.White.copy(alpha = 0.12f),
-                )
-                Text(
-                    text = tpl(
-                        "creator.journey.eaz_badge",
-                        "{{ committed }}/{{ cost }} EAZ",
-                        mapOf(
-                            "committed" to node.committed.toInt().toString(),
-                            "cost" to node.cost.toInt().toString(),
-                        ),
-                    ),
-                    color = EazColors.Orange,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                )
-            }
         }
-        Text(
-            text = node.title,
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            minLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp)
-                .height(36.dp),
-        )
-        if (canAct && node.cost > 0) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onCommitClick,
-                    enabled = !busy,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(t("creator.journey.commit_eaz", "Commit"), fontSize = 10.sp)
-                }
-                Button(
-                    onClick = onUnlockClick,
-                    enabled = !busy && unlockReady,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(t("creator.journey.unlock_short", "Unlock"), fontSize = 10.sp)
-                }
-            }
+        if (hasAction) {
+            JourneyTreeSkillActionButton(
+                unlockReady = unlockReady,
+                busy = busy,
+                translationStore = translationStore,
+                onCommitClick = onCommitClick,
+                onUnlockClick = onUnlockClick,
+            )
         }
     }
 }
 
 @Composable
-private fun JourneyGridCard(
-    node: JourneyNodeItem,
-    isCreator: Boolean,
+private fun JourneyTreeSkillActionButton(
+    unlockReady: Boolean,
     busy: Boolean,
     translationStore: TranslationStore,
     onCommitClick: () -> Unit,
     onUnlockClick: () -> Unit,
 ) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
-    fun tpl(key: String, fallback: String, vars: Map<String, String>): String {
-        var s = t(key, fallback)
-        vars.forEach { (k, v) -> s = s.replace("{{ $k }}", v).replace("{{$k}}", v) }
-        return s
+    val shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
+    val label = if (unlockReady) {
+        t("creator.journey.unlock_short", "Unlock")
+    } else {
+        t("creator.journey.commit_eaz", "Commit")
     }
-
-    val locked = !node.unlocked && node.lockedReason in listOf("level_required", "creator_code_required")
-    val canAct = !node.unlocked && isCreator && node.lockedReason.isEmpty() && node.cost > 0
-    val unlockReady = canAct && node.committed + 1e-9 >= node.cost
-    val pulse = rememberInfiniteTransition(label = "unlockPulse")
-    val unlockScale by pulse.animateFloat(
-        initialValue = 1f,
-        targetValue = if (unlockReady) 1.04f else 1f,
-        animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),
-        label = "unlockScale",
-    )
-
-    Column(
+    Button(
+        onClick = { if (unlockReady) onUnlockClick() else onCommitClick() },
+        enabled = !busy,
+        shape = shape,
         modifier = Modifier
             .fillMaxWidth()
-            .border(
-                1.dp,
-                if (node.unlocked) Color(0xFF34D399).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.1f),
-                RoundedCornerShape(14.dp),
+            .height(38.dp)
+            .border(2.dp, Color(0xFFFF9D00).copy(alpha = 0.35f), shape),
+        colors = if (unlockReady) {
+            ButtonDefaults.buttonColors(
+                containerColor = EazColors.Orange,
+                contentColor = Color(0xFF111827),
+                disabledContainerColor = EazColors.Orange.copy(alpha = 0.45f),
+                disabledContentColor = Color(0xFF111827).copy(alpha = 0.6f),
             )
-            .background(Color(0xFF111827), RoundedCornerShape(14.dp))
-            .then(if (locked) Modifier else Modifier)
-            .padding(bottom = 10.dp),
+        } else {
+            ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF0C1018),
+                contentColor = Color.White,
+                disabledContainerColor = Color(0xFF0C1018).copy(alpha = 0.45f),
+                disabledContentColor = Color.White.copy(alpha = 0.6f),
+            )
+        },
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFF1F2937), Color(0xFF111827), Color(0xFF0B1220))),
-                    RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.42f)
-                    .aspectRatio(1f)
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp)),
-            )
-        }
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = node.title,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Start,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = tpl(
-                        "creator.journey.eaz_badge",
-                        "{{ committed }}/{{ cost }} EAZ",
-                        mapOf(
-                            "committed" to node.committed.toInt().toString(),
-                            "cost" to node.cost.toInt().toString(),
-                        ),
-                    ),
-                    fontSize = 10.sp,
-                    color = EazColors.Orange,
-                    modifier = Modifier
-                        .background(EazColors.Orange.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
-                Text(
-                    text = tpl("creator.journey.level_badge", "Level {{ n }}", mapOf("n" to node.minLevel.toString())),
-                    fontSize = 10.sp,
-                    color = Color(0xFF9CA3AF),
-                    modifier = Modifier
-                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
-            }
-            if (node.unlocked) {
-                Text(
-                    t("creator.journey.unlocked", "Unlocked"),
-                    fontSize = 10.sp,
-                    color = Color(0xFF6EE7B7),
-                )
-            } else if (node.lockedReason == "creator_code_required") {
-                Text(t("creator.journey.code_hint_short", "Creator Code required"), fontSize = 10.sp, color = Color(0xFF9CA3AF))
-            } else if (node.lockedReason == "level_required") {
-                Text(t("creator.journey.level_required", "Higher level required"), fontSize = 10.sp, color = Color(0xFF9CA3AF))
-            }
-            if (canAct) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    OutlinedButton(onClick = onCommitClick, enabled = !busy, modifier = Modifier.weight(1f)) {
-                        Text(t("creator.journey.commit_eaz", "Commit"), fontSize = 11.sp)
-                    }
-                    Button(
-                        onClick = onUnlockClick,
-                        enabled = !busy && unlockReady,
-                        modifier = Modifier
-                            .weight(1f)
-                            .scale(if (unlockReady) unlockScale else 1f),
-                    ) {
-                        Text(t("creator.journey.unlock_short", "Unlock"), fontSize = 11.sp)
-                    }
-                }
-            }
-        }
+        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
+}
+
+private fun journeyEazBadgeLabel(
+    translationStore: TranslationStore,
+    committed: Double,
+    cost: Double,
+    unlocked: Boolean,
+): String {
+    if (unlocked) return translationStore.t("creator.journey.unlocked", "Unlocked")
+    if (cost <= 0) return translationStore.t("creator.journey.eaz_free", "Free")
+    val committedLabel = if (kotlin.math.abs(committed - committed.toLong()) < 1e-9) {
+        committed.toLong().toString()
+    } else {
+        String.format(java.util.Locale.US, "%.2f", committed)
+    }
+    val costLabel = if (kotlin.math.abs(cost - cost.toLong()) < 1e-9) {
+        cost.toLong().toString()
+    } else {
+        String.format(java.util.Locale.US, "%.2f", cost)
+    }
+    var s = translationStore.t("creator.journey.eaz_badge", "{{ committed }}/{{ cost }} EAZ")
+    s = s.replace("{{ committed }}", committedLabel).replace("{{committed}}", committedLabel)
+    s = s.replace("{{ cost }}", costLabel).replace("{{cost}}", costLabel)
+    return s
 }

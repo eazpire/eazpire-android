@@ -4,13 +4,18 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,7 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import com.eazpire.creator.EazColors
@@ -52,11 +59,35 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+private val AXIS_TAB_ORDER = listOf("cost", "daily", "cap", "kickstarter")
+
 private val AXIS_LABELS = mapOf(
     "cost" to "Cost",
     "daily" to "Daily",
     "cap" to "Cap",
+    "kickstarter" to "Kickstarter",
 )
+
+private fun eazSkillLabel(skillKey: String, isAxisGate: Boolean): String {
+    if (isAxisGate || skillKey.startsWith("axis_")) {
+        val tab = skillKey.removePrefix("axis_")
+        return AXIS_LABELS[tab] ?: tab.replaceFirstChar { it.uppercase() }
+    }
+    if (skillKey.startsWith("kickstarter_")) {
+        val part = skillKey.removePrefix("kickstarter_")
+        return "Kickstarter ${AXIS_LABELS[part] ?: part.replaceFirstChar { it.uppercase() }}"
+    }
+    val match = Regex("^(cost|daily|cap)_(\\d+)$").find(skillKey) ?: return skillKey.replace('_', ' ')
+    val axis = match.groupValues[1]
+    val num = match.groupValues[2]
+    return "${AXIS_LABELS[axis] ?: axis} $num"
+}
+
+private fun eazBonusLabel(axis: String, bonusPct: Double): String {
+    val bonus = (bonusPct * 100).toInt()
+    if (bonus == 0) return ""
+    return if (axis == "cost") "-$bonus%" else "+$bonus%"
+}
 
 @Composable
 fun EazEconomySkillTreeModal(
@@ -76,6 +107,7 @@ fun EazEconomySkillTreeModal(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EazEconomySkillTreePanel(
     ownerId: String,
@@ -91,6 +123,7 @@ fun EazEconomySkillTreePanel(
     var isLoading by remember { mutableStateOf(true) }
     var kickstarterCode by remember { mutableStateOf("") }
     var refresh by remember { mutableStateOf(0) }
+    var axisFilter by remember { mutableStateOf("cost") }
 
     LaunchedEffect(ownerId, refresh) {
         if (ownerId.isBlank()) {
@@ -110,6 +143,30 @@ fun EazEconomySkillTreePanel(
 
     fun reload() {
         refresh++
+    }
+
+    fun activateSkill(key: String) {
+        scope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) { api.activateEazEconomySkill(ownerId, key) }
+                if (r.optBoolean("ok", false)) {
+                    EazBalanceRefreshBus.requestRefresh()
+                    reload()
+                } else {
+                    Toast.makeText(
+                        context,
+                        translationStore.t("creator.eaz_economy.activate_fail", "Could not activate skill."),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (_: Exception) {
+                Toast.makeText(
+                    context,
+                    translationStore.t("creator.eaz_economy.activate_fail", "Could not activate skill."),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
     }
 
     Column(
@@ -140,16 +197,6 @@ fun EazEconomySkillTreePanel(
             }
         }
 
-        Text(
-            translationStore.t(
-                "creator.eaz_economy.intro",
-                "Unlock mascot-gated bonuses with EAZ. Cost discounts apply only after you activate a node here."
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.72f),
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = EazColors.Orange)
@@ -161,11 +208,25 @@ fun EazEconomySkillTreePanel(
         } else {
             val data = treeData!!
             val nodes = data.optJSONArray("nodes") ?: JSONArray()
-            val byAxis = linkedMapOf<String, MutableList<JSONObject>>()
-            for (i in 0 until nodes.length()) {
-                val n = nodes.optJSONObject(i) ?: continue
-                val axis = n.optString("axis", "cost")
-                byAxis.getOrPut(axis) { mutableListOf() }.add(n)
+            val mascotLevel = data.optInt("mascot_level", 1)
+
+            val allNodes = buildList {
+                for (i in 0 until nodes.length()) {
+                    nodes.optJSONObject(i)?.let { add(it) }
+                }
+            }
+
+            val axisNode = allNodes.firstOrNull {
+                it.optBoolean("is_axis_gate", false) && (it.optString("tab", it.optString("axis")) == axisFilter)
+            }
+            val axisOpen = axisNode?.let {
+                val st = it.optString("status")
+                st == "active" || st == "grandfathered"
+            } == true
+
+            val tabNodes = allNodes.filter {
+                !it.optBoolean("is_axis_gate", false) &&
+                    (it.optString("tab", it.optString("axis")) == axisFilter)
             }
 
             Column(
@@ -174,54 +235,6 @@ fun EazEconomySkillTreePanel(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                byAxis.forEach { (axis, list) ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp))
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            AXIS_LABELS[axis] ?: axis,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = EazColors.Orange,
-                            fontWeight = FontWeight.Bold
-                        )
-                        list.forEach { node ->
-                            SkillTreeNodeRow(
-                                node = node,
-                                translationStore = translationStore,
-                                onActivate = { key ->
-                                    scope.launch {
-                                        try {
-                                            val r = withContext(Dispatchers.IO) {
-                                                api.activateEazEconomySkill(ownerId, key)
-                                            }
-                                            if (r.optBoolean("ok", false)) {
-                                                EazBalanceRefreshBus.requestRefresh()
-                                                reload()
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    translationStore.t("creator.eaz_economy.activate_fail", "Could not activate skill."),
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        } catch (_: Exception) {
-                                            Toast.makeText(
-                                                context,
-                                                translationStore.t("creator.eaz_economy.activate_fail", "Could not activate skill."),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -299,70 +312,236 @@ fun EazEconomySkillTreePanel(
                         }
                     }
                 }
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AXIS_TAB_ORDER.forEach { tab ->
+                        val selected = tab == axisFilter
+                        val label = translationStore.t("creator.eaz_economy.tab_$tab", AXIS_LABELS[tab] ?: tab)
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (selected) Color(0xFFF97316).copy(alpha = 0.14f) else Color.White.copy(alpha = 0.04f),
+                                    RoundedCornerShape(999.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (selected) Color(0xFFF97316).copy(alpha = 0.65f) else Color.White.copy(alpha = 0.14f),
+                                    RoundedCornerShape(999.dp)
+                                )
+                                .clickable { axisFilter = tab }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                label,
+                                color = if (selected) Color.White else Color.White.copy(alpha = 0.72f),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+
+                axisNode?.let { node ->
+                    val st = node.optString("status")
+                    if (st != "active" && st != "grandfathered") {
+                        Box(modifier = Modifier.widthIn(max = 220.dp)) {
+                            EazEconomySkillCard(
+                                node = node,
+                                translationStore = translationStore,
+                                onActivate = ::activateSkill,
+                            )
+                        }
+                    }
+                }
+
+                if (!axisOpen) {
+                    Text(
+                        translationStore.t(
+                            "creator.eaz_economy.axis_unlock_hint",
+                            "Unlock this category with EAZ to access its skills."
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.6f),
+                    )
+                } else {
+                    val activeNodes = tabNodes.filter {
+                        val st = it.optString("status")
+                        st == "active" || st == "grandfathered"
+                    }
+                    if (activeNodes.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            activeNodes.forEach { node ->
+                                Text(
+                                    eazSkillLabel(node.optString("skill_key"), node.optBoolean("is_axis_gate", false)),
+                                    color = Color(0xFFFBBF24),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (axisFilter == "kickstarter") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            tabNodes.forEach { node ->
+                                Box(modifier = Modifier.weight(1f)) {
+                                    EazEconomySkillCard(
+                                        node = node,
+                                        translationStore = translationStore,
+                                        onActivate = ::activateSkill,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        val byLevel = tabNodes.groupBy { it.optInt("mascot_min_level", 1) }.toSortedMap()
+                        byLevel.forEach { (level, levelNodes) ->
+                            val rowLocked = level > mascotLevel
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    translationStore.t("creator.journey.level_row", "Level {{ n }}")
+                                        .replace("{{ n }}", level.toString())
+                                        .replace("{{n}}", level.toString()),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = if (rowLocked) Color.White.copy(alpha = 0.45f) else EazColors.Orange,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    levelNodes.forEach { node ->
+                                        Box(modifier = Modifier.widthIn(min = 156.dp, max = 180.dp)) {
+                                            EazEconomySkillCard(
+                                                node = node,
+                                                translationStore = translationStore,
+                                                onActivate = ::activateSkill,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SkillTreeNodeRow(
+private fun EazEconomySkillCard(
     node: JSONObject,
     translationStore: TranslationStore,
     onActivate: (String) -> Unit,
 ) {
     val status = node.optString("status", "locked")
     val skillKey = node.optString("skill_key", "")
-    val bonusPct = (node.optDouble("bonus_pct", 0.0) * 100).toInt()
+    val isAxisGate = node.optBoolean("is_axis_gate", false)
+    val axis = node.optString("axis", "cost")
+    val title = eazSkillLabel(skillKey, isAxisGate)
     val minLevel = node.optInt("mascot_min_level", 0)
     val cost = node.optDouble("activation_cost_eaz", 0.0)
-    val meta = buildString {
-        append("+$bonusPct%")
-        if (minLevel > 0) append(" · Lv.$minLevel")
-        if (cost > 0) append(" · ${EazCostCatalog.fmtEaz(cost)} EAZ")
+    val isActive = status == "active" || status == "grandfathered"
+    val canActivate = status == "unlocked"
+
+    val badge = when {
+        isActive -> translationStore.t("creator.eaz_economy.active", "Active")
+        status == "kickstarter_locked" -> translationStore.t("creator.eaz_economy.kickstarter_locked", "Kickstarter")
+        status == "axis_locked" -> translationStore.t("creator.eaz_economy.axis_locked", "Unlock category first")
+        status == "locked" -> translationStore.t("creator.eaz_economy.locked", "Locked")
+        isAxisGate -> buildString {
+            if (cost > 0) append("${EazCostCatalog.fmtEaz(cost)} EAZ")
+            if (minLevel > 0) {
+                if (isNotEmpty()) append(" · ")
+                append("Lv.$minLevel")
+            }
+        }
+        else -> buildString {
+            val bonus = eazBonusLabel(axis, node.optDouble("bonus_pct", 0.0))
+            if (bonus.isNotBlank()) append(bonus)
+            if (minLevel > 0) {
+                if (isNotEmpty()) append(" · ")
+                append("Lv.$minLevel")
+            }
+            if (cost > 0) {
+                if (isNotEmpty()) append(" · ")
+                append("${EazCostCatalog.fmtEaz(cost)} EAZ")
+            }
+        }
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                if (status == "active" || status == "grandfathered") Color(0xFF14532D).copy(alpha = 0.25f)
-                else Color.White.copy(alpha = 0.03f),
-                RoundedCornerShape(8.dp)
-            )
-            .padding(10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    val frameColor = when {
+        isActive -> Color(0xFF14532D).copy(alpha = 0.35f)
+        canActivate -> Color(0xFFF97316).copy(alpha = 0.12f)
+        else -> Color.White.copy(alpha = 0.04f)
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(skillKey, color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-            Text(meta, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
-        }
-        when (status) {
-            "unlocked" -> {
-                OutlinedButton(onClick = { onActivate(skillKey) }) {
-                    Text(translationStore.t("creator.eaz_economy.activate", "Activate"))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(frameColor, RoundedCornerShape(14.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(14.dp))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                title,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                            colors = listOf(Color(0xFFF97316).copy(alpha = 0.25f), Color.White.copy(alpha = 0.05f))
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .padding(vertical = 28.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isActive) {
+                    Text("✓", color = Color(0xFF4ADE80), fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            "active", "grandfathered" -> {
-                Text(
-                    translationStore.t("creator.eaz_economy.active", "Active"),
-                    color = Color(0xFF4ADE80),
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-            "kickstarter_locked" -> {
-                Text(
-                    translationStore.t("creator.eaz_economy.kickstarter_locked", "Kickstarter"),
-                    color = Color.White.copy(alpha = 0.5f),
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-            else -> {
-                Text(
-                    translationStore.t("creator.eaz_economy.locked", "Locked"),
-                    color = Color.White.copy(alpha = 0.45f),
-                    style = MaterialTheme.typography.labelSmall
-                )
+            Text(
+                badge,
+                color = Color.White.copy(alpha = 0.72f),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+        if (canActivate) {
+            Button(
+                onClick = { onActivate(skillKey) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Text(translationStore.t("creator.eaz_economy.activate", "Activate"), color = Color.White)
             }
         }
     }
