@@ -150,6 +150,7 @@ fun EazyDailyGamePanel(
     var showConnectTutorial by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
     var lastStateJson by remember { mutableStateOf<JSONObject?>(null) }
+    var activePlayKind by remember { mutableStateOf("standard") }
 
     fun syncReminderFromState(j: JSONObject?) {
         val root = j ?: return
@@ -173,7 +174,7 @@ fun EazyDailyGamePanel(
             showConnectTutorial = false
             status = t("eazy_chat.games_loading", "Loading…")
             try {
-                val j = api.postDailyGameConnectBegin(shop, oid, selectedSlug)
+                val j = api.postDailyGameConnectBegin(shop, oid, selectedSlug, activePlayKind)
                 val parsed = parseConnectSession(j)
                 if (j.optBoolean("ok", false) && parsed != null) {
                     connectSession = parsed
@@ -212,6 +213,10 @@ fun EazyDailyGamePanel(
         val notify = j.optJSONObject("notify")
         notifyPush = notify?.optBoolean("push_enabled", true) != false
         notifyEmail = notify?.optBoolean("email_enabled", false) == true
+
+        val bonusAvailable =
+            j.optBoolean("bonus_play_available", false) && j.optBoolean("standard_play_completed", false)
+        activePlayKind = if (bonusAvailable) "bonus" else "standard"
 
         val selectedState = pickerItems.find { it.slug == selectedSlug }
         val winProb = j.optDouble("win_probability", 0.25)
@@ -279,21 +284,28 @@ fun EazyDailyGamePanel(
 
         val outcome = j.optString("outcome", "")
         when {
-            j.optBoolean("already_played", false) && outcome == "win" -> {
+            j.optBoolean("already_played", false) && outcome == "win" && !bonusAvailable -> {
                 playEnabled = false
                 status = t("eazy_chat.games_outcome_win", "You won a gift card!")
             }
-            j.optBoolean("already_played", false) && outcome == "loss" -> {
+            j.optBoolean("already_played", false) && outcome == "loss" && !bonusAvailable -> {
                 playEnabled = false
                 status = t("eazy_chat.games_outcome_loss", "Not this time. Come back tomorrow.")
             }
-            j.optBoolean("already_played", false) && outcome == "failed_issue" -> {
+            j.optBoolean("already_played", false) && outcome == "failed_issue" && !bonusAvailable -> {
                 playEnabled = false
                 status = t("eazy_chat.games_outcome_failed", "We could not issue the prize.")
             }
-            j.optBoolean("already_played", false) -> {
+            j.optBoolean("already_played", false) && !bonusAvailable -> {
                 playEnabled = false
                 status = t("eazy_chat.games_already_played", "You already played today.")
+            }
+            bonusAvailable -> {
+                playEnabled = true
+                status = t(
+                    "eazy_chat.games_bonus_available",
+                    "A friend approved a bonus round — play again today!",
+                )
             }
             else -> {
                 playEnabled = true
@@ -383,7 +395,7 @@ fun EazyDailyGamePanel(
         resumeMemory = false
         loading = true
         try {
-            val j = api.postDailyGameMemoryBegin(shop, oid, selectedSlug)
+            val j = api.postDailyGameMemoryBegin(shop, oid, selectedSlug, activePlayKind)
             val parsed = parseMemorySession(j)
             if (j.optBoolean("ok", false) && parsed != null) {
                 memorySession = parsed
@@ -410,7 +422,7 @@ fun EazyDailyGamePanel(
         resumeConnect = false
         loading = true
         try {
-            val j = api.postDailyGameConnectBegin(shop, oid)
+            val j = api.postDailyGameConnectBegin(shop, oid, playKind = activePlayKind)
             val parsed = parseConnectSession(j)
             if (j.optBoolean("ok", false) && parsed != null) {
                 connectSession = parsed
@@ -437,7 +449,7 @@ fun EazyDailyGamePanel(
         resumeSimon = false
         loading = true
         try {
-            val j = api.postDailyGameSimonBegin(shop, oid)
+            val j = api.postDailyGameSimonBegin(shop, oid, activePlayKind)
             val (msg, keepPlayEnabled) = applySimonBeginResponse(j, t) { simonSession = it }
             status = msg
             playEnabled = keepPlayEnabled
@@ -705,12 +717,12 @@ fun EazyDailyGamePanel(
                                 status = ""
                             }
                         } else if (selectedSlug == "simon_says") {
-                            val j = api.postDailyGameSimonBegin(shop, oid)
+                            val j = api.postDailyGameSimonBegin(shop, oid, activePlayKind)
                             val (msg, keepPlayEnabled) = applySimonBeginResponse(j, t) { simonSession = it }
                             status = msg
                             playEnabled = keepPlayEnabled
                         } else {
-                            val j = api.postDailyGameMemoryBegin(shop, oid, selectedSlug)
+                            val j = api.postDailyGameMemoryBegin(shop, oid, selectedSlug, activePlayKind)
                             val parsed = parseMemorySession(j)
                             if (j.optBoolean("ok", false) && parsed != null) {
                                 memorySession = parsed
@@ -746,7 +758,14 @@ fun EazyDailyGamePanel(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = LocalEazyModalPalette.current.accent),
         ) {
-            Text(t("eazy_chat.games_play", "Start game"), color = Color.White)
+            Text(
+                if (activePlayKind == "bonus") {
+                    t("eazy_chat.games_bonus_play", "Bonus round")
+                } else {
+                    t("eazy_chat.games_play", "Start game")
+                },
+                color = Color.White,
+            )
         }
     }
 }

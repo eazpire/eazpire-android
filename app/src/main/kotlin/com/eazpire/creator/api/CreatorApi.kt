@@ -470,12 +470,41 @@ class CreatorApi(
         return call("daily-game-state", params)
     }
 
+    suspend fun listGamesInviteFriends(ownerId: String, shop: String): JSONObject = call(
+        "list-games-invite-friends",
+        mapOf("owner_id" to ownerId, "shop" to shop),
+    )
+
+    suspend fun listGamesInviteRequests(ownerId: String): JSONObject = call(
+        "list-games-invite-requests",
+        mapOf("owner_id" to ownerId, "status" to "pending"),
+    )
+
+    suspend fun createGamesPlayRequest(ownerId: String, targetId: String, shop: String): JSONObject =
+        postJson(
+            "create-games-play-request",
+            mapOf("target_id" to targetId, "shop" to shop),
+            mapOf("owner_id" to ownerId, "shop" to shop),
+        )
+
+    suspend fun respondGamesPlayRequest(ownerId: String, requestId: Int, action: String): JSONObject =
+        postJson(
+            "respond-games-play-request",
+            mapOf("request_id" to requestId, "action" to action),
+            mapOf("owner_id" to ownerId),
+        )
+
     /** POST ?op=daily-game-play&shop=… Body: owner_id */
     suspend fun postDailyGamePlay(shop: String, ownerId: String): JSONObject =
         postJson("daily-game-play", mapOf("owner_id" to ownerId), mapOf("shop" to shop))
 
     /** POST ?op=daily-game-play memory_action begin */
-    suspend fun postDailyGameMemoryBegin(shop: String, ownerId: String, gameSlug: String = "memory_match"): JSONObject =
+    suspend fun postDailyGameMemoryBegin(
+        shop: String,
+        ownerId: String,
+        gameSlug: String = "memory_match",
+        playKind: String = "standard",
+    ): JSONObject =
         postDailyGamePlayJson(
             shop,
             JSONObject().apply {
@@ -483,6 +512,7 @@ class CreatorApi(
                 put("shop", shop)
                 put("game_slug", gameSlug)
                 put("memory_action", "begin")
+                if (playKind == "bonus") put("play_kind", "bonus")
             },
         )
 
@@ -537,7 +567,12 @@ class CreatorApi(
         )
     }
 
-    suspend fun postDailyGameConnectBegin(shop: String, ownerId: String, gameSlug: String = "connect_four_5x5"): JSONObject =
+    suspend fun postDailyGameConnectBegin(
+        shop: String,
+        ownerId: String,
+        gameSlug: String = "connect_four_5x5",
+        playKind: String = "standard",
+    ): JSONObject =
         postDailyGamePlayJson(
             shop,
             JSONObject().apply {
@@ -545,6 +580,7 @@ class CreatorApi(
                 put("shop", shop)
                 put("game_slug", gameSlug)
                 put("connect_action", "begin")
+                if (playKind == "bonus") put("play_kind", "bonus")
             },
         )
 
@@ -590,7 +626,7 @@ class CreatorApi(
             },
         )
 
-    suspend fun postDailyGameSimonBegin(shop: String, ownerId: String): JSONObject =
+    suspend fun postDailyGameSimonBegin(shop: String, ownerId: String, playKind: String = "standard"): JSONObject =
         postDailyGamePlayJson(
             shop,
             JSONObject().apply {
@@ -598,6 +634,7 @@ class CreatorApi(
                 put("shop", shop)
                 put("game_slug", "simon_says")
                 put("simon_action", "begin")
+                if (playKind == "bonus") put("play_kind", "bonus")
             },
         )
 
@@ -3156,6 +3193,58 @@ class CreatorApi(
                 ),
             ),
         ),
+    )
+
+    /** GET ?op=verify-status */
+    suspend fun verifyStatus(ownerId: String): JSONObject = call(
+        "verify-status",
+        mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+    )
+
+    /** POST ?op=verify-accept-terms */
+    suspend fun verifyAcceptTerms(ownerId: String): JSONObject = postJson(
+        "verify-accept-terms",
+        mapOf("confirm_16_plus" to true),
+        mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+    )
+
+    /** GET ?op=verify-next-item */
+    suspend fun verifyNextItem(ownerId: String, entityType: String): JSONObject = call(
+        "verify-next-item",
+        mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
+            "entity_type" to entityType,
+        ),
+    )
+
+    /** GET ?op=verify-completed-list */
+    suspend fun verifyCompletedList(ownerId: String, entityType: String, outcome: String = "all"): JSONObject = call(
+        "verify-completed-list",
+        mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
+            "entity_type" to entityType,
+            "outcome" to outcome,
+        ),
+    )
+
+    /** POST ?op=verify-submit-vote */
+    suspend fun verifySubmitVote(
+        ownerId: String,
+        itemId: Long,
+        vote: String,
+        rejectReasons: List<String>? = null,
+        note: String? = null,
+    ): JSONObject = postJson(
+        "verify-submit-vote",
+        buildMap<String, Any?> {
+            put("item_id", itemId)
+            put("vote", vote)
+            rejectReasons?.takeIf { it.isNotEmpty() }?.let { put("reject_reasons", it) }
+            note?.takeIf { it.isNotBlank() }?.let { put("note", it) }
+        },
+        mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
     )
 
     /** POST ?op=delete-shopify-customer */

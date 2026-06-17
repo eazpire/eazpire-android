@@ -121,6 +121,7 @@ data class CreationDesign(
     val libraryStatus: String = "active",
     /** True while auto-save / save queue writes the inactive library row (show spinner overlay). */
     val savingToLibrary: Boolean = false,
+    val reviewStatus: String? = null,
 )
 
 data class CreationProduct(

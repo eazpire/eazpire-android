@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -56,7 +57,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
-private enum class GamesHubSection { Play, Collection, Exchange }
+private enum class GamesHubSection { Play, Collection, Exchange, Invite }
 
 private enum class ExchangeTab { Market, MyListings, Trades }
 
@@ -98,6 +99,7 @@ fun EazyGamesHubPanel(
                 GamesHubSection.Play to (Icons.Default.SportsEsports to t("eazy_chat.games_section_play", "Play")),
                 GamesHubSection.Collection to (Icons.Default.EmojiEvents to t("eazy_chat.games_section_collection", "Collection")),
                 GamesHubSection.Exchange to (Icons.Default.SwapHoriz to t("eazy_chat.games_section_exchange", "Exchange")),
+                GamesHubSection.Invite to (Icons.Default.PersonAdd to t("eazy_chat.games_section_invite", "Invite")),
             ).forEach { (sec, iconLabel) ->
                 val active = section == sec
                 Column(
@@ -131,7 +133,7 @@ fun EazyGamesHubPanel(
                         color = if (active) palette.text else palette.muted,
                     )
                 }
-                if (sec != GamesHubSection.Exchange) Spacer(modifier = Modifier.width(4.dp))
+                if (sec != GamesHubSection.Invite) Spacer(modifier = Modifier.width(4.dp))
             }
         }
 
@@ -155,6 +157,13 @@ fun EazyGamesHubPanel(
                 )
             GamesHubSection.Exchange ->
                 EazyGamesExchangePanel(
+                    api = api,
+                    ownerId = ownerId,
+                    shop = shop,
+                    t = t,
+                )
+            GamesHubSection.Invite ->
+                EazyGamesInvitePanel(
                     api = api,
                     ownerId = ownerId,
                     shop = shop,
@@ -190,7 +199,7 @@ private fun EazyGamesFilterChips(
 }
 
 @Composable
-private fun EazyGamesChip(label: String, active: Boolean, palette: EazyModalPalette, onClick: () -> Unit) {
+internal fun EazyGamesChip(label: String, active: Boolean, palette: EazyModalPalette, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))

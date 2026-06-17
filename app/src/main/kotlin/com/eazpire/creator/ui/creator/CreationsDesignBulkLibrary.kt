@@ -249,6 +249,7 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
         contentType = ct,
         libraryStatus = ls,
         savingToLibrary = obj.optBoolean("saving_to_library", false),
+        reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
     )
 }
 
@@ -276,6 +277,7 @@ fun parseKvSavingCreationDesign(obj: JSONObject): CreationDesign? {
         productsCount = 0,
         libraryStatus = "inactive",
         savingToLibrary = true,
+        reviewStatus = null,
     )
 }
 
@@ -305,6 +307,7 @@ fun parseGeneratedCreationDesign(obj: JSONObject, savingToLibrary: Boolean = fal
         productsCount = 0,
         libraryStatus = "inactive",
         savingToLibrary = savingToLibrary,
+        reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
     )
 }
 
@@ -1124,6 +1127,21 @@ fun CreationDesignGridCard(
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                 )
+            }
+        }
+        design.reviewStatus?.takeIf { it.isNotBlank() && it != "approved" }?.let { rs ->
+            val label = when (rs) {
+                "rejected" -> "Needs changes"
+                else -> "In review"
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .background(Color(0xFF0F172A).copy(alpha = 0.82f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+            ) {
+                Text(label, color = if (rs == "rejected") Color(0xFFFCA5A5) else Color(0xFFFBBF24), fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
         if (design.savingToLibrary) {
