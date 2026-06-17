@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -298,14 +297,20 @@ fun AccountModalSheet(
             AnimatedVisibility(
                     visible = drawerOpen,
                     enter = slideInHorizontally(initialOffsetX = { -it }),
-                    exit = slideOutHorizontally(targetOffsetX = { -it })
+                    exit = slideOutHorizontally(targetOffsetX = { -it }),
+                    modifier = Modifier.fillMaxHeight(),
                 ) {
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Box(modifier = Modifier.width(260.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+                        Box(
+                            modifier = Modifier
+                                .width(260.dp)
+                                .fillMaxHeight()
+                                .background(Color.White),
+                        ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color.White)
+                                    .fillMaxHeight()
                                     .verticalScroll(rememberScrollState())
                                     .padding(vertical = 8.dp)
                             ) {
@@ -352,6 +357,7 @@ fun AccountModalSheet(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxHeight()
                                 .clickable { drawerOpen = false }
                         )
                     }

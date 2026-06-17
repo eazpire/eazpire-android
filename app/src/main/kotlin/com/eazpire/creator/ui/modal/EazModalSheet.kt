@@ -48,6 +48,11 @@ import androidx.core.view.WindowCompat
  * Use [EazModalSheetLayout] (header + weighted body + inset footer) instead.
  */
 object EazModalInsets {
+    /** Fullscreen sheet header — status bar + display cutout safe area (top only). */
+    fun stickyHeader(): Modifier = Modifier
+        .fillMaxWidth()
+        .statusBarsPadding()
+
     /** Sticky footer — navigation + keyboard safe area. */
     fun stickyFooter(): Modifier = Modifier
         .fillMaxWidth()
@@ -99,6 +104,10 @@ private fun rememberSheetContentMaxHeight(
 /**
  * Material3 bottom sheet — outer height is inset-aware; inner content must use [EazModalSheetLayout].
  *
+ * Fullscreen sheets apply [EazModalInsets.stickyHeader] on the content root (status bar / cutout).
+ * Footers use [EazModalInsets.stickyFooter] (nav bar + IME). Bottom sheets render outside
+ * [MainActivity]'s [systemBarsPadding], so insets must be applied here per overlay window.
+ *
  * Do NOT put [Modifier.fillMaxSize] / [Modifier.fillMaxHeight] on sheet content roots.
  * [maxHeightFraction] is applied to inset-reduced height, not raw screen height.
  */
@@ -113,10 +122,15 @@ fun EazBottomSheet(
     dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
     maxHeightFraction: Float? = null,
     fullscreen: Boolean = false,
-    @Suppress("UNUSED_PARAMETER") applyRootInsets: Boolean = true,
+    applyRootInsets: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val useExpandedLayout = fullscreen || maxHeightFraction != null
+    val rootInsetModifier = if (applyRootInsets && fullscreen) {
+        EazModalInsets.stickyHeader()
+    } else {
+        Modifier
+    }
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier.fillMaxWidth(),
@@ -141,7 +155,7 @@ fun EazBottomSheet(
                     }
                 )
             if (useExpandedLayout) {
-                Column(modifier = columnModifier.clipToBounds()) {
+                Column(modifier = columnModifier.clipToBounds().then(rootInsetModifier)) {
                     content()
                 }
             } else {
