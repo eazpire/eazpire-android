@@ -49,8 +49,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.EazColors
@@ -516,7 +518,10 @@ fun HeroCarousel(
                         onHotspotClick = { handleHotspotClick(it) },
                         onImageSize = { w, h ->
                             if (w > 0 && h > 0 && baseHero.id.isNotBlank()) {
-                                imageSizeByHeroId = imageSizeByHeroId + (baseHero.id to (w to h))
+                                val existing = imageSizeByHeroId[baseHero.id]
+                                if (existing?.first != w || existing?.second != h) {
+                                    imageSizeByHeroId = imageSizeByHeroId + (baseHero.id to (w to h))
+                                }
                             }
                         },
                         modifier = Modifier
@@ -538,7 +543,10 @@ fun HeroCarousel(
                             onHotspotClick = { handleHotspotClick(it) },
                             onImageSize = { w, h ->
                                 if (w > 0 && h > 0 && overlayHero.id.isNotBlank()) {
-                                    imageSizeByHeroId = imageSizeByHeroId + (overlayHero.id to (w to h))
+                                    val existing = imageSizeByHeroId[overlayHero.id]
+                                    if (existing?.first != w || existing?.second != h) {
+                                        imageSizeByHeroId = imageSizeByHeroId + (overlayHero.id to (w to h))
+                                    }
                                 }
                             },
                             modifier = Modifier
@@ -614,6 +622,7 @@ private fun HeroCell(
                 modifier = Modifier.matchParentSize(),
                 hotspots = slotHotspots,
                 imageSize = slotImageSize,
+                imageAlignment = alignment,
                 onHotspotClick = onHotspotClick
             )
         }
@@ -653,20 +662,24 @@ private fun HeroHotspotDot(
     val ringPx = with(density) { HERO_HOTSPOT_RING.toPx() }
     val dotRadiusPx = with(density) { (HERO_HOTSPOT_SIZE / 2).toPx() }
     val baseRadiusPx = dotRadiusPx + ringPx
-    val pulseRadiusPx = baseRadiusPx * pulseScale
-    val pulseSizeDp = with(density) { (pulseRadiusPx * 2).toDp() }
+    val pulseRingBaseDp = with(density) { (baseRadiusPx * 2f).toDp() }
 
     Box(
         modifier = modifier.scale(clickScale),
         contentAlignment = Alignment.Center
     ) {
+        // Fixed layout size; pulse only via graphicsLayer so position stays pixel-stable.
         Box(
             modifier = Modifier
-                .size(pulseSizeDp)
+                .size(pulseRingBaseDp)
+                .graphicsLayer {
+                    scaleX = pulseScale
+                    scaleY = pulseScale
+                }
                 .drawBehind {
                     drawCircle(
                         color = EazColors.Orange.copy(alpha = 0.35f),
-                        radius = pulseRadiusPx,
+                        radius = baseRadiusPx,
                         center = center
                     )
                 }
@@ -688,9 +701,18 @@ private fun HeroHotspotDot(
     }
 }
 
+/** Maps ContentScale.Crop alignment to object-position fractions (0–1). */
+private fun cropObjectPosition(alignment: Alignment): Pair<Float, Float> =
+    when (alignment) {
+        Alignment.TopStart -> 0f to 0f
+        Alignment.TopCenter -> 0.5f to 0f
+        Alignment.TopEnd -> 1f to 0f
+        else -> 0.5f to 0.5f
+    }
+
 /**
  * Converts image coordinates (0-1) to container coordinates (0-1).
- * Mirrors hero-dynamic.js imageCoordsToContainerPercent for object-fit: cover + center.
+ * Mirrors hero-dynamic.js imageCoordsToContainerPercent for object-fit: cover.
  */
 private fun imageCoordsToContainer(
     containerW: Float,
@@ -717,29 +739,31 @@ private fun imageCoordsToContainer(
 private fun HeroHotspotsOverlay(
     hotspots: List<HeroHotspot>,
     imageSize: Pair<Int, Int>?,
+    imageAlignment: Alignment,
     onHotspotClick: (HeroHotspot) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
     var clickedHotspot by remember(hotspots) { mutableStateOf<HeroHotspot?>(null) }
+    val (posX, posY) = cropObjectPosition(imageAlignment)
     BoxWithConstraints(
         modifier = modifier.fillMaxSize().alpha(if (imageSize != null || hotspots.isEmpty()) 1f else 0f)
     ) {
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
-        val maxW = maxWidth
-        val maxH = maxHeight
-        val halfTouch = HERO_HOTSPOT_TOUCH_TARGET.value / 2f
+        val halfTouchPx = with(density) { (HERO_HOTSPOT_TOUCH_TARGET / 2).toPx() }
         hotspots.forEach { hotspot ->
             val (cx, cy) = when (val sz = imageSize) {
                 null -> hotspot.x to hotspot.y
                 else -> imageCoordsToContainer(
                     widthPx, heightPx, sz.first, sz.second,
-                    hotspot.x, hotspot.y
+                    hotspot.x, hotspot.y,
+                    posX = posX,
+                    posY = posY,
                 ) ?: (hotspot.x to hotspot.y)
             }
-            val xDp = (cx * maxW.value - halfTouch).dp
-            val yDp = (cy * maxH.value - halfTouch).dp
+            val centerXPx = cx * widthPx
+            val centerYPx = cy * heightPx
             val clickInteraction = remember(hotspot.x, hotspot.y, hotspot.productHandle, hotspot.productGid, hotspot.url) {
                 MutableInteractionSource()
             }
@@ -747,7 +771,12 @@ private fun HeroHotspotsOverlay(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .offset(x = xDp, y = yDp)
+                    .offset {
+                        IntOffset(
+                            (centerXPx - halfTouchPx).roundToInt(),
+                            (centerYPx - halfTouchPx).roundToInt(),
+                        )
+                    }
                     .size(HERO_HOTSPOT_TOUCH_TARGET)
                     .clickable(
                         interactionSource = clickInteraction,
