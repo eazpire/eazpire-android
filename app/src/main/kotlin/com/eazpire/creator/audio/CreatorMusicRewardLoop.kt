@@ -30,17 +30,21 @@ fun CreatorMusicRewardLoop(
         while (isActive && audioStore.isPlaying.value) {
             try {
                 val res = withContext(Dispatchers.IO) { api.postCreatorMusicReward(ownerId) }
-                if (res.optBoolean("ok", false) && !res.optBoolean("already_credited", false)) {
-                    val amount = res.optDouble("amount_eaz", 0.5)
-                    val balance = res.opt("balance_after")?.toString().orEmpty()
-                    Log.i(
-                        TAG,
-                        "Free EAZ +$amount (music listen) balance=$balance ref=${res.optString("ref_id")}"
-                    )
-                    EazBalanceRefreshBus.requestRefresh()
-                } else if (res.optString("error") == "free_eaz_cap_reached") {
-                    Log.i(TAG, "Free EAZ cap reached — music reward paused")
-                    break
+                if (res.optBoolean("ok", false)) {
+                    if (res.optBoolean("capped", false) ||
+                        res.optString("error") == "free_eaz_cap_reached"
+                    ) {
+                        break
+                    }
+                    if (!res.optBoolean("already_credited", false)) {
+                        val amount = res.optDouble("amount_eaz", 0.5)
+                        val balance = res.opt("balance_after")?.toString().orEmpty()
+                        Log.i(
+                            TAG,
+                            "Free EAZ +$amount (music listen) balance=$balance ref=${res.optString("ref_id")}"
+                        )
+                        EazBalanceRefreshBus.requestRefresh()
+                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Music reward failed: ${e.message}")
