@@ -50,12 +50,26 @@ data class PrizeInventoryItem(
     val fulfillmentMode: String?,
     val description: String?,
     val artworkR2Key: String?,
+    val priceArtworkR2Key: String?,
     val metadata: JSONObject?,
+    val cardDefinitionId: Int? = null,
+    val fusionCount: Int = 4,
+    val ownedCount: Int = 1,
+    val fusionReady: Boolean = false,
+    val instanceIds: List<Int> = emptyList(),
 )
 
 fun parseInventoryItems(arr: org.json.JSONArray): List<PrizeInventoryItem> =
     (0 until arr.length()).mapNotNull { i ->
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        val instanceIdsArr = o.optJSONArray("instance_ids")
+        val instanceIds = buildList {
+            if (instanceIdsArr != null) {
+                for (j in 0 until instanceIdsArr.length()) {
+                    add(instanceIdsArr.optInt(j))
+                }
+            }
+        }
         PrizeInventoryItem(
             id = o.optInt("id"),
             type = o.optString("type", "prize"),
@@ -66,7 +80,13 @@ fun parseInventoryItems(arr: org.json.JSONArray): List<PrizeInventoryItem> =
             fulfillmentMode = o.optString("fulfillment_mode", "").takeIf { it.isNotBlank() },
             description = o.optString("description", "").takeIf { it.isNotBlank() },
             artworkR2Key = o.optString("artwork_r2_key", "").takeIf { it.isNotBlank() },
+            priceArtworkR2Key = o.optString("price_artwork_r2_key", "").takeIf { it.isNotBlank() },
             metadata = o.optJSONObject("metadata"),
+            cardDefinitionId = o.optInt("card_definition_id").takeIf { it > 0 },
+            fusionCount = o.optInt("fusion_count", 4).coerceAtLeast(1),
+            ownedCount = o.optInt("owned_count", 1).coerceAtLeast(1),
+            fusionReady = o.optBoolean("fusion_ready", false),
+            instanceIds = instanceIds,
         )
     }
 
@@ -134,11 +154,13 @@ fun EazyPrizeCard(
     item: PrizeInventoryItem,
     apiBase: String,
     modifier: Modifier = Modifier,
+    prizeView: Boolean = item.type == "prize",
     actions: @Composable () -> Unit = {},
 ) {
     val style = remember(item.rarity) { rarityStyle(item.rarity) }
     val shape = CutCornerShape(10.dp)
-    val imageUrl = remember(item.artworkR2Key, apiBase) { prizeArtworkUrl(apiBase, item.artworkR2Key) }
+    val artKey = if (prizeView) item.priceArtworkR2Key ?: item.artworkR2Key else item.artworkR2Key
+    val imageUrl = remember(artKey, apiBase) { prizeArtworkUrl(apiBase, artKey) }
     val centerValue = remember(item) { giftCardCenterText(item) }
     val stats = remember(item.metadata) { statEntries(item.metadata) }
     val isLegendary = item.rarity.equals("legendary", ignoreCase = true)
@@ -148,7 +170,11 @@ fun EazyPrizeCard(
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(shape)
-            .border(2.dp, style.color.copy(alpha = 0.88f), shape)
+            .border(
+                width = if (item.fusionReady) 3.dp else 2.dp,
+                color = if (item.fusionReady) style.color else style.color.copy(alpha = 0.88f),
+                shape = shape,
+            )
             .background(Color(0xFF0A0F18)),
     ) {
         if (imageUrl != null) {
@@ -318,7 +344,12 @@ fun EazyPrizeCard(
                     )
                 }
                 Text(
-                    text = if (item.type == "card") "Collectible" else (item.fulfillmentMode ?: "Prize"),
+                    text = when {
+                        item.type == "card" && item.ownedCount > 1 ->
+                            "Collectible ${item.ownedCount}/${item.fusionCount}"
+                        item.type == "card" -> "Collectible"
+                        else -> item.fulfillmentMode ?: "Prize"
+                    },
                     modifier = Modifier
                         .padding(top = 6.dp)
                         .background(Color(0xD10A0F18), CutCornerShape(3.dp))

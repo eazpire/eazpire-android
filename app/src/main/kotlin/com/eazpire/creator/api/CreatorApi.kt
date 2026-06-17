@@ -618,13 +618,33 @@ class CreatorApi(
     suspend fun getPrizesInventoryList(
         ownerId: String,
         shop: String,
-        type: String = "all",
+        type: String = "card",
         category: String = "all",
+        group: Boolean = false,
     ): JSONObject = postJsonWithShop(
         "prizes-inventory-list",
         shop,
-        mapOf("owner_id" to ownerId, "type" to type, "category" to category),
+        mapOf(
+            "owner_id" to ownerId,
+            "type" to type,
+            "category" to category,
+            "group" to if (group) 1 else 0,
+        ),
     )
+
+    suspend fun postPrizesFuse(
+        ownerId: String,
+        cardDefinitionId: Int,
+        instanceIds: List<Int>,
+        shop: String,
+    ): JSONObject {
+        val body = JSONObject().apply {
+            put("owner_id", ownerId)
+            put("card_definition_id", cardDefinitionId)
+            put("instance_ids", JSONArray(instanceIds))
+        }
+        return postJsonBodyOpWithShop("prizes-fuse", shop, body)
+    }
 
     suspend fun getPrizesTradeListings(limit: Int = 30, sellerId: String? = null, shop: String = AuthConfig.SHOP_DOMAIN): JSONObject {
         val params = mutableMapOf("limit" to limit.toString())
