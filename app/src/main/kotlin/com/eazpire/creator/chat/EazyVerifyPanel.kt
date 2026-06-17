@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.SubcomposeAsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.EazColors
@@ -69,7 +70,7 @@ fun EazyVerifyPanel(
     var viewMode by remember { mutableStateOf("available") }
     var completedOutcome by remember { mutableStateOf("verified") }
     var termsAccepted by remember { mutableStateOf(false) }
-    var termsChecked by remember { mutableStateOf(false) }
+    var showTermsModal by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var currentItem by remember { mutableStateOf<JSONObject?>(null) }
     var rejectReasons by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -120,306 +121,338 @@ fun EazyVerifyPanel(
         refresh()
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                EazyVerifySubheader(t("eazy_verify.subheader_entity", "Review type"))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    EazyVerifyIconTab(
-                        selected = entityType == "design",
-                        label = t("eazy_verify.tab_designs", "Designs"),
-                        icon = Icons.Default.Image,
-                        onClick = { entityType = "design" },
-                    )
-                    EazyVerifyIconTab(
-                        selected = entityType == "product",
-                        label = t("eazy_verify.tab_products", "Products"),
-                        icon = Icons.Default.Inventory2,
-                        onClick = { entityType = "product" },
-                    )
+    if (showTermsModal) {
+        EazyVerifyTermsDialog(
+            t = t,
+            onDismiss = { showTermsModal = false },
+            onAccept = {
+                scope.launch {
+                    val oid = ownerId?.trim().orEmpty()
+                    if (oid.isBlank()) return@launch
+                    api.verifyAcceptTerms(oid)
+                    termsAccepted = true
+                    showTermsModal = false
+                    refresh()
                 }
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                EazyVerifySubheader(t("eazy_verify.subheader_queue", "Queue"))
-                EazyVerifySegmentSwitch(
-                    selected = viewMode,
-                    options = listOf(
-                        "available" to t("eazy_verify.available", "Available"),
-                        "completed" to t("eazy_verify.completed", "Completed"),
-                    ),
-                    onSelect = { viewMode = it },
+            },
+        )
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        if (termsAccepted) {
+            EazyVerifyPrimaryBar(
+                entityType = entityType,
+                viewMode = viewMode,
+                onEntity = { entityType = it },
+                onView = { viewMode = it },
+                t = t,
+            )
+            if (viewMode == "completed") {
+                EazyVerifyOutcomeBar(
+                    completedOutcome = completedOutcome,
+                    onOutcome = { completedOutcome = it },
+                    t = t,
                 )
             }
         }
 
-        if (viewMode == "completed") {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                EazyVerifySubheader(t("eazy_verify.subheader_outcome", "Your decisions"))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    EazyVerifyIconTab(
-                        selected = completedOutcome == "verified",
-                        label = t("eazy_verify.verified", "Verified"),
-                        icon = Icons.Default.CheckCircle,
-                        onClick = { completedOutcome = "verified" },
-                    )
-                    EazyVerifyIconTab(
-                        selected = completedOutcome == "rejected",
-                        label = t("eazy_verify.rejected", "Rejected"),
-                        icon = Icons.Default.Cancel,
-                        onClick = { completedOutcome = "rejected" },
-                    )
-                    EazyVerifyIconTab(
-                        selected = completedOutcome == "not_sure",
-                        label = t("eazy_verify.not_sure", "Not Sure"),
-                        icon = Icons.Default.HelpOutline,
-                        onClick = { completedOutcome = "not_sure" },
-                    )
-                }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (ownerId.isNullOrBlank()) {
+                Text(t("eazy_chat.login_required_text", "Sign in to use this feature."), color = Color.White.copy(0.8f))
+                return@Column
             }
-        }
 
-        if (ownerId.isNullOrBlank()) {
-            Text(t("eazy_chat.login_required_text", "Sign in to use this feature."), color = Color.White.copy(0.8f))
-            return@Column
-        }
-
-        if (!termsAccepted) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(t("eazy_verify.terms_title", "Community verification"), fontWeight = FontWeight.Bold, color = Color.White)
-                Text(t("eazy_verify.terms_body", "You must be 16 or older."), color = Color.White.copy(0.85f), fontSize = 13.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = termsChecked, onCheckedChange = { termsChecked = it })
-                    Text(t("eazy_verify.terms_confirm", "I confirm I am 16+"), color = Color.White, fontSize = 12.sp)
-                }
-                Button(
-                    onClick = {
-                        scope.launch {
-                            api.verifyAcceptTerms(ownerId)
-                            termsAccepted = true
-                            refresh()
-                        }
-                    },
-                    enabled = termsChecked,
-                    colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
-                    modifier = Modifier.fillMaxWidth(),
+            if (!termsAccepted) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(t("eazy_verify.terms_accept", "Continue"))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Color.White.copy(0.16f), RoundedCornerShape(12.dp))
+                            .background(Color(0x47000000))
+                            .clickable { showTermsModal = true }
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .border(2.dp, Color.White.copy(0.45f), RoundedCornerShape(4.dp)),
+                        )
+                        Text(
+                            t("eazy_verify.terms_confirm", "I confirm I am 16+ and accept the community guidelines"),
+                            color = Color.White.copy(0.92f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                        )
+                    }
                 }
+                return@Column
             }
-            return@Column
-        }
 
-        if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = EazColors.Orange)
+            if (loading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = EazColors.Orange)
+                }
+                return@Column
             }
-            return@Column
-        }
 
-        statusMsg?.let { Text(it, color = Color(0xFFFCA5A5), fontSize = 12.sp) }
+            statusMsg?.let { Text(it, color = Color(0xFFFCA5A5), fontSize = 12.sp) }
 
-        if (viewMode == "completed") {
-            if (completedItems.isEmpty()) {
+            if (viewMode == "completed") {
+                if (completedItems.isEmpty()) {
+                    Text(
+                        t("eazy_verify.completed_empty", "No completed reviews yet."),
+                        color = Color.White.copy(0.7f),
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                    )
+                } else {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        completedItems.forEach { row ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                SubcomposeAsyncImage(
+                                    model = row.optString("image_url_snapshot", row.optString("image_url", "")),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(56.dp),
+                                    contentScale = ContentScale.Crop,
+                                )
+                                Text(
+                                    row.optString("title_snapshot", row.optString("title", t("eazy_verify.untitled", "Untitled"))),
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                )
+                            }
+                        }
+                    }
+                }
+                return@Column
+            }
+
+            val item = currentItem
+            if (item == null) {
                 Text(
-                    t("eazy_verify.completed_empty", "No completed reviews yet."),
+                    t("eazy_verify.empty", "Nothing to review right now."),
                     color = Color.White.copy(0.7f),
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center,
                 )
-            } else {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    completedItems.forEach { row ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            SubcomposeAsyncImage(
-                                model = row.optString("image_url_snapshot", row.optString("image_url", "")),
-                                contentDescription = null,
-                                modifier = Modifier.size(56.dp),
-                                contentScale = ContentScale.Crop,
-                            )
-                            Text(
-                                row.optString("title_snapshot", row.optString("title", t("eazy_verify.untitled", "Untitled"))),
-                                color = Color.White,
-                                fontSize = 13.sp,
-                            )
-                        }
-                    }
-                }
+                return@Column
             }
-            return@Column
-        }
 
-        val item = currentItem
-        if (item == null) {
             Text(
-                t("eazy_verify.empty", "Nothing to review right now."),
-                color = Color.White.copy(0.7f),
-                modifier = Modifier.fillMaxWidth(),
+                t("eazy_verify.question", "Does this meet our standards?"),
+                color = Color.White.copy(0.85f),
+                fontSize = 13.sp,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
-            return@Column
-        }
 
-        Text(
-            t("eazy_verify.question", "Does this meet our standards?"),
-            color = Color.White.copy(0.85f),
-            fontSize = 13.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        var dragX by remember(item) { mutableStateOf(0f) }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .pointerInput(item) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            when {
-                                dragX > 80f -> {
-                                    scope.launch {
-                                        api.verifySubmitVote(ownerId, item.optLong("id"), "approve")
-                                        refresh()
-                                    }
-                                }
-                                dragX < -80f -> {
-                                    scope.launch {
-                                        api.verifySubmitVote(ownerId, item.optLong("id"), "not_sure")
-                                        refresh()
-                                    }
-                                }
-                            }
-                            dragX = 0f
-                        },
-                        onHorizontalDrag = { _, delta -> dragX += delta },
-                    )
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            SubcomposeAsyncImage(
-                model = item.optString("image_url", ""),
-                contentDescription = null,
+            var dragX by remember(item) { mutableStateOf(0f) }
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp),
-                contentScale = ContentScale.Fit,
-            )
-            Text(item.optString("title", t("eazy_verify.untitled", "Untitled")), color = Color.White, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            api.verifySubmitVote(ownerId, item.optLong("id"), "approve")
-                            refresh()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                ) { Text(t("eazy_verify.approve", "Approve")) }
-                Button(
-                    onClick = {
-                        scope.launch {
-                            api.verifySubmitVote(ownerId, item.optLong("id"), "not_sure")
-                            refresh()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEAB308), contentColor = Color.Black),
-                ) { Text(t("eazy_verify.not_sure", "Not Sure")) }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = showReject, onCheckedChange = { showReject = it })
-                Text(t("eazy_verify.reject_toggle", "Reject"), color = Color.White, fontSize = 12.sp)
-            }
-            if (showReject) {
-                rejectReasons.forEach { reason ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = selectedReasons.contains(reason),
-                            onCheckedChange = { on ->
-                                selectedReasons = if (on) selectedReasons + reason else selectedReasons - reason
+                    .pointerInput(item) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                when {
+                                    dragX > 80f -> {
+                                        scope.launch {
+                                            api.verifySubmitVote(ownerId, item.optLong("id"), "approve")
+                                            refresh()
+                                        }
+                                    }
+                                    dragX < -80f -> {
+                                        scope.launch {
+                                            api.verifySubmitVote(ownerId, item.optLong("id"), "not_sure")
+                                            refresh()
+                                        }
+                                    }
+                                }
+                                dragX = 0f
                             },
+                            onHorizontalDrag = { _, delta -> dragX += delta },
                         )
-                        Text(reason.replace('_', ' '), color = Color.White, fontSize = 12.sp)
-                    }
-                }
-                Button(
-                    onClick = {
-                        scope.launch {
-                            api.verifySubmitVote(ownerId, item.optLong("id"), "reject", selectedReasons.toList())
-                            selectedReasons = emptySet()
-                            showReject = false
-                            refresh()
-                        }
                     },
-                    enabled = selectedReasons.isNotEmpty(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(t("eazy_verify.reject_confirm", "Confirm reject")) }
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                SubcomposeAsyncImage(
+                    model = item.optString("image_url", ""),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                Text(item.optString("title", t("eazy_verify.untitled", "Untitled")), color = Color.White, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                api.verifySubmitVote(ownerId, item.optLong("id"), "approve")
+                                refresh()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    ) { Text(t("eazy_verify.approve", "Approve")) }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                api.verifySubmitVote(ownerId, item.optLong("id"), "not_sure")
+                                refresh()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEAB308), contentColor = Color.Black),
+                    ) { Text(t("eazy_verify.not_sure", "Not Sure")) }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = showReject, onCheckedChange = { showReject = it })
+                    Text(t("eazy_verify.reject_toggle", "Reject"), color = Color.White, fontSize = 12.sp)
+                }
+                if (showReject) {
+                    rejectReasons.forEach { reason ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = selectedReasons.contains(reason),
+                                onCheckedChange = { on ->
+                                    selectedReasons = if (on) selectedReasons + reason else selectedReasons - reason
+                                },
+                            )
+                            Text(reason.replace('_', ' '), color = Color.White, fontSize = 12.sp)
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                api.verifySubmitVote(ownerId, item.optLong("id"), "reject", selectedReasons.toList())
+                                selectedReasons = emptySet()
+                                showReject = false
+                                refresh()
+                            }
+                        },
+                        enabled = selectedReasons.isNotEmpty(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(t("eazy_verify.reject_confirm", "Confirm reject")) }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun EazyVerifySubheader(text: String) {
-    Text(
-        text = text.uppercase(),
-        color = Color.White.copy(alpha = 0.55f),
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 0.6.sp,
-    )
+private fun EazyVerifyPrimaryBar(
+    entityType: String,
+    viewMode: String,
+    onEntity: (String) -> Unit,
+    onView: (String) -> Unit,
+    t: (String, String) -> String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1E293B))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+            EazyVerifyFeedTab(
+                selected = entityType == "design",
+                label = t("eazy_verify.tab_designs", "Designs"),
+                icon = Icons.Default.Image,
+                onClick = { onEntity("design") },
+            )
+            EazyVerifyFeedTab(
+                selected = entityType == "product",
+                label = t("eazy_verify.tab_products", "Products"),
+                icon = Icons.Default.Inventory2,
+                onClick = { onEntity("product") },
+            )
+        }
+        EazyVerifySegmentSwitch(
+            selected = viewMode,
+            options = listOf(
+                "available" to t("eazy_verify.available", "Available"),
+                "completed" to t("eazy_verify.completed", "Completed"),
+            ),
+            onSelect = onView,
+        )
+    }
 }
 
 @Composable
-private fun EazyVerifyIconTab(
+private fun EazyVerifyOutcomeBar(
+    completedOutcome: String,
+    onOutcome: (String) -> Unit,
+    t: (String, String) -> String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1E293B))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            EazyVerifyFeedTab(
+                selected = completedOutcome == "verified",
+                label = t("eazy_verify.verified", "Verified"),
+                icon = Icons.Default.CheckCircle,
+                onClick = { onOutcome("verified") },
+            )
+            EazyVerifyFeedTab(
+                selected = completedOutcome == "rejected",
+                label = t("eazy_verify.rejected", "Rejected"),
+                icon = Icons.Default.Cancel,
+                onClick = { onOutcome("rejected") },
+            )
+            EazyVerifyFeedTab(
+                selected = completedOutcome == "not_sure",
+                label = t("eazy_verify.not_sure", "Not Sure"),
+                icon = Icons.Default.HelpOutline,
+                onClick = { onOutcome("not_sure") },
+            )
+        }
+    }
+}
+
+@Composable
+private fun EazyVerifyFeedTab(
     selected: Boolean,
     label: String,
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
-    val borderColor = if (selected) Color(0xFFF97316) else Color.White.copy(alpha = 0.16f)
-    val background = if (selected) Color(0x33F97316) else Color(0x47000000)
+    val borderColor = if (selected) Color(0x73F97316) else Color.White.copy(alpha = 0.12f)
+    val background = if (selected) Color(0x1FF97316) else Color.White.copy(alpha = 0.04f)
+    val textColor = if (selected) Color(0xFFF97316) else Color(0xFF94A3B8)
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
             .background(background)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Icon(imageVector = icon, contentDescription = null, tint = textColor, modifier = Modifier.size(14.dp))
+        Text(label, color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -428,35 +461,83 @@ private fun EazyVerifySegmentSwitch(
     selected: String,
     options: List<Pair<String, String>>,
     onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
+        modifier = Modifier
+            .widthIn(max = 220.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF111827))
             .border(1.dp, Color(0xFF374151), RoundedCornerShape(8.dp))
             .padding(2.dp)
-            .height(40.dp)
-            .widthIn(min = 0.dp),
+            .height(32.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         options.forEach { (key, label) ->
             val active = selected == key
             Box(
                 modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
                     .clip(RoundedCornerShape(6.dp))
                     .background(if (active) Color(0xFFF97316) else Color.Transparent)
-                    .clickable { onSelect(key) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                    .clickable { onSelect(key) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = label,
                     color = if (active) Color.White else Color(0xFF9CA3AF),
-                    fontSize = 13.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EazyVerifyTermsDialog(
+    t: (String, String) -> String,
+    onDismiss: () -> Unit,
+    onAccept: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF1E293B))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(t("eazy_verify.terms_title", "Community verification"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    t("eazy_verify.terms_body", "You must be 16 or older."),
+                    color = Color.White.copy(0.88f),
+                    fontSize = 13.sp,
+                )
+                listOf(
+                    t("eazy_verify.terms_point_fair", "Review items honestly and without bias."),
+                    t("eazy_verify.terms_point_reject", "Use Reject only when content clearly breaks our community rules."),
+                    t("eazy_verify.terms_point_privacy", "Do not share screenshots or personal data from review items."),
+                    t("eazy_verify.terms_point_limit", "Daily review limits apply to keep the system fair for everyone."),
+                ).forEach { point ->
+                    Text("• $point", color = Color.White.copy(0.85f), fontSize = 13.sp)
+                }
+            }
+            Button(
+                onClick = onAccept,
+                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(t("eazy_verify.terms_accept", "Continue"))
             }
         }
     }
