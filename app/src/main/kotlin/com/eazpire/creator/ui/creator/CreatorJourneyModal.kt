@@ -118,6 +118,7 @@ private data class JourneyNodeItem(
 )
 
 private val JOURNEY_CATEGORY_ORDER = listOf(
+    "royalty",
     "product", "design_type", "market", "channel",
     "automation", "promotion", "hero", "social",
     "variant", "design_slot", "creator_name",
@@ -128,6 +129,7 @@ private const val EAZ_COIN_URL =
 
 private fun journeyCategoryIcon(category: String): ImageVector = when (category) {
     "eaz_economy" -> Icons.Default.AccountBalance
+    "royalty" -> Icons.Default.AccountBalance
     "product" -> Icons.Default.ShoppingCart
     "design_type" -> Icons.Default.Layers
     "market" -> Icons.Default.Store
@@ -758,12 +760,19 @@ private fun JourneyUnlockTreePanel(
             for (i in 0 until arr.length()) {
                 val n = arr.getJSONObject(i)
                 val meta = n.optJSONObject("metadata")
-                val title = meta?.optString("title")?.takeIf { it.isNotBlank() }
-                    ?: n.optString("product_key").takeIf { it.isNotBlank() }
-                    ?: n.optString("design_type").takeIf { it.isNotBlank() }
-                    ?: n.optString("region_code").takeIf { it.isNotBlank() }
-                    ?: n.optString("channel_id").takeIf { it.isNotBlank() }
-                    ?: n.optString("node_key")
+                val title = when {
+                    meta?.has("royalty_percent") == true -> tpl(
+                        "creator.journey.royalty_tier_title",
+                        "{{ pct }}% royalty",
+                        mapOf("pct" to meta.optInt("royalty_percent").toString())
+                    )
+                    meta?.optString("title")?.isNotBlank() == true -> meta.optString("title")
+                    n.optString("product_key").isNotBlank() -> n.optString("product_key")
+                    n.optString("design_type").isNotBlank() -> n.optString("design_type")
+                    n.optString("region_code").isNotBlank() -> n.optString("region_code")
+                    n.optString("channel_id").isNotBlank() -> n.optString("channel_id")
+                    else -> n.optString("node_key")
+                }
                 add(
                     JourneyNodeItem(
                         nodeKey = n.optString("node_key"),
@@ -784,11 +793,16 @@ private fun JourneyUnlockTreePanel(
 
     val filterCats = remember(nodes) {
         buildList {
+            if (nodes.any { it.category == "royalty" }) add("royalty")
             add("eaz_economy")
-            addAll(JOURNEY_CATEGORY_ORDER.filter { cat -> nodes.any { it.category == cat } })
+            addAll(
+                JOURNEY_CATEGORY_ORDER
+                    .filter { it != "royalty" }
+                    .filter { cat -> nodes.any { it.category == cat } }
+            )
         }
     }
-    var treeFilter by remember { mutableStateOf("eaz_economy") }
+    var treeFilter by remember { mutableStateOf("royalty") }
 
     LaunchedEffect(filterCats) {
         if (treeFilter !in filterCats) treeFilter = filterCats.firstOrNull() ?: "eaz_economy"
