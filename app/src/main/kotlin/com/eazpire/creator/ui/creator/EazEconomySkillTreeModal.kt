@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -229,90 +231,14 @@ fun EazEconomySkillTreePanel(
                     (it.optString("tab", it.optString("axis")) == axisFilter)
             }
 
+            val kickstarterRedeemed = data.optBoolean("kickstarter_redeemed", false)
+
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        translationStore.t("creator.eaz_economy.kickstarter_hint", "Redeem a Kickstarter code to unlock bonus nodes."),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.72f)
-                    )
-                    OutlinedTextField(
-                        value = kickstarterCode,
-                        onValueChange = { kickstarterCode = it },
-                        placeholder = {
-                            Text(translationStore.t("creator.eaz_economy.kickstarter_code_placeholder", "KS-…"))
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = EazColors.Orange,
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
-                        )
-                    )
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                try {
-                                    val r = withContext(Dispatchers.IO) {
-                                        api.redeemKickstarterEazBonus(ownerId, kickstarterCode.trim())
-                                    }
-                                    if (r.optBoolean("ok", false)) {
-                                        kickstarterCode = ""
-                                        Toast.makeText(
-                                            context,
-                                            translationStore.t("creator.eaz_economy.kickstarter_success", "Kickstarter bonus unlocked."),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        reload()
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            translationStore.t("creator.eaz_economy.activate_fail", "Could not activate skill."),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                } catch (_: Exception) {
-                                    Toast.makeText(
-                                        context,
-                                        translationStore.t("creator.eaz_economy.activate_fail", "Could not activate skill."),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
-                    ) {
-                        Text(
-                            translationStore.t("creator.eaz_economy.kickstarter_redeem", "Redeem"),
-                            color = Color.White
-                        )
-                    }
-                    val campaignUrl = data.optString("kickstarter_campaign_url", "").trim()
-                    if (campaignUrl.isNotBlank()) {
-                        TextButton(onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(campaignUrl)))
-                        }) {
-                            Text(
-                                translationStore.t("creator.eaz_economy.kickstarter_campaign", "View Kickstarter campaign"),
-                                color = EazColors.Orange
-                            )
-                        }
-                    }
-                }
-
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -344,10 +270,96 @@ fun EazEconomySkillTreePanel(
                     }
                 }
 
-                axisNode?.let { node ->
-                    val st = node.optString("status")
-                    if (st != "active" && st != "grandfathered") {
-                        Box(modifier = Modifier.widthIn(max = 220.dp)) {
+                if (axisFilter == "kickstarter") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            translationStore.t("creator.eaz_economy.kickstarter_hint", "Redeem a Kickstarter code to unlock bonus nodes."),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.72f)
+                        )
+                        OutlinedTextField(
+                            value = kickstarterCode,
+                            onValueChange = { kickstarterCode = it },
+                            placeholder = {
+                                Text(translationStore.t("creator.eaz_economy.kickstarter_code_placeholder", "KS-…"))
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = EazColors.Orange,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+                            )
+                        )
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        val r = withContext(Dispatchers.IO) {
+                                            api.redeemKickstarterEazBonus(ownerId, kickstarterCode.trim())
+                                        }
+                                        if (r.optBoolean("ok", false)) {
+                                            kickstarterCode = ""
+                                            Toast.makeText(
+                                                context,
+                                                translationStore.t("creator.eaz_economy.kickstarter_success", "Kickstarter bonus unlocked."),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            reload()
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                translationStore.t("creator.eaz_economy.activate_fail", "Could not activate skill."),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    } catch (_: Exception) {
+                                        Toast.makeText(
+                                            context,
+                                            translationStore.t("creator.eaz_economy.activate_fail", "Could not activate skill."),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
+                        ) {
+                            Text(
+                                translationStore.t("creator.eaz_economy.kickstarter_redeem", "Redeem"),
+                                color = Color.White
+                            )
+                        }
+                        val campaignUrl = data.optString("kickstarter_campaign_url", "").trim()
+                        if (campaignUrl.isNotBlank()) {
+                            TextButton(onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(campaignUrl)))
+                            }) {
+                                Text(
+                                    translationStore.t("creator.eaz_economy.kickstarter_campaign", "View Kickstarter campaign"),
+                                    color = EazColors.Orange
+                                )
+                            }
+                        }
+                    }
+                    if (!kickstarterRedeemed) return@Column
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    axisNode?.let { node ->
+                        Box(modifier = Modifier.widthIn(max = 156.dp)) {
                             EazEconomySkillCard(
                                 node = node,
                                 translationStore = translationStore,
@@ -355,81 +367,112 @@ fun EazEconomySkillTreePanel(
                             )
                         }
                     }
-                }
 
-                if (!axisOpen) {
-                    Text(
-                        translationStore.t(
-                            "creator.eaz_economy.axis_unlock_hint",
-                            "Unlock this category with EAZ to access its skills."
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.6f),
-                    )
-                } else {
-                    val activeNodes = tabNodes.filter {
-                        val st = it.optString("status")
-                        st == "active" || st == "grandfathered"
-                    }
-                    if (activeNodes.isNotEmpty()) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            activeNodes.forEach { node ->
-                                Text(
-                                    eazSkillLabel(node.optString("skill_key"), node.optBoolean("is_axis_gate", false)),
-                                    color = Color(0xFFFBBF24),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    if (axisFilter == "kickstarter") {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            tabNodes.forEach { node ->
-                                Box(modifier = Modifier.weight(1f)) {
-                                    EazEconomySkillCard(
-                                        node = node,
-                                        translationStore = translationStore,
-                                        onActivate = ::activateSkill,
+                    if (!axisOpen) {
+                        Text(
+                            translationStore.t(
+                                "creator.eaz_economy.axis_unlock_hint",
+                                "Unlock this category with EAZ to access its skills."
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .width(2.dp)
+                                .height(28.dp)
+                                .background(
+                                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color(0xFFFF9D00).copy(alpha = 0.55f),
+                                            Color(0xFFFF9D00).copy(alpha = 0.12f),
+                                        )
                                     )
+                                )
+                        )
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            val activeNodes = tabNodes.filter {
+                                val st = it.optString("status")
+                                st == "active" || st == "grandfathered"
+                            }
+                            if (activeNodes.isNotEmpty()) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    activeNodes.forEach { node ->
+                                        Text(
+                                            eazSkillLabel(node.optString("skill_key"), node.optBoolean("is_axis_gate", false)),
+                                            color = Color(0xFFFBBF24),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    } else {
-                        val byLevel = tabNodes.groupBy { it.optInt("mascot_min_level", 1) }.toSortedMap()
-                        byLevel.forEach { (level, levelNodes) ->
-                            val rowLocked = level > mascotLevel
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    translationStore.t("creator.journey.level_row", "Level {{ n }}")
-                                        .replace("{{ n }}", level.toString())
-                                        .replace("{{n}}", level.toString()),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = if (rowLocked) Color.White.copy(alpha = 0.45f) else EazColors.Orange,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+
+                            if (axisFilter == "kickstarter") {
                                 FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    maxItemsInEachRow = 5,
                                 ) {
-                                    levelNodes.forEach { node ->
-                                        Box(modifier = Modifier.widthIn(min = 156.dp, max = 180.dp)) {
+                                    tabNodes.forEach { node ->
+                                        Box(modifier = Modifier.widthIn(min = 132.dp, max = 156.dp)) {
                                             EazEconomySkillCard(
                                                 node = node,
                                                 translationStore = translationStore,
                                                 onActivate = ::activateSkill,
                                             )
+                                        }
+                                    }
+                                }
+                            } else {
+                                val byLevel = tabNodes.groupBy { it.optInt("mascot_min_level", 1) }.toSortedMap()
+                                byLevel.forEach { (level, levelNodes) ->
+                                    val rowLocked = level > mascotLevel
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(
+                                            translationStore.t("creator.journey.level_row", "Level {{ n }}")
+                                                .replace("{{ n }}", level.toString())
+                                                .replace("{{n}}", level.toString()),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = if (rowLocked) Color.White.copy(alpha = 0.45f) else EazColors.Orange,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            maxItemsInEachRow = 5,
+                                        ) {
+                                            levelNodes.forEach { node ->
+                                                Box(modifier = Modifier.widthIn(min = 132.dp, max = 156.dp)) {
+                                                    EazEconomySkillCard(
+                                                        node = node,
+                                                        translationStore = translationStore,
+                                                        onActivate = ::activateSkill,
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
