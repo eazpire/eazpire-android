@@ -72,13 +72,11 @@ import com.eazpire.creator.chat.EazyGuideModeStore
 import com.eazpire.creator.creatorcodes.creatorCodeHintPulse
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
-import kotlinx.coroutines.withContext
 
 @Composable
 internal fun CreatorHeaderEazyStartBubble(
