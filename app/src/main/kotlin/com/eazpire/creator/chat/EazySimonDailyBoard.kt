@@ -462,12 +462,14 @@ fun EazySimonDailyBoard(
                             scope.launch {
                                 try {
                                     val j = api.postDailyGameSimonContinueGamble(shop, ownerId)
-                                    round = j.optInt("simon_round", 0)
+                                    round = j.optInt("simon_round", round + 1)
                                     targetRounds = j.optInt("simon_target_rounds", targetRounds)
                                     playbackSteps = parseIntList(j.optJSONArray("simon_playback_steps"))
+                                    inputTapIndex = 0
                                     phase = "playback"
+                                    atOffer = false
                                     statusLine =
-                                        t("eazy_chat.games_simon_extension_start", "Bonus round — watch closely!")
+                                        t("eazy_chat.games_simon_extension_start", "Keep going — watch the next sequence!")
                                     delay(minOf(timing.roundBreakMs, 700L))
                                     runPlayback(playbackSteps)
                                 } catch (_: Exception) {
