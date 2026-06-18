@@ -21,7 +21,20 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Checkroom
+import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.LocalLaundryService
+import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.Watch
+import androidx.compose.material.icons.filled.Woman
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -48,11 +61,42 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import kotlinx.coroutines.launch
 private val ONE_PIECE_CONFLICTS = setOf("upper_body", "layer", "pants")
+
+private fun artifactSlotLabel(key: String, t: (String, String) -> String): String = when (key) {
+    "head" -> t("eazy_chat.artifacts_slot_head", "Head")
+    "upper_body" -> t("eazy_chat.artifacts_slot_upper_body", "Upper Body")
+    "layer" -> t("eazy_chat.artifacts_slot_layer", "Layer")
+    "pants" -> t("eazy_chat.artifacts_slot_pants", "Pants")
+    "feet" -> t("eazy_chat.artifacts_slot_feet", "Feet")
+    "socks" -> t("eazy_chat.artifacts_slot_socks", "Socks")
+    "accessory_1" -> t("eazy_chat.artifacts_slot_accessory_1", "Accessory 1")
+    "accessory_2" -> t("eazy_chat.artifacts_slot_accessory_2", "Accessory 2")
+    "one_piece" -> t("eazy_chat.artifacts_slot_one_piece", "One Piece")
+    else -> key.replace('_', ' ').split(' ').joinToString(" ") { part ->
+        part.replaceFirstChar { c -> c.uppercase() }
+    }
+}
+
+private fun artifactSlotIcon(key: String): ImageVector = when (key) {
+    "all" -> Icons.Default.Apps
+    "head" -> Icons.Default.Face
+    "upper_body" -> Icons.Default.Checkroom
+    "layer" -> Icons.Default.Layers
+    "pants" -> Icons.Default.Style
+    "feet" -> Icons.Default.DirectionsWalk
+    "socks" -> Icons.Default.LocalLaundryService
+    "accessory_1" -> Icons.Default.Watch
+    "accessory_2" -> Icons.Default.Diamond
+    "one_piece" -> Icons.Default.Woman
+    else -> Icons.Default.Apps
+}
 
 @Composable
 fun EazyArtifactsSlotFilterRow(
@@ -66,34 +110,68 @@ fun EazyArtifactsSlotFilterRow(
             .fillMaxWidth()
             .background(Color.Black.copy(alpha = 0.12f))
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        EazyArtifactsChip(t("eazy_chat.artifacts_filter_all", "All"), slotFilter == "all", palette) { onFilter("all") }
+        EazyArtifactsSlotFilterItem(
+            label = t("eazy_chat.artifacts_filter_all", "All"),
+            icon = artifactSlotIcon("all"),
+            active = slotFilter == "all",
+            palette = palette,
+            onClick = { onFilter("all") },
+        )
         ArtifactsJson.slotKeys.forEach { key ->
-            EazyArtifactsChip(
-                t("eazy_chat.artifacts_slot_$key", key),
-                slotFilter == key,
-                palette,
-            ) { onFilter(key) }
+            EazyArtifactsSlotFilterItem(
+                label = artifactSlotLabel(key, t),
+                icon = artifactSlotIcon(key),
+                active = slotFilter == key,
+                palette = palette,
+                onClick = { onFilter(key) },
+            )
         }
     }
 }
 
 @Composable
-private fun EazyArtifactsChip(label: String, active: Boolean, palette: EazyModalPalette, onClick: () -> Unit) {
-    Text(
-        label,
+private fun EazyArtifactsSlotFilterItem(
+    label: String,
+    icon: ImageVector,
+    active: Boolean,
+    palette: EazyModalPalette,
+    onClick: () -> Unit,
+) {
+    Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (active) palette.accent else palette.muted.copy(alpha = 0.08f))
-            .border(1.dp, if (active) palette.accent else palette.border, RoundedCornerShape(999.dp))
+            .width(62.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (active) palette.accent.copy(alpha = 0.12f) else Color.Transparent)
+            .border(
+                1.dp,
+                if (active) palette.accent.copy(alpha = 0.35f) else Color.Transparent,
+                RoundedCornerShape(10.dp),
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp, vertical = 5.dp),
-        color = if (active) Color.White else palette.text.copy(alpha = 0.78f),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.SemiBold,
-    )
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (active) palette.accent else palette.accent.copy(alpha = 0.9f),
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 9.sp,
+            lineHeight = 11.sp,
+            color = if (active) palette.text else palette.muted,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable
@@ -142,7 +220,7 @@ fun EazyArtifactsNftsPanel(
                     )
                 }
                 Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                    Text(slot.slotType, style = MaterialTheme.typography.labelSmall, color = palette.text, maxLines = 1)
+                    Text(slot.slotType.let { artifactSlotLabel(it, t) }, style = MaterialTheme.typography.labelSmall, color = palette.text, maxLines = 1)
                     Text(slot.serial, style = MaterialTheme.typography.bodySmall, color = palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -222,7 +300,7 @@ fun EazyArtifactsOutfitPanel(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            t("eazy_chat.artifacts_slot_$key", key),
+                            artifactSlotLabel(key, t),
                             style = MaterialTheme.typography.labelSmall,
                             color = palette.muted,
                             maxLines = 1,
