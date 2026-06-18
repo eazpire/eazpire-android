@@ -61,6 +61,7 @@ import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storefront
@@ -124,7 +125,7 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class EazySidebarTab { Chat, Notifications, Jobs, Settings, Games, Verify, Functions, Mascot }
+enum class EazySidebarTab { Chat, Notifications, Jobs, Settings, Games, Artifacts, Verify, Functions, Mascot }
 
 enum class EazyChatContext { Shop, Creator }
 
@@ -138,6 +139,7 @@ private fun sidebarTabLabel(tab: EazySidebarTab, t: (String, String) -> String):
     EazySidebarTab.Jobs -> t("creator.notifications.active_jobs", "Active Jobs")
     EazySidebarTab.Settings -> t("eazy_chat.ui_settings_tab", "Settings")
     EazySidebarTab.Games -> t("eazy_chat.ui_games_tab", "Games")
+    EazySidebarTab.Artifacts -> t("eazy_chat.ui_artifacts_tab", "Artifacts")
     EazySidebarTab.Verify -> t("eazy_chat.ui_verify_tab", "Verify")
     EazySidebarTab.Functions -> t("eazy_chat.ui_functions_tab", "Functions")
     EazySidebarTab.Mascot -> t("eazy_chat.ui_mascot_tab", "Mascot")
@@ -575,6 +577,7 @@ fun EazyChatModal(
             EazySidebarTab.Jobs to Icons.Default.Bolt,
             EazySidebarTab.Settings to Icons.Default.Settings,
             EazySidebarTab.Games to Icons.Default.SportsEsports,
+            EazySidebarTab.Artifacts to Icons.Default.Star,
             EazySidebarTab.Verify to Icons.Default.Verified,
             EazySidebarTab.Functions to Icons.Default.Build,
             EazySidebarTab.Mascot to Icons.Default.Pets
@@ -1227,6 +1230,13 @@ fun EazyChatModal(
                                 isLoggedIn = isLoggedIn,
                                 onLoginClick = onLoginClick,
                                 onDismiss = onDismiss,
+                                t = t,
+                            )
+                            EazySidebarTab.Artifacts -> EazyArtifactsHubPanel(
+                                api = api,
+                                ownerId = ownerId,
+                                isLoggedIn = isLoggedIn,
+                                onLoginClick = onLoginClick,
                                 t = t,
                             )
                             EazySidebarTab.Verify -> EazyVerifyPanel(

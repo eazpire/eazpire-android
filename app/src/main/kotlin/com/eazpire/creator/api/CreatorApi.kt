@@ -689,6 +689,12 @@ class CreatorApi(
         ),
     )
 
+    suspend fun getArtifactsInventoryList(ownerId: String, shop: String): JSONObject =
+        postJsonWithShop("artifacts-inventory-list", shop, mapOf("owner_id" to ownerId))
+
+    suspend fun getArtifactsMarketList(shop: String, limit: Int = 30): JSONObject =
+        call("artifacts-market-list", mapOf("shop" to shop, "limit" to limit.toString()))
+
     suspend fun postPrizesFuse(
         ownerId: String,
         cardDefinitionId: Int,
