@@ -50,10 +50,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import coil.compose.SubcomposeAsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.modal.EazFullScreenDialog
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
+import com.eazpire.creator.ui.modal.eazModalBody
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -126,13 +128,15 @@ fun EazyVerifyPanel(
             t = t,
             onDismiss = { showTermsModal = false },
             onAccept = {
+                termsAccepted = true
+                showTermsModal = false
                 scope.launch {
                     val oid = ownerId?.trim().orEmpty()
                     if (oid.isBlank()) return@launch
-                    api.verifyAcceptTerms(oid)
-                    termsAccepted = true
-                    showTermsModal = false
-                    refresh()
+                    try {
+                        api.verifyAcceptTerms(oid)
+                    } catch (_: Exception) {
+                    }
                 }
             },
         )
@@ -362,15 +366,14 @@ private fun EazyVerifyPrimaryBar(
     onView: (String) -> Unit,
     t: (String, String) -> String,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFF1E293B))
             .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             EazyVerifyFeedTab(
                 selected = entityType == "design",
                 label = t("eazy_verify.tab_designs", "Designs"),
@@ -384,14 +387,19 @@ private fun EazyVerifyPrimaryBar(
                 onClick = { onEntity("product") },
             )
         }
-        EazyVerifySegmentSwitch(
-            selected = viewMode,
-            options = listOf(
-                "available" to t("eazy_verify.available", "Available"),
-                "completed" to t("eazy_verify.completed", "Completed"),
-            ),
-            onSelect = onView,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            EazyVerifySegmentSwitch(
+                selected = viewMode,
+                options = listOf(
+                    "available" to t("eazy_verify.available", "Available"),
+                    "completed" to t("eazy_verify.completed", "Completed"),
+                ),
+                onSelect = onView,
+            )
+        }
     }
 }
 
@@ -501,44 +509,128 @@ private fun EazyVerifyTermsDialog(
     onDismiss: () -> Unit,
     onAccept: () -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
+    var rulesChecked by remember { mutableStateOf(false) }
+    val summaryPoints = listOf(
+        t("eazy_verify.terms_point_fair", "Review items honestly and without bias."),
+        t("eazy_verify.terms_point_reject", "Use Reject only when content clearly breaks our community rules."),
+        t("eazy_verify.terms_point_privacy", "Do not share screenshots or personal data from review items."),
+        t("eazy_verify.terms_point_limit", "Daily review limits apply to keep the system fair for everyone."),
+    )
+    val detailedRules = listOf(
+        t("eazy_verify.terms_rules_age", "Age requirement: You must be 16 or older to participate in community verification."),
+        t("eazy_verify.terms_rules_quality", "Quality: Designs and products should be clear, complete, and suitable for print-on-demand."),
+        t("eazy_verify.terms_rules_copyright", "Copyright: No copied logos, trademarks, or artwork you do not own or have rights to use."),
+        t("eazy_verify.terms_rules_offensive", "Respect: No hateful, harassing, or discriminatory content."),
+        t("eazy_verify.terms_rules_adult", "Family-friendly: No adult or sexual content; content must be suitable for general audiences."),
+        t("eazy_verify.terms_rules_safety", "Safety: No content promoting violence, self-harm, or illegal activity."),
+        t("eazy_verify.terms_rules_misleading", "Honesty: Titles and presentation must accurately represent the design or product."),
+        t("eazy_verify.terms_rules_privacy", "Privacy: Do not share screenshots, creator names, or personal details outside the review flow."),
+        t("eazy_verify.terms_rules_fairness", "Fair play: Daily vote limits apply. Vote honestly — do not coordinate to manipulate outcomes."),
+    )
+
+    EazFullScreenDialog(onDismissRequest = onDismiss) {
+        EazModalSheetLayout(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF1E293B))
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(t("eazy_verify.terms_title", "Community verification"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+                .fillMaxSize()
+                .background(Color(0xFF0F172A)),
+            header = {
                 Text(
-                    t("eazy_verify.terms_body", "You must be 16 or older."),
-                    color = Color.White.copy(0.88f),
-                    fontSize = 13.sp,
+                    t("eazy_verify.terms_title", "Community verification"),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1E293B))
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
                 )
-                listOf(
-                    t("eazy_verify.terms_point_fair", "Review items honestly and without bias."),
-                    t("eazy_verify.terms_point_reject", "Use Reject only when content clearly breaks our community rules."),
-                    t("eazy_verify.terms_point_privacy", "Do not share screenshots or personal data from review items."),
-                    t("eazy_verify.terms_point_limit", "Daily review limits apply to keep the system fair for everyone."),
-                ).forEach { point ->
-                    Text("• $point", color = Color.White.copy(0.85f), fontSize = 13.sp)
+            },
+            footer = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1E293B))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { rulesChecked = !rulesChecked },
+                    ) {
+                        Checkbox(checked = rulesChecked, onCheckedChange = { rulesChecked = it })
+                        Text(
+                            t("eazy_verify.terms_accept_checkbox", "Accept Community Rules"),
+                            color = Color.White.copy(0.92f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                        )
+                    }
+                    Button(
+                        onClick = onAccept,
+                        enabled = rulesChecked,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = EazColors.Orange,
+                            disabledContainerColor = EazColors.Orange.copy(alpha = 0.4f),
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(t("eazy_verify.terms_accept", "Continue"))
+                    }
                 }
-            }
-            Button(
-                onClick = onAccept,
-                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(t("eazy_verify.terms_accept", "Continue"))
-            }
-        }
+            },
+            body = {
+                Column(
+                    modifier = Modifier
+                        .eazModalBody()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            t(
+                                "eazy_verify.terms_body",
+                                "You must be 16 or older. Help keep our marketplace safe by reviewing designs and products fairly.",
+                            ),
+                            color = Color.White.copy(0.9f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                        )
+                        summaryPoints.forEach { point ->
+                            Text("• $point", color = Color.White.copy(0.88f), fontSize = 13.sp, lineHeight = 18.sp)
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF1E293B))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            t("eazy_verify.terms_rules_heading", "Community Rules"),
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                        )
+                        Text(
+                            t(
+                                "eazy_verify.terms_rules_intro",
+                                "When reviewing designs and products, apply these standards consistently. Your votes help creators publish quality work safely.",
+                            ),
+                            color = Color.White.copy(0.88f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                        )
+                        detailedRules.forEach { rule ->
+                            Text("• $rule", color = Color.White.copy(0.85f), fontSize = 13.sp, lineHeight = 18.sp)
+                        }
+                    }
+                }
+            },
+        )
     }
 }
