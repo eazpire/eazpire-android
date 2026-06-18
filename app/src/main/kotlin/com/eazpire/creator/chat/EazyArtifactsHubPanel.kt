@@ -47,11 +47,14 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.ui.creator.WearPairQrScannerOverlay
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class ArtifactsHubSection { Nfts, Outfit, Exchange, Marketplace }
+enum class ArtifactsExchangeSub { Market, MyListings }
+enum class ArtifactsMarketSub { Buy, Sell }
 
 @Composable
 fun EazyArtifactsHubPanel(
@@ -64,6 +67,10 @@ fun EazyArtifactsHubPanel(
     t: (String, String) -> String,
 ) {
     var section by remember { mutableStateOf(ArtifactsHubSection.Nfts) }
+    var exchangeSub by remember { mutableStateOf(ArtifactsExchangeSub.Market) }
+    var marketSub by remember { mutableStateOf(ArtifactsMarketSub.Buy) }
+    var isArtifactsAdmin by remember { mutableStateOf(false) }
+    var adminQrUrl by remember { mutableStateOf<String?>(null) }
     var slotFilter by remember { mutableStateOf("all") }
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
@@ -78,6 +85,7 @@ fun EazyArtifactsHubPanel(
     }
     var tradeListings by remember { mutableStateOf<List<ArtifactTradeListing>>(emptyList()) }
     var marketListings by remember { mutableStateOf<List<ArtifactMarketListing>>(emptyList()) }
+    var sellableCharacters by remember { mutableStateOf<List<ArtifactCharacter>>(emptyList()) }
     var tradeTokens by remember { mutableIntStateOf(0) }
     val palette = LocalEazyModalPalette.current
     val shop = AuthConfig.SHOP_DOMAIN
@@ -109,7 +117,12 @@ fun EazyArtifactsHubPanel(
                         api.getArtifactsInventoryList(ownerId, shop)
                     }
                     inventory = if (inv.optBoolean("ok", false)) ArtifactsJson.parseSlots(inv.optJSONArray("slots")) else emptyList()
-                    val tr = withContext(Dispatchers.IO) { api.getArtifactsTradeListings(shop) }
+                    val tr = withContext(Dispatchers.IO) {
+                        api.getArtifactsTradeListings(
+                            shop,
+                            scope = if (exchangeSub == ArtifactsExchangeSub.MyListings) "mine" else "market",
+                        )
+                    }
                     tradeListings = if (tr.optBoolean("ok", false)) {
                         ArtifactsJson.parseTradeListings(tr.optJSONArray("listings"))
                     } else {
@@ -117,9 +130,19 @@ fun EazyArtifactsHubPanel(
                     }
                 }
                 ArtifactsHubSection.Marketplace -> {
-                    val mk = withContext(Dispatchers.IO) { api.getArtifactsMarketList(shop) }
+                    val mk = withContext(Dispatchers.IO) {
+                        api.getArtifactsMarketList(
+                            shop,
+                            scope = if (marketSub == ArtifactsMarketSub.Sell) "sell" else "buy",
+                        )
+                    }
                     marketListings = if (mk.optBoolean("ok", false)) {
                         ArtifactsJson.parseMarketListings(mk.optJSONArray("listings"))
+                    } else {
+                        emptyList()
+                    }
+                    sellableCharacters = if (marketSub == ArtifactsMarketSub.Sell && mk.optBoolean("ok", false)) {
+                        ArtifactsJson.parseCharacters(mk.optJSONArray("sellable_characters"))
                     } else {
                         emptyList()
                     }
@@ -131,8 +154,28 @@ fun EazyArtifactsHubPanel(
         }
     }
 
-    LaunchedEffect(section, ownerId, isLoggedIn, slotFilter, refreshKey) {
+    LaunchedEffect(section, ownerId, isLoggedIn, slotFilter, refreshKey, exchangeSub, marketSub) {
         reload()
+    }
+
+    LaunchedEffect(ownerId, isLoggedIn) {
+        if (!isLoggedIn || ownerId.isNullOrBlank()) {
+            isArtifactsAdmin = false
+            return@LaunchedEffect
+        }
+        isArtifactsAdmin = try {
+            withContext(Dispatchers.IO) { api.getAdminArtifactsOverview(shop).optBoolean("ok", false) }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    LaunchedEffect(inventory, section) {
+        if (section != ArtifactsHubSection.Nfts) return@LaunchedEffect
+        while (inventory.any { it.generationStatus == "generating" }) {
+            delay(3500)
+            refreshKey++
+        }
     }
 
     suspend fun claimToken(token: String): Boolean {
@@ -182,6 +225,23 @@ fun EazyArtifactsHubPanel(
 
     Column(modifier = Modifier.fillMaxSize()) {
         ArtifactsSubheader(section = section, onSection = { section = it }, t = t)
+
+        if (section == ArtifactsHubSection.Exchange) {
+            ArtifactsSectionSubnav(
+                left = t("eazy_chat.artifacts_exchange_market", "Market") to (exchangeSub == ArtifactsExchangeSub.Market),
+                right = t("eazy_chat.artifacts_exchange_my_listings", "My Listings") to (exchangeSub == ArtifactsExchangeSub.MyListings),
+                onLeft = { exchangeSub = ArtifactsExchangeSub.Market },
+                onRight = { exchangeSub = ArtifactsExchangeSub.MyListings },
+            )
+        }
+        if (section == ArtifactsHubSection.Marketplace) {
+            ArtifactsSectionSubnav(
+                left = t("eazy_chat.artifacts_market_buy", "Buy") to (marketSub == ArtifactsMarketSub.Buy),
+                right = t("eazy_chat.artifacts_market_sell", "Sell") to (marketSub == ArtifactsMarketSub.Sell),
+                onLeft = { marketSub = ArtifactsMarketSub.Buy },
+                onRight = { marketSub = ArtifactsMarketSub.Sell },
+            )
+        }
 
         if (section == ArtifactsHubSection.Nfts) {
             Row(
@@ -266,6 +326,7 @@ fun EazyArtifactsHubPanel(
                 tradeTokens = tradeTokens,
                 inventory = inventory,
                 slotFilter = slotFilter,
+                isMyListings = exchangeSub == ArtifactsExchangeSub.MyListings,
                 onRefresh = { refreshKey++ },
                 t = t,
             )
@@ -274,11 +335,102 @@ fun EazyArtifactsHubPanel(
                 ownerId = oid,
                 shop = shop,
                 listings = marketListings,
+                sellableCharacters = sellableCharacters,
+                isSellMode = marketSub == ArtifactsMarketSub.Sell,
                 onRefresh = { refreshKey++ },
                 t = t,
             )
         }
+
+        if (isArtifactsAdmin) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                val res = withContext(Dispatchers.IO) { api.postAdminArtifactsGrantQr(shop) }
+                                if (res.optBoolean("ok", false)) {
+                                    adminQrUrl = res.optString("qr_url", res.optString("claim_url", ""))
+                                    section = ArtifactsHubSection.Nfts
+                                }
+                            } catch (_: Exception) {
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(t("eazy_chat.artifacts_admin_scan_qr", "Scan QR"))
+                }
+            }
+        }
     }
+
+    adminQrUrl?.let { url ->
+        AlertDialog(
+            onDismissRequest = { adminQrUrl = null },
+            title = { Text(t("eazy_chat.artifacts_admin_qr_title", "Test QR Claim")) },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(t("eazy_chat.artifacts_admin_qr_hint", "Scan this QR to claim a test slot NFT."))
+                    Spacer(Modifier.size(8.dp))
+                    Text(url, style = MaterialTheme.typography.bodySmall, color = palette.muted)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { adminQrUrl = null }) {
+                    Text(t("eazy_chat.close", "Close"))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ArtifactsSectionSubnav(
+    left: Pair<String, Boolean>,
+    right: Pair<String, Boolean>,
+    onLeft: () -> Unit,
+    onRight: () -> Unit,
+) {
+    val palette = LocalEazyModalPalette.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ArtifactsSubnavChip(left.first, left.second, palette, Modifier.weight(1f), onLeft)
+        ArtifactsSubnavChip(right.first, right.second, palette, Modifier.weight(1f), onRight)
+    }
+}
+
+@Composable
+private fun ArtifactsSubnavChip(
+    label: String,
+    active: Boolean,
+    palette: EazyModalPalette,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Text(
+        label,
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (active) palette.accent.copy(alpha = 0.15f) else palette.muted.copy(alpha = 0.08f))
+            .border(1.dp, if (active) palette.accent else palette.border, RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 10.dp),
+        color = if (active) Color.White else palette.text.copy(alpha = 0.8f),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @Composable

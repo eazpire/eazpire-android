@@ -217,7 +217,12 @@ fun EazyArtifactsNftsPanel(
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .background(Brush.linearGradient(listOf(Color(0xFF2A2A35), Color(0xFF1A1A22)))),
-                    )
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (slot.generationStatus == "generating") {
+                            CircularProgressIndicator(color = palette.accent, modifier = Modifier.size(28.dp))
+                        }
+                    }
                 }
                 Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                     Text(slot.slotType.let { artifactSlotLabel(it, t) }, style = MaterialTheme.typography.labelSmall, color = palette.text, maxLines = 1)
@@ -536,6 +541,7 @@ fun EazyArtifactsExchangePanel(
     tradeTokens: Int,
     inventory: List<ArtifactSlot>,
     slotFilter: String,
+    isMyListings: Boolean = false,
     onRefresh: () -> Unit,
     t: (String, String) -> String,
 ) {
@@ -549,15 +555,24 @@ fun EazyArtifactsExchangePanel(
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
-        Text(
-            "${t("eazy_chat.artifacts_trade_tokens", "Trade tokens")}: $tradeTokens",
-            style = MaterialTheme.typography.titleSmall,
-            color = palette.text,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
+        if (!isMyListings) {
+            Text(
+                "${t("eazy_chat.artifacts_trade_tokens", "Trade tokens")}: $tradeTokens",
+                style = MaterialTheme.typography.titleSmall,
+                color = palette.text,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
         if (filtered.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(t("eazy_chat.artifacts_exchange_empty", "No listings yet."), color = palette.muted)
+                Text(
+                    if (isMyListings) {
+                        t("eazy_chat.artifacts_my_listings_empty", "You have no active listings.")
+                    } else {
+                        t("eazy_chat.artifacts_exchange_empty", "No listings yet.")
+                    },
+                    color = palette.muted,
+                )
             }
         } else {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -580,11 +595,20 @@ fun EazyArtifactsExchangePanel(
                             )
                         }
                         Column(Modifier.weight(1f)) {
-                            Text(listing.slot.slotType, fontWeight = FontWeight.SemiBold, color = palette.text)
+                            Text(artifactSlotLabel(listing.slot.slotType, t), fontWeight = FontWeight.SemiBold, color = palette.text)
                             Text(listing.slot.serial, style = MaterialTheme.typography.bodySmall, color = palette.muted)
                         }
-                        EazyArtifactsActionButton(t("eazy_chat.artifacts_offer_trade", "Offer trade"), filled = true) {
-                            offerListingId = listing.id
+                        if (isMyListings) {
+                            EazyArtifactsActionButton(t("eazy_chat.artifacts_cancel_listing", "Cancel"), filled = false) {
+                                scope.launch {
+                                    api.deleteArtifactsTradeListing(ownerId, shop, listing.id)
+                                    onRefresh()
+                                }
+                            }
+                        } else {
+                            EazyArtifactsActionButton(t("eazy_chat.artifacts_offer_trade", "Offer trade"), filled = true) {
+                                offerListingId = listing.id
+                            }
                         }
                     }
                 }
@@ -634,12 +658,51 @@ fun EazyArtifactsMarketplacePanel(
     ownerId: String,
     shop: String,
     listings: List<ArtifactMarketListing>,
+    sellableCharacters: List<ArtifactCharacter> = emptyList(),
+    isSellMode: Boolean = false,
     onRefresh: () -> Unit,
     t: (String, String) -> String,
 ) {
     val palette = LocalEazyModalPalette.current
     val scope = rememberCoroutineScope()
     var confirmListingId by remember { mutableIntStateOf(0) }
+
+    if (isSellMode) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (listings.isEmpty() && sellableCharacters.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Text(t("eazy_chat.artifacts_sell_empty", "No characters to sell yet."), color = palette.muted)
+                }
+            }
+            if (listings.isNotEmpty()) {
+                Text(t("eazy_chat.artifacts_my_market_listings", "My listings"), style = MaterialTheme.typography.titleSmall, color = palette.text)
+                listings.forEach { listing ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("${listing.character.rarity} · ${listing.priceEaz} EAZ", color = palette.text)
+                        EazyArtifactsActionButton(t("eazy_chat.artifacts_cancel_listing", "Cancel"), filled = false) {
+                            scope.launch {
+                                api.postArtifactsMarketCancel(ownerId, shop, listing.listingId)
+                                onRefresh()
+                            }
+                        }
+                    }
+                }
+            }
+            if (sellableCharacters.isNotEmpty()) {
+                Text(t("eazy_chat.artifacts_sellable_characters", "Sell a character"), style = MaterialTheme.typography.titleSmall, color = palette.text)
+                sellableCharacters.forEach { ch ->
+                    Text("${ch.rarity} · ${ch.serial}", color = palette.muted, modifier = Modifier.padding(vertical = 4.dp))
+                }
+            }
+        }
+        return
+    }
 
     if (listings.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

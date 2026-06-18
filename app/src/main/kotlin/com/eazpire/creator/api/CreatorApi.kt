@@ -746,8 +746,8 @@ class CreatorApi(
         return postJsonBodyOpWithShop("artifacts-loadout-visibility", shop, body)
     }
 
-    suspend fun getArtifactsTradeListings(shop: String, limit: Int = 30): JSONObject =
-        call("artifacts-trade-listings", mapOf("shop" to shop, "limit" to limit.toString()))
+    suspend fun getArtifactsTradeListings(shop: String, limit: Int = 30, scope: String = "market"): JSONObject =
+        call("artifacts-trade-listings", mapOf("shop" to shop, "limit" to limit.toString(), "scope" to scope))
 
     suspend fun postArtifactsTradeListing(ownerId: String, shop: String, instanceId: Int): JSONObject =
         postJsonWithShop(
@@ -829,8 +829,18 @@ class CreatorApi(
         ),
     )
 
-    suspend fun getArtifactsMarketList(shop: String, limit: Int = 30): JSONObject =
-        call("artifacts-market-list", mapOf("shop" to shop, "limit" to limit.toString()))
+    suspend fun getArtifactsMarketList(shop: String, limit: Int = 30, scope: String = "buy"): JSONObject =
+        call("artifacts-market-list", mapOf("shop" to shop, "limit" to limit.toString(), "scope" to scope))
+
+    suspend fun postAdminArtifactsGrantQr(shop: String): JSONObject =
+        postJsonWithShop(
+            "admin-artifacts-grant-qr",
+            shop,
+            mapOf("random_product" to true, "random_slot" to true, "note" to "android-admin-test"),
+        )
+
+    suspend fun getAdminArtifactsOverview(shop: String): JSONObject =
+        call("admin-artifacts-overview", mapOf("shop" to shop))
 
     suspend fun postArtifactsMarketBuy(ownerId: String, shop: String, listingId: Int): JSONObject =
         postJsonWithShop(

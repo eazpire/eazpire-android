@@ -10,6 +10,7 @@ data class ArtifactSlot(
     val artworkUrl: String?,
     val productTitle: String,
     val status: String,
+    val generationStatus: String = "ready",
 )
 
 data class ArtifactCharacter(
@@ -64,6 +65,7 @@ object ArtifactsJson {
             artworkUrl = o.optString("artwork_url", "").takeIf { it.isNotBlank() },
             productTitle = o.optString("product_title", ""),
             status = o.optString("status", ""),
+            generationStatus = o.optString("generation_status", "ready").ifBlank { "ready" },
         )
     }
 
@@ -82,6 +84,11 @@ object ArtifactsJson {
             imageUrl = o.optString("image_url", "").takeIf { it.isNotBlank() },
             status = o.optString("status", ""),
         )
+    }
+
+    fun parseCharacters(arr: JSONArray?): List<ArtifactCharacter> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i -> parseCharacter(arr.optJSONObject(i) ?: return@mapNotNull null) }
     }
 
     fun parseTradeListings(arr: JSONArray?): List<ArtifactTradeListing> {
