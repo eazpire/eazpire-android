@@ -164,7 +164,9 @@ fun EazyArtifactsHubPanel(
             return@LaunchedEffect
         }
         isArtifactsAdmin = try {
-            withContext(Dispatchers.IO) { api.getAdminArtifactsOverview(shop).optBoolean("ok", false) }
+            withContext(Dispatchers.IO) {
+                api.getAdminArtifactsOverview(ownerId.trim(), shop).optBoolean("ok", false)
+            }
         } catch (_: Exception) {
             false
         }
@@ -352,7 +354,9 @@ fun EazyArtifactsHubPanel(
                     onClick = {
                         scope.launch {
                             try {
-                                val res = withContext(Dispatchers.IO) { api.postAdminArtifactsGrantQr(shop) }
+                                val res = withContext(Dispatchers.IO) {
+                                    api.postAdminArtifactsGrantQr(oid, shop)
+                                }
                                 if (res.optBoolean("ok", false)) {
                                     adminQrUrl = res.optString("qr_url", res.optString("claim_url", ""))
                                     section = ArtifactsHubSection.Nfts

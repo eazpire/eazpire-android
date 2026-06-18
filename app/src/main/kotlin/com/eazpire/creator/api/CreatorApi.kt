@@ -832,15 +832,26 @@ class CreatorApi(
     suspend fun getArtifactsMarketList(shop: String, limit: Int = 30, scope: String = "buy"): JSONObject =
         call("artifacts-market-list", mapOf("shop" to shop, "limit" to limit.toString(), "scope" to scope))
 
-    suspend fun postAdminArtifactsGrantQr(shop: String): JSONObject =
-        postJsonWithShop(
+    suspend fun postAdminArtifactsGrantQr(ownerId: String, shop: String): JSONObject =
+        postJson(
             "admin-artifacts-grant-qr",
-            shop,
             mapOf("random_product" to true, "random_slot" to true, "note" to "android-admin-test"),
+            mapOf(
+                "shop" to shop,
+                "owner_id" to ownerId,
+                "logged_in_customer_id" to ownerId,
+            ),
         )
 
-    suspend fun getAdminArtifactsOverview(shop: String): JSONObject =
-        call("admin-artifacts-overview", mapOf("shop" to shop))
+    suspend fun getAdminArtifactsOverview(ownerId: String, shop: String): JSONObject =
+        call(
+            "admin-artifacts-overview",
+            mapOf(
+                "shop" to shop,
+                "owner_id" to ownerId,
+                "logged_in_customer_id" to ownerId,
+            ),
+        )
 
     suspend fun postArtifactsMarketBuy(ownerId: String, shop: String, listingId: Int): JSONObject =
         postJsonWithShop(

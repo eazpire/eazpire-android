@@ -146,6 +146,43 @@ fun EazySimonDailyBoard(
     var atOffer by remember { mutableStateOf(session.phase == "offer") }
     var lootBoostPct by remember(session.lootBoostPct) { mutableIntStateOf(session.lootBoostPct) }
     var canContinue by remember(session.canContinue) { mutableStateOf(session.canContinue) }
+    var inputTapIndex by remember { mutableIntStateOf(0) }
+
+    fun syncOfferFromResponse(j: JSONObject) {
+        when {
+            j.optString("simon_status") == "offer_continue" ||
+                j.optInt("simon_at_offer", 0) == 1 ||
+                j.optString("simon_phase") == "offer" -> {
+                atOffer = true
+                phase = "offer"
+            }
+            j.optString("simon_status") == "playing" ||
+                j.optString("simon_status") == "round_complete" ||
+                j.optString("simon_status") == "your_turn" ||
+                j.optString("simon_status") == "extension_start" ||
+                j.optString("simon_phase") == "input" ||
+                j.optString("simon_phase") == "playback" -> {
+                atOffer = false
+            }
+        }
+    }
+
+    fun reportWrongTap(idx: Int) {
+        if (submitted) return
+        submitted = true
+        tapQueue.clear()
+        tapProcessing = false
+        lock = true
+        scope.launch {
+            synth.playWrong()
+            try {
+                api.postDailyGameSimonTap(shop, ownerId, idx)
+            } catch (_: Exception) {
+            } finally {
+                onRoundComplete()
+            }
+        }
+    }
 
     fun applyTiming(timingUi: SimonTimingUi) {
         timing = timingUi
@@ -220,6 +257,8 @@ fun EazySimonDailyBoard(
                 )
             }
             lock = false
+            atOffer = false
+            inputTapIndex = 0
             statusLine = t("eazy_chat.games_simon_your_turn", "Your turn — repeat the sequence!")
         }
     }
@@ -242,6 +281,13 @@ fun EazySimonDailyBoard(
         val idx = tapQueue.removeAt(0)
         try {
             val j = api.postDailyGameSimonTap(shop, ownerId, idx)
+            val outcome = j.optString("outcome")
+            if (outcome == "win" || outcome == "loss") {
+                submitted = true
+                if (outcome == "win") synth.playWin() else synth.playWrong()
+                onRoundComplete()
+                return
+            }
             parseGameMeta(j.optJSONObject("simon_game"))?.let { gameMeta = it }
             j.optJSONObject("simon_timing")?.let { tj ->
                 applyTiming(
@@ -259,25 +305,19 @@ fun EazySimonDailyBoard(
             }
             lootBoostPct = j.optInt("simon_loot_boost_pct", lootBoostPct)
             canContinue = j.optBoolean("simon_can_continue", canContinue)
+            syncOfferFromResponse(j)
             when {
-                j.optString("outcome") == "win" -> {
-                    submitted = true
-                    synth.playWin()
-                    onRoundComplete()
-                }
-                j.optString("outcome") == "loss" -> {
-                    submitted = true
-                    synth.playWrong()
-                    onRoundComplete()
-                }
                 j.optString("simon_status") == "offer_continue" -> {
                     targetRounds = j.optInt("simon_target_rounds", targetRounds)
                     round = j.optInt("simon_round", round)
+                    inputTapIndex = 0
                     showOffer(if (canContinue) lootBoostPct + 5 else lootBoostPct)
                 }
                 j.optString("simon_status") == "round_complete" -> {
                     round = j.optInt("simon_round", round + 1)
                     playbackSteps = parseIntList(j.optJSONArray("simon_playback_steps"))
+                    inputTapIndex = 0
+                    atOffer = false
                     statusLine = t("eazy_chat.games_simon_round_done", "Nice! Next round…")
                     delay(timing.roundBreakMs)
                     runPlayback(playbackSteps)
@@ -301,6 +341,8 @@ fun EazySimonDailyBoard(
             applyTiming(session.timing)
             boardReady = true
             lock = false
+            atOffer = false
+            inputTapIndex = 0
             statusLine = t("eazy_chat.games_simon_your_turn", "Your turn — repeat the sequence!")
         }
     }
@@ -350,6 +392,13 @@ fun EazySimonDailyBoard(
                     boardReady = boardReady,
                     onClick = {
                         if (!canTap || submitted || atOffer) return@EazySimonPad
+                        val expected = playbackSteps.getOrNull(inputTapIndex)
+                        if (expected == null || expected != idx) {
+                            scope.launch { flashPad(idx, userPress = true) }
+                            reportWrongTap(idx)
+                            return@EazySimonPad
+                        }
+                        inputTapIndex += 1
                         scope.launch {
                             async { flashPad(idx, userPress = true) }
                             tapQueue.add(idx)
