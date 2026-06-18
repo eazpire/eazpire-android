@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.R
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
@@ -70,9 +72,11 @@ import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URLEncoder
 import kotlin.math.roundToInt
 
 @Composable
@@ -91,12 +95,19 @@ fun CartDrawer(
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
     val cartStore = remember { StorefrontCartStore(context) }
     val api = remember { ShopifyStorefrontCartApi() }
+    val creatorApi = remember { CreatorApi(jwt = tokenStore?.getJwt()) }
+    val scope = rememberCoroutineScope()
     val accessToken = tokenStore?.getAccessToken()
+    val ownerId = tokenStore?.getOwnerId()?.trim()?.takeIf { it.isNotBlank() }
 
     var cart by remember { mutableStateOf<ShopifyStorefrontCartApi.CartResult?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var promoByHandle by remember { mutableStateOf<Map<String, PromoResolveRow>>(emptyMap()) }
+    var characterDiscountSubtitle by remember { mutableStateOf<String?>(null) }
+    var characterDiscountApplying by remember { mutableStateOf(false) }
+    var appliedCharacterDiscountCode by remember { mutableStateOf<String?>(null) }
+    var characterDiscountError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(visible) {
         if (!visible) return@LaunchedEffect
@@ -116,6 +127,28 @@ fun CartDrawer(
             AppCartStore.clear()
         }
         loading = false
+    }
+
+    LaunchedEffect(cart, ownerId, visible) {
+        characterDiscountSubtitle = null
+        characterDiscountError = null
+        appliedCharacterDiscountCode = null
+        if (!visible || ownerId.isNullOrBlank() || cart == null || cart!!.lines.isEmpty()) return@LaunchedEffect
+        val state = withContext(Dispatchers.IO) {
+            creatorApi.getArtifactsShopDiscountState(ownerId, AuthConfig.SHOP_DOMAIN)
+        }
+        if (state.optBoolean("ok", false) && state.optBoolean("active", false)) {
+            val pct = state.optInt("next_discount_pct", 0)
+            if (pct > 0) {
+                val isSecond = state.optString("label", "") == "character_shop_second_order"
+                val pctTemplate = t("creator.cart_discount.character_discount_pct", "{pct}% off your order")
+                characterDiscountSubtitle = if (isSecond) {
+                    t("creator.cart_discount.character_discount_second_order", "Second order today — 50% off")
+                } else {
+                    pctTemplate.replace("{pct}", pct.toString())
+                }
+            }
+        }
     }
 
     LaunchedEffect(cart) {
@@ -324,6 +357,76 @@ fun CartDrawer(
                                 .background(Color.White)
                                 .padding(16.dp)
                         ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                characterDiscountSubtitle?.let { subtitle ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(EazColors.Orange.copy(alpha = 0.1f))
+                                            .clickable(enabled = !characterDiscountApplying && appliedCharacterDiscountCode == null) {
+                                                val oid = ownerId ?: return@clickable
+                                                characterDiscountApplying = true
+                                                characterDiscountError = null
+                                                scope.launch {
+                                                    try {
+                                                        val res = withContext(Dispatchers.IO) {
+                                                            creatorApi.postArtifactsShopDiscountApply(oid, AuthConfig.SHOP_DOMAIN)
+                                                        }
+                                                        val code = res.optString("discount_code", "").trim()
+                                                        if (res.optBoolean("ok", false) && code.isNotBlank()) {
+                                                            appliedCharacterDiscountCode = code
+                                                            characterDiscountSubtitle = null
+                                                        } else {
+                                                            characterDiscountError = t(
+                                                                "creator.cart_discount.character_discount_unavailable",
+                                                                "No character shop bonus available today",
+                                                            )
+                                                        }
+                                                    } catch (_: Exception) {
+                                                        characterDiscountError = t(
+                                                            "creator.cart_discount.character_discount_apply_error",
+                                                            "Character discount could not be applied. Please try again.",
+                                                        )
+                                                    } finally {
+                                                        characterDiscountApplying = false
+                                                    }
+                                                }
+                                            }
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                t("creator.cart_discount.character_shop_bonus", "Character shop bonus"),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = EazColors.Orange,
+                                            )
+                                            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = EazColors.TextSecondary)
+                                        }
+                                        Text(
+                                            if (appliedCharacterDiscountCode != null) {
+                                                t("creator.cart_discount.applied", "Applied")
+                                            } else {
+                                                t("creator.cart_discount.apply", "Apply")
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = EazColors.Orange,
+                                        )
+                                    }
+                                }
+                                appliedCharacterDiscountCode?.let { code ->
+                                    Text(
+                                        "${t("creator.cart_discount.code_applied", "Discount code")}: $code",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = EazColors.TextSecondary,
+                                    )
+                                }
+                                characterDiscountError?.let { err ->
+                                    Text(err, style = MaterialTheme.typography.bodySmall, color = Color(0xFFDC2626))
+                                }
                             val lines = cart!!.lines
                             val totalText = lines
                                 .sumOf { line ->
@@ -351,7 +454,12 @@ fun CartDrawer(
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(EazColors.Orange)
                                         .clickable {
-                                            val url = cart!!.checkoutUrl
+                                            var url = cart!!.checkoutUrl
+                                            val code = appliedCharacterDiscountCode
+                                            if (!code.isNullOrBlank() && url.isNotBlank()) {
+                                                val redirect = URLEncoder.encode(url, "UTF-8")
+                                                url = "https://www.eazpire.com/discount/${URLEncoder.encode(code, "UTF-8")}?redirect=$redirect"
+                                            }
                                             if (url.isNotBlank()) onCheckout(url)
                                         }
                                         .padding(horizontal = 20.dp, vertical = 12.dp)
@@ -363,6 +471,7 @@ fun CartDrawer(
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
+                            }
                             }
                         }
                     }

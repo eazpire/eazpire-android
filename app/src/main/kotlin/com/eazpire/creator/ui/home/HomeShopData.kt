@@ -127,7 +127,13 @@ suspend fun loadHomeCarouselFromWorker(
             personalizableMode = personalizableMode,
             countryCode = countryCode,
         )
-        ShopifyProductsApi.parseHomeCarouselProductsResponse(j)
+        val products = ShopifyProductsApi.parseHomeCarouselProductsResponse(j)
+        val cc = countryCode?.trim()?.uppercase()?.takeIf { it.length == 2 }
+        if (!cc.isNullOrBlank() && slot != "promotions") {
+            ShopifyProductsApi.mergeShopPromotionOverlayProducts(products, cc, creatorApi)
+        } else {
+            products
+        }
     }.getOrElse { emptyList() }
 }
 
@@ -198,12 +204,9 @@ suspend fun loadHomePromotionsFromWorker(
     countryCode: String? = null,
 ): List<ShopifyProductsApi.ProductItem> = withContext(Dispatchers.IO) {
     runCatching {
-        val j = creatorApi.listHomeCarouselProducts(
-            slot = "promotions",
-            limit = limit.coerceIn(1, HOME_MAX_PRODUCTS),
-            countryCode = countryCode,
-        )
-        ShopifyProductsApi.parseHomeCarouselProductsResponse(j)
+        val cc = countryCode?.trim()?.uppercase()?.takeIf { it.length == 2 } ?: "DE"
+        val j = creatorApi.listActiveShopPromotionProducts(cc)
+        ShopifyProductsApi.parseActivePromotionProductsResponse(j).take(limit.coerceIn(1, HOME_MAX_PRODUCTS))
     }.getOrElse { emptyList() }
 }
 

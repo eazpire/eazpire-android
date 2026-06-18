@@ -719,10 +719,21 @@ fun ProductDetailScreen(
     val price = selectedVariant?.price?.takeIf { it > 0.0 }
         ?: p.variants.firstOrNull { it.price > 0.0 }?.price
         ?: 0.0
-    val comparePrice = selectedVariant?.compareAtPrice
+    val po = promoOverlay
+    val displayPrice = when {
+        po != null && po.promoOutsideSlot -> price
+        po != null && !po.promoOutsideSlot && po.price > 0 -> po.price
+        else -> price
+    }
+    val comparePrice = when {
+        po != null && po.promoOutsideSlot -> null
+        po?.promoBeforePrice != null && po.promoBeforePrice > displayPrice -> po.promoBeforePrice
+        po?.compareAtPrice != null && po.compareAtPrice > displayPrice -> po.compareAtPrice
+        else -> selectedVariant?.compareAtPrice?.takeIf { it > displayPrice }
+    }
     val available = selectedVariant?.available ?: true
-    val lineEstimate = remember(price, quantity) { QuantityDiscount.estimateLineTotals(price, quantity) }
-    val unitPriceAfterDiscount = if (quantity > 0) lineEstimate.afterDiscount / quantity else price
+    val lineEstimate = remember(displayPrice, quantity) { QuantityDiscount.estimateLineTotals(displayPrice, quantity) }
+    val unitPriceAfterDiscount = if (quantity > 0) lineEstimate.afterDiscount / quantity else displayPrice
     /** Storefront cart needs a real Shopify variant id (>0). */
     val variantIdForCart = (selectedVariant?.id ?: 0L).takeIf { it > 0L }
     // Images for selected variant only – same logic as web getMediaForColor (eaz-redesign-pdp.js)
@@ -830,7 +841,7 @@ fun ProductDetailScreen(
         }
     }
 
-    val creatorLabel = p.creatorDisplay.ifBlank { p.vendor }.ifBlank { "Creator" }
+    val creatorLabel = ShopifyProductsApi.resolveCreatorDisplay(p.creatorDisplay, p.vendor)
     var creatorPreview by remember(p.creatorDisplay, p.vendor) { mutableStateOf<CreatorProfilePreview?>(null) }
     LaunchedEffect(creatorLabel) {
         if (creatorLabel.isBlank() || creatorLabel == "Creator") {
@@ -1662,8 +1673,16 @@ fun ProductDetailScreen(
                 promoOverlay?.let { po ->
                     val ends = po.promotionEndsAtMs
                     val nextSlot = po.promoCampaignStartsAtMs ?: po.promoNextWindowStartsAtMs
+                    if (po.promoOutsideSlot && po.promoPreviewPrice != null && po.promoPreviewPrice > 0) {
+                        Text(
+                            "${t("eaz.shop.promo_next_price_hint_prefix", "Promo from")} CHF %.2f".format(po.promoPreviewPrice),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EazColors.Orange,
+                            maxLines = 1,
+                        )
+                    }
                     when {
-                        ends != null && ends > 0L -> {
+                        ends != null && ends > System.currentTimeMillis() -> {
                             PdpPromoCountdownLine(
                                 endsAtMs = ends,
                                 prefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
@@ -1698,7 +1717,7 @@ fun ProductDetailScreen(
                         maxLines = 1,
                     )
                 }
-                if (comparePrice != null && comparePrice > price) {
+                if (comparePrice != null && comparePrice > displayPrice) {
                     Text(
                         "CHF %.2f".format(comparePrice),
                         style = MaterialTheme.typography.labelSmall,

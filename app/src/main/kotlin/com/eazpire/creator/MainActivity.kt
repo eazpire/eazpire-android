@@ -27,6 +27,7 @@ import com.eazpire.creator.auth.ShopSessionCoordinator
 import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.debug.initDebugLog
 import com.eazpire.creator.debug.initLangSwitchDebug
+import com.eazpire.creator.chat.ArtifactsJson
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.push.PushTokenRegistrar
 import androidx.lifecycle.lifecycleScope
@@ -64,6 +65,8 @@ class MainActivity : ComponentActivity() {
     val pendingOpenShop = mutableStateOf(false)
     /** From eazpire://wear-pair or /wear-pair deep link — opens Creator Settings → Wear + claim. */
     val pendingWearPairToken = mutableStateOf<String?>(null)
+    /** From /artifacts/claim?t=… — opens Eazy Artifacts tab and claims slot NFT. */
+    val pendingArtifactClaimToken = mutableStateOf<String?>(null)
     /** Wear upload finished — open Creator creations, inactive designs tab. */
     val pendingCreatorInactiveDesigns = mutableStateOf(false)
     /** Creator Settings → Creator Codes (from FCM / in-app notification). */
@@ -121,6 +124,7 @@ class MainActivity : ComponentActivity() {
         }
         pendingDeepLink.value = intent?.data
         consumeWearPairDeepLink(intent)
+        consumeArtifactsClaimDeepLink(intent)
         consumeIntentExtras(intent)
         requestNotificationPermissionAndSyncPush()
         playInAppUpdateHelper = PlayInAppUpdateHelper(this, playInAppUpdateLauncher)
@@ -141,6 +145,7 @@ class MainActivity : ComponentActivity() {
                         pendingOpenCart = pendingOpenCart,
                         pendingOpenShop = pendingOpenShop,
                         pendingWearPairToken = pendingWearPairToken,
+                        pendingArtifactClaimToken = pendingArtifactClaimToken,
                         pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
                         pendingCreatorCodesNav = pendingCreatorCodesNav,
                         pendingOpenGiftCardsWon = pendingOpenGiftCardsWon,
@@ -180,15 +185,31 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         intent.data?.let { pendingDeepLink.value = it }
         consumeWearPairDeepLink(intent)
+        consumeArtifactsClaimDeepLink(intent)
         consumeIntentExtras(intent)
         handleOAuthCallback(intent)
     }
 
     private fun consumeWearPairDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
+        val path = data.path.orEmpty()
+        if (path.contains("artifacts/claim")) return
         val token = WearPairApi.parseTokenFromQrPayload(data.toString())
             ?: data.getQueryParameter("t")?.trim()?.takeIf { it.isNotBlank() }
         if (token != null) pendingWearPairToken.value = token
+    }
+
+    private fun consumeArtifactsClaimDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        val raw = data.toString()
+        if (!raw.contains("artifacts/claim") && !raw.contains("artifacts%2Fclaim")) return
+        val token = ArtifactsJson.parseClaimToken(raw)
+            ?: data.getQueryParameter("t")?.trim()?.takeIf { it.isNotBlank() }
+            ?: data.getQueryParameter("token")?.trim()?.takeIf { it.isNotBlank() }
+        if (token != null) {
+            pendingArtifactClaimToken.value = token
+            pendingEazyTab.value = EazySidebarTab.Artifacts
+        }
     }
 
     private fun consumeIntentExtras(intent: Intent?) {

@@ -544,6 +544,8 @@ fun EazyChatModal(
     onResetMascot: () -> Unit = {},
     chatContext: EazyChatContext = EazyChatContext.Shop,
     startTab: EazySidebarTab = EazySidebarTab.Chat,
+    pendingArtifactClaimToken: String? = null,
+    onPendingArtifactClaimConsumed: () -> Unit = {},
     onOpenCreatorCodes: (prefillCode: String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -1237,6 +1239,8 @@ fun EazyChatModal(
                                 ownerId = ownerId,
                                 isLoggedIn = isLoggedIn,
                                 onLoginClick = onLoginClick,
+                                pendingClaimToken = pendingArtifactClaimToken,
+                                onPendingClaimConsumed = onPendingArtifactClaimConsumed,
                                 t = t,
                             )
                             EazySidebarTab.Verify -> EazyVerifyPanel(

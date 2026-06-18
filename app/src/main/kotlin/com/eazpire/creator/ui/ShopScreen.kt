@@ -113,6 +113,7 @@ fun ShopScreen(
     pendingOpenCart: MutableState<Boolean>? = null,
     pendingOpenShop: MutableState<Boolean>? = null,
     pendingWearPairToken: MutableState<String?>? = null,
+    pendingArtifactClaimToken: MutableState<String?>? = null,
     pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
     pendingCreatorCodesNav: MutableState<MainActivity.PendingCreatorCodesNav?>? = null,
     pendingOpenGiftCardsWon: MutableState<Boolean>? = null,
@@ -1280,6 +1281,8 @@ fun ShopScreen(
         onResetMascot = { eazyMascotStore.resetSync() },
         chatContext = if (isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop,
         startTab = eazyStartTab,
+        pendingArtifactClaimToken = pendingArtifactClaimToken?.value,
+        onPendingArtifactClaimConsumed = { pendingArtifactClaimToken?.value = null },
         onOpenCreatorCodes = { prefillCode ->
             eazyChatVisible = false
             switchCreatorMode(toCreator = true, animate = false)

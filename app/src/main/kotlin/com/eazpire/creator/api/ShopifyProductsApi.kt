@@ -121,7 +121,7 @@ class ShopifyProductsApi(
                     designStyle = mf.designStyle,
                     ratio = mf.ratio,
                     designLanguage = mf.designLanguage,
-                    creator = mf.creator.ifBlank { p.creator },
+                    creator = resolveCreatorDisplay(mf.creator.ifBlank { p.creator }, p.vendor),
                     metaProductKey = mf.productKey.ifBlank { p.metaProductKey },
                     designId = mf.designId.ifBlank { p.designId },
                     patProductName = mf.productName.ifBlank { p.patProductName }
@@ -139,28 +139,7 @@ class ShopifyProductsApi(
         products: List<ProductItem>,
         countryCode: String,
         creatorApi: CreatorApi
-    ): List<ProductItem> = withContext(Dispatchers.IO) {
-        if (products.isEmpty()) return@withContext products
-        return@withContext try {
-            val j = creatorApi.listActiveShopPromotionProducts(countryCode)
-            val promos = parseActivePromotionProductsResponse(j).associateBy { it.handle }
-            products.map { p ->
-                val o = promos[p.handle] ?: return@map p
-                p.copy(
-                    promotionEndsAtMs = o.promotionEndsAtMs ?: p.promotionEndsAtMs,
-                    promoBeforePrice = o.promoBeforePrice ?: p.promoBeforePrice,
-                    compareAtPrice = o.compareAtPrice ?: p.compareAtPrice,
-                    promoNextWindowStartsAtMs = o.promoNextWindowStartsAtMs ?: p.promoNextWindowStartsAtMs,
-                    promoOutsideSlot = o.promoOutsideSlot || p.promoOutsideSlot,
-                    promoPreviewPrice = o.promoPreviewPrice ?: p.promoPreviewPrice,
-                    promoPrelaunch = o.promoPrelaunch || p.promoPrelaunch,
-                    promoCampaignStartsAtMs = o.promoCampaignStartsAtMs ?: p.promoCampaignStartsAtMs
-                )
-            }
-        } catch (_: Exception) {
-            products
-        }
-    }
+    ): List<ProductItem> = mergeShopPromotionOverlayProducts(products, countryCode, creatorApi)
 
     private data class ProductMetafields(
         val contentType: String,
@@ -729,6 +708,44 @@ class ShopifyProductsApi(
     }
 
     companion object {
+        fun isPrintifyName(name: String?): Boolean =
+            name?.trim()?.equals("printify", ignoreCase = true) == true
+
+        fun resolveCreatorDisplay(creator: String?, vendor: String?): String {
+            val c = creator?.trim().orEmpty()
+            val v = vendor?.trim().orEmpty()
+            if (c.isNotEmpty() && !isPrintifyName(c)) return c
+            if (v.isNotEmpty() && !isPrintifyName(v)) return v
+            return ""
+        }
+
+        suspend fun mergeShopPromotionOverlayProducts(
+            products: List<ProductItem>,
+            countryCode: String,
+            creatorApi: CreatorApi
+        ): List<ProductItem> = withContext(Dispatchers.IO) {
+            if (products.isEmpty()) return@withContext products
+            return@withContext try {
+                val j = creatorApi.listActiveShopPromotionProducts(countryCode)
+                val promos = parseActivePromotionProductsResponse(j).associateBy { it.handle }
+                products.map { p ->
+                    val o = promos[p.handle] ?: return@map p
+                    p.copy(
+                        promotionEndsAtMs = o.promotionEndsAtMs ?: p.promotionEndsAtMs,
+                        promoBeforePrice = o.promoBeforePrice ?: p.promoBeforePrice,
+                        compareAtPrice = o.compareAtPrice ?: p.compareAtPrice,
+                        promoNextWindowStartsAtMs = o.promoNextWindowStartsAtMs ?: p.promoNextWindowStartsAtMs,
+                        promoOutsideSlot = o.promoOutsideSlot || p.promoOutsideSlot,
+                        promoPreviewPrice = o.promoPreviewPrice ?: p.promoPreviewPrice,
+                        promoPrelaunch = o.promoPrelaunch || p.promoPrelaunch,
+                        promoCampaignStartsAtMs = o.promoCampaignStartsAtMs ?: p.promoCampaignStartsAtMs
+                    )
+                }
+            } catch (_: Exception) {
+                products
+            }
+        }
+
         /** Worker JSON may use Long ms; avoid [JSONObject.optDouble] precision loss on large timestamps. */
         private fun parsePromotionEndsAtMs(o: JSONObject): Long? {
             if (!o.has("promotion_ends_at") || o.isNull("promotion_ends_at")) return null
@@ -848,7 +865,7 @@ class ShopifyProductsApi(
                         designStyle = emptyList(),
                         ratio = "",
                         designLanguage = "",
-                        creator = "",
+                        creator = resolveCreatorDisplay(o.optString("creator", ""), o.optString("vendor", "")),
                         metaProductKey = "",
                         designId = "",
                         promotionEndsAtMs = promoEndsMs,
@@ -889,14 +906,6 @@ class ShopifyProductsApi(
                     }
                 }
                 val rotation = variantImgs.ifEmpty { imgs }
-                val price = o.optDouble("price", 0.0)
-                val compare = if (o.has("compareAtPrice") && !o.isNull("compareAtPrice")) {
-                    o.optDouble("compareAtPrice").takeIf { !it.isNaN() }
-                } else if (o.has("compare_at_price") && !o.isNull("compare_at_price")) {
-                    o.optDouble("compare_at_price").takeIf { !it.isNaN() }
-                } else {
-                    null
-                }
                 val designStyleArr = o.optJSONArray("designStyle")
                 val designStyle = mutableListOf<String>()
                 if (designStyleArr != null) {
@@ -904,11 +913,50 @@ class ShopifyProductsApi(
                         designStyleArr.optString(j, "").takeIf { it.isNotBlank() }?.let { designStyle.add(it) }
                     }
                 }
+                val price = o.optDouble("price", 0.0)
+                val afterRaw = if (o.has("after_price") && !o.isNull("after_price")) {
+                    o.optDouble("after_price")
+                } else {
+                    price
+                }
+                val beforeRaw = if (o.has("before_price") && !o.isNull("before_price")) {
+                    o.optDouble("before_price")
+                } else {
+                    Double.NaN
+                }
+                val compare = if (o.has("compareAtPrice") && !o.isNull("compareAtPrice")) {
+                    o.optDouble("compareAtPrice").takeIf { !it.isNaN() }
+                } else if (o.has("compare_at_price") && !o.isNull("compare_at_price")) {
+                    o.optDouble("compare_at_price").takeIf { !it.isNaN() }
+                } else {
+                    null
+                }
                 val promoEndsMs = optTimestampMs(o, "promotion_ends_at", "promotionEndsAt")
                 val promoNextMs = optTimestampMs(o, "promo_next_window_starts_at", "promoNextWindowStartsAt")
                 val promoCampaignStartMs = optTimestampMs(o, "promo_campaign_starts_at", "promoCampaignStartsAt")
                 val outside = o.optBoolean("promoOutsideSlot", o.optBoolean("promo_outside_slot", false))
                 val prelaunch = o.optBoolean("promoPrelaunch", o.optBoolean("promo_prelaunch", false))
+                val promoPreviewFromApi = if (o.has("promoPreviewPrice") && !o.isNull("promoPreviewPrice")) {
+                    o.optDouble("promoPreviewPrice").takeIf { !it.isNaN() }
+                } else {
+                    null
+                }
+                val displayPrice = if (outside) afterRaw else afterRaw
+                val promoStrike = if (!outside && !beforeRaw.isNaN() && beforeRaw > displayPrice + 1e-6) {
+                    beforeRaw
+                } else if (!outside && compare != null && compare > displayPrice + 1e-6) {
+                    compare
+                } else {
+                    null
+                }
+                val promoPreview = promoPreviewFromApi
+                    ?: if (outside && !beforeRaw.isNaN() && beforeRaw < displayPrice - 1e-6) beforeRaw else null
+                val compareForDisplay = when {
+                    outside -> null
+                    else -> promoStrike ?: compare
+                }
+                val vendorRaw = o.optString("vendor", "")
+                val creatorRaw = o.optString("creator", vendorRaw)
                 out.add(
                     ProductItem(
                         id = o.optLong("id", 0L),
@@ -917,26 +965,26 @@ class ShopifyProductsApi(
                         images = imgs,
                         variantImages = rotation,
                         url = o.optString("url", "").ifBlank { "$storeBase/products/$handle" },
-                        price = price,
-                        compareAtPrice = compare,
+                        price = displayPrice,
+                        compareAtPrice = compareForDisplay,
                         createdAt = o.optString("createdAt", o.optString("created_at", "")),
                         productType = o.optString("productType", o.optString("product_type", "")),
                         tags = emptyList(),
-                        vendor = o.optString("vendor", ""),
+                        vendor = vendorRaw,
                         contentType = o.optString("contentType", o.optString("content_type", "")),
                         designType = o.optString("designType", o.optString("design_type", "")),
                         designStyle = designStyle,
                         ratio = o.optString("ratio", ""),
                         designLanguage = o.optString("designLanguage", o.optString("design_language", "")),
-                        creator = o.optString("creator", o.optString("vendor", "")),
+                        creator = resolveCreatorDisplay(creatorRaw, vendorRaw),
                         metaProductKey = o.optString("productKey", o.optString("product_key", "")),
                         patProductName = o.optString("productName", o.optString("product_name", "")),
                         designId = "",
                         promotionEndsAtMs = promoEndsMs,
-                        promoBeforePrice = compare,
+                        promoBeforePrice = promoStrike,
                         promoNextWindowStartsAtMs = promoNextMs,
                         promoOutsideSlot = outside,
-                        promoPreviewPrice = null,
+                        promoPreviewPrice = promoPreview,
                         promoPrelaunch = prelaunch,
                         promoCampaignStartsAtMs = promoCampaignStartMs,
                     )

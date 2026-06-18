@@ -689,11 +689,178 @@ class CreatorApi(
         ),
     )
 
-    suspend fun getArtifactsInventoryList(ownerId: String, shop: String): JSONObject =
-        postJsonWithShop("artifacts-inventory-list", shop, mapOf("owner_id" to ownerId))
+    suspend fun getArtifactsInventoryList(
+        ownerId: String,
+        shop: String,
+        slotType: String? = null,
+    ): JSONObject {
+        val body = mutableMapOf<String, Any?>("owner_id" to ownerId)
+        if (!slotType.isNullOrBlank() && slotType != "all") body["slot_type"] = slotType
+        return postJsonWithShop("artifacts-inventory-list", shop, body)
+    }
+
+    suspend fun getArtifactsInventoryState(ownerId: String, shop: String): JSONObject =
+        call("artifacts-inventory-state", mapOf("owner_id" to ownerId, "shop" to shop))
+
+    suspend fun getArtifactsLoadout(ownerId: String, shop: String): JSONObject =
+        call("artifacts-loadout-get", mapOf("owner_id" to ownerId, "shop" to shop))
+
+    suspend fun getArtifactsSetStatus(ownerId: String, shop: String): JSONObject =
+        call("artifacts-set-status", mapOf("owner_id" to ownerId, "shop" to shop))
+
+    suspend fun postArtifactsLoadoutSet(ownerId: String, shop: String, slots: JSONObject): JSONObject {
+        val body = JSONObject().apply {
+            put("owner_id", ownerId)
+            put("slots", slots)
+        }
+        return postJsonBodyOpWithShop("artifacts-loadout-set", shop, body)
+    }
+
+    suspend fun postArtifactsLoadoutVisibility(ownerId: String, shop: String, visibility: JSONObject): JSONObject {
+        val body = JSONObject().apply {
+            put("owner_id", ownerId)
+            put("visibility", visibility)
+        }
+        return postJsonBodyOpWithShop("artifacts-loadout-visibility", shop, body)
+    }
+
+    suspend fun getArtifactsTradeListings(shop: String, limit: Int = 30): JSONObject =
+        call("artifacts-trade-listings", mapOf("shop" to shop, "limit" to limit.toString()))
+
+    suspend fun postArtifactsTradeListing(ownerId: String, shop: String, instanceId: Int): JSONObject =
+        postJsonWithShop(
+            "artifacts-trade-listings",
+            shop,
+            mapOf("owner_id" to ownerId, "instance_id" to instanceId),
+        )
+
+    suspend fun deleteArtifactsTradeListing(ownerId: String, shop: String, listingId: Int): JSONObject {
+        val body = JSONObject().apply {
+            put("owner_id", ownerId)
+            put("listing_id", listingId)
+        }
+        return deleteJsonBodyOpWithShop("artifacts-trade-listings", shop, body, mapOf("listing_id" to listingId.toString()))
+    }
+
+    suspend fun postArtifactsTradeOffer(
+        ownerId: String,
+        shop: String,
+        listingId: Int,
+        offeredInstanceId: Int,
+    ): JSONObject = postJsonWithShop(
+        "artifacts-trade-offer",
+        shop,
+        mapOf(
+            "owner_id" to ownerId,
+            "listing_id" to listingId,
+            "offered_instance_id" to offeredInstanceId,
+        ),
+    )
+
+    suspend fun postArtifactsMintPrepare(
+        ownerId: String,
+        shop: String,
+        referenceImageUrl: String? = null,
+    ): JSONObject {
+        val body = mutableMapOf("owner_id" to ownerId)
+        referenceImageUrl?.trim()?.takeIf { it.isNotBlank() }?.let { body["reference_image_url"] = it }
+        return postJsonWithShop("artifacts-mint-prepare", shop, body)
+    }
+
+    suspend fun uploadArtifactsMintReference(ownerId: String, shop: String, imageBytes: ByteArray, contentType: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val ext = when {
+                contentType.contains("png") -> "png"
+                contentType.contains("webp") -> "webp"
+                else -> "jpg"
+            }
+            val mediaType = contentType.toMediaType()
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("image", "mint-reference.$ext", okhttp3.RequestBody.create(mediaType, imageBytes))
+                .addFormDataPart("owner_id", ownerId)
+                .build()
+            val url =
+                "$baseUrl/apps/creator-dispatch?op=artifacts-mint-reference-upload&shop=${java.net.URLEncoder.encode(normalizeShopDomain(shop), "UTF-8")}&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+            val request = Request.Builder()
+                .url(url)
+                .post(body)
+                .addHeader("Accept", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            val response = client.newCall(request).execute()
+            JSONObject(response.body?.string() ?: "{}")
+        }
+
+    suspend fun postArtifactsMintCharacter(
+        ownerId: String,
+        shop: String,
+        mintIntentId: String,
+        confirmPhrase: String,
+    ): JSONObject = postJsonWithShop(
+        "artifacts-mint-character",
+        shop,
+        mapOf(
+            "owner_id" to ownerId,
+            "mint_intent_id" to mintIntentId,
+            "confirm_phrase" to confirmPhrase,
+        ),
+    )
 
     suspend fun getArtifactsMarketList(shop: String, limit: Int = 30): JSONObject =
         call("artifacts-market-list", mapOf("shop" to shop, "limit" to limit.toString()))
+
+    suspend fun postArtifactsMarketBuy(ownerId: String, shop: String, listingId: Int): JSONObject =
+        postJsonWithShop(
+            "artifacts-market-buy",
+            shop,
+            mapOf("owner_id" to ownerId, "listing_id" to listingId),
+        )
+
+    suspend fun postArtifactsMarketListCharacter(
+        ownerId: String,
+        shop: String,
+        characterId: Int,
+        priceEaz: Double,
+    ): JSONObject = postJsonWithShop(
+        "artifacts-market-list-character",
+        shop,
+        mapOf(
+            "owner_id" to ownerId,
+            "character_id" to characterId,
+            "price_eaz" to priceEaz,
+        ),
+    )
+
+    suspend fun postArtifactsMarketCancel(ownerId: String, shop: String, listingId: Int): JSONObject =
+        postJsonWithShop(
+            "artifacts-market-cancel",
+            shop,
+            mapOf("owner_id" to ownerId, "listing_id" to listingId),
+        )
+
+    suspend fun postArtifactsSetActiveCharacter(
+        ownerId: String,
+        shop: String,
+        characterId: Int?,
+    ): JSONObject {
+        val body = mutableMapOf<String, Any?>("owner_id" to ownerId)
+        if (characterId != null) body["character_id"] = characterId
+        return postJsonWithShop("artifacts-set-active-character", shop, body)
+    }
+
+    suspend fun postArtifactsClaimQr(ownerId: String, shop: String, token: String): JSONObject =
+        postJsonWithShop(
+            "artifacts-claim-qr",
+            shop,
+            mapOf("owner_id" to ownerId, "token" to token),
+        )
+
+    suspend fun getArtifactsShopDiscountState(ownerId: String, shop: String): JSONObject =
+        call("artifacts-shop-discount-state", mapOf("owner_id" to ownerId, "shop" to shop))
+
+    suspend fun postArtifactsShopDiscountApply(ownerId: String, shop: String): JSONObject =
+        postJsonWithShop("artifacts-shop-discount-apply", shop, mapOf("owner_id" to ownerId))
 
     suspend fun postPrizesFuse(
         ownerId: String,

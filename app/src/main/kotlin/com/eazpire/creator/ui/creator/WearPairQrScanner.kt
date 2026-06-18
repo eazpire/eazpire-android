@@ -46,6 +46,7 @@ fun WearPairQrScannerOverlay(
     onScanned: (String) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    parseToken: (String) -> String? = { WearPairApi.parseTokenFromQrPayload(it) },
 ) {
     val context = LocalContext.current
     var hasCamera by remember {
@@ -73,6 +74,7 @@ fun WearPairQrScannerOverlay(
         if (hasCamera) {
             WearPairCameraPreview(
                 onScanned = onScanned,
+                parseToken = parseToken,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -106,6 +108,7 @@ fun WearPairQrScannerOverlay(
 @Composable
 private fun WearPairCameraPreview(
     onScanned: (String) -> Unit,
+    parseToken: (String) -> String?,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -150,7 +153,7 @@ private fun WearPairCameraPreview(
                             if (handled) return@addOnSuccessListener
                             for (code in barcodes) {
                                 val raw = code.rawValue?.trim().orEmpty()
-                                val token = WearPairApi.parseTokenFromQrPayload(raw)
+                                val token = parseToken(raw)
                                 if (!token.isNullOrBlank()) {
                                     handled = true
                                     onScanned(token)
