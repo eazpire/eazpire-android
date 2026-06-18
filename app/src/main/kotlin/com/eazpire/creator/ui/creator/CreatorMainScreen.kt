@@ -69,6 +69,7 @@ fun CreatorMainScreen(
     translationStore: TranslationStore,
     onSwitchToShop: () -> Unit,
     onAccountClick: () -> Unit,
+    onLogout: () -> Unit = {},
     onEazyChatOpen: (EazySidebarTab?) -> Unit,
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onVideoJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
@@ -633,6 +634,14 @@ fun CreatorMainScreen(
                     creatorSettingsInitialEazSub = null
                 },
                 onLoginClick = onAccountClick,
+                onLogout = {
+                    creatorSettingsVisible = false
+                    wearPairTokenForSettings = null
+                    creatorCodesPrefill = null
+                    creatorSettingsInitialTab = 0
+                    creatorSettingsInitialEazSub = null
+                    onLogout()
+                },
             )
         }
         if (audioModalVisible) {

@@ -67,6 +67,7 @@ fun CreatorSettingsModal(
     translationStore: TranslationStore,
     onDismiss: () -> Unit,
     onLoginClick: () -> Unit = {},
+    onLogout: () -> Unit = {},
     initialTab: Int = 0,
     initialEazSub: String? = null,
     initialRedeemCode: String? = null,
@@ -177,6 +178,10 @@ fun CreatorSettingsModal(
                     currentTab = currentTab,
                     tokenStore = tokenStore,
                     translationStore = translationStore,
+                    onLogout = {
+                        onDismiss()
+                        onLogout()
+                    },
                     pendingWearPairToken = pendingWearPairToken,
                     initialRedeemCode = if (currentTab == codesTabIndex) initialRedeemCode else null,
                     onInitialRedeemCodeConsumed = onInitialRedeemCodeConsumed,

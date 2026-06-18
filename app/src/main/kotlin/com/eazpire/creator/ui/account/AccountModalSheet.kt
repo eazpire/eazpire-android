@@ -46,7 +46,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
-import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.ui.nav.EazModalTablerIcon
 
@@ -70,6 +69,7 @@ enum class AccountTab(
 fun AccountModalSheet(
     tokenStore: SecureTokenStore,
     onDismiss: () -> Unit,
+    onLogout: () -> Unit = {},
     initialTab: AccountTab? = null,
     modifier: Modifier = Modifier
 ) {
@@ -253,10 +253,7 @@ fun AccountModalSheet(
                             translationStore = translationStore,
                             onSaveActionReady = { footerSaveAction = it },
                             onSavingStateChange = { footerSaveInProgress = it },
-                            onLogout = {
-                                ShopSessionGuard.performFullLogout(context, tokenStore)
-                                onDismiss()
-                            },
+                            onLogout = onLogout,
                             modifier = tabModifier
                         )
                         AccountTab.Notifications -> NotificationSettingsContent(

@@ -75,6 +75,7 @@ fun CreatorSettingsTabContent(
     currentTab: Int,
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
+    onLogout: (() -> Unit)? = null,
     pendingWearPairToken: String? = null,
     initialRedeemCode: String? = null,
     onInitialRedeemCodeConsumed: () -> Unit = {},
@@ -93,7 +94,7 @@ fun CreatorSettingsTabContent(
             .padding(20.dp)
     ) {
         when (currentTab) {
-            0 -> CreatorSettingsProfileContent(tokenStore, translationStore)
+            0 -> CreatorSettingsProfileContent(tokenStore, translationStore, onLogout = onLogout)
             1 -> NotificationSettingsContent(
                 scope = NotificationScope.Creator,
                 tokenStore = tokenStore,
@@ -132,7 +133,8 @@ fun CreatorSettingsTabContent(
 @Composable
 private fun CreatorSettingsProfileContent(
     tokenStore: SecureTokenStore,
-    translationStore: TranslationStore
+    translationStore: TranslationStore,
+    onLogout: (() -> Unit)? = null,
 ) {
     var saveProfile by remember { mutableStateOf<(() -> Unit)?>(null) }
     var profileDirty by remember { mutableStateOf(false) }
@@ -142,7 +144,7 @@ private fun CreatorSettingsProfileContent(
             onSaveActionReady = { saveProfile = it },
             onSavingStateChange = null,
             onDirtyChange = { profileDirty = it },
-            onLogout = null,
+            onLogout = onLogout,
             modifier = Modifier.fillMaxWidth(),
             translationStore = translationStore,
             useDarkPanel = true,

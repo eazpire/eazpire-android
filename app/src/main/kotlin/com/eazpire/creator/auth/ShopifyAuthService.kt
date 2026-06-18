@@ -62,6 +62,9 @@ class ShopifyAuthService {
             append("&nonce=").append(java.net.URLEncoder.encode(nonce, "UTF-8"))
             append("&code_challenge=").append(java.net.URLEncoder.encode(codeChallenge, "UTF-8"))
             append("&code_challenge_method=S256")
+            // Force account picker / re-auth in Chrome Custom Tab (not WebView cookies).
+            append("&prompt=login")
+            append("&max_age=0")
         }
         AuthDebugLog.d("[AUTH_URL_BUILD] $built")
         return built

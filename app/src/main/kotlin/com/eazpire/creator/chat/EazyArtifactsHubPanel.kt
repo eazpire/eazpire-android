@@ -288,23 +288,59 @@ fun EazyArtifactsHubPanel(
         }
 
         if (claimBusy) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = palette.accent)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(color = palette.accent, modifier = Modifier.size(18.dp))
+                Text(
+                    t("eazy_chat.artifacts_claim_generating", "Creating your slot NFT…"),
+                    color = palette.text,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
-            return@Column
         }
 
         claimMessage?.let { msg ->
-            AlertDialog(
-                onDismissRequest = { claimMessage = null },
-                title = { Text(t("eazy_chat.ui_artifacts_tab", "Artifacts")) },
-                text = { Text(msg) },
-                confirmButton = {
-                    TextButton(onClick = { claimMessage = null }) {
-                        Text(t("eazy_chat.close", "Close"))
+            val isError = msg.contains("failed", ignoreCase = true) ||
+                msg.contains("error", ignoreCase = true) ||
+                msg == t("eazy_chat.artifacts_claim_failed", "Claim failed")
+            if (isError) {
+                AlertDialog(
+                    onDismissRequest = { claimMessage = null },
+                    title = { Text(t("eazy_chat.ui_artifacts_tab", "Artifacts")) },
+                    text = { Text(msg) },
+                    confirmButton = {
+                        TextButton(onClick = { claimMessage = null }) {
+                            Text(t("eazy_chat.close", "Close"))
+                        }
+                    },
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(palette.accent.copy(alpha = 0.12f))
+                        .border(1.dp, palette.accent.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (msg.contains("minted", ignoreCase = true) || msg.contains("minting", ignoreCase = true)) {
+                        CircularProgressIndicator(color = palette.accent, modifier = Modifier.size(18.dp))
                     }
-                },
-            )
+                    Text(msg, color = palette.text, style = MaterialTheme.typography.bodySmall)
+                }
+                LaunchedEffect(msg) {
+                    delay(5000)
+                    claimMessage = null
+                }
+            }
         }
 
         if (loading) {

@@ -49,6 +49,7 @@ import com.eazpire.creator.MainActivity
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionCoordinator
+import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.debug.langDebug
@@ -628,6 +629,16 @@ fun ShopScreen(
         }
     }
 
+    fun handleUserLogout() {
+        ShopSessionGuard.performFullLogout(context, tokenStore)
+        accountModalVisible = false
+        menuDrawerVisible = false
+        authAutoStartOAuth = false
+        showAuthScreen = false
+        showLoginOptions = true
+        sessionEpoch++
+    }
+
     BackHandler(enabled = !isCreatorMode && !showAuthScreen) {
         handleShopNavSwipeBack()
     }
@@ -718,6 +729,7 @@ fun ShopScreen(
                     showLoginOptions = true
                 }
             },
+            onLogout = { handleUserLogout() },
             onEazyChatOpen = { tab ->
                 eazyStartTab = tab ?: EazySidebarTab.Chat
                 eazyChatVisible = true
@@ -1331,7 +1343,11 @@ fun ShopScreen(
         },
         onAccountClick = {
             menuDrawerVisible = false
-            accountModalVisible = true
+            if (tokenStore.isLoggedIn()) {
+                accountModalVisible = true
+            } else {
+                showLoginOptions = true
+            }
         },
         onVouchersClick = { tab ->
             voucherModalInitialTab = tab
@@ -1364,7 +1380,8 @@ fun ShopScreen(
     if (accountModalVisible) {
         AccountModalSheet(
             tokenStore = tokenStore,
-            onDismiss = { accountModalVisible = false }
+            onDismiss = { accountModalVisible = false },
+            onLogout = { handleUserLogout() }
         )
     }
 
@@ -1451,7 +1468,7 @@ fun ShopScreen(
                 showLoginOptions = false
                 productModalHandleState.value = null
                 authLoginMethod = method
-                authAutoStartOAuth = true
+                authAutoStartOAuth = false
                 showAuthScreen = true
             }
         )

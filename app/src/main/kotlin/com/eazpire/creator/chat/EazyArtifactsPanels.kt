@@ -220,7 +220,15 @@ fun EazyArtifactsNftsPanel(
                         contentAlignment = Alignment.Center,
                     ) {
                         if (slot.generationStatus == "generating") {
-                            CircularProgressIndicator(color = palette.accent, modifier = Modifier.size(28.dp))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = palette.accent, modifier = Modifier.size(28.dp))
+                                Text(
+                                    t("eazy_chat.artifacts_generating", "Generating…"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = palette.muted,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                )
+                            }
                         }
                     }
                 }
