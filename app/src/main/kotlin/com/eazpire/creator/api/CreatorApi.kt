@@ -672,6 +672,28 @@ class CreatorApi(
             },
         )
 
+    suspend fun postDailyGameSimonClaimWin(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("game_slug", "simon_says")
+                put("simon_action", "claim_win")
+            },
+        )
+
+    suspend fun postDailyGameSimonContinueGamble(shop: String, ownerId: String): JSONObject =
+        postDailyGamePlayJson(
+            shop,
+            JSONObject().apply {
+                put("owner_id", ownerId)
+                put("shop", shop)
+                put("game_slug", "simon_says")
+                put("simon_action", "continue_gamble")
+            },
+        )
+
     suspend fun getPrizesInventoryList(
         ownerId: String,
         shop: String,

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -15,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,7 +42,7 @@ data class SimonTimingUi(
     val serverNowMs: Long,
     val playMsPerRound: Long,
     val flashMs: Long,
-    val gapMs: Long = 480L,
+    val gapMs: Long = 240L,
     val introMs: Long = 1400L,
     val roundBreakMs: Long = 1200L,
     val preloadMinMs: Long = 900L,
@@ -52,6 +55,8 @@ data class SimonSessionUi(
     val playbackSteps: List<Int>,
     val phase: String,
     val gameMeta: SimonGameMetaUi? = null,
+    val lootBoostPct: Int = 0,
+    val canContinue: Boolean = true,
 )
 
 private fun parseGameMeta(obj: JSONObject?): SimonGameMetaUi? {
@@ -134,9 +139,13 @@ fun EazySimonDailyBoard(
     var boardReady by remember { mutableStateOf(session.phase == "input") }
     var lock by remember { mutableStateOf(true) }
     var submitted by remember { mutableStateOf(false) }
-    var tapInFlight by remember { mutableStateOf(false) }
+    var tapProcessing by remember { mutableStateOf(false) }
+    val tapQueue = remember { mutableStateListOf<Int>() }
     var statusLine by remember { mutableStateOf("") }
     var tick by remember { mutableIntStateOf(0) }
+    var atOffer by remember { mutableStateOf(session.phase == "offer") }
+    var lootBoostPct by remember(session.lootBoostPct) { mutableIntStateOf(session.lootBoostPct) }
+    var canContinue by remember(session.canContinue) { mutableStateOf(session.canContinue) }
 
     fun applyTiming(timingUi: SimonTimingUi) {
         timing = timingUi
@@ -144,7 +153,7 @@ fun EazySimonDailyBoard(
     }
 
     fun finishRound(forfeit: Boolean) {
-        if (submitted || tapInFlight) return
+        if (submitted || atOffer || tapProcessing) return
         submitted = true
         scope.launch {
             try {
@@ -154,6 +163,17 @@ fun EazySimonDailyBoard(
                 onRoundComplete()
             }
         }
+    }
+
+    fun showOffer(nextBoost: Int) {
+        atOffer = true
+        lock = true
+        phase = "offer"
+        statusLine =
+            t(
+                "eazy_chat.games_simon_win_offer",
+                "You won! Keep playing for +{{pct}}% better loot — or take your prize now.",
+            ).replace("{{pct}}", nextBoost.toString())
     }
 
     suspend fun flashPad(idx: Int, userPress: Boolean = false) {
@@ -216,6 +236,64 @@ fun EazySimonDailyBoard(
         runPlayback(steps)
     }
 
+    suspend fun processTapQueue() {
+        if (tapProcessing || tapQueue.isEmpty() || submitted || atOffer) return
+        tapProcessing = true
+        val idx = tapQueue.removeAt(0)
+        try {
+            val j = api.postDailyGameSimonTap(shop, ownerId, idx)
+            parseGameMeta(j.optJSONObject("simon_game"))?.let { gameMeta = it }
+            j.optJSONObject("simon_timing")?.let { tj ->
+                applyTiming(
+                    SimonTimingUi(
+                        deadlineMs = tj.optLong("deadline_ms"),
+                        serverNowMs = tj.optLong("server_now_ms"),
+                        playMsPerRound = tj.optLong("play_ms_per_round", timing.playMsPerRound),
+                        flashMs = tj.optLong("flash_ms", timing.flashMs),
+                        gapMs = tj.optLong("gap_ms", timing.gapMs),
+                        introMs = tj.optLong("intro_ms", timing.introMs),
+                        roundBreakMs = tj.optLong("round_break_ms", timing.roundBreakMs),
+                        preloadMinMs = tj.optLong("preload_min_ms", timing.preloadMinMs),
+                    ),
+                )
+            }
+            lootBoostPct = j.optInt("simon_loot_boost_pct", lootBoostPct)
+            canContinue = j.optBoolean("simon_can_continue", canContinue)
+            when {
+                j.optString("outcome") == "win" -> {
+                    submitted = true
+                    synth.playWin()
+                    onRoundComplete()
+                }
+                j.optString("outcome") == "loss" -> {
+                    submitted = true
+                    synth.playWrong()
+                    onRoundComplete()
+                }
+                j.optString("simon_status") == "offer_continue" -> {
+                    targetRounds = j.optInt("simon_target_rounds", targetRounds)
+                    round = j.optInt("simon_round", round)
+                    showOffer(if (canContinue) lootBoostPct + 5 else lootBoostPct)
+                }
+                j.optString("simon_status") == "round_complete" -> {
+                    round = j.optInt("simon_round", round + 1)
+                    playbackSteps = parseIntList(j.optJSONArray("simon_playback_steps"))
+                    statusLine = t("eazy_chat.games_simon_round_done", "Nice! Next round…")
+                    delay(timing.roundBreakMs)
+                    runPlayback(playbackSteps)
+                }
+                j.optBoolean("ok", false) -> lock = false
+                else -> lock = false
+            }
+        } catch (_: Exception) {
+            lock = false
+        } finally {
+            tapProcessing = false
+            if (!submitted && !atOffer && phase == "input") lock = false
+            processTapQueue()
+        }
+    }
+
     LaunchedEffect(session.playbackSteps, session.phase) {
         if (session.phase == "playback" && session.playbackSteps.isNotEmpty()) {
             prepareBoardThenPlayback(session.playbackSteps)
@@ -227,13 +305,20 @@ fun EazySimonDailyBoard(
         }
     }
 
-    LaunchedEffect(deadline, submitted, phase, tapInFlight) {
-        while (!submitted && !tapInFlight && phase == "input" && deadline > 0L && System.currentTimeMillis() < deadline) {
-            delay(400)
+    LaunchedEffect(deadline, submitted, phase, tapProcessing, atOffer) {
+        while (!submitted && !tapProcessing && !atOffer && phase == "input" && deadline > 0L && System.currentTimeMillis() < deadline) {
+            delay(200)
             tick++
         }
-        if (!submitted && !tapInFlight && phase == "input" && deadline > 0L && System.currentTimeMillis() >= deadline) {
+        if (!submitted && !tapProcessing && !atOffer && phase == "input" && deadline > 0L && System.currentTimeMillis() >= deadline && tapQueue.isEmpty()) {
             finishRound(true)
+        }
+    }
+
+    LaunchedEffect(session.phase) {
+        if (session.phase == "offer") {
+            atOffer = true
+            showOffer(if (session.canContinue) session.lootBoostPct + 5 else session.lootBoostPct)
         }
     }
 
@@ -255,7 +340,7 @@ fun EazySimonDailyBoard(
                     gameMeta?.colors?.getOrNull(idx)?.let { parseHexColor(it, Color(0xFFEA580C)) }
                         ?: Color(0xFFEA580C)
                 val imageUrl = gameMeta?.padImages?.getOrNull(idx).orEmpty()
-                val canTap = boardReady && !lock && !submitted && !tapInFlight && phase == "input"
+                val canTap = boardReady && !submitted && phase == "input" && !atOffer
                 EazySimonPad(
                     baseColor = baseColor,
                     imageUrl = imageUrl.takeIf { it.isNotBlank() },
@@ -264,64 +349,11 @@ fun EazySimonDailyBoard(
                     enabled = canTap,
                     boardReady = boardReady,
                     onClick = {
-                        if (tapInFlight || !canTap) return@EazySimonPad
-                        tapInFlight = true
+                        if (!canTap || submitted || atOffer) return@EazySimonPad
                         scope.launch {
-                            val flashJob = async {
-                                flashPad(idx, userPress = true)
-                            }
-                            try {
-                                val j = api.postDailyGameSimonTap(shop, ownerId, idx)
-                                parseGameMeta(j.optJSONObject("simon_game"))?.let { gameMeta = it }
-                                j.optJSONObject("simon_timing")?.let { tj ->
-                                    applyTiming(
-                                        SimonTimingUi(
-                                            deadlineMs = tj.optLong("deadline_ms"),
-                                            serverNowMs = tj.optLong("server_now_ms"),
-                                            playMsPerRound = tj.optLong("play_ms_per_round", timing.playMsPerRound),
-                                            flashMs = tj.optLong("flash_ms", timing.flashMs),
-                                            gapMs = tj.optLong("gap_ms", timing.gapMs),
-                                            introMs = tj.optLong("intro_ms", timing.introMs),
-                                            roundBreakMs = tj.optLong("round_break_ms", timing.roundBreakMs),
-                                            preloadMinMs = tj.optLong("preload_min_ms", timing.preloadMinMs),
-                                        ),
-                                    )
-                                }
-                                when {
-                                    j.optString("outcome") == "win" -> {
-                                        submitted = true
-                                        synth.playWin()
-                                        onRoundComplete()
-                                    }
-                                    j.optString("outcome") == "loss" -> {
-                                        submitted = true
-                                        synth.playWrong()
-                                        onRoundComplete()
-                                    }
-                                    j.optString("simon_status") == "round_complete" -> {
-                                        round = j.optInt("simon_round", round + 1)
-                                        playbackSteps = parseIntList(j.optJSONArray("simon_playback_steps"))
-                                        tapInFlight = false
-                                        statusLine =
-                                            t("eazy_chat.games_simon_round_done", "Nice! Next round…")
-                                        delay(timing.roundBreakMs)
-                                        runPlayback(playbackSteps)
-                                    }
-                                    j.optBoolean("ok", false) -> {
-                                        tapInFlight = false
-                                        lock = false
-                                    }
-                                    else -> {
-                                        tapInFlight = false
-                                        lock = false
-                                    }
-                                }
-                            } catch (_: Exception) {
-                                tapInFlight = false
-                                lock = false
-                            } finally {
-                                flashJob.await()
-                            }
+                            async { flashPad(idx, userPress = true) }
+                            tapQueue.add(idx)
+                            processTapQueue()
                         }
                     },
                     modifier = Modifier.aspectRatio(1f),
@@ -333,14 +365,16 @@ fun EazySimonDailyBoard(
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                text =
-                    t("eazy_chat.games_simon_round_label", "Round {{r}} of {{t}}")
-                        .replace("{{r}}", (round + 1).toString())
-                        .replace("{{t}}", targetRounds.toString()),
-                style = MaterialTheme.typography.bodySmall,
-                color = LocalEazyModalPalette.current.muted,
-            )
+            if (!atOffer) {
+                Text(
+                    text =
+                        t("eazy_chat.games_simon_round_label", "Round {{r}} of {{t}}")
+                            .replace("{{r}}", (round + 1).toString())
+                            .replace("{{t}}", targetRounds.toString()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalEazyModalPalette.current.muted,
+                )
+            }
             if (statusLine.isNotBlank()) {
                 Text(
                     text = statusLine,
@@ -349,29 +383,81 @@ fun EazySimonDailyBoard(
                     color = LocalEazyModalPalette.current.accent,
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (phase == "input" && deadline > 0L) {
-                    val secLeft = ((deadline - System.currentTimeMillis()).coerceAtLeast(0L) / 1000L).toInt()
-                    Text(
-                        text = "${t("eazy_chat.games_simon_timer", "Time left")}: ${secLeft}s",
-                        style = MaterialTheme.typography.bodySmall,
-                        color =
-                            if (secLeft <= 5) LocalEazyModalPalette.current.accent
-                            else LocalEazyModalPalette.current.muted,
-                        fontWeight = if (secLeft <= 5) FontWeight.Bold else FontWeight.Normal,
-                    )
-                } else {
-                    Text(text = "", style = MaterialTheme.typography.bodySmall)
-                }
-                OutlinedButton(
-                    onClick = { finishRound(true) },
-                    enabled = !submitted && !tapInFlight,
+            if (atOffer && !submitted) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(t("eazy_chat.games_simon_forfeit", "Give up"))
+                    Button(
+                        onClick = {
+                            submitted = true
+                            scope.launch {
+                                try {
+                                    val j = api.postDailyGameSimonClaimWin(shop, ownerId)
+                                    if (j.optString("outcome") == "win") synth.playWin()
+                                } catch (_: Exception) {
+                                } finally {
+                                    onRoundComplete()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    ) {
+                        Text(t("eazy_chat.games_simon_take_win", "Take prize"))
+                    }
+                    Button(
+                        onClick = {
+                            atOffer = false
+                            lock = true
+                            scope.launch {
+                                try {
+                                    val j = api.postDailyGameSimonContinueGamble(shop, ownerId)
+                                    round = j.optInt("simon_round", 0)
+                                    targetRounds = j.optInt("simon_target_rounds", targetRounds)
+                                    playbackSteps = parseIntList(j.optJSONArray("simon_playback_steps"))
+                                    phase = "playback"
+                                    statusLine =
+                                        t("eazy_chat.games_simon_extension_start", "Bonus round — watch closely!")
+                                    delay(minOf(timing.roundBreakMs, 700L))
+                                    runPlayback(playbackSteps)
+                                } catch (_: Exception) {
+                                    atOffer = true
+                                }
+                            }
+                        },
+                        enabled = canContinue,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEA580C)),
+                    ) {
+                        Text(t("eazy_chat.games_simon_continue", "Keep playing"))
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (phase == "input" && deadline > 0L) {
+                        val secLeft = ((deadline - System.currentTimeMillis()).coerceAtLeast(0L) / 1000L).toInt()
+                        Text(
+                            text = "${t("eazy_chat.games_simon_timer", "Time left")}: ${secLeft}s",
+                            style = MaterialTheme.typography.bodySmall,
+                            color =
+                                if (secLeft <= 5) LocalEazyModalPalette.current.accent
+                                else LocalEazyModalPalette.current.muted,
+                            fontWeight = if (secLeft <= 5) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    } else {
+                        Text(text = "", style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedButton(
+                        onClick = { finishRound(true) },
+                        enabled = !submitted && !tapProcessing && !atOffer,
+                    ) {
+                        Text(t("eazy_chat.games_simon_forfeit", "Give up"))
+                    }
                 }
             }
         }
@@ -400,8 +486,8 @@ fun parseSimonSession(j: JSONObject): SimonSessionUi? {
                 deadlineMs = timing.optLong("deadline_ms"),
                 serverNowMs = timing.optLong("server_now_ms"),
                 playMsPerRound = timing.optLong("play_ms_per_round", 10_000L),
-                flashMs = timing.optLong("flash_ms", 620L),
-                gapMs = timing.optLong("gap_ms", 480L),
+                flashMs = timing.optLong("flash_ms", 310L),
+                gapMs = timing.optLong("gap_ms", 240L),
                 introMs = timing.optLong("intro_ms", 1400L),
                 roundBreakMs = timing.optLong("round_break_ms", 1200L),
                 preloadMinMs = timing.optLong("preload_min_ms", 900L),
@@ -411,5 +497,7 @@ fun parseSimonSession(j: JSONObject): SimonSessionUi? {
         playbackSteps = steps,
         phase = j.optString("simon_phase", "playback"),
         gameMeta = parseGameMeta(j.optJSONObject("simon_game")),
+        lootBoostPct = j.optInt("simon_loot_boost_pct", 0),
+        canContinue = j.optBoolean("simon_can_continue", true),
     )
 }
