@@ -160,7 +160,8 @@ object ArtifactsJson {
     fun parseClaimToken(raw: String): String? {
         val s = raw.trim()
         if (s.isBlank()) return null
-        Regex("[?&](?:t|token)=([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)?.let { return it }
+        Regex("[?&](?:t|token|artifact_token)=([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)?.let { return it }
+        Regex("/q/([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)?.let { return it }
         if (s.length >= 16 && !s.contains(' ')) return s
         return null
     }

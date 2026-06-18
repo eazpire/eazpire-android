@@ -823,7 +823,11 @@ class ShopifyProductsApi(
                 val featured = o.optString("featured_image", "").ifBlank { null }
                 if (imgs.isEmpty() && featured != null) imgs.add(featured)
                 // Do not skip products without images (matches web placeholder cards; Admin API may omit image fields).
-                val price = o.optDouble("price", 0.0)
+                val price = when {
+                    o.has("after_price") && !o.isNull("after_price") ->
+                        o.optDouble("after_price").takeIf { !it.isNaN() } ?: o.optDouble("price", 0.0)
+                    else -> o.optDouble("price", 0.0)
+                }
                 val compare = if (o.has("compare_at_price") && !o.isNull("compare_at_price")) {
                     o.optDouble("compare_at_price").takeIf { !it.isNaN() }
                 } else {

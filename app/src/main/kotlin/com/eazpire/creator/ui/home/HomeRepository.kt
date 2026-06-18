@@ -104,6 +104,12 @@ class HomeRepository private constructor(context: Context) {
                 val poolsDeferred = async(Dispatchers.IO) {
                     fetchInitialPoolsBatch(creatorApi, countryCode, force)
                 }
+                val promoDeferred = async(Dispatchers.IO) {
+                    EazPerfTrace.measureSectionSuspend("home.fetch.promotions") {
+                        EazPerfTrace.incrementCounter("home_api_calls")
+                        loadHomePromotionsFromWorker(creatorApi, HOME_INITIAL_PRODUCTS, countryCode)
+                    }
+                }
 
                 val heroJob = launch {
                     val hero = heroDeferred.await()
@@ -118,17 +124,12 @@ class HomeRepository private constructor(context: Context) {
                     onUpdate { it.copy(createScratchCatalog = scratch) }
                 }
                 val poolsJob = launch {
-                    val (promos, sectionMap, bootstrapJson) = poolsDeferred.await()
+                    val (_, sectionMap, bootstrapJson) = poolsDeferred.await()
                     var pools = emptyMap<String, HomeCategoryPools>()
                     sectionMap.forEach { (sectionId, products) ->
                         rememberInCache(sectionId, "all", HOME_INITIAL_PRODUCTS, countryCode, products)
                         pools = pools + (sectionId to mapOf("all" to products))
-                        onUpdate { state ->
-                            state.copy(
-                                promoProducts = if (promos.isNotEmpty()) promos else state.promoProducts,
-                                sectionPools = pools,
-                            )
-                        }
+                        onUpdate { state -> state.copy(sectionPools = pools) }
                         if (products.isNotEmpty()) {
                             EazPerfTrace.mark(
                                 "home_first_content",
@@ -137,19 +138,25 @@ class HomeRepository private constructor(context: Context) {
                             maybeReportInteractive("section_$sectionId")
                         }
                     }
+                    bootstrapJson?.let { json ->
+                        snapshotStore.save("$countryCode|$region", json)
+                    }
+                }
+                val promoJob = launch {
+                    val dedicatedPromos = promoDeferred.await()
+                    val (batchPromos, _, _) = poolsDeferred.await()
+                    val promos = dedicatedPromos.ifEmpty { batchPromos }
                     if (promos.isNotEmpty()) {
                         onUpdate { it.copy(promoProducts = promos) }
                         EazPerfTrace.mark("home_first_content", mapOf("promo_count" to promos.size))
                         maybeReportInteractive("promotions")
-                    }
-                    bootstrapJson?.let { json ->
-                        snapshotStore.save("$countryCode|$region", json)
                     }
                 }
 
                 heroJob.join()
                 scratchJob.join()
                 poolsJob.join()
+                promoJob.join()
                 onUpdate { it.copy(loadCreatorsSection = true, bootstrapInProgress = false) }
                 EazPerfTrace.mark("home_bootstrap_end", mapOf("sections" to HOME_PRODUCT_SECTIONS.size))
             }
@@ -192,6 +199,21 @@ class HomeRepository private constructor(context: Context) {
             EazPerfTrace.mark("home_background_fill_done")
         }
         EazPerfTrace.logHomeBootstrapSummary(if (reloadTrigger > 0) "reload_complete" else "cold_complete")
+    }
+
+    /** Re-fetch promotions when sections are cached but the promo row is still empty (e.g. stale snapshot). */
+    suspend fun refreshPromotionsIfEmpty(
+        creatorApi: CreatorApi,
+        countryCode: String,
+        onUpdate: suspend ((HomeUiState) -> HomeUiState) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val promos = EazPerfTrace.measureSectionSuspend("home.fetch.promotions.retry") {
+            EazPerfTrace.incrementCounter("home_api_calls")
+            loadHomePromotionsFromWorker(creatorApi, HOME_MAX_PRODUCTS, countryCode)
+        }
+        if (promos.isNotEmpty()) {
+            onUpdate { it.copy(promoProducts = promos) }
+        }
     }
 
     suspend fun loadCategoryChip(

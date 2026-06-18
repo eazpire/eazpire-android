@@ -190,7 +190,13 @@ fun EazyArtifactsHubPanel(
                 api.postArtifactsClaimQr(oid, shop, token.trim())
             }
             if (res.optBoolean("ok", false)) {
-                claimMessage = t("eazy_chat.artifacts_claim_success", "Slot NFT claimed!")
+                claimMessage =
+                    if (res.optBoolean("generating", false)) {
+                        t("eazy_chat.artifacts_claim_minting", "Your artifact is being minted. It will appear below shortly.")
+                    } else {
+                        t("eazy_chat.artifacts_claim_success", "Slot NFT claimed!")
+                    }
+                section = ArtifactsHubSection.Nfts
                 refreshKey++
                 true
             } else {

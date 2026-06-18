@@ -893,10 +893,14 @@ class CreatorApi(
     }
 
     suspend fun postArtifactsClaimQr(ownerId: String, shop: String, token: String): JSONObject =
-        postJsonWithShop(
+        postJson(
             "artifacts-claim-qr",
-            shop,
             mapOf("owner_id" to ownerId, "token" to token),
+            mapOf(
+                "shop" to shop,
+                "owner_id" to ownerId,
+                "logged_in_customer_id" to ownerId,
+            ),
         )
 
     suspend fun getArtifactsShopDiscountState(ownerId: String, shop: String): JSONObject =

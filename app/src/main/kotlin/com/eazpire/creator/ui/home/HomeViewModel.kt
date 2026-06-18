@@ -37,11 +37,21 @@ class HomeViewModel(
         activity: ComponentActivity?,
     ) {
         val localeKey = "$countryCode|$region"
-        if (reloadTrigger == 0 &&
+        val canSkipBootstrap = reloadTrigger == 0 &&
             loadedLocaleKey == localeKey &&
             _state.value.sectionPools.isNotEmpty() &&
             !_state.value.bootstrapInProgress
-        ) {
+        if (canSkipBootstrap) {
+            if (_state.value.promoProducts.isEmpty()) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    repository.refreshPromotionsIfEmpty(
+                        creatorApi = creatorApi(),
+                        countryCode = countryCode,
+                    ) { transform ->
+                        _state.update(transform)
+                    }
+                }
+            }
             return
         }
 

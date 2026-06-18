@@ -155,11 +155,12 @@ fun ProductCarouselSection(
                 )
             }
 
-        if (homeState.promoProducts.isNotEmpty()) {
+        if (homeState.bootstrapInProgress || homeState.promoProducts.isNotEmpty()) {
             item(key = "promotions") {
                 val promoTitle = t("eaz.shop.promotions_title", "Promotions")
                 val visiblePromos = filterCarouselProducts(homeState.promoProducts)
-                if (visiblePromos.isNotEmpty()) {
+                val promoLoading = homeState.bootstrapInProgress && homeState.promoProducts.isEmpty()
+                if (promoLoading || visiblePromos.isNotEmpty()) {
                 ProductCarousel(
                     title = promoTitle,
                     products = visiblePromos,
@@ -176,6 +177,8 @@ fun ProductCarouselSection(
                     creatorApi = creatorApi,
                     mockPreviewRevision = mockPreviewRevision,
                     lazyCardImages = true,
+                    productsLoading = promoLoading,
+                    alwaysShowTitleRow = promoLoading,
                     onCartClick = { params ->
                         productModalHandleState?.value = params.handle
                     },

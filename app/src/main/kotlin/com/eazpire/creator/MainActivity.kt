@@ -202,7 +202,26 @@ class MainActivity : ComponentActivity() {
     private fun consumeArtifactsClaimDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
         val raw = data.toString()
-        if (!raw.contains("artifacts/claim") && !raw.contains("artifacts%2Fclaim")) return
+
+        data.getQueryParameter("artifact_token")?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
+            pendingArtifactClaimToken.value = token
+            pendingEazyTab.value = EazySidebarTab.Artifacts
+            return
+        }
+        if (data.getQueryParameter("eazy") == "artifacts") {
+            data.getQueryParameter("t")?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
+                pendingArtifactClaimToken.value = token
+                pendingEazyTab.value = EazySidebarTab.Artifacts
+                return
+            }
+            data.getQueryParameter("token")?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
+                pendingArtifactClaimToken.value = token
+                pendingEazyTab.value = EazySidebarTab.Artifacts
+                return
+            }
+        }
+
+        if (!raw.contains("artifacts/claim") && !raw.contains("artifacts%2Fclaim") && !raw.contains("/q/")) return
         val token = ArtifactsJson.parseClaimToken(raw)
             ?: data.getQueryParameter("t")?.trim()?.takeIf { it.isNotBlank() }
             ?: data.getQueryParameter("token")?.trim()?.takeIf { it.isNotBlank() }
