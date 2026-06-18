@@ -244,13 +244,20 @@ fun CreatorJourneyModal(
                             0 -> JourneyOverviewPanel(
                                 data = journeyData,
                                 translationStore = translationStore,
-                                busy = actionBusy,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .verticalScroll(rememberScrollState())
                                     .padding(16.dp),
+                            )
+                            1 -> JourneyUnlockTreePanel(
+                                data = journeyData,
+                                ownerId = ownerId,
+                                api = api,
+                                translationStore = translationStore,
+                                busy = actionBusy,
+                                modifier = Modifier.fillMaxSize(),
                                 onSaveStarter = { productKey, regionCode ->
-                                    if (ownerId.isNullOrBlank()) return@JourneyOverviewPanel
+                                    if (ownerId.isNullOrBlank()) return@JourneyUnlockTreePanel
                                     scope.launch {
                                         actionBusy = true
                                         try {
@@ -263,14 +270,6 @@ fun CreatorJourneyModal(
                                         }
                                     }
                                 },
-                            )
-                            1 -> JourneyUnlockTreePanel(
-                                data = journeyData,
-                                ownerId = ownerId,
-                                api = api,
-                                translationStore = translationStore,
-                                busy = actionBusy,
-                                modifier = Modifier.fillMaxSize(),
                                 onCommitRequest = { nodeKey, amount ->
                                     if (ownerId.isNullOrBlank()) return@JourneyUnlockTreePanel
                                     scope.launch {
@@ -638,9 +637,7 @@ private fun JourneySidebarLevelWidget(
 private fun JourneyOverviewPanel(
     data: JSONObject?,
     translationStore: TranslationStore,
-    busy: Boolean,
     modifier: Modifier = Modifier,
-    onSaveStarter: (String, String) -> Unit,
 ) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
     Column(modifier = modifier) {
@@ -658,73 +655,87 @@ private fun JourneyOverviewPanel(
             )
         }
 
-        val starter = data.optJSONObject("starter")
-        val selection = starter?.optJSONObject("selection")
-        Text(
-            t("creator.journey.starter_title", "Starter setup"),
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
-        )
-        if (selection != null) {
-            Text(
-                "${selection.optString("product_key")} · ${selection.optString("region_code")}",
-                color = EazColors.Orange,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        } else {
-            val keys = starter?.optJSONArray("product_keys") ?: JSONArray()
-            var productKey by remember(keys) {
-                mutableStateOf(if (keys.length() > 0) keys.optString(0) else "")
-            }
-            val nodes = data.optJSONArray("nodes") ?: JSONArray()
-            val regions = remember(productKey, nodes) {
-                buildList {
-                    for (i in 0 until nodes.length()) {
-                        val n = nodes.getJSONObject(i)
-                        if (n.optString("category") == "market" && n.optString("product_key") == productKey) {
-                            add(n.optString("region_code"))
-                        }
-                    }
-                }.ifEmpty { listOf("EU") }
-            }
-            var regionCode by remember(productKey) { mutableStateOf(regions.firstOrNull() ?: "EU") }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                Text(t("creator.journey.starter_hint", "Choose your first product and region before publishing."), color = Color(0xFF9CA3AF))
-                if (keys.length() == 0) {
-                    Text(t("creator.journey.starter_empty", "No starter products configured"), color = Color(0xFF9CA3AF))
-                } else {
-                    Text(t("creator.journey.starter_product", "Starter product") + ": $productKey", color = Color.White)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (i in 0 until keys.length()) {
-                            val k = keys.optString(i)
-                            OutlinedButton(onClick = { productKey = k; regionCode = regions.firstOrNull() ?: "EU" }) {
-                                Text(k, fontSize = 11.sp)
-                            }
-                        }
-                    }
-                    Text(t("creator.journey.starter_region", "Starter region") + ": $regionCode", color = Color.White)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        regions.forEach { rc ->
-                            OutlinedButton(onClick = { regionCode = rc }) { Text(rc, fontSize = 11.sp) }
-                        }
-                    }
-                    Button(
-                        onClick = { if (productKey.isNotBlank()) onSaveStarter(productKey, regionCode) },
-                        enabled = !busy && productKey.isNotBlank(),
-                    ) {
-                        Text(t("creator.journey.starter_save", "Save starter selection"))
-                    }
-                }
-            }
-        }
-
         if (isCreator && data.has("balance_eaz")) {
             Text(
                 "${t("creator.journey.balance_label", "Available EAZ")}: ${data.opt("balance_eaz")}",
                 color = Color(0xFF9CA3AF),
                 modifier = Modifier.padding(top = 16.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun JourneyStarterSetupPanel(
+    data: JSONObject,
+    busy: Boolean,
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier,
+    onSaveStarter: (String, String) -> Unit,
+) {
+    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
+    val starter = data.optJSONObject("starter") ?: return
+    if (starter.optJSONObject("selection") != null) return
+
+    val keys = starter.optJSONArray("product_keys") ?: JSONArray()
+    var productKey by remember(keys) {
+        mutableStateOf(if (keys.length() > 0) keys.optString(0) else "")
+    }
+    val nodes = data.optJSONArray("nodes") ?: JSONArray()
+    val regions = remember(productKey, nodes) {
+        buildList {
+            for (i in 0 until nodes.length()) {
+                val n = nodes.getJSONObject(i)
+                if (n.optString("category") == "market" && n.optString("product_key") == productKey) {
+                    add(n.optString("region_code"))
+                }
+            }
+        }.ifEmpty { listOf("EU") }
+    }
+    var regionCode by remember(productKey) { mutableStateOf(regions.firstOrNull() ?: "EU") }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .background(Color(0xFFF59E0B).copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            t("creator.journey.starter_title", "Starter setup"),
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+        )
+        Text(
+            t("creator.journey.starter_hint", "Choose your first product and region before publishing."),
+            color = Color(0xFF9CA3AF),
+            fontSize = 12.sp,
+        )
+        if (keys.length() == 0) {
+            Text(t("creator.journey.starter_empty", "No starter products configured"), color = Color(0xFF9CA3AF))
+        } else {
+            Text(t("creator.journey.starter_product", "Starter product") + ": $productKey", color = Color.White)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (i in 0 until keys.length()) {
+                    val k = keys.optString(i)
+                    OutlinedButton(onClick = { productKey = k; regionCode = regions.firstOrNull() ?: "EU" }) {
+                        Text(k, fontSize = 11.sp)
+                    }
+                }
+            }
+            Text(t("creator.journey.starter_region", "Starter region") + ": $regionCode", color = Color.White)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                regions.forEach { rc ->
+                    OutlinedButton(onClick = { regionCode = rc }) { Text(rc, fontSize = 11.sp) }
+                }
+            }
+            Button(
+                onClick = { if (productKey.isNotBlank()) onSaveStarter(productKey, regionCode) },
+                enabled = !busy && productKey.isNotBlank(),
+            ) {
+                Text(t("creator.journey.starter_save", "Save starter selection"))
+            }
         }
     }
 }
@@ -737,6 +748,7 @@ private fun JourneyUnlockTreePanel(
     translationStore: TranslationStore,
     busy: Boolean,
     modifier: Modifier = Modifier,
+    onSaveStarter: (String, String) -> Unit,
     onCommitRequest: (String, Double) -> Unit,
     onUnlock: (String) -> Unit,
 ) {
@@ -830,7 +842,7 @@ private fun JourneyUnlockTreePanel(
                 val selected = treeFilter == cat
                 Column(
                     modifier = Modifier
-                        .width(78.dp)
+                        .width(84.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .border(
                             1.dp,
@@ -842,7 +854,7 @@ private fun JourneyUnlockTreePanel(
                             RoundedCornerShape(14.dp),
                         )
                         .clickable { treeFilter = cat }
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -862,12 +874,13 @@ private fun JourneyUnlockTreePanel(
                     Text(
                         text = categoryLabel(cat),
                         color = if (selected) EazColors.Orange else Color.White.copy(alpha = 0.68f),
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        lineHeight = 12.sp,
+                        lineHeight = 11.sp,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -894,6 +907,7 @@ private fun JourneyUnlockTreePanel(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 12.dp),
+                onSaveStarter = onSaveStarter,
                 onCommitClick = { node ->
                     commitTarget = node
                     commitAmount = if (balance > 0) {
@@ -1046,6 +1060,7 @@ private fun JourneyProductTreePanel(
     busy: Boolean,
     translationStore: TranslationStore,
     modifier: Modifier = Modifier,
+    onSaveStarter: (String, String) -> Unit,
     onCommitClick: (JourneyNodeItem) -> Unit,
     onUnlock: (String) -> Unit,
 ) {
@@ -1066,6 +1081,16 @@ private fun JourneyProductTreePanel(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        if (data != null && data.optJSONObject("starter")?.optJSONObject("selection") == null) {
+            item {
+                JourneyStarterSetupPanel(
+                    data = data,
+                    busy = busy,
+                    translationStore = translationStore,
+                    onSaveStarter = onSaveStarter,
+                )
+            }
+        }
         item {
             JourneyUnlockedStrip(
                 nodes = nodes,

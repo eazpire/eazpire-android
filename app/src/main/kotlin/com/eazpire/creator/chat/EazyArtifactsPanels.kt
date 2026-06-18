@@ -34,11 +34,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -381,7 +383,19 @@ fun EazyArtifactsOutfitPanel(
                             mintBusy = true
                             mintError = null
                             try {
-                                val prep = api.postArtifactsMintPrepare(ownerId, shop)
+                                var referenceUrl: String? = null
+                                mintReferenceUri?.let { uri ->
+                                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                        ?: throw IllegalStateException("upload_failed")
+                                    val type = context.contentResolver.getType(uri) ?: "image/jpeg"
+                                    val upload = api.uploadArtifactsMintReference(ownerId, shop, bytes, type)
+                                    if (!upload.optBoolean("ok", false)) {
+                                        mintError = upload.optString("error", "upload_failed")
+                                        return@launch
+                                    }
+                                    referenceUrl = upload.optString("image_url", "").takeIf { it.isNotBlank() }
+                                }
+                                val prep = api.postArtifactsMintPrepare(ownerId, shop, referenceUrl)
                                 if (!prep.optBoolean("ok", false)) {
                                     mintError = prep.optString("error", "Cannot mint")
                                     return@launch
@@ -395,6 +409,7 @@ fun EazyArtifactsOutfitPanel(
                                 if (res.optBoolean("ok", false)) {
                                     mintDialog = false
                                     mintPhrase = ""
+                                    mintReferenceUri = null
                                     onLoadoutChanged()
                                 } else {
                                     mintError = res.optString("error", "Mint failed")
