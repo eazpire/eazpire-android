@@ -835,7 +835,7 @@ class CreatorApi(
     suspend fun postAdminArtifactsGrantQr(ownerId: String, shop: String): JSONObject =
         postJson(
             "admin-artifacts-grant-qr",
-            mapOf("random_product" to true, "random_slot" to true, "note" to "android-admin-test"),
+            mapOf("random_product" to true, "note" to "android-admin-test"),
             mapOf(
                 "shop" to shop,
                 "owner_id" to ownerId,
