@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -87,13 +88,14 @@ fun CreatorSettingsTabContent(
     val jwt = remember { tokenStore.getJwt() }
     val api = remember(jwt) { CreatorApi(jwt = jwt) }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .navigationBarsPadding()
-            .padding(20.dp)
-    ) {
+    Box(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(20.dp)
+        ) {
         when (currentTab) {
             0 -> CreatorSettingsProfileContent(tokenStore, translationStore, onLogout = onLogout)
             1 -> NotificationSettingsContent(
@@ -127,6 +129,7 @@ fun CreatorSettingsTabContent(
                 pendingPairToken = pendingWearPairToken,
                 onRequestSettingsTab = onRequestSettingsTab,
             )
+        }
         }
     }
 }

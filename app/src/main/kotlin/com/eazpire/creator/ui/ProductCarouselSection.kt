@@ -155,12 +155,10 @@ fun ProductCarouselSection(
                 )
             }
 
-        if (homeState.bootstrapInProgress || homeState.promoProducts.isNotEmpty()) {
             item(key = "promotions") {
                 val promoTitle = t("eaz.shop.promotions_title", "Promotions")
                 val visiblePromos = filterCarouselProducts(homeState.promoProducts)
                 val promoLoading = homeState.bootstrapInProgress && homeState.promoProducts.isEmpty()
-                if (promoLoading || visiblePromos.isNotEmpty()) {
                 ProductCarousel(
                     title = promoTitle,
                     products = visiblePromos,
@@ -178,24 +176,26 @@ fun ProductCarouselSection(
                     mockPreviewRevision = mockPreviewRevision,
                     lazyCardImages = true,
                     productsLoading = promoLoading,
-                    alwaysShowTitleRow = promoLoading,
+                    alwaysShowTitleRow = true,
+                    emptyStateMessage = if (!promoLoading && visiblePromos.isEmpty()) {
+                        t("eaz.home.no_recommended_products", "No recommended products")
+                    } else {
+                        null
+                    },
                     onCartClick = { params ->
                         productModalHandleState?.value = params.handle
                     },
                 )
-                }
             }
-        }
 
-        HOME_PRODUCT_SECTIONS.forEach { def ->
-            val products = resolveHomeSectionProducts(homeState.sectionPools[def.id].orEmpty(), selectedCategory)
-            val visibleProducts = filterCarouselProducts(products)
-            val sectionLoading =
-                !homeState.sectionPools.containsKey(def.id) ||
-                    (selectedCategory != "all" &&
-                        homeState.loadingCategories.contains(selectedCategory) &&
-                        !homeState.sectionPools[def.id].orEmpty().containsKey(selectedCategory))
-            if (sectionLoading || visibleProducts.isNotEmpty()) {
+            HOME_PRODUCT_SECTIONS.forEach { def ->
+                val products = resolveHomeSectionProducts(homeState.sectionPools[def.id].orEmpty(), selectedCategory)
+                val visibleProducts = filterCarouselProducts(products)
+                val sectionLoading =
+                    !homeState.sectionPools.containsKey(def.id) ||
+                        (selectedCategory != "all" &&
+                            homeState.loadingCategories.contains(selectedCategory) &&
+                            !homeState.sectionPools[def.id].orEmpty().containsKey(selectedCategory))
                 item(key = "section_${def.id}") {
                     val displayTitle = t(def.titleKey, def.titleDefault)
                     ProductCarousel(
@@ -212,13 +212,18 @@ fun ProductCarouselSection(
                         mockPreviewRevision = mockPreviewRevision,
                         lazyCardImages = true,
                         productsLoading = sectionLoading,
+                        alwaysShowTitleRow = true,
+                        emptyStateMessage = if (!sectionLoading && visibleProducts.isEmpty()) {
+                            t("eaz.home.no_recommended_products", "No recommended products")
+                        } else {
+                            null
+                        },
                         onCartClick = { params ->
                             productModalHandleState?.value = params.handle
                         },
                     )
                 }
             }
-        }
 
         if (createScratchProducts.isNotEmpty()) {
             item(key = "create_scratch") {

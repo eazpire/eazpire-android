@@ -28,7 +28,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.auth.AuthLoginMethod
-import com.eazpire.creator.ui.modal.EazStandardDialog
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.R
 
@@ -42,7 +42,7 @@ fun LoginOptionsModal(
     onLoginClick: (AuthLoginMethod) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    EazStandardDialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,

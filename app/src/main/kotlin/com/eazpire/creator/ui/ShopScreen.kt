@@ -641,10 +641,21 @@ fun ShopScreen(
         oauthCallbackForAuth.value = null
         accountModalVisible = false
         menuDrawerVisible = false
+        cartDrawerVisible = false
+        favoritesModalVisible = false
+        eazyChatVisible = false
+        voucherModalVisible = false
+        termsModalVisible = false
+        favoriteEditContext = null
+        productModalHandleState.value = null
         authAutoStartOAuth = false
         showAuthScreen = false
-        showLoginOptions = true
-        sessionEpoch++
+        // Do not bump sessionEpoch on logout — re-keying disposes scrollable modals mid-frame
+        // and triggers IllegalStateException (verticalScroll + infinite height).
+        scope.launch {
+            delay(200)
+            showLoginOptions = true
+        }
     }
 
     BackHandler(enabled = !isCreatorMode && !showAuthScreen) {

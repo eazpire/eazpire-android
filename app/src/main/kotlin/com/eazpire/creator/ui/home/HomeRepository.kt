@@ -142,12 +142,14 @@ class HomeRepository private constructor(context: Context) {
                         snapshotStore.save("$countryCode|$region", json)
                     }
                 }
+                var initialPromos = emptyList<ShopifyProductsApi.ProductItem>()
                 val promoJob = launch {
                     val dedicatedPromos = promoDeferred.await()
                     val (batchPromos, _, _) = poolsDeferred.await()
                     val promos = dedicatedPromos.ifEmpty { batchPromos }
+                    initialPromos = promos
+                    onUpdate { it.copy(promoProducts = promos) }
                     if (promos.isNotEmpty()) {
-                        onUpdate { it.copy(promoProducts = promos) }
                         EazPerfTrace.mark("home_first_content", mapOf("promo_count" to promos.size))
                         maybeReportInteractive("promotions")
                     }
@@ -158,6 +160,11 @@ class HomeRepository private constructor(context: Context) {
                 poolsJob.join()
                 promoJob.join()
                 onUpdate { it.copy(loadCreatorsSection = true, bootstrapInProgress = false) }
+                if (initialPromos.isEmpty()) {
+                    launch(Dispatchers.IO) {
+                        refreshPromotionsIfEmpty(creatorApi, countryCode, onUpdate)
+                    }
+                }
                 EazPerfTrace.mark("home_bootstrap_end", mapOf("sections" to HOME_PRODUCT_SECTIONS.size))
             }
         }

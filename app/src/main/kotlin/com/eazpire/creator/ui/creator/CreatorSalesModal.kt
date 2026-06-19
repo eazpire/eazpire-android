@@ -26,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
 import com.eazpire.creator.ui.modal.EazModalSheetLayout
+import com.eazpire.creator.ui.modal.EazModalFooterSurface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -171,14 +172,18 @@ fun CreatorSalesModal(
                         translationStore = translationStore
                     )
                 }
-                if (!isLoggedIn) {
-                    CreatorGuestLockOverlay(
-                        translationStore = translationStore,
-                        onLoginClick = onLoginClick,
-                    )
-                }
                 }
             }
+                }
+            },
+            footer = {
+                if (!isLoggedIn) {
+                    EazModalFooterSurface(color = Color(0xFF070B14)) {
+                        CreatorGuestLockOverlay(
+                            translationStore = translationStore,
+                            onLoginClick = onLoginClick,
+                        )
+                    }
                 }
             },
         )
@@ -197,6 +202,7 @@ private fun SlmOverviewScreen(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
             .padding(20.dp)
     ) {
         Text(
@@ -225,6 +231,7 @@ private fun SlmEarningsScreen(translationStore: TranslationStore) {
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
             .padding(20.dp)
     ) {
         Text(
@@ -254,6 +261,7 @@ private fun SlmNetworkScreen(translationStore: TranslationStore) {
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
             .padding(20.dp)
     ) {
         Text(
@@ -276,6 +284,7 @@ private fun SlmPayoutsScreen(translationStore: TranslationStore) {
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
             .padding(20.dp)
     ) {
         Text(
@@ -302,6 +311,7 @@ private fun SlmRequestScreen(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
             .padding(20.dp)
     ) {
         Text(

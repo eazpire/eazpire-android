@@ -59,6 +59,7 @@ import com.eazpire.creator.ui.header.LocaleModalItem
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.ui.header.LanguageChildren
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -640,7 +641,10 @@ fun CreatorMainScreen(
                     creatorCodesPrefill = null
                     creatorSettingsInitialTab = 0
                     creatorSettingsInitialEazSub = null
-                    onLogout()
+                    scope.launch {
+                        delay(200)
+                        onLogout()
+                    }
                 },
             )
         }

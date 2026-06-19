@@ -30,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -104,6 +105,12 @@ fun EazyVerifyPanel(
                     currentItem = null
                 } else {
                     val next = api.verifyNextItem(oid, entityType)
+                    if (next.optString("error") == "terms_not_accepted") {
+                        termsAccepted = false
+                        currentItem = null
+                        completedItems = emptyList()
+                        return@launch
+                    }
                     currentItem = next.optJSONObject("item")
                     val reasons = next.optJSONArray("reject_reasons")
                     rejectReasons = if (reasons != null) {
@@ -387,6 +394,7 @@ private fun EazyVerifyPrimaryBar(
                 onClick = { onEntity("product") },
             )
         }
+        Divider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
