@@ -38,8 +38,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ShopifyProductsApi
@@ -58,12 +57,9 @@ fun GiftCardProductPickerOverlay(
     grid: @Composable () -> Unit,
     footer: @Composable () -> Unit
 ) {
-    Dialog(
+    EazInsetDialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
+        applySystemBarInsets = false,
     ) {
         Box(
             Modifier
@@ -134,11 +130,8 @@ fun GiftCardProductVariantOverlay(
     fmtMoney: (Double, String) -> String,
     currencyCode: String
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)

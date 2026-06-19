@@ -51,10 +51,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.modal.EazStandardDialog
+import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -156,10 +155,7 @@ fun LoyaliTeeProductPickerModal(
         loadProducts(searchQuery.trim())
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    EazStandardDialog(onDismissRequest = onDismiss) {
         Scaffold(
             topBar = {
                 TopAppBar(

@@ -94,8 +94,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import com.eazpire.creator.ui.modal.EazStandardDialog
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
@@ -424,15 +423,11 @@ internal fun ShopPrintifyDesignStudioScreen(
     }
     BackHandler(enabled = !sourcesDrawerOpen && !optionsSheetOpen, onBack = onDismiss)
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    EazStandardDialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF0F172A))
-                .navigationBarsPadding()
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
@@ -1843,7 +1838,7 @@ private fun StudioDesignPickerDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    EazStandardDialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
@@ -2072,7 +2067,7 @@ private fun StudioConfirmDialog(
     confirmPrimary: Boolean = true,
     confirmEnabled: Boolean = true
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    EazStandardDialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

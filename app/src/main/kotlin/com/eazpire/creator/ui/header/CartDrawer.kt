@@ -22,8 +22,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -53,10 +51,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import com.eazpire.creator.ui.modal.EazModalFooterSurface
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
+import com.eazpire.creator.ui.modal.EazSideDrawer
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.eazpire.creator.R
@@ -77,7 +75,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
-import kotlin.math.roundToInt
 
 @Composable
 fun CartDrawer(
@@ -191,173 +188,124 @@ fun CartDrawer(
         }
     }
 
-    Dialog(
-        onDismissRequest = {
-            DebugLog.click("CartDrawer dismiss (backdrop)")
-            onDismiss()
-        },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val density = LocalDensity.current
-            val drawerWidthPx = with(density) { (maxWidth * 0.85f).toPx() }
-            var isEntered by remember { mutableStateOf(false) }
-            var isExiting by remember { mutableStateOf(false) }
-
-            LaunchedEffect(Unit) { isEntered = true }
-
-            val offsetXPx by animateFloatAsState(
-                targetValue = when {
-                    !isEntered -> drawerWidthPx
-                    isExiting -> drawerWidthPx
-                    else -> 0f
-                },
-                animationSpec = tween(300, easing = FastOutSlowInEasing)
-            )
-
-            LaunchedEffect(isExiting, offsetXPx) {
-                if (isExiting && offsetXPx >= drawerWidthPx - 1f) {
-                    onDismiss()
-                }
-            }
-
-            fun dismissWithAnimation() {
-                isExiting = true
-            }
-
-            Box(modifier = Modifier.fillMaxSize()) {
-                Box(
+    EazSideDrawer(
+        onDismissRequest = onDismiss,
+        widthFraction = 0.85f,
+    ) { dismissAnimated ->
+        EazModalSheetLayout(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+            header = {
+                Row(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f))
-                        .clickable {
-                            DebugLog.click("CartDrawer backdrop")
-                            dismissWithAnimation()
-                        }
-                )
-                Column(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(0.85f)
-                        .align(Alignment.CenterEnd)
-                        .offset { IntOffset(offsetXPx.roundToInt(), 0) }
-                        .background(Color.White)
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = t("cart.title", "Cart"),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = EazColors.TextPrimary
+                    Text(
+                        text = t("cart.title", "Cart"),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = EazColors.TextPrimary,
+                    )
+                    IconButton(onClick = {
+                        DebugLog.click("CartDrawer close")
+                        dismissAnimated()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = t("common.close", "Close"),
+                            tint = EazColors.TextPrimary,
                         )
-                        IconButton(onClick = {
-                            DebugLog.click("CartDrawer close")
-                            dismissWithAnimation()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = t("common.close", "Close"),
-                                tint = EazColors.TextPrimary
-                            )
-                        }
                     }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    ) {
-                        when {
-                            loading -> {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(color = EazColors.Orange)
-                                }
+                }
+            },
+            body = {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when {
+                        loading -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(color = EazColors.Orange)
                             }
-                            error != null -> {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(24.dp),
-                                    contentAlignment = Alignment.Center
+                        }
+                        error != null -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = error ?: "Fehler",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = EazColors.TextSecondary,
+                                )
+                            }
+                        }
+                        cart == null || cart!!.lines.isEmpty() -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
+                                    Icon(
+                                        Icons.Default.ShoppingCart,
+                                        contentDescription = null,
+                                        tint = EazColors.TextSecondary,
+                                        modifier = Modifier.size(48.dp),
+                                    )
                                     Text(
-                                        text = error ?: "Fehler",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = EazColors.TextSecondary
+                                        text = t("cart.empty", "Your cart is empty"),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = EazColors.TextSecondary,
                                     )
                                 }
                             }
-                            cart == null || cart!!.lines.isEmpty() -> {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(24.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.ShoppingCart,
-                                            contentDescription = null,
-                                            tint = EazColors.TextSecondary,
-                                            modifier = Modifier.size(48.dp)
-                                        )
-                                        Text(
-                                            text = t("cart.empty", "Your cart is empty"),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = EazColors.TextSecondary
-                                        )
+                        }
+                        else -> {
+                            val c = cart!!
+                            val nearestDeadline = promoByHandle.values
+                                .filter { it.promoSlotApplies }
+                                .mapNotNull { it.displayEndsAt }
+                                .filter { it > System.currentTimeMillis() }
+                                .minOrNull()
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                if (nearestDeadline != null) {
+                                    item(key = "mascot") {
+                                        CartPromoMascotBanner(deadlineMs = nearestDeadline, t = t)
                                     }
                                 }
-                            }
-                            else -> {
-                                val c = cart!!
-                                val nearestDeadline = promoByHandle.values
-                                    .filter { it.promoSlotApplies }
-                                    .mapNotNull { it.displayEndsAt }
-                                    .filter { it > System.currentTimeMillis() }
-                                    .minOrNull()
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    if (nearestDeadline != null) {
-                                        item(key = "mascot") {
-                                            CartPromoMascotBanner(deadlineMs = nearestDeadline, t = t)
-                                        }
-                                    }
-                                    items(c.lines, key = { it.id }) { line ->
-                                        CartLineItem(
-                                            line = line,
-                                            promo = promoByHandle[line.productHandle]
-                                        )
-                                    }
+                                items(c.lines, key = { it.id }) { line ->
+                                    CartLineItem(
+                                        line = line,
+                                        promo = promoByHandle[line.productHandle],
+                                    )
                                 }
                             }
                         }
                     }
-                    if (cart != null && !cart!!.lines.isEmpty()) {
-                        Box(
+                }
+            },
+            footer = {
+                if (cart != null && !cart!!.lines.isEmpty()) {
+                    EazModalFooterSurface(color = Color.White) {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color.White)
-                                .padding(16.dp)
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 characterDiscountSubtitle?.let { subtitle ->
                                     Row(
                                         modifier = Modifier
@@ -472,12 +420,11 @@ fun CartDrawer(
                                     )
                                 }
                             }
-                            }
                         }
                     }
                 }
-            }
-        }
+            },
+        )
     }
 }
 

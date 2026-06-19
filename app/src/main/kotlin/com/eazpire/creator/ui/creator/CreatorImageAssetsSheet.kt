@@ -34,10 +34,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
+import com.eazpire.creator.ui.modal.EazStandardDialog
+import com.eazpire.creator.ui.modal.eazModalBody
+import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -99,10 +100,7 @@ fun CreatorImageAssetsSheet(
     val isAvatar = imageCategory == "avatar"
     val columns = if (isAvatar) GridCells.Adaptive(minSize = 100.dp) else GridCells.Fixed(1)
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    EazStandardDialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()
@@ -110,7 +108,9 @@ fun CreatorImageAssetsSheet(
             shape = RoundedCornerShape(16.dp),
             color = Color(0xFF111827)
         ) {
-            Column(Modifier.fillMaxSize()) {
+            EazModalSheetLayout(
+                modifier = Modifier.fillMaxSize(),
+                header = {
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -127,10 +127,11 @@ fun CreatorImageAssetsSheet(
                         Icon(Icons.Default.Close, null, tint = Color.White)
                     }
                 }
+                },
+                body = {
                 Box(
                     Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                        .eazModalBody()
                         .padding(12.dp)
                 ) {
                     when {
@@ -173,7 +174,8 @@ fun CreatorImageAssetsSheet(
                         }
                     }
                 }
-            }
+                },
+            )
         }
     }
 }

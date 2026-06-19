@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.List
 import androidx.compose.material3.ExperimentalMaterial3Api
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -666,7 +667,8 @@ fun FavoritesModal(
         }
 
         if (showClearConfirm) {
-            androidx.compose.ui.window.Dialog(onDismissRequest = { showClearConfirm = false }) {
+            EazInsetDialog(onDismissRequest = { showClearConfirm = false }) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
                     modifier = Modifier
                         .background(Color.White, RoundedCornerShape(16.dp))
@@ -688,6 +690,7 @@ fun FavoritesModal(
                             colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                         ) { Text("Clear all") }
                     }
+                }
                 }
             }
         }
@@ -864,7 +867,8 @@ private fun FavoriteProductPickerSheet(
     onDismiss: () -> Unit,
     onSelect: (ShopPickerProduct) -> Unit,
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -930,6 +934,7 @@ private fun FavoriteProductPickerSheet(
                 }
             }
         }
+        }
     }
 }
 
@@ -943,7 +948,8 @@ private fun CreateListModal(
     onDismiss: () -> Unit,
     title: String = "New list"
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             modifier = Modifier
                 .background(Color.White, RoundedCornerShape(16.dp))
@@ -976,6 +982,7 @@ private fun CreateListModal(
                     enabled = name.trim().isNotBlank()
                 ) { Text("Save") }
             }
+        }
         }
     }
 }

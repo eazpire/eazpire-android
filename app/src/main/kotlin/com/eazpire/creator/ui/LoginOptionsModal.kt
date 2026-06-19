@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,8 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.eazpire.creator.auth.AuthLoginMethod
+import com.eazpire.creator.ui.modal.EazStandardDialog
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.R
 
@@ -41,7 +42,11 @@ fun LoginOptionsModal(
     onLoginClick: (AuthLoginMethod) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    EazStandardDialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -126,6 +131,7 @@ fun LoginOptionsModal(
                     }
                 }
             }
+        }
         }
     }
 }

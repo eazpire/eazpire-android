@@ -29,8 +29,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -525,15 +524,15 @@ fun AccountMockupsTab(
         val wearActive = current?.useAsPreview == true
         val wearDisabled = !wearActive && previewCount >= MockupPreviewPool.MAX_PREVIEW_MOCKS_PER_PRODUCT
 
-        Dialog(
+        EazInsetDialog(
             onDismissRequest = {
                 lightboxProduct = null
                 lightboxVariants = emptyList()
                 lightboxIndex = 0
                 lightboxLoading = false
             },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth(0.94f)
@@ -648,6 +647,7 @@ fun AccountMockupsTab(
                             .padding(top = 8.dp)
                     )
                 }
+            }
             }
         }
     }

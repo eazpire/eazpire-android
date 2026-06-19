@@ -55,7 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import coil.compose.SubcomposeAsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
@@ -770,7 +770,11 @@ fun CreationsActivateDesignDialog(
         catalogLoading = false
     }
 
-    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+    EazInsetDialog(onDismissRequest = { if (!busy) onDismiss() }) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
         Surface(
             shape = RoundedCornerShape(14.dp),
             color = Color(0xFF1E293B),
@@ -993,6 +997,7 @@ fun CreationsActivateDesignDialog(
                     }
                 }
             }
+        }
         }
     }
 }

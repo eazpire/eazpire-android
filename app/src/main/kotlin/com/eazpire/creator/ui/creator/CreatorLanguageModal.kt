@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,9 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.modal.EazStandardDialog
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.CoroutineScope
@@ -55,10 +56,11 @@ fun CreatorLanguageModal(
 ) {
     val scope = CoroutineScope(Dispatchers.Main)
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    EazStandardDialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
@@ -128,6 +130,7 @@ fun CreatorLanguageModal(
                     }
                 }
             }
+        }
         }
     }
 }

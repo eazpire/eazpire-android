@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,7 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
@@ -155,10 +156,14 @@ fun CreatorCodeUserPickerDialog(
         return translationStore.t(key, fallback).replace("{{username}}", username)
     }
 
-    Dialog(onDismissRequest = {
+    EazInsetDialog(onDismissRequest = {
         resetPicker()
         onDismiss()
     }) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -385,6 +390,7 @@ fun CreatorCodeUserPickerDialog(
                 }
             }
         }
+        }
     }
 }
 
@@ -480,7 +486,11 @@ fun CreatorCodePoolConfirmDialog(
         )
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -604,6 +614,7 @@ fun CreatorCodePoolConfirmDialog(
                     )
                 }
             }
+        }
         }
     }
 }

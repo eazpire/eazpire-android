@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -126,11 +127,6 @@ fun EazBottomSheet(
     content: @Composable () -> Unit,
 ) {
     val useExpandedLayout = fullscreen || maxHeightFraction != null
-    val rootInsetModifier = if (applyRootInsets && fullscreen) {
-        EazModalInsets.stickyHeader()
-    } else {
-        Modifier
-    }
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier.fillMaxWidth(),
@@ -140,7 +136,18 @@ fun EazBottomSheet(
         dragHandle = dragHandle,
         windowInsets = WindowInsets(0),
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val constraintsInsetModifier = when {
+            applyRootInsets && fullscreen ->
+                Modifier.statusBarsPadding().navigationBarsPadding()
+            applyRootInsets && maxHeightFraction != null ->
+                Modifier.navigationBarsPadding()
+            else -> Modifier
+        }
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(constraintsInsetModifier),
+        ) {
             val heightCap = rememberSheetContentMaxHeight(
                 fullscreen = fullscreen,
                 maxHeightFraction = maxHeightFraction,
@@ -152,15 +159,63 @@ fun EazBottomSheet(
                     when {
                         heightCap != null -> Modifier.height(heightCap)
                         else -> Modifier.wrapContentHeight()
-                    }
+                    },
                 )
             if (useExpandedLayout) {
-                Column(modifier = columnModifier.clipToBounds().then(rootInsetModifier)) {
+                Column(modifier = columnModifier.clipToBounds()) {
                     content()
                 }
             } else {
                 content()
             }
+        }
+    }
+}
+
+/** Alias — full-screen modal with system-bar safe bounds. */
+@Composable
+fun EazStandardDialog(
+    onDismissRequest: () -> Unit,
+    properties: DialogProperties = DialogProperties(
+        usePlatformDefaultWidth = false,
+        decorFitsSystemWindows = false,
+    ),
+    content: @Composable () -> Unit,
+) = EazFullScreenDialog(onDismissRequest, properties, content)
+
+/**
+ * Generic inset-aware dialog shell (centered cards, pickers, nested overlays).
+ * Prefer [EazFullScreenDialog] when content should fill the safe area.
+ */
+@Composable
+fun EazInsetDialog(
+    onDismissRequest: () -> Unit,
+    properties: DialogProperties = DialogProperties(
+        usePlatformDefaultWidth = false,
+        decorFitsSystemWindows = false,
+    ),
+    applySystemBarInsets: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismissRequest, properties = properties) {
+        val dialogView = LocalView.current
+        SideEffect {
+            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            if (window != null) {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+            }
+            ViewCompat.requestApplyInsets(dialogView)
+        }
+        val insetModifier = if (applySystemBarInsets) {
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        } else {
+            Modifier.fillMaxSize()
+        }
+        Box(modifier = insetModifier) {
+            content()
         }
     }
 }

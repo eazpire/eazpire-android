@@ -89,6 +89,7 @@ import com.eazpire.creator.ui.account.wardrobe.WardrobeColors
 import com.eazpire.creator.ui.account.wardrobe.WardrobeFilter
 import com.eazpire.creator.ui.account.wardrobe.WardrobeFigureSvg
 import com.eazpire.creator.ui.account.wardrobe.WardrobeSlot
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import com.eazpire.creator.util.DebugLog
 import androidx.compose.foundation.layout.heightIn
 import kotlinx.coroutines.Dispatchers
@@ -735,7 +736,8 @@ fun AccountWardrobeTab(
 
         // Save outfit dialog
         if (saveOutfitDialogOpen) {
-            androidx.compose.ui.window.Dialog(onDismissRequest = { saveOutfitDialogOpen = false }) {
+            EazInsetDialog(onDismissRequest = { saveOutfitDialogOpen = false }) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Surface(shape = RoundedCornerShape(16.dp)) {
                     Column(modifier = Modifier.padding(24.dp)) {
                         Text("Outfit speichern", style = MaterialTheme.typography.titleMedium)
@@ -764,6 +766,7 @@ fun AccountWardrobeTab(
                             ) { Text("Speichern") }
                         }
                     }
+                }
                 }
             }
         }
@@ -1027,7 +1030,7 @@ private fun WardrobeProductModal(
         list
     }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(16.dp)
@@ -1124,7 +1127,7 @@ private fun WardrobeVariantModal(
 ) {
     var selectedVariant by remember { mutableStateOf<WardrobeVariant?>(null) }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text("Variante wählen", style = MaterialTheme.typography.titleMedium)
@@ -1168,7 +1171,7 @@ private fun WardrobeVariantModal(
 
 @Composable
 private fun WardrobeLightbox(url: String, onDismiss: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1197,7 +1200,7 @@ private fun WardrobeUserImageDialog(
     onReferencePhoto: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text("Userbild auswählen", style = MaterialTheme.typography.titleMedium)
@@ -1238,7 +1241,7 @@ private fun WardrobeReferencePhotoDialog(
         }
         loading = false
     }
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(0.92f)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("My Mockups Referenzfoto", style = MaterialTheme.typography.titleMedium)

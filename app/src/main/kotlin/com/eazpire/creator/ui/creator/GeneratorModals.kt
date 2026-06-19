@@ -87,8 +87,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
+import com.eazpire.creator.ui.modal.EazStandardDialog
+import com.eazpire.creator.ui.modal.eazModalBody
 import coil.compose.SubcomposeAsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ApiLanguageChildren
@@ -2938,7 +2940,7 @@ private fun GenModalBase(
     content: @Composable () -> Unit
 ) {
     val c = genModalChrome(shopLightChrome)
-    Dialog(
+    EazStandardDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
@@ -2957,6 +2959,9 @@ private fun GenModalBase(
                     .background(c.modalBg)
                     .border(1.dp, c.border)
             ) {
+                EazModalSheetLayout(
+                    modifier = Modifier.fillMaxSize(),
+                    header = {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2982,15 +2987,18 @@ private fun GenModalBase(
                         Icon(Icons.Default.Close, contentDescription = null, tint = c.text, modifier = Modifier.size(14.dp))
                     }
                 }
+                    },
+                    body = {
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                        .eazModalBody()
                         .background(c.bodyBg)
                 ) {
                     content()
                 }
-                if (showApply) {
+                    },
+                    footer = if (showApply) {
+                        {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3020,7 +3028,11 @@ private fun GenModalBase(
                             )
                         }
                     }
-                }
+                        }
+                    } else {
+                        null
+                    },
+                )
             }
         }
     }

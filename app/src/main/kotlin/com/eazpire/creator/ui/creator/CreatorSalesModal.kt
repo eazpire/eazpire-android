@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -97,8 +98,10 @@ fun CreatorSalesModal(
         fullscreen = true,
         dragHandle = null
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        EazModalSheetLayout(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+            body = {
+                Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             Column(
                 modifier = Modifier
                     .width(56.dp)
@@ -176,8 +179,9 @@ fun CreatorSalesModal(
                 }
                 }
             }
-        }
-        }
+                }
+            },
+        )
     }
 }
 

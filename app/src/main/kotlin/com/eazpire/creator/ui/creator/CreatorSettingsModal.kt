@@ -35,6 +35,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
+import com.eazpire.creator.ui.modal.EazModalFooterSurface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.animation.core.RepeatMode
@@ -110,8 +112,10 @@ fun CreatorSettingsModal(
         fullscreen = true,
         dragHandle = null
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        EazModalSheetLayout(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+            body = {
+                Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             // Icons-only Sidebar (fix, schmal)
             Column(
                 modifier = Modifier
@@ -194,13 +198,18 @@ fun CreatorSettingsModal(
                 )
             }
         }
-        if (!isLoggedIn) {
-            CreatorGuestLockOverlay(
-                translationStore = translationStore,
-                onLoginClick = onLoginClick,
-            )
-        }
-        }
+            },
+            footer = {
+                if (!isLoggedIn) {
+                    EazModalFooterSurface(color = Color(0xFF070B14)) {
+                        CreatorGuestLockOverlay(
+                            translationStore = translationStore,
+                            onLoginClick = onLoginClick,
+                        )
+                    }
+                }
+            },
+        )
     }
 }
 

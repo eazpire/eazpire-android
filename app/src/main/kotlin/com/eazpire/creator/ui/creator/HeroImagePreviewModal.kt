@@ -49,11 +49,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.modal.EazStandardDialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -402,10 +401,7 @@ fun HeroImagePreviewModal(
         else onDismiss()
     }
 
-    Dialog(
-        onDismissRequest = { tryDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    EazStandardDialog(onDismissRequest = { tryDismiss() }) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()

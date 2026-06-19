@@ -82,7 +82,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
@@ -927,7 +927,8 @@ private fun ShopCatalogTargetsModal(
 ) {
     if (!visible) return
     var keys by remember(selectedKeys, visible) { mutableStateOf(selectedKeys) }
-    Dialog(onDismissRequest = onDismiss) {
+    EazInsetDialog(onDismissRequest = onDismiss) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -994,6 +995,7 @@ private fun ShopCatalogTargetsModal(
                     Text(translationStore.t("creator.common.apply", "Apply"))
                 }
             }
+        }
         }
     }
 }

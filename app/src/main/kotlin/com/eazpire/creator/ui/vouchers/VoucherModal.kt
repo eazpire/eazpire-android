@@ -48,9 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.ui.modal.EazStandardDialog
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
@@ -255,10 +254,7 @@ fun VoucherModal(
         )
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    EazStandardDialog(onDismissRequest = onDismiss) {
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
@@ -409,10 +405,7 @@ fun VoucherModal(
     )
 
     loyaliteeProductHandle?.let { productHandle ->
-        Dialog(
-            onDismissRequest = { loyaliteeProductHandle = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
+        EazStandardDialog(onDismissRequest = { loyaliteeProductHandle = null }) {
             Box(
                 Modifier
                     .fillMaxSize()

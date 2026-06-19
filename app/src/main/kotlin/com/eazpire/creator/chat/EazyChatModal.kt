@@ -110,7 +110,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.window.Dialog
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import kotlinx.coroutines.CoroutineScope
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
@@ -1367,7 +1367,8 @@ fun EazyChatModal(
     }
 
     if (historyOpen) {
-        Dialog(onDismissRequest = { historyOpen = false }) {
+        EazInsetDialog(onDismissRequest = { historyOpen = false }) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1456,6 +1457,7 @@ fun EazyChatModal(
                         }
                     }
                 }
+            }
             }
         }
     }
