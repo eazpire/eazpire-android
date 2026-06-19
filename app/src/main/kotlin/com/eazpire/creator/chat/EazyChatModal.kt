@@ -937,8 +937,8 @@ fun EazyChatModal(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(LocalEazyModalPalette.current.header)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    .background(EazyOrangeHeaderGradient)
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (!sidebarOpen) {
@@ -949,7 +949,7 @@ fun EazyChatModal(
                                         Icon(
                                             Icons.Default.Menu,
                                             contentDescription = t("eazy_chat.ui_open_sidebar", "Open menu"),
-                                            tint = LocalEazyModalPalette.current.text.copy(alpha = 0.8f),
+                                            tint = Color.White.copy(alpha = 0.8f),
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -959,8 +959,8 @@ fun EazyChatModal(
                                 Text(
                                     text = sidebarTabLabel(selectedTab, t),
                                     modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = LocalEazyModalPalette.current.text,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White,
                                     textAlign = TextAlign.Center,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -972,7 +972,7 @@ fun EazyChatModal(
                                     Icon(
                                         Icons.Default.Close,
                                         contentDescription = t("eazy_chat.ui_close_chat", "Close"),
-                                        tint = LocalEazyModalPalette.current.text,
+                                        tint = Color.White.copy(alpha = 0.85f),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -1523,53 +1523,22 @@ private fun EazyNotificationsPanel(
     val read = notifications.filter { it.isRead }
     val shown = if (notifFilter == "unread") unread else read
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TextButton(
-                onClick = { onNotifFeedScopeChange("user") },
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (notifFeedScope == "user") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
-                )
-            ) {
-                Text(t("creator.notifications.feed_user", "User"))
-            }
-            TextButton(
-                onClick = { onNotifFeedScopeChange("system") },
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (notifFeedScope == "system") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
-                )
-            ) {
-                Text(t("creator.notifications.feed_system", "System"))
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TextButton(
-                onClick = { onFilterChange("unread") },
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (notifFilter == "unread") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
-                )
-            ) {
-                Text(t("creator.notifications.unread", "Unread"))
-            }
-            TextButton(
-                onClick = { onFilterChange("read") },
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (notifFilter == "read") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
-                )
-            ) {
-                Text(t("creator.notifications.read", "Read"))
-            }
-        }
+        EazyFeedScopeTabRow(
+            tabs = listOf(
+                "user" to t("creator.notifications.feed_user", "User"),
+                "system" to t("creator.notifications.feed_system", "System"),
+            ),
+            activeKey = notifFeedScope,
+            onSelect = onNotifFeedScopeChange,
+        )
+        EazyUnderlineTabRow(
+            tabs = listOf(
+                "unread" to t("creator.notifications.unread", "Unread"),
+                "read" to t("creator.notifications.read", "Read"),
+            ),
+            activeKey = notifFilter,
+            onSelect = onFilterChange,
+        )
         if (loading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = LocalEazyModalPalette.current.accent)
@@ -1647,9 +1616,9 @@ private fun EazyFunctionsGrid(
     fun isInCarousel(id: String) = fnVisibility[id] != false
 
     val categories = listOf(
-        EazyFeatureCategory.Shared to EazyChatFeatureCatalog.forContext(chatContext).filter { it.category == EazyFeatureCategory.Shared },
-        EazyFeatureCategory.Shop to EazyChatFeatureCatalog.forContext(EazyChatContext.Shop).filter { it.category == EazyFeatureCategory.Shop },
-        EazyFeatureCategory.Creator to EazyChatFeatureCatalog.forContext(EazyChatContext.Creator).filter { it.category == EazyFeatureCategory.Creator }
+        EazyFeatureCategory.Shared to EazyChatFeatureCatalog.forCategory(EazyFeatureCategory.Shared),
+        EazyFeatureCategory.Shop to EazyChatFeatureCatalog.forCategory(EazyFeatureCategory.Shop),
+        EazyFeatureCategory.Creator to EazyChatFeatureCatalog.forCategory(EazyFeatureCategory.Creator),
     ).filter { it.second.isNotEmpty() }
 
     Column(
@@ -1662,6 +1631,16 @@ private fun EazyFunctionsGrid(
         categories.forEach { (cat, defs) ->
             val ids = defs.map { it.id }
             val allVis = ids.all { isInCarousel(it) }
+            val catAccent = eazyCategoryAccent(cat)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(eazyCategoryTint(cat))
+                    .border(1.dp, catAccent.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1670,7 +1649,7 @@ private fun EazyFunctionsGrid(
                 Text(
                     EazyChatFeatureCatalog.categoryLabel(cat, t),
                     style = MaterialTheme.typography.titleSmall,
-                    color = LocalEazyModalPalette.current.accent
+                    color = catAccent
                 )
                 TextButton(onClick = { onCategoryToggle(ids, !allVis) }) {
                     Text(if (allVis) t("eazy_fn.hide_all", "Hide all") else t("eazy_fn.show_all", "Show all"), color = LocalEazyModalPalette.current.muted)
@@ -1722,7 +1701,8 @@ private fun EazyFunctionsGrid(
                     if (rowDefs.size == 1) Spacer(modifier = Modifier.weight(1f))
                 }
             }
-            Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.2f))
+            }
+            Divider(color = LocalEazyModalPalette.current.muted.copy(alpha = 0.15f))
         }
         Text(
             t("eazy_fn.hint", "Eye: show or hide shortcuts in the chat carousel."),
@@ -1887,30 +1867,14 @@ private fun EazyJobsCombinedPanel(
     t: (String, String) -> String
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TextButton(
-                onClick = { onJobsFeedScopeChange("user") },
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (jobsFeedScope == "user") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
-                )
-            ) {
-                Text(t("creator.notifications.feed_user", "User"))
-            }
-            TextButton(
-                onClick = { onJobsFeedScopeChange("system") },
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = if (jobsFeedScope == "system") LocalEazyModalPalette.current.accent else LocalEazyModalPalette.current.muted
-                )
-            ) {
-                Text(t("creator.notifications.feed_system", "System"))
-            }
-        }
+        EazyFeedScopeTabRow(
+            tabs = listOf(
+                "user" to t("creator.notifications.feed_user", "User"),
+                "system" to t("creator.notifications.feed_system", "System"),
+            ),
+            activeKey = jobsFeedScope,
+            onSelect = onJobsFeedScopeChange,
+        )
         when {
             loadingJobs -> Box(
                 modifier = Modifier
@@ -2074,8 +2038,14 @@ private fun EazyChatConvTabsHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(LocalEazyModalPalette.current.header.copy(alpha = 0.5f))
-            .padding(horizontal = 4.dp, vertical = 4.dp),
+            .background(LocalEazyModalPalette.current.header)
+            .border(
+                1.dp,
+                LocalEazyModalPalette.current.border.copy(
+                    alpha = if (LocalEazyModalPalette.current.bg == Color.White) 1f else 0.35f,
+                ),
+            )
+            .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         LazyRow(
@@ -2249,7 +2219,7 @@ private fun EazyChatConvTabsHeader(
                             .weight(1f)
                             .horizontalScroll(carouselScroll)
                     ) {
-                        val defs = EazyChatFeatureCatalog.forContext(chatContext).filter { fnVisibility[it.id] != false }
+                        val defs = EazyChatFeatureCatalog.all().filter { fnVisibility[it.id] != false }
                         defs.forEach { def ->
                             val cd = t(def.labelKey, def.defaultLabel)
                             Box(

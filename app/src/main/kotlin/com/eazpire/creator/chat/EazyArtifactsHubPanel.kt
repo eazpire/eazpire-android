@@ -76,6 +76,7 @@ fun EazyArtifactsHubPanel(
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var showQrScanner by remember { mutableStateOf(false) }
+    var selectedNftSlot by remember { mutableStateOf<ArtifactSlot?>(null) }
     var claimBusy by remember { mutableStateOf(false) }
     var claimMessage by remember { mutableStateOf<String?>(null) }
     var inventory by remember { mutableStateOf<List<ArtifactSlot>>(emptyList()) }
@@ -402,7 +403,11 @@ fun EazyArtifactsHubPanel(
 
         val oid = ownerId ?: return@Column
         when (section) {
-            ArtifactsHubSection.Nfts -> EazyArtifactsNftsPanel(slots = transientFailedSlots + inventory, t = t)
+            ArtifactsHubSection.Nfts -> EazyArtifactsNftsPanel(
+                slots = transientFailedSlots + inventory,
+                t = t,
+                onSlotClick = { selectedNftSlot = it },
+            )
             ArtifactsHubSection.Outfit -> EazyArtifactsOutfitPanel(
                 api = api,
                 ownerId = oid,
@@ -483,6 +488,38 @@ fun EazyArtifactsHubPanel(
                     Text(t("eazy_chat.close", "Close"))
                 }
             },
+        )
+    }
+
+    selectedNftSlot?.let { slot ->
+        EazyArtifactsNftViewerDialog(
+            slot = slot,
+            onDismiss = { selectedNftSlot = null },
+            onEquip = {
+                val slotKey = slot.slotType
+                val oid = ownerId ?: return@EazyArtifactsNftViewerDialog
+                scope.launch {
+                    try {
+                        val lo = withContext(Dispatchers.IO) { api.getArtifactsLoadout(oid, shop) }
+                        if (lo.optBoolean("ok", false)) {
+                            val current = ArtifactsJson.parseLoadoutResponse(lo)
+                            val next = current.slots.toMutableMap().apply { put(slotKey, slot.id) }
+                            withContext(Dispatchers.IO) {
+                                api.postArtifactsLoadoutSet(oid, shop, ArtifactsJson.slotsToJson(next))
+                            }
+                            selectedNftSlot = null
+                            section = ArtifactsHubSection.Outfit
+                            refreshKey++
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+            },
+            onOpenExchange = {
+                selectedNftSlot = null
+                section = ArtifactsHubSection.Exchange
+            },
+            t = t,
         )
     }
 }

@@ -21,7 +21,12 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Checkroom
@@ -36,6 +41,7 @@ import androidx.compose.material.icons.filled.Woman
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Divider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -178,6 +184,7 @@ private fun EazyArtifactsSlotFilterItem(
 fun EazyArtifactsNftsPanel(
     slots: List<ArtifactSlot>,
     t: (String, String) -> String,
+    onSlotClick: (ArtifactSlot) -> Unit = {},
 ) {
     val palette = LocalEazyModalPalette.current
     if (slots.isEmpty()) {
@@ -202,7 +209,8 @@ fun EazyArtifactsNftsPanel(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                    .background(palette.muted.copy(alpha = 0.04f)),
+                    .background(palette.muted.copy(alpha = 0.04f))
+                    .clickable { onSlotClick(slot) },
             ) {
                 if (!slot.artworkUrl.isNullOrBlank()) {
                     AsyncImage(
@@ -244,6 +252,200 @@ fun EazyArtifactsNftsPanel(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun EazyArtifactsNftViewerDialog(
+    slot: ArtifactSlot,
+    onDismiss: () -> Unit,
+    onEquip: () -> Unit,
+    onOpenExchange: () -> Unit,
+    t: (String, String) -> String,
+) {
+    val palette = LocalEazyModalPalette.current
+    val canEquip = slot.status == "owned" &&
+        slot.generationStatus != "generating" &&
+        slot.generationStatus != "failed"
+    val title = slot.productTitle.ifBlank {
+        t("eazy_chat.artifacts_nft_preview_title", "Slot NFT")
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 360.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(palette.header)
+                    .border(1.dp, palette.border.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = palette.text,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = t("eazy_chat.close", "Close"),
+                        tint = palette.muted,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clickable(onClick = onDismiss)
+                            .padding(4.dp),
+                    )
+                }
+                Divider(color = palette.border.copy(alpha = 0.35f))
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Brush.linearGradient(listOf(Color(0xFF2A2A35), Color(0xFF1A1A22)))),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        when {
+                            !slot.artworkUrl.isNullOrBlank() -> {
+                                AsyncImage(
+                                    model = slot.artworkUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                            }
+                            slot.generationStatus == "generating" -> {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(color = palette.accent, modifier = Modifier.size(36.dp))
+                                    Text(
+                                        t("eazy_chat.artifacts_generating", "Generating…"),
+                                        color = palette.muted,
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    )
+                                }
+                            }
+                            slot.generationStatus == "failed" -> {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        t("eazy_chat.artifacts_generation_failed", "Failed"),
+                                        color = Color(0xFFE57373),
+                                    )
+                                    slot.generationError?.let {
+                                        Text(it, style = MaterialTheme.typography.labelSmall, color = palette.muted)
+                                    }
+                                }
+                            }
+                            else -> {
+                                Text(t("eazy_chat.artifacts_nft_none", "—"), color = palette.muted)
+                            }
+                        }
+                    }
+                    EazyNftMetaRow(t("eazy_chat.artifacts_nft_slot", "Slot"), artifactSlotLabel(slot.slotType, t))
+                    EazyNftMetaRow(t("eazy_chat.artifacts_nft_serial", "Serial"), slot.serial.ifBlank { "—" })
+                    EazyNftMetaRow(
+                        t("eazy_chat.artifacts_nft_product", "Product"),
+                        slot.productTitle.ifBlank { t("eazy_chat.artifacts_nft_none", "—") },
+                    )
+                    EazyNftMetaRow(
+                        t("eazy_chat.artifacts_nft_generation", "Generation"),
+                        when (slot.generationStatus) {
+                            "generating" -> t("eazy_chat.artifacts_generating", "Generating…")
+                            "failed" -> t("eazy_chat.artifacts_generation_failed", "Failed")
+                            else -> t("eazy_chat.artifacts_nft_ready", "Ready")
+                        },
+                    )
+                    EazyNftMetaRow(t("eazy_chat.artifacts_nft_status", "Status"), slot.status.ifBlank { "—" })
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(
+                            t("eazy_chat.artifacts_nft_niches", "Themes"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.muted,
+                            modifier = Modifier.widthIn(min = 88.dp).weight(0.34f),
+                        )
+                        if (slot.niches.isEmpty()) {
+                            Text("—", style = MaterialTheme.typography.bodySmall, color = palette.text)
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                slot.niches.forEach { niche ->
+                                    Text(
+                                        niche,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(palette.accent.copy(alpha = 0.16f))
+                                            .border(1.dp, palette.accent.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = palette.text,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Divider(color = palette.border.copy(alpha = 0.35f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (canEquip) {
+                        EazyArtifactsActionButton(
+                            label = t("eazy_chat.artifacts_nft_equip_outfit", "Equip to Outfit"),
+                            filled = true,
+                            onClick = onEquip,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    EazyArtifactsActionButton(
+                        label = t("eazy_chat.artifacts_nft_open_exchange", "Open Exchange"),
+                        filled = false,
+                        onClick = onOpenExchange,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EazyNftMetaRow(label: String, value: String) {
+    val palette = LocalEazyModalPalette.current
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.muted,
+            modifier = Modifier.widthIn(min = 88.dp).weight(0.34f),
+        )
+        Text(value, style = MaterialTheme.typography.bodySmall, color = palette.text, modifier = Modifier.weight(0.66f))
     }
 }
 
@@ -530,11 +732,16 @@ fun EazyArtifactsOutfitPanel(
 }
 
 @Composable
-private fun EazyArtifactsActionButton(label: String, filled: Boolean, onClick: () -> Unit) {
+private fun EazyArtifactsActionButton(
+    label: String,
+    filled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val palette = LocalEazyModalPalette.current
     Text(
         label,
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (filled) palette.accent else palette.muted.copy(alpha = 0.1f))
             .border(1.dp, if (filled) palette.accent else palette.border, RoundedCornerShape(8.dp))
@@ -543,6 +750,7 @@ private fun EazyArtifactsActionButton(label: String, filled: Boolean, onClick: (
         color = if (filled) Color.White else palette.text,
         style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
     )
 }
 
@@ -613,16 +821,22 @@ fun EazyArtifactsExchangePanel(
                             Text(listing.slot.serial, style = MaterialTheme.typography.bodySmall, color = palette.muted)
                         }
                         if (isMyListings) {
-                            EazyArtifactsActionButton(t("eazy_chat.artifacts_cancel_listing", "Cancel"), filled = false) {
+                            EazyArtifactsActionButton(
+                                label = t("eazy_chat.artifacts_cancel_listing", "Cancel"),
+                                filled = false,
+                                onClick = {
                                 scope.launch {
                                     api.deleteArtifactsTradeListing(ownerId, shop, listing.id)
                                     onRefresh()
                                 }
-                            }
+                            },
+                            )
                         } else {
-                            EazyArtifactsActionButton(t("eazy_chat.artifacts_offer_trade", "Offer trade"), filled = true) {
-                                offerListingId = listing.id
-                            }
+                            EazyArtifactsActionButton(
+                                label = t("eazy_chat.artifacts_offer_trade", "Offer trade"),
+                                filled = true,
+                                onClick = { offerListingId = listing.id },
+                            )
                         }
                     }
                 }
@@ -699,12 +913,16 @@ fun EazyArtifactsMarketplacePanel(
                 listings.forEach { listing ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("${listing.character.rarity} · ${listing.priceEaz} EAZ", color = palette.text)
-                        EazyArtifactsActionButton(t("eazy_chat.artifacts_cancel_listing", "Cancel"), filled = false) {
+                        EazyArtifactsActionButton(
+                            label = t("eazy_chat.artifacts_cancel_listing", "Cancel"),
+                            filled = false,
+                            onClick = {
                             scope.launch {
                                 api.postArtifactsMarketCancel(ownerId, shop, listing.listingId)
                                 onRefresh()
                             }
-                        }
+                        },
+                        )
                     }
                 }
             }
@@ -765,9 +983,11 @@ fun EazyArtifactsMarketplacePanel(
                     )
                     Text("${listing.priceEaz} EAZ", color = palette.accent, style = MaterialTheme.typography.bodyMedium)
                 }
-                EazyArtifactsActionButton(t("eazy_chat.artifacts_buy", "Buy"), filled = true) {
-                    confirmListingId = listing.listingId
-                }
+                EazyArtifactsActionButton(
+                    label = t("eazy_chat.artifacts_buy", "Buy"),
+                    filled = true,
+                    onClick = { confirmListingId = listing.listingId },
+                )
             }
         }
     }

@@ -11,6 +11,8 @@ data class ArtifactSlot(
     val productTitle: String,
     val status: String,
     val generationStatus: String = "ready",
+    val niches: List<String> = emptyList(),
+    val generationError: String? = null,
 )
 
 data class ArtifactCharacter(
@@ -58,6 +60,12 @@ object ArtifactsJson {
 
     fun parseSlot(o: JSONObject): ArtifactSlot? {
         if (!o.has("id")) return null
+        val nichesArr = o.optJSONArray("niches")
+        val niches = if (nichesArr != null) {
+            (0 until nichesArr.length()).mapNotNull { i ->
+                nichesArr.optString(i, "").takeIf { it.isNotBlank() }
+            }
+        } else emptyList()
         return ArtifactSlot(
             id = o.optInt("id"),
             slotType = o.optString("slot_type", ""),
@@ -66,6 +74,8 @@ object ArtifactsJson {
             productTitle = o.optString("product_title", ""),
             status = o.optString("status", ""),
             generationStatus = o.optString("generation_status", "ready").ifBlank { "ready" },
+            niches = niches,
+            generationError = o.optString("generation_error", "").takeIf { it.isNotBlank() },
         )
     }
 

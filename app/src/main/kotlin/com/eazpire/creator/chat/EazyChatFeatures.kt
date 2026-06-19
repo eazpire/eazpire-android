@@ -36,6 +36,9 @@ internal object EazyChatFeatureCatalog {
         EazyFeatureDef("mentor-support", "eazy_fn.mentor_support", "Support creators", EazyFeatureCategory.Creator)
     )
 
+    /** Carousel: all shortcuts (web `getAllFeatures()` — not filtered by shop/creator mode). */
+    fun all(): List<EazyFeatureDef> = features
+
     fun forContext(ctx: EazyChatContext): List<EazyFeatureDef> = features.filter { def ->
         when (def.category) {
             EazyFeatureCategory.Shared -> true
@@ -43,6 +46,9 @@ internal object EazyChatFeatureCatalog {
             EazyFeatureCategory.Creator -> ctx == EazyChatContext.Creator
         }
     }
+
+    fun forCategory(cat: EazyFeatureCategory): List<EazyFeatureDef> =
+        features.filter { it.category == cat }
 
     fun byId(id: String): EazyFeatureDef? = features.find { it.id == id }
 
