@@ -312,16 +312,25 @@ fun CreatorCreationsScreen(
         val showBlockingSpinner = !designsLoadedOnce
         if (showBlockingSpinner) designsLoading = true
         try {
-            val designsResult = withContext(Dispatchers.IO) {
-                fetchAllCreationsDesignsMerged(api, ownerId, shop)
+            val list = withContext(Dispatchers.IO) {
+                fetchCreationsDesignsMerged(api, ownerId)
             }
-            designs = designsResult.first
-            productBadgesByDesignId = designsResult.second
+            designs = list
             designsLoadedOnce = true
         } catch (_: Exception) {
             if (!designsLoadedOnce) designs = emptyList()
         } finally {
             designsLoading = false
+        }
+    }
+
+    LaunchedEffect(ownerId, designsLoadedOnce, designsRefreshTrigger) {
+        if (ownerId.isBlank() || !designsLoadedOnce) return@LaunchedEffect
+        val badges = withContext(Dispatchers.IO) {
+            fetchCreationsProductBadgesMap(api, ownerId, shop)
+        }
+        if (badges.isNotEmpty()) {
+            productBadgesByDesignId = badges
         }
     }
 
@@ -1100,15 +1109,13 @@ fun CreatorCreationsScreen(
 }
 
 /** Parallel API fetch + merge (active + inactive); matches web creator-creations-screen.js. */
-private suspend fun fetchAllCreationsDesignsMerged(
+private suspend fun fetchCreationsDesignsMerged(
     api: com.eazpire.creator.api.CreatorApi,
     ownerId: String,
-    shop: String,
-): Pair<List<CreationDesign>, Map<String, CreationProductBadge>> = coroutineScope {
+): List<CreationDesign> = coroutineScope {
     val listRes = async { api.listDesigns(ownerId, 200) }
     val genRes = async { api.listGenerated(ownerId, 100) }
     val jobsRes = async { api.listJobs(ownerId, 50) }
-    val badgesRes = async { api.getCreationsProductBadges(ownerId, "EU", shop) }
 
     val savedJobIds = mutableSetOf<String>()
     val savingJobIds = mutableSetOf<String>()
@@ -1155,8 +1162,16 @@ private suspend fun fetchAllCreationsDesignsMerged(
         parseKvSavingCreationDesign(obj)?.let { merged.add(it) }
     }
 
-    merged.sortedByDescending { it.createdAt } to parseCreationProductBadges(badgesRes.await())
+    merged.sortedByDescending { it.createdAt }
 }
+
+private suspend fun fetchCreationsProductBadgesMap(
+    api: com.eazpire.creator.api.CreatorApi,
+    ownerId: String,
+    shop: String,
+): Map<String, CreationProductBadge> = runCatching {
+    parseCreationProductBadges(api.getCreationsProductBadges(ownerId, "EU", shop))
+}.getOrDefault(emptyMap())
 
 private suspend fun fetchPublishedCreationsProducts(
     api: com.eazpire.creator.api.CreatorApi,
