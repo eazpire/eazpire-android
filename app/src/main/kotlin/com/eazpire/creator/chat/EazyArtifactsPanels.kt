@@ -229,6 +229,12 @@ fun EazyArtifactsNftsPanel(
                                     modifier = Modifier.padding(top = 6.dp),
                                 )
                             }
+                        } else if (slot.generationStatus == "failed") {
+                            Text(
+                                t("eazy_chat.artifacts_generation_failed", "Failed"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFE57373),
+                            )
                         }
                     }
                 }

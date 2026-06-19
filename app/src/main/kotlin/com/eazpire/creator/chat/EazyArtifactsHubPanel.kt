@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,6 +79,8 @@ fun EazyArtifactsHubPanel(
     var claimBusy by remember { mutableStateOf(false) }
     var claimMessage by remember { mutableStateOf<String?>(null) }
     var inventory by remember { mutableStateOf<List<ArtifactSlot>>(emptyList()) }
+    var transientFailedSlots by remember { mutableStateOf<List<ArtifactSlot>>(emptyList()) }
+    val trackingGenerating = remember { mutableStateMapOf<Int, ArtifactSlot>() }
     var loadout by remember {
         mutableStateOf(
             ArtifactLoadoutState(emptyMap(), emptyMap(), null, false, null),
@@ -91,6 +94,32 @@ fun EazyArtifactsHubPanel(
     val shop = AuthConfig.SHOP_DOMAIN
     val scope = rememberCoroutineScope()
 
+    fun showTransientGenerationFailed(slot: ArtifactSlot) {
+        trackingGenerating.remove(slot.id)
+        val failed = slot.copy(generationStatus = "failed")
+        transientFailedSlots = listOf(failed) + transientFailedSlots.filter { it.id != failed.id }
+        claimMessage = t(
+            "eazy_chat.artifacts_generation_retry",
+            "Generation failed. Scan the product QR again to retry.",
+        )
+        scope.launch {
+            delay(7000)
+            transientFailedSlots = transientFailedSlots.filter { it.id != failed.id }
+        }
+    }
+
+    fun applyNftInventory(parsed: List<ArtifactSlot>) {
+        val cleaned = parsed.filter { it.generationStatus != "failed" }
+        val incomingIds = cleaned.map { it.id }.toSet()
+        trackingGenerating.keys.filter { it !in incomingIds }.forEach { id ->
+            trackingGenerating[id]?.let { showTransientGenerationFailed(it) }
+        }
+        parsed.filter { it.generationStatus == "failed" }.forEach { showTransientGenerationFailed(it) }
+        trackingGenerating.keys.retainAll(incomingIds.toSet())
+        cleaned.filter { it.generationStatus == "generating" }.forEach { trackingGenerating[it.id] = it }
+        inventory = cleaned
+    }
+
     suspend fun reload() {
         if (!isLoggedIn || ownerId.isNullOrBlank()) return
         loading = true
@@ -100,13 +129,21 @@ fun EazyArtifactsHubPanel(
                     val res = withContext(Dispatchers.IO) {
                         api.getArtifactsInventoryList(ownerId, shop, slotFilter.takeIf { it != "all" })
                     }
-                    inventory = if (res.optBoolean("ok", false)) ArtifactsJson.parseSlots(res.optJSONArray("slots")) else emptyList()
+                    if (res.optBoolean("ok", false)) {
+                        applyNftInventory(ArtifactsJson.parseSlots(res.optJSONArray("slots")))
+                    } else {
+                        inventory = emptyList()
+                    }
                 }
                 ArtifactsHubSection.Outfit -> {
                     val inv = withContext(Dispatchers.IO) {
                         api.getArtifactsInventoryList(ownerId, shop)
                     }
-                    inventory = if (inv.optBoolean("ok", false)) ArtifactsJson.parseSlots(inv.optJSONArray("slots")) else emptyList()
+                    inventory = if (inv.optBoolean("ok", false)) {
+                        ArtifactsJson.parseSlots(inv.optJSONArray("slots")).filter { it.generationStatus != "failed" }
+                    } else {
+                        emptyList()
+                    }
                     val lo = withContext(Dispatchers.IO) { api.getArtifactsLoadout(ownerId, shop) }
                     if (lo.optBoolean("ok", false)) loadout = ArtifactsJson.parseLoadoutResponse(lo)
                 }
@@ -116,7 +153,11 @@ fun EazyArtifactsHubPanel(
                     val inv = withContext(Dispatchers.IO) {
                         api.getArtifactsInventoryList(ownerId, shop)
                     }
-                    inventory = if (inv.optBoolean("ok", false)) ArtifactsJson.parseSlots(inv.optJSONArray("slots")) else emptyList()
+                    inventory = if (inv.optBoolean("ok", false)) {
+                        ArtifactsJson.parseSlots(inv.optJSONArray("slots")).filter { it.generationStatus != "failed" }
+                    } else {
+                        emptyList()
+                    }
                     val tr = withContext(Dispatchers.IO) {
                         api.getArtifactsTradeListings(
                             shop,
@@ -196,6 +237,15 @@ fun EazyArtifactsHubPanel(
                     } else {
                         t("eazy_chat.artifacts_claim_success", "Slot NFT claimed!")
                     }
+                val slot = res.optJSONObject("slot")?.let { ArtifactsJson.parseSlot(it) }
+                if (slot != null) {
+                    if (slot.generationStatus == "generating") {
+                        trackingGenerating[slot.id] = slot
+                        inventory = listOf(slot) + inventory.filter { it.id != slot.id }
+                    } else if (slot.generationStatus == "failed") {
+                        showTransientGenerationFailed(slot)
+                    }
+                }
                 section = ArtifactsHubSection.Nfts
                 refreshKey++
                 true
@@ -352,7 +402,7 @@ fun EazyArtifactsHubPanel(
 
         val oid = ownerId ?: return@Column
         when (section) {
-            ArtifactsHubSection.Nfts -> EazyArtifactsNftsPanel(slots = inventory, t = t)
+            ArtifactsHubSection.Nfts -> EazyArtifactsNftsPanel(slots = transientFailedSlots + inventory, t = t)
             ArtifactsHubSection.Outfit -> EazyArtifactsOutfitPanel(
                 api = api,
                 ownerId = oid,
