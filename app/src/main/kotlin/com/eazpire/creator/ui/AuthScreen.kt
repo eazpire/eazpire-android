@@ -1,10 +1,7 @@
 package com.eazpire.creator.ui
 
 import android.net.Uri
-import android.os.Bundle
-import android.provider.Browser
 import android.webkit.CookieManager
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -31,7 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
-import com.eazpire.creator.auth.AuthConfig
+import com.eazpire.creator.auth.AuthBrowserLauncher
 import com.eazpire.creator.auth.AuthErrorMessages
 import com.eazpire.creator.auth.AuthException
 import com.eazpire.creator.auth.AuthLoginMethod
@@ -85,14 +82,7 @@ fun AuthScreen(
 
     fun launchOAuthCustomTab(url: String) {
         AuthDebugLog.d("[CUSTOM TAB] launch url=$url attempt=$loginAttemptId")
-        val tabsIntent = CustomTabsIntent.Builder()
-            .setShowTitle(true)
-            .build()
-        tabsIntent.intent.putExtra(
-            Browser.EXTRA_HEADERS,
-            Bundle().apply { putString("Accept", AuthConfig.SHOPIFY_HTML_ACCEPT) }
-        )
-        tabsIntent.launchUrl(context, Uri.parse(url))
+        AuthBrowserLauncher.launchOAuth(context, url)
         awaitingOAuthCallback = true
     }
 

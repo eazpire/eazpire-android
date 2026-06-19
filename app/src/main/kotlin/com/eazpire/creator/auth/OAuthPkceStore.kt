@@ -33,4 +33,10 @@ object OAuthPkceStore {
     fun clear(context: Context) {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
+
+    fun hasPending(context: Context): Boolean {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return !prefs.getString(KEY_STATE, null).isNullOrBlank() &&
+            !prefs.getString(KEY_VERIFIER, null).isNullOrBlank()
+    }
 }

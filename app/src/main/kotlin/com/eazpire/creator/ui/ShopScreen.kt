@@ -47,6 +47,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.MainActivity
 import com.eazpire.creator.auth.AuthLoginMethod
+import com.eazpire.creator.auth.OAuthPkceStore
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionCoordinator
 import com.eazpire.creator.auth.ShopSessionGuard
@@ -172,6 +173,12 @@ fun ShopScreen(
             if (uri.scheme?.startsWith("shop.") == true && uri.host == "callback" &&
                 uri.getQueryParameter("code") != null
             ) {
+                // Ignore stale callbacks after logout unless a new login attempt is in progress.
+                if (!showAuthScreen && !OAuthPkceStore.hasPending(context)) {
+                    AuthDebugLog.d("[CALLBACK] Ignoring OAuth callback — no active login attempt")
+                    pendingDeepLink.value = null
+                    return@LaunchedEffect
+                }
                 oauthCallbackForAuth.value = uri.toString()
                 pendingDeepLink.value = null
                 authAutoStartOAuth = false
@@ -631,6 +638,7 @@ fun ShopScreen(
 
     fun handleUserLogout() {
         ShopSessionGuard.performFullLogout(context, tokenStore)
+        oauthCallbackForAuth.value = null
         accountModalVisible = false
         menuDrawerVisible = false
         authAutoStartOAuth = false
@@ -1468,7 +1476,7 @@ fun ShopScreen(
                 showLoginOptions = false
                 productModalHandleState.value = null
                 authLoginMethod = method
-                authAutoStartOAuth = false
+                authAutoStartOAuth = true
                 showAuthScreen = true
             }
         )

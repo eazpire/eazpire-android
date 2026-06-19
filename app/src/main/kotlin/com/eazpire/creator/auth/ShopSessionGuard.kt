@@ -34,6 +34,7 @@ object ShopSessionGuard {
 
     fun performFullLogout(context: Context, tokenStore: SecureTokenStore) {
         PushTokenRegistrar.unregisterBeforeLogout(context, tokenStore)
+        OAuthPkceStore.clear(context)
         tokenStore.clear()
         SecureTokenStore.clearAuthCookies()
         WearAuthSync.clear(context)
