@@ -51,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.billing.EazCostCatalog
 import com.eazpire.creator.billing.EazEarnedConvertBlock
+import com.eazpire.creator.billing.EazcToEazgConvertBlock
 import com.eazpire.creator.billing.EazPackageCatalog
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -387,47 +388,69 @@ private fun EazBalanceSubPanel(
         return
     }
 
-    val total = data.optDouble("balance_total", data.optDouble("balance_eaz", 0.0))
+    val eazg = data.optDouble("balance_eazg", data.optDouble("balance_eaz", 0.0))
     val free = data.optDouble("balance_free", 0.0)
     val purchased = data.optDouble("balance_purchased", 0.0)
     val freeCap = data.optDouble("free_cap", 50.0)
     val nextAmt = data.optDouble("next_free_refill_amount", 0.0)
     val nextAt = data.optLong("next_free_refill_at", 0L).takeIf { it > 0L }
+    val eazcTotal = data.optDouble("balance_eazc_total", data.optDouble("balance_earned_total", 0.0))
+    val eazcAvail = data.optDouble("balance_eazc_available", data.optDouble("balance_earned_available", 0.0))
+    val eazcLocked = data.optDouble("balance_eazc_locked", data.optDouble("balance_earned_locked", 0.0))
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        EazStatRow(
-            translationStore.t("creator.settings.eaz_total_label", "Total balance"),
-            "${EazCostCatalog.fmtEaz(total)} EAZ"
+        Text(
+            translationStore.t("creator.settings.eazg_title", "EAZG — Game balance"),
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White
         )
         EazStatRow(
-            translationStore.t("creator.settings.eaz_free_label", "Free EAZ"),
+            translationStore.t("creator.settings.eazg_title", "EAZG"),
+            "${EazCostCatalog.fmtEaz(eazg)} EAZG"
+        )
+        EazStatRow(
+            translationStore.t("creator.settings.eazg_free_label", "Free daily"),
             "${EazCostCatalog.fmtEaz(free)} / ${EazCostCatalog.fmtEaz(freeCap)}"
         )
         EazStatRow(
-            translationStore.t("creator.settings.eaz_purchased_label", "Purchased EAZ"),
-            "${EazCostCatalog.fmtEaz(purchased)} EAZ"
-        )
-        val earnedTotal = data.optDouble("balance_earned_total", 0.0)
-        val earnedAvail = data.optDouble("balance_earned_available", 0.0)
-        val earnedLocked = data.optDouble("balance_earned_locked", 0.0)
-        EazStatRow(
-            translationStore.t("creator.settings.eaz_earned_total_label", "Earned EAZ (total)"),
-            "${EazCostCatalog.fmtEaz(earnedTotal)} EAZ"
-        )
-        EazStatRow(
-            translationStore.t("creator.settings.eaz_earned_available_label", "Earned EAZ (available)"),
-            "${EazCostCatalog.fmtEaz(earnedAvail)} EAZ"
-        )
-        EazStatRow(
-            translationStore.t("creator.settings.eaz_earned_locked_label", "Earned EAZ (locked)"),
-            "${EazCostCatalog.fmtEaz(earnedLocked)} EAZ"
+            translationStore.t("creator.settings.eazg_purchased_label", "Purchased"),
+            "${EazCostCatalog.fmtEaz(purchased)} EAZG"
         )
 
-        if (earnedAvail > 0) {
+        Text(
+            translationStore.t("creator.settings.eazc_title", "EAZC — Earnings"),
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        EazStatRow(
+            translationStore.t("creator.settings.eazc_total_label", "Total"),
+            "${EazCostCatalog.fmtEaz(eazcTotal)} EAZC"
+        )
+        EazStatRow(
+            translationStore.t("creator.settings.eazc_available_label", "Available"),
+            "${EazCostCatalog.fmtEaz(eazcAvail)} EAZC"
+        )
+        EazStatRow(
+            translationStore.t("creator.settings.eazc_locked_label", "Pending"),
+            "${EazCostCatalog.fmtEaz(eazcLocked)} EAZC"
+        )
+
+        if (eazcAvail >= 1.0) {
+            EazcToEazgConvertBlock(
+                ownerId = ownerId,
+                api = api,
+                eazcAvailable = eazcAvail,
+                translate = { k, d -> translationStore.t(k, d) },
+                onConverted = { /* parent reloads via refresh bus */ },
+            )
+        }
+
+        if (eazcAvail > 0) {
             EazEarnedConvertBlock(
                 ownerId = ownerId,
                 api = api,
-                earnedAvailable = earnedAvail,
+                earnedAvailable = eazcAvail,
                 eazCentsPerEaz = data.optDouble("eaz_cents_per_eaz", 0.0),
                 minConvertEaz = data.optDouble("min_convert_eaz", 50.0),
                 translate = { k, d -> translationStore.t(k, d) },
@@ -467,7 +490,7 @@ private fun EazBalanceSubPanel(
             colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
         ) {
             Text(
-                translationStore.t("creator.settings.eaz_buy_cta", "Buy EAZ"),
+                translationStore.t("creator.settings.eaz_buy_cta", "Buy EAZG packs"),
                 color = Color.White
             )
         }

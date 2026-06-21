@@ -91,6 +91,18 @@ class CreatorApi(
             JSONObject().put("owner_id", ownerId).put("amount_eaz", amountEaz)
         )
 
+    suspend fun convertEazcToEazg(
+        ownerId: String,
+        amountEaz: Double,
+        contextShortfall: Boolean = false,
+    ): JSONObject = postJsonBodyOp(
+        "convert-eazc-to-eazg",
+        JSONObject()
+            .put("owner_id", ownerId)
+            .put("amount_eaz", amountEaz)
+            .put("context_shortfall", contextShortfall)
+    )
+
     suspend fun getEazEconomyTree(ownerId: String): JSONObject =
         call("get-eaz-economy-tree", mapOf("owner_id" to ownerId))
 

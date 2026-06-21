@@ -32,6 +32,121 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
+fun EazcToEazgConvertBlock(
+    ownerId: String,
+    api: CreatorApi,
+    eazcAvailable: Double,
+    translate: (String, String) -> String,
+    onConverted: () -> Unit = {},
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var amountText by remember { mutableStateOf("") }
+    var converting by remember { mutableStateOf(false) }
+    val amount = amountText.toDoubleOrNull() ?: 0.0
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            translate(
+                "creator.settings.eazc_convert_to_eazg_title",
+                "Use for features"
+            ),
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White
+        )
+        Text(
+            translate(
+                "creator.settings.eazc_convert_to_eazg_hint",
+                "Convert available EAZC to EAZG at 1:1 to spend inside the platform."
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.72f)
+        )
+        OutlinedTextField(
+            value = amountText,
+            onValueChange = { amountText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+            label = {
+                Text(translate("creator.settings.eazc_convert_amount_label", "Amount (EAZC)"))
+            },
+            singleLine = true,
+            enabled = !converting,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = EazColors.Orange,
+                unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+            )
+        )
+        if (amount > 0) {
+            Text(
+                translate("creator.settings.eazc_convert_to_eazg_preview", "You receive {{amount}} EAZG (1:1)")
+                    .replace("{{amount}}", EazCostCatalog.fmtEaz(amount)),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.65f)
+            )
+        }
+        Button(
+            onClick = {
+                if (ownerId.isBlank() || amount < 1.0 || amount > eazcAvailable) {
+                    Toast.makeText(
+                        context,
+                        translate("creator.settings.eaz_convert_fail", "Conversion failed."),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@Button
+                }
+                scope.launch {
+                    converting = true
+                    try {
+                        val resp = withContext(Dispatchers.IO) {
+                            api.convertEazcToEazg(ownerId, amount)
+                        }
+                        if (resp.optBoolean("ok", false)) {
+                            amountText = ""
+                            EazBalanceRefreshBus.requestRefresh()
+                            onConverted()
+                            Toast.makeText(
+                                context,
+                                translate("creator.settings.eaz_convert_success", "Conversion complete."),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                translate("creator.settings.eaz_convert_fail", "Conversion failed."),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    } catch (_: Exception) {
+                        Toast.makeText(
+                            context,
+                            translate("creator.settings.eaz_convert_fail", "Conversion failed."),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } finally {
+                        converting = false
+                    }
+                }
+            },
+            enabled = !converting,
+            colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
+        ) {
+            Text(
+                translate("creator.settings.eazc_convert_to_eazg_btn", "Convert to EAZG"),
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
 fun EazEarnedConvertBlock(
     ownerId: String,
     api: CreatorApi,
@@ -113,7 +228,7 @@ fun EazEarnedConvertBlock(
         Text(
             translate(
                 "creator.settings.eaz_convert_hint",
-                "Convert available earned EAZ to fiat balance or a shop gift card."
+                "Convert available EAZC to fiat balance or a shop gift card."
             ),
             style = MaterialTheme.typography.bodySmall,
             color = Color.White.copy(alpha = 0.72f)
@@ -122,7 +237,7 @@ fun EazEarnedConvertBlock(
             value = amountText,
             onValueChange = { amountText = it.filter { ch -> ch.isDigit() || ch == '.' } },
             label = {
-                Text(translate("creator.settings.eaz_convert_amount_label", "Amount (EAZ)"))
+                Text(translate("creator.settings.eaz_convert_amount_label", "Amount (EAZC)"))
             },
             singleLine = true,
             enabled = !converting,

@@ -340,7 +340,7 @@ fun CreatorDetailModal(
                 )
             }
             if (code == 402) {
-                statusMsg = tr("creator.detail_modal.insufficient_eaz", "Not enough EAZ (5 required).")
+                statusMsg = tr("creator.detail_modal.insufficient_eaz", "Not enough EAZG.")
                 statusErr = true
                 generatingAvatar = false
                 generatingCover = false
@@ -351,7 +351,7 @@ fun CreatorDetailModal(
                 pollGeneration(category, data.optString("prediction_id"))
             } else {
                 if (data.optString("code", "") == "INSUFFICIENT_EAZ") {
-                    statusMsg = tr("creator.detail_modal.insufficient_eaz", "Not enough EAZ (5 required).")
+                    statusMsg = tr("creator.detail_modal.insufficient_eaz", "Not enough EAZG.")
                 } else {
                     statusMsg = data.optString("error", tr("creator.detail_modal.generate_failed", "Generation failed"))
                 }

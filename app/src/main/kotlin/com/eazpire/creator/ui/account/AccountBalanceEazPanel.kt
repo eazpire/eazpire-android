@@ -130,25 +130,25 @@ private fun AccountEazBalanceSubPanel(
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         BalanceKpiCard(
-            t("content.account_balance_eaz_total", "Total earned EAZ"),
-            "${EazCostCatalog.fmtEaz(total)} EAZ",
+            t("content.account_balance_eaz_total", "Total EAZC"),
+            "${EazCostCatalog.fmtEaz(total)} EAZC",
             Modifier.weight(1f)
         )
         BalanceKpiCard(
-            t("content.account_balance_eaz_available", "Available EAZ"),
-            "${EazCostCatalog.fmtEaz(avail)} EAZ",
+            t("content.account_balance_eaz_available", "Available EAZC"),
+            "${EazCostCatalog.fmtEaz(avail)} EAZC",
             Modifier.weight(1f)
         )
         BalanceKpiCard(
-            t("content.account_balance_eaz_locked", "Locked EAZ"),
-            "${EazCostCatalog.fmtEaz(locked)} EAZ",
+            t("content.account_balance_eaz_locked", "Pending EAZC"),
+            "${EazCostCatalog.fmtEaz(locked)} EAZC",
             Modifier.weight(1f)
         )
     }
 
     if (rate > 0) {
         Text(
-            "1 EAZ ≈ ${String.format(Locale.US, "%.2f", rate / 100.0)} (pack rate)",
+            "1 EAZC ≈ ${String.format(Locale.US, "%.2f", rate / 100.0)} (pack rate)",
             style = MaterialTheme.typography.labelSmall,
             color = EazColors.TextSecondary
         )
@@ -179,13 +179,22 @@ private fun AccountEazBalanceSubPanel(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("$amt EAZ", style = MaterialTheme.typography.bodySmall, color = EazColors.TextPrimary)
+                        Text("$amt EAZC", style = MaterialTheme.typography.bodySmall, color = EazColors.TextPrimary)
                         Text(lbl, style = MaterialTheme.typography.labelSmall, color = EazColors.TextSecondary)
                     }
                 }
             }
         }
     }
+
+    Text(
+        t(
+            "content.account_balance_eaz_convert_to_eazg_link",
+            "Want to use earnings for features? Convert EAZC to EAZG in Creator Settings → EAZ."
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = EazColors.TextSecondary
+    )
 
     Text(
         t(
