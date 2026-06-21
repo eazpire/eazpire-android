@@ -942,57 +942,8 @@ class CreatorApi(
         postJsonWithShop(
             "prizes-rotate",
             shop,
-            mapOf("owner_id" to ownerId, "instance_type" to "card", "instance_id" to instanceId),
+            mapOf("owner_id" to ownerId, "instance_type" to "prize", "instance_id" to instanceId),
         )
-
-    suspend fun getPrizesInventoryState(ownerId: String, shop: String = AuthConfig.SHOP_DOMAIN): JSONObject =
-        postJsonWithShop("prizes-inventory-state", shop, mapOf("owner_id" to ownerId))
-
-    suspend fun getPrizesTradeOfferDetail(
-        ownerId: String,
-        offerId: Int,
-        shop: String = AuthConfig.SHOP_DOMAIN,
-    ): JSONObject = call(
-        "prizes-trade-offer-detail",
-        mapOf("owner_id" to ownerId, "offer_id" to offerId.toString(), "shop" to shop),
-    )
-
-    suspend fun postPrizesTradeOfferCreate(
-        ownerId: String,
-        listingId: Int,
-        instanceId: Int,
-        shop: String = AuthConfig.SHOP_DOMAIN,
-    ): JSONObject = postJsonWithShop(
-        "prizes-trade-offer",
-        shop,
-        mapOf(
-            "owner_id" to ownerId,
-            "action" to "create",
-            "listing_id" to listingId,
-            "instance_id" to instanceId,
-        ),
-    )
-
-    suspend fun postPrizesCardDiscard(ownerId: String, instanceId: Int, shop: String = AuthConfig.SHOP_DOMAIN): JSONObject =
-        postJsonWithShop("prizes-card-discard", shop, mapOf("owner_id" to ownerId, "instance_id" to instanceId))
-
-    suspend fun postPrizesCardGift(
-        ownerId: String,
-        action: String,
-        shop: String = AuthConfig.SHOP_DOMAIN,
-        instanceId: Int? = null,
-        targetOwnerId: String? = null,
-        giftId: Int? = null,
-    ): JSONObject {
-        val body = mutableMapOf<String, Any?>(
-            "owner_id" to ownerId,
-            "action" to action,
-        )
-        instanceId?.let { body["instance_id"] = it }
-        targetOwnerId?.trim()?.takeIf { it.isNotBlank() }?.let { body["target_owner_id"] = it }
-        giftId?.let { body["gift_id"] = it }
-        return postJsonWithShop("prizes-card-gift", shop, body)
-    }
 
     suspend fun postPrizesTradeListing(ownerId: String, instanceType: String, instanceId: Int, shop: String): JSONObject {
         val body = JSONObject().apply {

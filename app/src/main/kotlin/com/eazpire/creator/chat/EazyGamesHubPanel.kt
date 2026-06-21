@@ -58,7 +58,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal enum class GamesHubSection { Play, Collection, Exchange, Invite }
+private enum class GamesHubSection { Play, Collection, Exchange, Invite }
 
 private enum class ExchangeTab { Market, MyListings, Trades }
 
@@ -81,26 +81,10 @@ fun EazyGamesHubPanel(
     onLoginClick: () -> Unit,
     onDismiss: () -> Unit,
     t: (String, String) -> String,
-    initialSection: String? = null,
-    pendingTradeOfferId: Int? = null,
-    onPendingGamesNavConsumed: () -> Unit = {},
 ) {
     var section by remember { mutableStateOf(GamesHubSection.Play) }
     val palette = LocalEazyModalPalette.current
     val shop = AuthConfig.SHOP_DOMAIN
-
-    LaunchedEffect(initialSection) {
-        initialSection?.let { sec ->
-            section = when (sec) {
-                "collection" -> GamesHubSection.Collection
-                "exchange" -> GamesHubSection.Exchange
-                "invite" -> GamesHubSection.Invite
-                "play" -> GamesHubSection.Play
-                else -> GamesHubSection.Play
-            }
-            onPendingGamesNavConsumed()
-        }
-    }
 
     Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
         // Zentrierte Subnav wie Web (.eazy-games-carousel)
@@ -171,8 +155,6 @@ fun EazyGamesHubPanel(
                     shop = shop,
                     t = t,
                     onNavigateExchange = { section = GamesHubSection.Exchange },
-                    pendingTradeOfferId = pendingTradeOfferId,
-                    onPendingTradeOfferConsumed = onPendingGamesNavConsumed,
                 )
             GamesHubSection.Exchange ->
                 EazyGamesExchangePanel(
@@ -194,7 +176,7 @@ fun EazyGamesHubPanel(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun EazyGamesFilterChips(
+private fun EazyGamesFilterChips(
     categories: List<Pair<String, String>>,
     types: List<Pair<String, String>>,
     selectedCategory: String,
@@ -239,8 +221,228 @@ internal fun EazyGamesChip(label: String, active: Boolean, palette: EazyModalPal
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun EazyGamesActionButton(label: String, filled: Boolean, onClick: () -> Unit) {
+private fun EazyGamesCollectionPanel(
+    api: CreatorApi,
+    ownerId: String?,
+    shop: String,
+    t: (String, String) -> String,
+    onNavigateExchange: () -> Unit,
+) {
+    val palette = LocalEazyModalPalette.current
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(true) }
+    var items by remember { mutableStateOf<List<PrizeInventoryItem>>(emptyList()) }
+    var filterCategory by remember { mutableStateOf("all") }
+    var filterType by remember { mutableStateOf("card") }
+    var refreshKey by remember { mutableIntStateOf(0) }
+    var confirm by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
+    var fusionConfirm by remember { mutableStateOf<PrizeInventoryItem?>(null) }
+
+    val categories = listOf(
+        "all" to "⊞ ${t("eazy_chat.prizes_filter_all", "All")}",
+        "shop" to "🛍 Shop",
+        "creator" to "✦ Creator",
+        "eazy" to "⚡ Eazy",
+        "special" to "★ Special",
+    )
+    val types = listOf(
+        "card" to "🃏 ${t("eazy_chat.prizes_filter_cards", "Cards")}",
+        "prize" to "🏆 ${t("eazy_chat.prizes_filter_prizes", "Prizes")}",
+    )
+
+    LaunchedEffect(ownerId, filterCategory, filterType, refreshKey) {
+        if (ownerId.isNullOrBlank()) {
+            loading = false
+            items = emptyList()
+            return@LaunchedEffect
+        }
+        loading = true
+        try {
+            val j = api.getPrizesInventoryList(
+                ownerId,
+                shop,
+                filterType,
+                filterCategory,
+                group = filterType == "card",
+            )
+            items = if (j.optBoolean("ok", false)) {
+                parseInventoryItems(j.optJSONArray("items") ?: JSONArray())
+            } else emptyList()
+        } catch (_: Exception) {
+            items = emptyList()
+        }
+        loading = false
+    }
+
+    confirm?.let { (action, id, itemType) ->
+        val (title, message, confirmLabel) = when (action) {
+            "redeem" -> Triple(
+                t("eazy_chat.prizes_confirm_redeem_title", "Redeem this prize?"),
+                t("eazy_chat.prizes_confirm_redeem_text", "This will fulfill the prize to your account. This cannot be undone."),
+                t("eazy_chat.prizes_redeem", "Redeem"),
+            )
+            "rotate" -> Triple(
+                t("eazy_chat.prizes_confirm_rotate_title", "Rotate this prize?"),
+                t("eazy_chat.prizes_confirm_rotate_text", "Your current prize will be replaced with a new random item of the same category and rarity."),
+                t("eazy_chat.prizes_rotate", "Rotate"),
+            )
+            else -> Triple(
+                t("eazy_chat.prizes_confirm_list_title", "List on the exchange?"),
+                t("eazy_chat.prizes_confirm_list_text", "Your item will be listed on the marketplace for other players to trade."),
+                t("eazy_chat.exchange_list", "List on exchange"),
+            )
+        }
+        AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text(title, color = palette.text) },
+            text = { Text(message, color = palette.muted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val oid = ownerId ?: return@TextButton
+                    scope.launch {
+                        try {
+                            when (action) {
+                                "redeem" -> api.postPrizesRedeem(oid, id, shop)
+                                "rotate" -> api.postPrizesRotate(oid, id, shop)
+                                else -> api.postPrizesTradeListing(oid, itemType, id, shop)
+                            }
+                        } catch (_: Exception) {}
+                        confirm = null
+                        if (action == "list") onNavigateExchange()
+                        refreshKey++
+                    }
+                }) { Text(confirmLabel, color = palette.accent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirm = null }) { Text(t("eazy_chat.ui_close", "Close"), color = palette.muted) }
+            },
+            containerColor = palette.bg,
+        )
+    }
+
+    fusionConfirm?.let { fuseItem ->
+        AlertDialog(
+            onDismissRequest = { fusionConfirm = null },
+            title = { Text(t("eazy_chat.prizes_confirm_fusion_title", "Fuse these cards?"), color = palette.text) },
+            text = {
+                Text(
+                    t(
+                        "eazy_chat.prizes_confirm_fusion_text",
+                        "Combine 4 matching cards into your prize. Fused cards can no longer be traded.",
+                    ),
+                    color = palette.muted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val oid = ownerId ?: return@TextButton
+                    val defId = fuseItem.cardDefinitionId ?: return@TextButton
+                    scope.launch {
+                        try {
+                            api.postPrizesFuse(oid, defId, fuseItem.instanceIds, shop)
+                            filterType = "prize"
+                        } catch (_: Exception) {}
+                        fusionConfirm = null
+                        refreshKey++
+                    }
+                }) { Text(t("eazy_chat.prizes_fusion_confirm", "Fuse"), color = palette.accent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { fusionConfirm = null }) {
+                    Text(t("eazy_chat.ui_close", "Close"), color = palette.muted)
+                }
+            },
+            containerColor = palette.bg,
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        EazyGamesFilterChips(categories, types, filterCategory, filterType, { filterCategory = it }, { filterType = it })
+        Spacer(modifier = Modifier.height(8.dp))
+        when {
+            ownerId.isNullOrBlank() -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        t("eazy_chat.prizes_collection_login", "Sign in to view your collection."),
+                        color = palette.muted,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+            loading -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = palette.accent)
+                }
+            }
+            items.isEmpty() -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        t("eazy_chat.prizes_collection_empty", "No prizes or cards yet."),
+                        color = palette.muted,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+            else -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 140.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(items, key = { "${it.type}-${it.cardDefinitionId ?: it.id}-${it.ownedCount}" }) { item ->
+                        EazyPrizeCard(
+                            item = item,
+                            apiBase = AuthConfig.CREATOR_ENGINE_URL,
+                            prizeView = item.type == "prize",
+                            modifier = Modifier.clickable(enabled = item.fusionReady) {
+                                if (item.fusionReady) fusionConfirm = item
+                            },
+                            actions = {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    if (item.type == "prize" && item.fulfillmentMode != "trade_token") {
+                                        EazyGamesActionButton(
+                                            t("eazy_chat.prizes_redeem", "Redeem"),
+                                            filled = true,
+                                            onClick = { confirm = Triple("redeem", item.id, item.type) },
+                                        )
+                                    }
+                                    if (item.type == "prize") {
+                                        EazyGamesActionButton(
+                                            t("eazy_chat.prizes_rotate", "Rotate"),
+                                            filled = true,
+                                            onClick = { confirm = Triple("rotate", item.id, item.type) },
+                                        )
+                                    }
+                                    if (item.type == "card" && !item.fusionReady) {
+                                        val listId = item.instanceIds.firstOrNull() ?: item.id
+                                        EazyGamesActionButton(
+                                            t("eazy_chat.exchange_list", "List"),
+                                            filled = false,
+                                            onClick = { confirm = Triple("list", listId, item.type) },
+                                        )
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EazyGamesActionButton(label: String, filled: Boolean, onClick: () -> Unit) {
     val palette = LocalEazyModalPalette.current
     Box(
         modifier = Modifier

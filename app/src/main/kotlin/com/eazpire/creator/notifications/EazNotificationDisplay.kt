@@ -78,13 +78,6 @@ object EazNotificationDisplay {
                 "eazy_games", "games", "daily_game" -> {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
                     putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Games.name)
-                    val cat = extras["category"]?.lowercase().orEmpty()
-                    if (cat.contains("card_collection") || !extras["offer_id"].isNullOrBlank()) {
-                        putExtra(MainActivity.EXTRA_EAZY_GAMES_SECTION, "collection")
-                        extras["offer_id"]?.toIntOrNull()?.takeIf { it > 0 }?.let {
-                            putExtra(MainActivity.EXTRA_TRADE_OFFER_ID, it)
-                        }
-                    }
                 }
                 "creator_settings_codes", "creator_codes", "creator-codes" -> {
                     putExtra(MainActivity.EXTRA_OPEN_CREATOR_CODES, true)

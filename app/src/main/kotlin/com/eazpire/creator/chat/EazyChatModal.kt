@@ -547,9 +547,6 @@ fun EazyChatModal(
     pendingArtifactClaimToken: String? = null,
     onPendingArtifactClaimConsumed: () -> Unit = {},
     onOpenCreatorCodes: (prefillCode: String?) -> Unit = {},
-    pendingGamesSection: String? = null,
-    pendingTradeOfferId: Int? = null,
-    onPendingGamesNavConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -1236,9 +1233,6 @@ fun EazyChatModal(
                                 onLoginClick = onLoginClick,
                                 onDismiss = onDismiss,
                                 t = t,
-                                initialSection = pendingGamesSection,
-                                pendingTradeOfferId = pendingTradeOfferId,
-                                onPendingGamesNavConsumed = onPendingGamesNavConsumed,
                             )
                             EazySidebarTab.Artifacts -> EazyArtifactsHubPanel(
                                 api = api,

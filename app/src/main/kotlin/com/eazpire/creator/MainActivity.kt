@@ -53,8 +53,6 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_CREATOR_CODE_PREFILL = "eaz_creator_code_prefill"
         /** Wallet → Gift Cards → Won (app install bonus push). */
         const val EXTRA_OPEN_GIFT_CARDS_WON = "eaz_open_gift_cards_won"
-        const val EXTRA_EAZY_GAMES_SECTION = "eaz_eazy_games_section"
-        const val EXTRA_TRADE_OFFER_ID = "eaz_trade_offer_id"
     }
 
     data class PendingCreatorCodesNav(val prefillCode: String? = null)
@@ -74,8 +72,6 @@ class MainActivity : ComponentActivity() {
     /** Creator Settings → Creator Codes (from FCM / in-app notification). */
     val pendingCreatorCodesNav = mutableStateOf<PendingCreatorCodesNav?>(null)
     val pendingOpenGiftCardsWon = mutableStateOf(false)
-    val pendingEazyGamesSection = mutableStateOf<String?>(null)
-    val pendingTradeOfferId = mutableStateOf<Int?>(null)
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -153,8 +149,6 @@ class MainActivity : ComponentActivity() {
                         pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
                         pendingCreatorCodesNav = pendingCreatorCodesNav,
                         pendingOpenGiftCardsWon = pendingOpenGiftCardsWon,
-                        pendingEazyGamesSection = pendingEazyGamesSection,
-                        pendingTradeOfferId = pendingTradeOfferId,
                     )
                 }
             }
@@ -262,13 +256,6 @@ class MainActivity : ComponentActivity() {
         }
         if (intent.getBooleanExtra(EXTRA_OPEN_GIFT_CARDS_WON, false)) {
             pendingOpenGiftCardsWon.value = true
-        }
-        intent.getStringExtra(EXTRA_EAZY_GAMES_SECTION)?.trim()?.takeIf { it.isNotBlank() }?.let {
-            pendingEazyGamesSection.value = it
-        }
-        val tradeOfferId = intent.getIntExtra(EXTRA_TRADE_OFFER_ID, 0)
-        if (tradeOfferId > 0) {
-            pendingTradeOfferId.value = tradeOfferId
         }
     }
 

@@ -57,8 +57,6 @@ data class PrizeInventoryItem(
     val ownedCount: Int = 1,
     val fusionReady: Boolean = false,
     val instanceIds: List<Int> = emptyList(),
-    val status: String? = null,
-    val unlockLore: String? = null,
 )
 
 fun parseInventoryItems(arr: org.json.JSONArray): List<PrizeInventoryItem> =
@@ -89,9 +87,6 @@ fun parseInventoryItems(arr: org.json.JSONArray): List<PrizeInventoryItem> =
             ownedCount = o.optInt("owned_count", 1).coerceAtLeast(1),
             fusionReady = o.optBoolean("fusion_ready", false),
             instanceIds = instanceIds,
-            status = o.optString("status", "").takeIf { it.isNotBlank() },
-            unlockLore = o.optString("unlock_lore", "").takeIf { it.isNotBlank() }
-                ?: o.optJSONObject("metadata")?.optString("unlock_lore", "")?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -350,9 +345,6 @@ fun EazyPrizeCard(
                 }
                 Text(
                     text = when {
-                        item.status == "exchange_pending" -> "Exchange pending"
-                        item.status == "gift_pending" -> "Gift pending"
-                        item.status == "listed" -> "Listed"
                         item.type == "card" && item.ownedCount > 1 ->
                             "Collectible ${item.ownedCount}/${item.fusionCount}"
                         item.type == "card" -> "Collectible"

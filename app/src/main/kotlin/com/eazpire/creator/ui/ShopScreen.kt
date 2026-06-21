@@ -119,8 +119,6 @@ fun ShopScreen(
     pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
     pendingCreatorCodesNav: MutableState<MainActivity.PendingCreatorCodesNav?>? = null,
     pendingOpenGiftCardsWon: MutableState<Boolean>? = null,
-    pendingEazyGamesSection: MutableState<String?>? = null,
-    pendingTradeOfferId: MutableState<Int?>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -403,27 +401,13 @@ fun ShopScreen(
     var pendingCreationsScreen by remember { mutableIntStateOf(-1) }
     var pendingDesignsActivityFilter by remember { mutableStateOf<String?>(null) }
     var pendingCreatorCodesSettings by remember { mutableStateOf<MainActivity.PendingCreatorCodesNav?>(null) }
-    var pendingGamesSection by remember { mutableStateOf<String?>(null) }
-    var pendingTradeOffer by remember { mutableStateOf<Int?>(null) }
 
-    LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value, pendingEazyGamesSection?.value, pendingTradeOfferId?.value) {
+    LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value) {
         val pt = pendingEazyTab
         if (pt?.value != null) {
             eazyStartTab = pt.value!!
             eazyChatVisible = true
             pt.value = null
-        }
-        pendingEazyGamesSection?.value?.let {
-            pendingGamesSection = it
-            pendingEazyGamesSection.value = null
-            eazyStartTab = EazySidebarTab.Games
-            eazyChatVisible = true
-        }
-        pendingTradeOfferId?.value?.let {
-            if (it > 0) pendingTradeOffer = it
-            pendingTradeOfferId.value = null
-            eazyStartTab = EazySidebarTab.Games
-            eazyChatVisible = true
         }
         val pc = pendingOpenCart
         if (pc?.value == true) {
@@ -1334,12 +1318,6 @@ fun ShopScreen(
             eazyChatVisible = false
             switchCreatorMode(toCreator = true, animate = false)
             pendingCreatorCodesSettings = MainActivity.PendingCreatorCodesNav(prefillCode = prefillCode)
-        },
-        pendingGamesSection = pendingGamesSection,
-        pendingTradeOfferId = pendingTradeOffer,
-        onPendingGamesNavConsumed = {
-            pendingGamesSection = null
-            pendingTradeOffer = null
         },
     )
 
