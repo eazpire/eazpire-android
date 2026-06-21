@@ -25,13 +25,17 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,8 +81,12 @@ fun EazyVerifyPanel(
     var loading by remember { mutableStateOf(true) }
     var currentItem by remember { mutableStateOf<JSONObject?>(null) }
     var rejectReasons by remember { mutableStateOf<List<String>>(emptyList()) }
+    var qualitySubReasons by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedReasons by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedQualitySubs by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showReject by remember { mutableStateOf(false) }
+    var reasonInfoTitle by remember { mutableStateOf<String?>(null) }
+    var reasonInfoBody by remember { mutableStateOf<String?>(null) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
     var completedItems by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
 
@@ -116,6 +124,13 @@ fun EazyVerifyPanel(
                     rejectReasons = if (reasons != null) {
                         (0 until reasons.length()).map { reasons.getString(it) }
                     } else emptyList()
+                    val qualitySubs = next.optJSONArray("quality_sub_reasons")
+                    qualitySubReasons = if (qualitySubs != null) {
+                        (0 until qualitySubs.length()).map { qualitySubs.getString(it) }
+                    } else emptyList()
+                    selectedReasons = emptySet()
+                    selectedQualitySubs = emptySet()
+                    showReject = false
                     completedItems = emptyList()
                 }
             } catch (_: Exception) {
@@ -264,14 +279,21 @@ fun EazyVerifyPanel(
                 return@Column
             }
 
+            val itemEntity = item.optString("entity_type", entityType)
+            val questionKey = if (itemEntity == "product") {
+                "eazy_verify.question_product"
+            } else {
+                "eazy_verify.question_design"
+            }
             Text(
-                t("eazy_verify.question", "Does this meet our standards?"),
+                t(questionKey, "Does this meet our standards?"),
                 color = Color.White.copy(0.85f),
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            val variantLabel = item.optString("variant_label", "").trim()
             var dragX by remember(item) { mutableStateOf(0f) }
             Column(
                 modifier = Modifier
@@ -309,6 +331,13 @@ fun EazyVerifyPanel(
                     contentScale = ContentScale.Fit,
                 )
                 Text(item.optString("title", t("eazy_verify.untitled", "Untitled")), color = Color.White, fontWeight = FontWeight.SemiBold)
+                if (variantLabel.isNotEmpty()) {
+                    Text(
+                        t("eazy_verify.variant_label", "Variant: {{ label }}").replace("{{ label }}", variantLabel),
+                        color = Color.White.copy(0.75f),
+                        fontSize = 12.sp,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Button(
@@ -335,33 +364,119 @@ fun EazyVerifyPanel(
                     Text(t("eazy_verify.reject_toggle", "Reject"), color = Color.White, fontSize = 12.sp)
                 }
                 if (showReject) {
+                    val subs = qualitySubReasons.ifEmpty {
+                        listOf(
+                            "color_combination",
+                            "theme_doesnt_fit",
+                            "design_too_small",
+                            "low_contrast_on_mockup",
+                            "placement_issue",
+                            "other",
+                        )
+                    }
                     rejectReasons.forEach { reason ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Checkbox(
                                 checked = selectedReasons.contains(reason),
                                 onCheckedChange = { on ->
                                     selectedReasons = if (on) selectedReasons + reason else selectedReasons - reason
+                                    if (reason == "quality_issue" && !on) {
+                                        selectedQualitySubs = emptySet()
+                                    }
                                 },
                             )
-                            Text(reason.replace('_', ' '), color = Color.White, fontSize = 12.sp)
+                            Text(
+                                t("eazy_verify.reason_$reason", reason.replace('_', ' ')),
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = {
+                                val info = t("eazy_verify.reason_${reason}_info", "")
+                                if (info.isNotBlank()) {
+                                    reasonInfoTitle = t("eazy_verify.reason_$reason", reason.replace('_', ' '))
+                                    reasonInfoBody = info
+                                }
+                            }) {
+                                Icon(Icons.Default.Info, contentDescription = null, tint = Color.White.copy(0.75f), modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
+                    if (selectedReasons.contains("quality_issue")) {
+                        Text(
+                            t("eazy_verify.quality_sub_select", "What quality issue applies? (select all that fit)"),
+                            color = Color.White.copy(0.85f),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 6.dp, bottom = 4.dp),
+                        )
+                        subs.forEach { sub ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = selectedQualitySubs.contains(sub),
+                                    onCheckedChange = { on ->
+                                        selectedQualitySubs = if (on) selectedQualitySubs + sub else selectedQualitySubs - sub
+                                    },
+                                )
+                                Text(
+                                    t("eazy_verify.quality_sub_$sub", sub.replace('_', ' ')),
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(onClick = {
+                                    val info = t("eazy_verify.quality_sub_${sub}_info", "")
+                                    if (info.isNotBlank()) {
+                                        reasonInfoTitle = t("eazy_verify.quality_sub_$sub", sub.replace('_', ' '))
+                                        reasonInfoBody = info
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Info, contentDescription = null, tint = Color.White.copy(0.75f), modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                    val rejectReady = selectedReasons.isNotEmpty() &&
+                        (!selectedReasons.contains("quality_issue") || selectedQualitySubs.isNotEmpty())
                     Button(
                         onClick = {
                             scope.launch {
-                                api.verifySubmitVote(ownerId, item.optLong("id"), "reject", selectedReasons.toList())
+                                val payload = selectedReasons.toMutableList()
+                                selectedQualitySubs.forEach { sub ->
+                                    payload.add("quality_sub:$sub")
+                                }
+                                api.verifySubmitVote(ownerId, item.optLong("id"), "reject", payload)
                                 selectedReasons = emptySet()
+                                selectedQualitySubs = emptySet()
                                 showReject = false
                                 refresh()
                             }
                         },
-                        enabled = selectedReasons.isNotEmpty(),
+                        enabled = rejectReady,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(t("eazy_verify.reject_confirm", "Confirm reject")) }
                 }
             }
         }
+    }
+
+    if (reasonInfoTitle != null && reasonInfoBody != null) {
+        AlertDialog(
+            onDismissRequest = { reasonInfoTitle = null; reasonInfoBody = null },
+            title = { Text(reasonInfoTitle.orEmpty()) },
+            text = { Text(reasonInfoBody.orEmpty()) },
+            confirmButton = {
+                TextButton(onClick = { reasonInfoTitle = null; reasonInfoBody = null }) {
+                    Text(t("eazy_verify.reason_info_close", "Close"))
+                }
+            },
+        )
     }
 }
 
