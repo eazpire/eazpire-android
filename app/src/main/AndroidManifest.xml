@@ -79,6 +79,24 @@
                     android:pathPrefix="/q/" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".wear.handoff.WearPlayerSessionHandoffActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="com.eazpire.creator.action.WEAR_PLAYER_SESSION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".wear.WearPlayerSessionHandoffActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="com.eazpire.creator.action.WEAR_PLAYER_SESSION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <service
             android:name=".notifications.EazFirebaseMessagingService"
             android:exported="false">
