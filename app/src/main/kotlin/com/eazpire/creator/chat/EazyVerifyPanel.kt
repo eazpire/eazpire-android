@@ -14,12 +14,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
@@ -87,6 +90,8 @@ fun EazyVerifyPanel(
     var showReject by remember { mutableStateOf(false) }
     var reasonInfoTitle by remember { mutableStateOf<String?>(null) }
     var reasonInfoBody by remember { mutableStateOf<String?>(null) }
+    var otherReasonNote by remember { mutableStateOf("") }
+    var qualityOtherNote by remember { mutableStateOf("") }
     var statusMsg by remember { mutableStateOf<String?>(null) }
     var completedItems by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
 
@@ -130,6 +135,8 @@ fun EazyVerifyPanel(
                     } else emptyList()
                     selectedReasons = emptySet()
                     selectedQualitySubs = emptySet()
+                    otherReasonNote = ""
+                    qualityOtherNote = ""
                     showReject = false
                     completedItems = emptyList()
                 }
@@ -184,10 +191,17 @@ fun EazyVerifyPanel(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .weight(1f)
+                .fillMaxWidth(),
         ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
             if (ownerId.isNullOrBlank()) {
                 Text(t("eazy_chat.login_required_text", "Sign in to use this feature."), color = Color.White.copy(0.8f))
                 return@Column
@@ -360,10 +374,22 @@ fun EazyVerifyPanel(
                     ) { Text(t("eazy_verify.not_sure", "Not Sure")) }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = showReject, onCheckedChange = { showReject = it })
+                    Checkbox(
+                        checked = showReject,
+                        onCheckedChange = {
+                            showReject = it
+                            if (!it) {
+                                selectedReasons = emptySet()
+                                selectedQualitySubs = emptySet()
+                                otherReasonNote = ""
+                                qualityOtherNote = ""
+                            }
+                        },
+                    )
                     Text(t("eazy_verify.reject_toggle", "Reject"), color = Color.White, fontSize = 12.sp)
                 }
                 if (showReject) {
+                    val rejectScroll = rememberScrollState()
                     val subs = qualitySubReasons.ifEmpty {
                         listOf(
                             "color_combination",
@@ -374,93 +400,203 @@ fun EazyVerifyPanel(
                             "other",
                         )
                     }
-                    rejectReasons.forEach { reason ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x26DC2626))
+                            .border(1.dp, Color(0x73DC2626), RoundedCornerShape(10.dp))
+                            .padding(8.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 260.dp)
+                                .verticalScroll(rejectScroll),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            Checkbox(
-                                checked = selectedReasons.contains(reason),
-                                onCheckedChange = { on ->
-                                    selectedReasons = if (on) selectedReasons + reason else selectedReasons - reason
-                                    if (reason == "quality_issue" && !on) {
-                                        selectedQualitySubs = emptySet()
-                                    }
-                                },
-                            )
                             Text(
-                                t("eazy_verify.reason_$reason", reason.replace('_', ' ')),
-                                color = Color.White,
+                                t("eazy_verify.reject_select", "Please select the main reason:"),
+                                color = Color.White.copy(0.9f),
                                 fontSize = 12.sp,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.padding(bottom = 4.dp),
                             )
-                            IconButton(onClick = {
-                                val info = t("eazy_verify.reason_${reason}_info", "")
-                                if (info.isNotBlank()) {
-                                    reasonInfoTitle = t("eazy_verify.reason_$reason", reason.replace('_', ' '))
-                                    reasonInfoBody = info
-                                }
-                            }) {
-                                Icon(Icons.Default.Info, contentDescription = null, tint = Color.White.copy(0.75f), modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    }
-                    if (selectedReasons.contains("quality_issue")) {
-                        Text(
-                            t("eazy_verify.quality_sub_select", "What quality issue applies? (select all that fit)"),
-                            color = Color.White.copy(0.85f),
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(top = 6.dp, bottom = 4.dp),
-                        )
-                        subs.forEach { sub ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Checkbox(
-                                    checked = selectedQualitySubs.contains(sub),
-                                    onCheckedChange = { on ->
-                                        selectedQualitySubs = if (on) selectedQualitySubs + sub else selectedQualitySubs - sub
-                                    },
-                                )
-                                Text(
-                                    t("eazy_verify.quality_sub_$sub", sub.replace('_', ' ')),
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                IconButton(onClick = {
-                                    val info = t("eazy_verify.quality_sub_${sub}_info", "")
-                                    if (info.isNotBlank()) {
-                                        reasonInfoTitle = t("eazy_verify.quality_sub_$sub", sub.replace('_', ' '))
-                                        reasonInfoBody = info
+                            rejectReasons.forEach { reason ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Checkbox(
+                                        checked = selectedReasons.contains(reason),
+                                        onCheckedChange = { on ->
+                                            selectedReasons = if (on) selectedReasons + reason else selectedReasons - reason
+                                            if (reason == "quality_issue" && !on) {
+                                                selectedQualitySubs = emptySet()
+                                                qualityOtherNote = ""
+                                            }
+                                            if (reason == "other_reason" && !on) {
+                                                otherReasonNote = ""
+                                            }
+                                        },
+                                    )
+                                    Text(
+                                        t("eazy_verify.reason_$reason", reason.replace('_', ' ')),
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    IconButton(onClick = {
+                                        val info = t("eazy_verify.reason_${reason}_info", "")
+                                        if (info.isNotBlank()) {
+                                            reasonInfoTitle = t("eazy_verify.reason_$reason", reason.replace('_', ' '))
+                                            reasonInfoBody = info
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.Info, contentDescription = null, tint = Color.White.copy(0.75f), modifier = Modifier.size(16.dp))
                                     }
-                                }) {
-                                    Icon(Icons.Default.Info, contentDescription = null, tint = Color.White.copy(0.75f), modifier = Modifier.size(16.dp))
+                                }
+                                if (reason == "other_reason" && selectedReasons.contains("other_reason")) {
+                                    OutlinedTextField(
+                                        value = otherReasonNote,
+                                        onValueChange = { otherReasonNote = it },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 36.dp, bottom = 6.dp),
+                                        placeholder = {
+                                            Text(
+                                                t("eazy_verify.reject_other_placeholder", "Describe the issue…"),
+                                                color = Color.White.copy(0.45f),
+                                                fontSize = 12.sp,
+                                            )
+                                        },
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White,
+                                            focusedBorderColor = Color.White.copy(0.35f),
+                                            unfocusedBorderColor = Color.White.copy(0.2f),
+                                            cursorColor = EazColors.Orange,
+                                        ),
+                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
+                                        minLines = 2,
+                                    )
+                                }
+                            }
+                            if (selectedReasons.contains("quality_issue")) {
+                                Text(
+                                    t("eazy_verify.quality_sub_select", "What quality issue applies? (select all that fit)"),
+                                    color = Color.White.copy(0.85f),
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 6.dp, bottom = 4.dp),
+                                )
+                                subs.forEach { sub ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Checkbox(
+                                            checked = selectedQualitySubs.contains(sub),
+                                            onCheckedChange = { on ->
+                                                selectedQualitySubs = if (on) selectedQualitySubs + sub else selectedQualitySubs - sub
+                                                if (sub == "other" && !on) qualityOtherNote = ""
+                                            },
+                                        )
+                                        Text(
+                                            t("eazy_verify.quality_sub_$sub", sub.replace('_', ' ')),
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        IconButton(onClick = {
+                                            val info = t("eazy_verify.quality_sub_${sub}_info", "")
+                                            if (info.isNotBlank()) {
+                                                reasonInfoTitle = t("eazy_verify.quality_sub_$sub", sub.replace('_', ' '))
+                                                reasonInfoBody = info
+                                            }
+                                        }) {
+                                            Icon(Icons.Default.Info, contentDescription = null, tint = Color.White.copy(0.75f), modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                    if (sub == "other" && selectedQualitySubs.contains("other")) {
+                                        OutlinedTextField(
+                                            value = qualityOtherNote,
+                                            onValueChange = { qualityOtherNote = it },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 44.dp, bottom = 6.dp),
+                                            placeholder = {
+                                                Text(
+                                                    t("eazy_verify.reject_other_placeholder", "Describe the issue…"),
+                                                    color = Color.White.copy(0.45f),
+                                                    fontSize = 12.sp,
+                                                )
+                                            },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = Color.White,
+                                                unfocusedTextColor = Color.White,
+                                                focusedBorderColor = Color.White.copy(0.35f),
+                                                unfocusedBorderColor = Color.White.copy(0.2f),
+                                                cursorColor = EazColors.Orange,
+                                            ),
+                                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
+                                            minLines = 2,
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                    val rejectReady = selectedReasons.isNotEmpty() &&
-                        (!selectedReasons.contains("quality_issue") || selectedQualitySubs.isNotEmpty())
+                }
+            }
+            }
+
+            if (showReject && currentItem != null && viewMode == "available") {
+                val rejectReady = selectedReasons.isNotEmpty() &&
+                    (!selectedReasons.contains("quality_issue") || selectedQualitySubs.isNotEmpty())
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1E293B))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Button(
                         onClick = {
+                            val activeItem = currentItem ?: return@Button
+                            val oid = ownerId ?: return@Button
                             scope.launch {
                                 val payload = selectedReasons.toMutableList()
                                 selectedQualitySubs.forEach { sub ->
                                     payload.add("quality_sub:$sub")
                                 }
-                                api.verifySubmitVote(ownerId, item.optLong("id"), "reject", payload)
+                                val noteParts = buildList {
+                                    if (selectedReasons.contains("other_reason") && otherReasonNote.isNotBlank()) {
+                                        add(otherReasonNote.trim())
+                                    }
+                                    if (selectedQualitySubs.contains("other") && qualityOtherNote.isNotBlank()) {
+                                        add(qualityOtherNote.trim())
+                                    }
+                                }
+                                api.verifySubmitVote(
+                                    oid,
+                                    activeItem.optLong("id"),
+                                    "reject",
+                                    payload,
+                                    noteParts.joinToString("\n").ifBlank { null },
+                                )
                                 selectedReasons = emptySet()
                                 selectedQualitySubs = emptySet()
+                                otherReasonNote = ""
+                                qualityOtherNote = ""
                                 showReject = false
                                 refresh()
                             }
                         },
                         enabled = rejectReady,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(t("eazy_verify.reject_confirm", "Confirm reject")) }
+                        modifier = Modifier.widthIn(min = 200.dp, max = 280.dp),
+                    ) {
+                        Text(t("eazy_verify.confirm_rejection", "Confirm rejection"))
+                    }
                 }
             }
         }
