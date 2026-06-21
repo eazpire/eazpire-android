@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.wear.WearPlayerSessionHandoff
 
 /**
  * Silent session export for Eazpire Wear Player phone app (Join Now handoff).
@@ -28,10 +29,4 @@ class WearPlayerSessionHandoffActivity : ComponentActivity() {
         }
         finish()
     }
-}
-
-object WearPlayerSessionHandoff {
-    const val ACTION = "com.eazpire.creator.action.WEAR_PLAYER_SESSION"
-    const val EXTRA_JWT = "jwt"
-    const val EXTRA_OWNER_ID = "owner_id"
 }

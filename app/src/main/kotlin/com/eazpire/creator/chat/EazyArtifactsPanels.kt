@@ -258,17 +258,25 @@ fun EazyArtifactsNftsPanel(
 @Composable
 fun EazyArtifactsNftViewerDialog(
     slot: ArtifactSlot,
+    context: ArtifactDetailContext = ArtifactDetailContext.Inventory,
     onDismiss: () -> Unit,
-    onEquip: () -> Unit,
-    onOpenExchange: () -> Unit,
+    onEquip: (() -> Unit)? = null,
+    onUnequip: (() -> Unit)? = null,
+    onOpenExchange: (() -> Unit)? = null,
     t: (String, String) -> String,
 ) {
     val palette = LocalEazyModalPalette.current
-    val canEquip = slot.status == "owned" &&
+    val isOutfitContext = context == ArtifactDetailContext.Outfit
+    val canEquip = !isOutfitContext &&
+        slot.status == "owned" &&
+        slot.generationStatus != "generating" &&
+        slot.generationStatus != "failed"
+    val canUnequip = isOutfitContext &&
+        slot.status == "owned" &&
         slot.generationStatus != "generating" &&
         slot.generationStatus != "failed"
     val title = slot.productTitle.ifBlank {
-        t("eazy_chat.artifacts_nft_preview_title", "Slot NFT")
+        t("eazy_chat.artifacts_item_preview_title", "Artifact")
     }
 
     Dialog(
@@ -361,28 +369,28 @@ fun EazyArtifactsNftViewerDialog(
                                 }
                             }
                             else -> {
-                                Text(t("eazy_chat.artifacts_nft_none", "—"), color = palette.muted)
+                                Text(t("eazy_chat.artifacts_item_none", "—"), color = palette.muted)
                             }
                         }
                     }
-                    EazyNftMetaRow(t("eazy_chat.artifacts_nft_slot", "Slot"), artifactSlotLabel(slot.slotType, t))
-                    EazyNftMetaRow(t("eazy_chat.artifacts_nft_serial", "Serial"), slot.serial.ifBlank { "—" })
+                    EazyNftMetaRow(t("eazy_chat.artifacts_item_slot", "Slot"), artifactSlotLabel(slot.slotType, t))
+                    EazyNftMetaRow(t("eazy_chat.artifacts_item_serial", "Serial"), slot.serial.ifBlank { "—" })
                     EazyNftMetaRow(
-                        t("eazy_chat.artifacts_nft_product", "Product"),
-                        slot.productTitle.ifBlank { t("eazy_chat.artifacts_nft_none", "—") },
+                        t("eazy_chat.artifacts_item_product", "Product"),
+                        slot.productTitle.ifBlank { t("eazy_chat.artifacts_item_none", "—") },
                     )
                     EazyNftMetaRow(
-                        t("eazy_chat.artifacts_nft_generation", "Generation"),
+                        t("eazy_chat.artifacts_item_generation", "Generation"),
                         when (slot.generationStatus) {
-                            "generating" -> t("eazy_chat.artifacts_generating", "Generating…")
-                            "failed" -> t("eazy_chat.artifacts_generation_failed", "Failed")
-                            else -> t("eazy_chat.artifacts_nft_ready", "Ready")
+                            "generating" -> t("eazy_chat.artifacts_item_gen_generating", "Generating artwork…")
+                            "failed" -> t("eazy_chat.artifacts_item_gen_failed", "Generation failed")
+                            else -> t("eazy_chat.artifacts_item_gen_ready", "Ready")
                         },
                     )
-                    EazyNftMetaRow(t("eazy_chat.artifacts_nft_status", "Status"), slot.status.ifBlank { "—" })
+                    EazyNftMetaRow(t("eazy_chat.artifacts_item_status", "Status"), slot.status.ifBlank { "—" })
                     Row(Modifier.fillMaxWidth()) {
                         Text(
-                            t("eazy_chat.artifacts_nft_niches", "Themes"),
+                            t("eazy_chat.artifacts_item_niches", "Themes"),
                             style = MaterialTheme.typography.labelSmall,
                             color = palette.muted,
                             modifier = Modifier.widthIn(min = 88.dp).weight(0.34f),
@@ -414,20 +422,30 @@ fun EazyArtifactsNftViewerDialog(
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (canEquip) {
+                    if (canEquip && onEquip != null) {
                         EazyArtifactsActionButton(
-                            label = t("eazy_chat.artifacts_nft_equip_outfit", "Equip to Outfit"),
+                            label = t("eazy_chat.artifacts_item_equip_outfit", "Equip to Outfit"),
                             filled = true,
                             onClick = onEquip,
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    EazyArtifactsActionButton(
-                        label = t("eazy_chat.artifacts_nft_open_exchange", "Open Exchange"),
-                        filled = false,
-                        onClick = onOpenExchange,
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (canUnequip && onUnequip != null) {
+                        EazyArtifactsActionButton(
+                            label = t("eazy_chat.artifacts_unequip", "Unequip"),
+                            filled = true,
+                            onClick = onUnequip,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (!isOutfitContext && onOpenExchange != null) {
+                        EazyArtifactsActionButton(
+                            label = t("eazy_chat.artifacts_item_open_exchange", "Open Exchange"),
+                            filled = false,
+                            onClick = onOpenExchange,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
@@ -457,6 +475,7 @@ fun EazyArtifactsOutfitPanel(
     inventory: List<ArtifactSlot>,
     loadout: ArtifactLoadoutState,
     onLoadoutChanged: () -> Unit,
+    onEquippedItemClick: (ArtifactSlot) -> Unit = {},
     t: (String, String) -> String,
 ) {
     val palette = LocalEazyModalPalette.current
@@ -516,7 +535,13 @@ fun EazyArtifactsOutfitPanel(
                                 RoundedCornerShape(10.dp),
                             )
                             .background(palette.muted.copy(alpha = if (covered) 0.02f else 0.06f))
-                            .clickable(enabled = !covered) { selectedSlot = key }
+                            .clickable(enabled = !covered) {
+                                if (inst != null) {
+                                    onEquippedItemClick(inst)
+                                } else {
+                                    selectedSlot = key
+                                }
+                            }
                             .padding(6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {

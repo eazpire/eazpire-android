@@ -71,7 +71,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class ArtifactsHubSection { Nfts, Outfit, Exchange, Marketplace }
+enum class ArtifactsHubSection { Collection, Outfit, Exchange, Marketplace }
+enum class ArtifactDetailContext { Inventory, Outfit }
 enum class ArtifactsExchangeSub { Market, MyListings }
 enum class ArtifactsMarketSub { Buy, Sell }
 
@@ -105,7 +106,7 @@ fun EazyArtifactsHubPanel(
     onPendingClaimConsumed: () -> Unit = {},
     t: (String, String) -> String,
 ) {
-    var section by remember { mutableStateOf(ArtifactsHubSection.Nfts) }
+    var section by remember { mutableStateOf(ArtifactsHubSection.Collection) }
     var exchangeSub by remember { mutableStateOf(ArtifactsExchangeSub.Market) }
     var marketSub by remember { mutableStateOf(ArtifactsMarketSub.Buy) }
     var isArtifactsAdmin by remember { mutableStateOf(false) }
@@ -114,7 +115,8 @@ fun EazyArtifactsHubPanel(
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var showQrScanner by remember { mutableStateOf(false) }
-    var selectedNftSlot by remember { mutableStateOf<ArtifactSlot?>(null) }
+    var selectedArtifactSlot by remember { mutableStateOf<ArtifactSlot?>(null) }
+    var artifactDetailContext by remember { mutableStateOf(ArtifactDetailContext.Inventory) }
     var claimBusy by remember { mutableStateOf(false) }
     var claimMessage by remember { mutableStateOf<String?>(null) }
     var inventory by remember { mutableStateOf<List<ArtifactSlot>>(emptyList()) }
@@ -134,8 +136,12 @@ fun EazyArtifactsHubPanel(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val mergedNftSlots = transientFailedSlots + inventory
-    val showWearPromo = section == ArtifactsHubSection.Nfts &&
+    val showWearPromo = section == ArtifactsHubSection.Collection &&
         countUnlockedArtifacts(mergedNftSlots) >= 1
+    val equippedInstanceIds = remember(loadout.slots) { loadout.slots.values.toSet() }
+    val collectionSlots = remember(mergedNftSlots, equippedInstanceIds) {
+        mergedNftSlots.filter { it.id !in equippedInstanceIds }
+    }
 
     fun showTransientGenerationFailed(slot: ArtifactSlot) {
         trackingGenerating.remove(slot.id)
@@ -168,7 +174,7 @@ fun EazyArtifactsHubPanel(
         loading = true
         try {
             when (section) {
-                ArtifactsHubSection.Nfts -> {
+                ArtifactsHubSection.Collection -> {
                     val res = withContext(Dispatchers.IO) {
                         api.getArtifactsInventoryList(ownerId, shop, slotFilter.takeIf { it != "all" })
                     }
@@ -177,6 +183,8 @@ fun EazyArtifactsHubPanel(
                     } else {
                         inventory = emptyList()
                     }
+                    val lo = withContext(Dispatchers.IO) { api.getArtifactsLoadout(ownerId, shop) }
+                    if (lo.optBoolean("ok", false)) loadout = ArtifactsJson.parseLoadoutResponse(lo)
                 }
                 ArtifactsHubSection.Outfit -> {
                     val inv = withContext(Dispatchers.IO) {
@@ -257,7 +265,7 @@ fun EazyArtifactsHubPanel(
     }
 
     LaunchedEffect(inventory, section) {
-        if (section != ArtifactsHubSection.Nfts) return@LaunchedEffect
+        if (section != ArtifactsHubSection.Collection) return@LaunchedEffect
         while (inventory.any { it.generationStatus == "generating" }) {
             delay(3500)
             refreshKey++
@@ -289,7 +297,7 @@ fun EazyArtifactsHubPanel(
                         showTransientGenerationFailed(slot)
                     }
                 }
-                section = ArtifactsHubSection.Nfts
+                section = ArtifactsHubSection.Collection
                 refreshKey++
                 true
             } else {
@@ -307,7 +315,7 @@ fun EazyArtifactsHubPanel(
     LaunchedEffect(pendingClaimToken, ownerId, isLoggedIn) {
         val token = pendingClaimToken?.trim().orEmpty()
         if (token.isBlank() || !isLoggedIn || ownerId.isNullOrBlank()) return@LaunchedEffect
-        section = ArtifactsHubSection.Nfts
+        section = ArtifactsHubSection.Collection
         claimToken(token)
         onPendingClaimConsumed()
     }
@@ -344,7 +352,7 @@ fun EazyArtifactsHubPanel(
             )
         }
 
-        if (section == ArtifactsHubSection.Nfts) {
+        if (section == ArtifactsHubSection.Collection) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -362,7 +370,7 @@ fun EazyArtifactsHubPanel(
             }
         }
 
-        if (section == ArtifactsHubSection.Nfts || section == ArtifactsHubSection.Exchange) {
+        if (section == ArtifactsHubSection.Collection || section == ArtifactsHubSection.Exchange) {
             EazyArtifactsSlotFilterRow(slotFilter = slotFilter, onFilter = { slotFilter = it }, t = t)
         }
 
@@ -445,10 +453,13 @@ fun EazyArtifactsHubPanel(
 
         val oid = ownerId ?: return@Column
         when (section) {
-            ArtifactsHubSection.Nfts -> EazyArtifactsNftsPanel(
-                slots = mergedNftSlots,
+            ArtifactsHubSection.Collection -> EazyArtifactsNftsPanel(
+                slots = collectionSlots,
                 t = t,
-                onSlotClick = { selectedNftSlot = it },
+                onSlotClick = {
+                    selectedArtifactSlot = it
+                    artifactDetailContext = ArtifactDetailContext.Inventory
+                },
             )
             ArtifactsHubSection.Outfit -> EazyArtifactsOutfitPanel(
                 api = api,
@@ -457,6 +468,10 @@ fun EazyArtifactsHubPanel(
                 inventory = inventory,
                 loadout = loadout,
                 onLoadoutChanged = { refreshKey++ },
+                onEquippedItemClick = { slot ->
+                    selectedArtifactSlot = slot
+                    artifactDetailContext = ArtifactDetailContext.Outfit
+                },
                 t = t,
             )
             ArtifactsHubSection.Exchange -> EazyArtifactsExchangePanel(
@@ -505,7 +520,7 @@ fun EazyArtifactsHubPanel(
                                 }
                                 if (res.optBoolean("ok", false)) {
                                     adminQrUrl = res.optString("qr_url", res.optString("claim_url", ""))
-                                    section = ArtifactsHubSection.Nfts
+                                    section = ArtifactsHubSection.Collection
                                 }
                             } catch (_: Exception) {
                             }
@@ -540,33 +555,57 @@ fun EazyArtifactsHubPanel(
         )
     }
 
-    selectedNftSlot?.let { slot ->
+    selectedArtifactSlot?.let { slot ->
+        val isOutfitContext = artifactDetailContext == ArtifactDetailContext.Outfit
         EazyArtifactsNftViewerDialog(
             slot = slot,
-            onDismiss = { selectedNftSlot = null },
-            onEquip = {
-                val slotKey = slot.slotType
-                val oid = ownerId ?: return@EazyArtifactsNftViewerDialog
-                scope.launch {
-                    try {
-                        val lo = withContext(Dispatchers.IO) { api.getArtifactsLoadout(oid, shop) }
-                        if (lo.optBoolean("ok", false)) {
-                            val current = ArtifactsJson.parseLoadoutResponse(lo)
-                            val next = current.slots.toMutableMap().apply { put(slotKey, slot.id) }
-                            withContext(Dispatchers.IO) {
-                                api.postArtifactsLoadoutSet(oid, shop, ArtifactsJson.slotsToJson(next))
+            context = artifactDetailContext,
+            onDismiss = { selectedArtifactSlot = null },
+            onEquip = if (isOutfitContext) null else {
+                {
+                    val slotKey = slot.slotType
+                    val oid = ownerId ?: return@EazyArtifactsNftViewerDialog
+                    scope.launch {
+                        try {
+                            val lo = withContext(Dispatchers.IO) { api.getArtifactsLoadout(oid, shop) }
+                            if (lo.optBoolean("ok", false)) {
+                                val current = ArtifactsJson.parseLoadoutResponse(lo)
+                                val next = current.slots.toMutableMap().apply { put(slotKey, slot.id) }
+                                withContext(Dispatchers.IO) {
+                                    api.postArtifactsLoadoutSet(oid, shop, ArtifactsJson.slotsToJson(next))
+                                }
+                                selectedArtifactSlot = null
+                                section = ArtifactsHubSection.Outfit
+                                refreshKey++
                             }
-                            selectedNftSlot = null
-                            section = ArtifactsHubSection.Outfit
-                            refreshKey++
+                        } catch (_: Exception) {
                         }
-                    } catch (_: Exception) {
                     }
                 }
             },
-            onOpenExchange = {
-                selectedNftSlot = null
-                section = ArtifactsHubSection.Exchange
+            onUnequip = if (!isOutfitContext) null else {
+                {
+                    val slotKey = loadout.slots.entries.find { it.value == slot.id }?.key
+                        ?: return@EazyArtifactsNftViewerDialog
+                    val oid = ownerId ?: return@EazyArtifactsNftViewerDialog
+                    scope.launch {
+                        try {
+                            val next = loadout.slots.toMutableMap().apply { remove(slotKey) }
+                            withContext(Dispatchers.IO) {
+                                api.postArtifactsLoadoutSet(oid, shop, ArtifactsJson.slotsToJson(next))
+                            }
+                            selectedArtifactSlot = null
+                            refreshKey++
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+            },
+            onOpenExchange = if (isOutfitContext) null else {
+                {
+                    selectedArtifactSlot = null
+                    section = ArtifactsHubSection.Exchange
+                }
             },
             t = t,
         )
@@ -691,11 +730,11 @@ private fun ArtifactsSubheader(
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ArtifactsTabButton(
-                active = section == ArtifactsHubSection.Nfts,
+                active = section == ArtifactsHubSection.Collection,
                 imageVector = Icons.Default.Collections,
-                label = t("eazy_chat.artifacts_section_nfts", "NFTs"),
+                label = t("eazy_chat.artifacts_section_collection", "Collection"),
                 showLabel = true,
-                onClick = { onSection(ArtifactsHubSection.Nfts) },
+                onClick = { onSection(ArtifactsHubSection.Collection) },
             )
             ArtifactsTabButton(
                 active = section == ArtifactsHubSection.Outfit,
