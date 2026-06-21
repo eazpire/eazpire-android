@@ -544,6 +544,10 @@ fun EazyChatModal(
     onResetMascot: () -> Unit = {},
     chatContext: EazyChatContext = EazyChatContext.Shop,
     startTab: EazySidebarTab = EazySidebarTab.Chat,
+    pendingGamesSection: String? = null,
+    pendingTradeOfferId: Int? = null,
+    onPendingGamesSectionConsumed: () -> Unit = {},
+    onPendingTradeOfferConsumed: () -> Unit = {},
     pendingArtifactClaimToken: String? = null,
     onPendingArtifactClaimConsumed: () -> Unit = {},
     onOpenCreatorCodes: (prefillCode: String?) -> Unit = {},
@@ -664,6 +668,21 @@ fun EazyChatModal(
     LaunchedEffect(visible, startTab) {
         if (visible) {
             selectedTab = startTab
+        }
+    }
+
+    LaunchedEffect(visible, pendingGamesSection) {
+        if (!visible) return@LaunchedEffect
+        if (!pendingGamesSection.isNullOrBlank()) {
+            selectedTab = EazySidebarTab.Games
+            onPendingGamesSectionConsumed()
+        }
+    }
+
+    LaunchedEffect(visible, pendingTradeOfferId) {
+        if (!visible) return@LaunchedEffect
+        if ((pendingTradeOfferId ?: 0) > 0) {
+            selectedTab = EazySidebarTab.Games
         }
     }
 
@@ -1233,6 +1252,9 @@ fun EazyChatModal(
                                 onLoginClick = onLoginClick,
                                 onDismiss = onDismiss,
                                 t = t,
+                                initialSection = pendingGamesSection,
+                                pendingTradeOfferId = pendingTradeOfferId,
+                                onPendingTradeOfferConsumed = onPendingTradeOfferConsumed,
                             )
                             EazySidebarTab.Artifacts -> EazyArtifactsHubPanel(
                                 api = api,

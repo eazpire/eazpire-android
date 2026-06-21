@@ -935,6 +935,22 @@ class CreatorApi(
     suspend fun getPrizesTradeMyOffers(ownerId: String, shop: String = AuthConfig.SHOP_DOMAIN): JSONObject =
         call("prizes-trade-my-offers", mapOf("owner_id" to ownerId, "shop" to shop))
 
+    suspend fun getPrizesInventoryState(ownerId: String, shop: String = AuthConfig.SHOP_DOMAIN): JSONObject =
+        call("prizes-inventory-state", mapOf("owner_id" to ownerId, "shop" to shop))
+
+    suspend fun getPrizesTradeOfferDetail(
+        ownerId: String,
+        offerId: Int,
+        shop: String = AuthConfig.SHOP_DOMAIN,
+    ): JSONObject = call(
+        "prizes-trade-offer-detail",
+        mapOf(
+            "owner_id" to ownerId,
+            "offer_id" to offerId.toString(),
+            "shop" to shop,
+        ),
+    )
+
     suspend fun postPrizesRedeem(ownerId: String, instanceId: Int, shop: String): JSONObject =
         postJsonWithShop("prizes-redeem", shop, mapOf("owner_id" to ownerId, "instance_id" to instanceId))
 
@@ -942,7 +958,7 @@ class CreatorApi(
         postJsonWithShop(
             "prizes-rotate",
             shop,
-            mapOf("owner_id" to ownerId, "instance_type" to "prize", "instance_id" to instanceId),
+            mapOf("owner_id" to ownerId, "instance_type" to "card", "instance_id" to instanceId),
         )
 
     suspend fun postPrizesTradeListing(ownerId: String, instanceType: String, instanceId: Int, shop: String): JSONObject {
@@ -969,6 +985,49 @@ class CreatorApi(
             shop,
             mapOf("owner_id" to ownerId, "action" to action, "offer_id" to offerId),
         )
+
+    suspend fun postPrizesTradeOfferCreate(
+        ownerId: String,
+        listingId: Int,
+        instanceType: String,
+        instanceId: Int,
+        shop: String = AuthConfig.SHOP_DOMAIN,
+    ): JSONObject = postJsonWithShop(
+        "prizes-trade-offer",
+        shop,
+        mapOf(
+            "owner_id" to ownerId,
+            "action" to "create",
+            "listing_id" to listingId,
+            "instance_type" to instanceType,
+            "instance_id" to instanceId,
+        ),
+    )
+
+    suspend fun postPrizesCardDiscard(
+        ownerId: String,
+        instanceId: Int,
+        shop: String = AuthConfig.SHOP_DOMAIN,
+    ): JSONObject = postJsonWithShop(
+        "prizes-card-discard",
+        shop,
+        mapOf("owner_id" to ownerId, "instance_id" to instanceId),
+    )
+
+    suspend fun postPrizesCardGift(
+        ownerId: String,
+        instanceId: Int,
+        targetOwnerId: String,
+        shop: String = AuthConfig.SHOP_DOMAIN,
+    ): JSONObject = postJsonWithShop(
+        "prizes-card-gift",
+        shop,
+        mapOf(
+            "owner_id" to ownerId,
+            "instance_id" to instanceId,
+            "target_owner_id" to targetOwnerId,
+        ),
+    )
 
     private suspend fun postJsonWithShop(op: String, shop: String, body: Map<String, Any?>): JSONObject =
         postJson(op, body, mapOf("shop" to shop))

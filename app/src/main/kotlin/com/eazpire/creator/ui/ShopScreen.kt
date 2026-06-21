@@ -119,6 +119,8 @@ fun ShopScreen(
     pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
     pendingCreatorCodesNav: MutableState<MainActivity.PendingCreatorCodesNav?>? = null,
     pendingOpenGiftCardsWon: MutableState<Boolean>? = null,
+    pendingGamesSection: MutableState<String?>? = null,
+    pendingTradeOfferId: MutableState<Int?>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -402,7 +404,13 @@ fun ShopScreen(
     var pendingDesignsActivityFilter by remember { mutableStateOf<String?>(null) }
     var pendingCreatorCodesSettings by remember { mutableStateOf<MainActivity.PendingCreatorCodesNav?>(null) }
 
-    LaunchedEffect(pendingEazyTab?.value, pendingOpenCart?.value, pendingOpenShop?.value) {
+    LaunchedEffect(
+        pendingEazyTab?.value,
+        pendingOpenCart?.value,
+        pendingOpenShop?.value,
+        pendingGamesSection?.value,
+        pendingTradeOfferId?.value,
+    ) {
         val pt = pendingEazyTab
         if (pt?.value != null) {
             eazyStartTab = pt.value!!
@@ -419,6 +427,10 @@ fun ShopScreen(
             switchCreatorMode(toCreator = false, animate = false)
             eazyChatVisible = false
             ps.value = false
+        }
+        if (!pendingGamesSection?.value.isNullOrBlank() || (pendingTradeOfferId?.value ?: 0) > 0) {
+            eazyStartTab = EazySidebarTab.Games
+            eazyChatVisible = true
         }
     }
 
@@ -1312,6 +1324,10 @@ fun ShopScreen(
         onResetMascot = { eazyMascotStore.resetSync() },
         chatContext = if (isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop,
         startTab = eazyStartTab,
+        pendingGamesSection = pendingGamesSection?.value,
+        pendingTradeOfferId = pendingTradeOfferId?.value,
+        onPendingGamesSectionConsumed = { pendingGamesSection?.value = null },
+        onPendingTradeOfferConsumed = { pendingTradeOfferId?.value = null },
         pendingArtifactClaimToken = pendingArtifactClaimToken?.value,
         onPendingArtifactClaimConsumed = { pendingArtifactClaimToken?.value = null },
         onOpenCreatorCodes = { prefillCode ->

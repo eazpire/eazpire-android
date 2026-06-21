@@ -46,6 +46,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPEN_SHOP = "eaz_open_shop"
         const val EXTRA_OPEN_EAZY_CHAT = "eaz_open_eazy_chat"
         const val EXTRA_EAZY_TAB = "eaz_eazy_tab"
+        const val EXTRA_GAMES_SECTION = "eaz_games_section"
+        const val EXTRA_TRADE_OFFER_ID = "eaz_trade_offer_id"
         /** Creator → My Creations → Designs → Inactive (Wear upload complete). */
         const val EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS = "eaz_open_creator_inactive_designs"
         /** Creator Settings → Creator Codes (invite / redeemed push). */
@@ -67,6 +69,10 @@ class MainActivity : ComponentActivity() {
     val pendingWearPairToken = mutableStateOf<String?>(null)
     /** From /artifacts/claim?t=… — opens Eazy Artifacts tab and claims slot NFT. */
     val pendingArtifactClaimToken = mutableStateOf<String?>(null)
+    /** Optional open Games tab in specific section (e.g. collection). */
+    val pendingGamesSection = mutableStateOf<String?>(null)
+    /** Optional open trade offer detail inside Games collection panel. */
+    val pendingTradeOfferId = mutableStateOf<Int?>(null)
     /** Wear upload finished — open Creator creations, inactive designs tab. */
     val pendingCreatorInactiveDesigns = mutableStateOf(false)
     /** Creator Settings → Creator Codes (from FCM / in-app notification). */
@@ -146,6 +152,8 @@ class MainActivity : ComponentActivity() {
                         pendingOpenShop = pendingOpenShop,
                         pendingWearPairToken = pendingWearPairToken,
                         pendingArtifactClaimToken = pendingArtifactClaimToken,
+                        pendingGamesSection = pendingGamesSection,
+                        pendingTradeOfferId = pendingTradeOfferId,
                         pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
                         pendingCreatorCodesNav = pendingCreatorCodesNav,
                         pendingOpenGiftCardsWon = pendingOpenGiftCardsWon,
@@ -246,6 +254,14 @@ class MainActivity : ComponentActivity() {
             pendingEazyTab.value = EazySidebarTab.Notifications
         } else if (intent.getBooleanExtra(EXTRA_OPEN_EAZY_CHAT, false)) {
             pendingEazyTab.value = EazySidebarTab.Notifications
+        }
+        intent.getStringExtra(EXTRA_GAMES_SECTION)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { pendingGamesSection.value = it }
+        if (intent.hasExtra(EXTRA_TRADE_OFFER_ID)) {
+            val id = intent.getIntExtra(EXTRA_TRADE_OFFER_ID, 0)
+            pendingTradeOfferId.value = id.takeIf { it > 0 }
         }
         if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS, false)) {
             pendingCreatorInactiveDesigns.value = true

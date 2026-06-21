@@ -57,6 +57,15 @@ object EazNotificationDisplay {
         return Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             val raw = extras["open_target"]?.lowercase() ?: extras["nav_target"]?.lowercase()
+            val gamesSection = (
+                extras["games_section"]
+                    ?: extras["pendingGamesSection"]
+                    ?: extras["pending_games_section"]
+                )?.trim()?.takeIf { it.isNotBlank() }
+            val tradeOfferId = (
+                extras["trade_offer_id"]
+                    ?: extras["tradeOfferId"]
+                )?.toIntOrNull()
             when (raw) {
                 "cart" -> putExtra(MainActivity.EXTRA_OPEN_CART, true)
                 "shop" -> putExtra(MainActivity.EXTRA_OPEN_SHOP, true)
@@ -96,6 +105,17 @@ object EazNotificationDisplay {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
                     putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Notifications.name)
                 }
+            }
+            if (!gamesSection.isNullOrBlank()) {
+                putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
+                putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Games.name)
+                putExtra(MainActivity.EXTRA_GAMES_SECTION, gamesSection)
+            }
+            if ((tradeOfferId ?: 0) > 0) {
+                putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
+                putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Games.name)
+                putExtra(MainActivity.EXTRA_GAMES_SECTION, gamesSection ?: "collection")
+                putExtra(MainActivity.EXTRA_TRADE_OFFER_ID, tradeOfferId)
             }
         }
     }

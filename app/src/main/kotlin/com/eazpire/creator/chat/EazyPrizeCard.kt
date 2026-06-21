@@ -47,8 +47,10 @@ data class PrizeInventoryItem(
     val category: String,
     val rarity: String,
     val slug: String,
+    val status: String? = null,
     val fulfillmentMode: String?,
     val description: String?,
+    val unlockLore: String? = null,
     val artworkR2Key: String?,
     val priceArtworkR2Key: String?,
     val metadata: JSONObject?,
@@ -57,6 +59,8 @@ data class PrizeInventoryItem(
     val ownedCount: Int = 1,
     val fusionReady: Boolean = false,
     val instanceIds: List<Int> = emptyList(),
+    val pendingIncomingOffers: Int = 0,
+    val pendingOutgoingOffers: Int = 0,
 )
 
 fun parseInventoryItems(arr: org.json.JSONArray): List<PrizeInventoryItem> =
@@ -77,8 +81,11 @@ fun parseInventoryItems(arr: org.json.JSONArray): List<PrizeInventoryItem> =
             category = o.optString("category", ""),
             rarity = o.optString("rarity", "common"),
             slug = o.optString("slug", ""),
+            status = o.optString("status", "").takeIf { it.isNotBlank() },
             fulfillmentMode = o.optString("fulfillment_mode", "").takeIf { it.isNotBlank() },
             description = o.optString("description", "").takeIf { it.isNotBlank() },
+            unlockLore = o.optString("unlock_lore", "").takeIf { it.isNotBlank() }
+                ?: o.optJSONObject("metadata")?.optString("unlock_lore", "")?.takeIf { it.isNotBlank() },
             artworkR2Key = o.optString("artwork_r2_key", "").takeIf { it.isNotBlank() },
             priceArtworkR2Key = o.optString("price_artwork_r2_key", "").takeIf { it.isNotBlank() },
             metadata = o.optJSONObject("metadata"),
@@ -87,6 +94,10 @@ fun parseInventoryItems(arr: org.json.JSONArray): List<PrizeInventoryItem> =
             ownedCount = o.optInt("owned_count", 1).coerceAtLeast(1),
             fusionReady = o.optBoolean("fusion_ready", false),
             instanceIds = instanceIds,
+            pendingIncomingOffers = o.optJSONObject("pending_badges")?.optInt("incoming_offers", 0)
+                ?: o.optInt("pending_incoming_offers", 0),
+            pendingOutgoingOffers = o.optJSONObject("pending_badges")?.optInt("outgoing_offers", 0)
+                ?: o.optInt("pending_outgoing_offers", 0),
         )
     }
 
@@ -304,6 +315,37 @@ fun EazyPrizeCard(
                     letterSpacing = 0.8.sp,
                 )
             }
+            if ((item.pendingIncomingOffers + item.pendingOutgoingOffers) > 0 || !item.status.isNullOrBlank()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(top = 6.dp),
+                ) {
+                    val pendingTotal = item.pendingIncomingOffers + item.pendingOutgoingOffers
+                    if (pendingTotal > 0) {
+                        Text(
+                            text = "PENDING $pendingTotal",
+                            modifier = Modifier
+                                .background(Color(0xD17C2D12), CutCornerShape(3.dp))
+                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                            color = Color(0xFFFFE7D6),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    item.status?.let { st ->
+                        Text(
+                            text = st.uppercase(),
+                            modifier = Modifier
+                                .background(Color(0xD10A0F18), CutCornerShape(3.dp))
+                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (stats.isNotEmpty()) {
@@ -338,6 +380,16 @@ fun EazyPrizeCard(
                         text = desc,
                         color = Color(0xFFCBD5E1),
                         fontSize = 11.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                item.unlockLore?.let { lore ->
+                    Text(
+                        text = lore,
+                        color = Color(0xFF94A3B8),
+                        fontSize = 10.sp,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp),
