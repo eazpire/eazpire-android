@@ -16,6 +16,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -55,6 +56,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -628,14 +630,14 @@ private fun EazyArtifactsWearPromo(
         ),
         label = "wearPromoGlow",
     )
-    val floatY by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = -4f,
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.06f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1600, easing = FastOutSlowInEasing),
+            animation = tween(1200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = "wearPromoFloat",
+        label = "wearPromoPulse",
     )
 
     Box(
@@ -646,7 +648,6 @@ private fun EazyArtifactsWearPromo(
     ) {
         Column(
             modifier = Modifier
-                .graphicsLayer { translationY = floatY }
                 .clickable(onClick = onClick)
                 .padding(horizontal = 4.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -655,9 +656,15 @@ private fun EazyArtifactsWearPromo(
             Image(
                 painter = painterResource(R.drawable.eazpire_wear_logo),
                 contentDescription = null,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .width(168.dp)
-                    .alpha(glowAlpha),
+                    .aspectRatio(1024f / 352f)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                        alpha = glowAlpha
+                    },
             )
             Text(
                 t("eazy_chat.artifacts_unlock_wear_now", "Unlock eazpire Wear Now"),
