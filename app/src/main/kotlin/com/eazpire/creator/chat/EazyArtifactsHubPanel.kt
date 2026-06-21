@@ -1,5 +1,16 @@
 package com.eazpire.creator.chat
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,12 +51,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.eazpire.creator.R
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.ui.creator.WearPairQrScannerOverlay
@@ -56,6 +74,26 @@ import kotlinx.coroutines.withContext
 enum class ArtifactsHubSection { Nfts, Outfit, Exchange, Marketplace }
 enum class ArtifactsExchangeSub { Market, MyListings }
 enum class ArtifactsMarketSub { Buy, Sell }
+
+private const val WEAR_HUB_WEB_URL = "https://wear.eazpire.com/"
+private const val WEAR_ANDROID_PACKAGE = "com.eazpire.wear"
+
+private fun countUnlockedArtifacts(slots: List<ArtifactSlot>): Int =
+    slots.count { !it.artworkUrl.isNullOrBlank() && it.generationStatus != "failed" }
+
+private fun openEazpireWearHub(context: Context) {
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(WEAR_ANDROID_PACKAGE)
+    if (launchIntent != null) {
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(launchIntent)
+            return
+        } catch (_: Exception) {
+        }
+    }
+    CustomTabsIntent.Builder().setShowTitle(true).build()
+        .launchUrl(context, Uri.parse(WEAR_HUB_WEB_URL))
+}
 
 @Composable
 fun EazyArtifactsHubPanel(
@@ -94,6 +132,10 @@ fun EazyArtifactsHubPanel(
     val palette = LocalEazyModalPalette.current
     val shop = AuthConfig.SHOP_DOMAIN
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val mergedNftSlots = transientFailedSlots + inventory
+    val showWearPromo = section == ArtifactsHubSection.Nfts &&
+        countUnlockedArtifacts(mergedNftSlots) >= 1
 
     fun showTransientGenerationFailed(slot: ArtifactSlot) {
         trackingGenerating.remove(slot.id)
@@ -404,7 +446,7 @@ fun EazyArtifactsHubPanel(
         val oid = ownerId ?: return@Column
         when (section) {
             ArtifactsHubSection.Nfts -> EazyArtifactsNftsPanel(
-                slots = transientFailedSlots + inventory,
+                slots = mergedNftSlots,
                 t = t,
                 onSlotClick = { selectedNftSlot = it },
             )
@@ -437,6 +479,13 @@ fun EazyArtifactsHubPanel(
                 sellableCharacters = sellableCharacters,
                 isSellMode = marketSub == ArtifactsMarketSub.Sell,
                 onRefresh = { refreshKey++ },
+                t = t,
+            )
+        }
+
+        if (showWearPromo) {
+            EazyArtifactsWearPromo(
+                onClick = { openEazpireWearHub(context) },
                 t = t,
             )
         }
@@ -521,6 +570,64 @@ fun EazyArtifactsHubPanel(
             },
             t = t,
         )
+    }
+}
+
+@Composable
+private fun EazyArtifactsWearPromo(
+    onClick: () -> Unit,
+    t: (String, String) -> String,
+) {
+    val palette = LocalEazyModalPalette.current
+    val infiniteTransition = rememberInfiniteTransition(label = "wearPromo")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "wearPromoGlow",
+    )
+    val floatY by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "wearPromoFloat",
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .graphicsLayer { translationY = floatY }
+                .clickable(onClick = onClick)
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.eazpire_wear_logo),
+                contentDescription = null,
+                modifier = Modifier
+                    .width(168.dp)
+                    .alpha(glowAlpha),
+            )
+            Text(
+                t("eazy_chat.artifacts_unlock_wear_now", "Unlock eazpire Wear Now"),
+                color = palette.text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 

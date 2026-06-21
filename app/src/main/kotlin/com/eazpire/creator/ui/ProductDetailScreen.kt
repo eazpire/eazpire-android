@@ -1322,11 +1322,7 @@ fun ProductDetailScreen(
             val carSameDesign = remember(p, catalogProducts) { buildPdpCarouselSameDesign(p, catalogProducts) }
             val youMayAlsoLike = remember(p, catalogProducts) { buildYouMayAlsoLike(p, catalogProducts) }
             val openRelated: (String) -> Unit = { h ->
-                if (onNavigateToProduct != null) onNavigateToProduct.invoke(h)
-                else try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.eazpire.com/products/$h")))
-                } catch (_: Exception) {
-                }
+                if (h.isNotBlank()) onNavigateToProduct?.invoke(h)
             }
             val showCreatorSection =
                 carSameType.isNotEmpty() || carSameDesign.isNotEmpty() || p.creatorDisplay.isNotBlank() || p.vendor.isNotBlank()

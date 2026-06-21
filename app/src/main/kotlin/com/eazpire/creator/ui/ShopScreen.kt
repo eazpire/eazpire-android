@@ -344,7 +344,6 @@ fun ShopScreen(
     var shopCreateActive by remember { mutableStateOf(false) }
     var shopCreateStudioPhase by remember { mutableStateOf<ShopCreateProductPhase?>(null) }
     var shopCreateCatalogProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
-    var selectedProductHandle by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCreatorName by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreatorsIndex by rememberSaveable { mutableStateOf(false) }
     val shopNavHistory = rememberShopNavHistoryController()
@@ -357,7 +356,6 @@ fun ShopScreen(
 
     fun openShopCreate() {
         shopSearchQuery = null
-        selectedProductHandle = null
         selectedCreatorName = null
         showCreatorsIndex = false
         selectedCollection = null
@@ -367,7 +365,6 @@ fun ShopScreen(
 
     fun openShopCollection(title: String, handle: String, productType: String? = null) {
         shopSearchQuery = null
-        selectedProductHandle = null
         selectedCreatorName = null
         showCreatorsIndex = false
         shopCreateStudioPhase = null
@@ -388,7 +385,6 @@ fun ShopScreen(
         shopCreateActive = false
         shopCreateStudioPhase = null
         selectedCollection = null
-        selectedProductHandle = null
         selectedCreatorName = null
         showCreatorsIndex = false
         shopSearchQuery = null
@@ -554,7 +550,6 @@ fun ShopScreen(
             shopSearchQuery = shopSearchQuery,
             shopCreateActive = shopCreateActive,
             shopCreateStudioOpen = shopCreateStudioPhase != null,
-            selectedProductHandle = selectedProductHandle,
             selectedCreatorName = selectedCreatorName,
             showCreatorsIndex = showCreatorsIndex,
             productModalHandle = productModalHandleState.value,
@@ -567,10 +562,9 @@ fun ShopScreen(
         if (!snapshot.shopCreateStudioOpen) {
             shopCreateStudioPhase = null
         }
-        selectedProductHandle = snapshot.selectedProductHandle
         selectedCreatorName = snapshot.selectedCreatorName
         showCreatorsIndex = snapshot.showCreatorsIndex
-        productModalHandleState.value = snapshot.productModalHandle
+        productModalHandleState.value = snapshot.productModalHandle ?: snapshot.selectedProductHandle
     }
 
     LaunchedEffect(
@@ -578,7 +572,6 @@ fun ShopScreen(
         shopSearchQuery,
         shopCreateActive,
         shopCreateStudioPhase,
-        selectedProductHandle,
         selectedCreatorName,
         showCreatorsIndex,
         productModalHandleState.value,
@@ -605,10 +598,6 @@ fun ShopScreen(
     fun handleShopNavSwipeBack() {
         if (productModalHandleState.value != null) {
             productModalHandleState.value = null
-            return
-        }
-        if (selectedProductHandle != null) {
-            selectedProductHandle = null
             return
         }
         if (shopSearchQuery != null) {
@@ -704,7 +693,6 @@ fun ShopScreen(
             path == "/creator" || path == "/creator/" -> {
                 showCreatorsIndex = true
                 selectedCreatorName = null
-                selectedProductHandle = null
                 selectedCollection = null
                 shopSearchQuery = null
             }
@@ -712,7 +700,6 @@ fun ShopScreen(
                 val slug = path.removePrefix("/creator/").trimEnd('/').substringBefore("?")
                 if (slug.isNotBlank()) {
                     selectedCreatorName = slug
-                    selectedProductHandle = null
                     selectedCollection = null
                 }
             }
@@ -734,7 +721,6 @@ fun ShopScreen(
                 val q = uri.getQueryParameter("q")?.trim().orEmpty()
                 if (q.isNotEmpty()) {
                     selectedCollection = null
-                    selectedProductHandle = null
                     shopSearchQuery = q
                 }
             }
@@ -861,7 +847,6 @@ fun ShopScreen(
                                     shopCreateActive = false
                                     shopCreateStudioPhase = null
                                     selectedCollection = null
-                                    selectedProductHandle = null
                                     selectedCreatorName = null
                                     productModalHandleState.value = null
                                     shopSearchQuery = q
@@ -880,7 +865,6 @@ fun ShopScreen(
                             shopCreateActive = false
                             shopCreateStudioPhase = null
                             selectedCollection = null
-                            selectedProductHandle = null
                             selectedCreatorName = null
                             productModalHandleState.value = null
                             shopSearchQuery = t
@@ -890,7 +874,7 @@ fun ShopScreen(
                 ShopMenuBar(
                     onAllClick = {
                         when {
-                            selectedProductHandle != null -> menuDrawerVisible = true
+                            productModalHandleState.value != null -> productModalHandleState.value = null
                             shopSearchQuery != null -> shopSearchQuery = null
                             shopCreateActive -> {
                                 shopCreateActive = false
@@ -917,7 +901,7 @@ fun ShopScreen(
                     },
                     selectedHandle = if (shopCreateActive) SHOP_MENU_CREATE_HANDLE else selectedCollection?.second
                 )
-                if (shopCreateActive || selectedCollection != null || selectedProductHandle != null || selectedCreatorName != null || showCreatorsIndex) {
+                if (shopCreateActive || selectedCollection != null || selectedCreatorName != null || showCreatorsIndex) {
                     val creatorsLabel = translationStore.t("eaz.home.creators", "Creators")
                     CollectionBreadcrumb(
                         categoryTitle = when {
@@ -935,9 +919,6 @@ fun ShopScreen(
                                     showCreatorsIndex = true
                                 }
                             }
-                            selectedProductHandle != null && selectedCollection != null -> {
-                                { selectedProductHandle = null }
-                            }
                             else -> null
                         }
                     )
@@ -946,8 +927,7 @@ fun ShopScreen(
             }
         },
         bottomBar = {
-            if (selectedProductHandle == null) {
-                key(languageCode) {
+            key(languageCode) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         SubFooter(
                             localeStore = localeStore,
@@ -959,7 +939,6 @@ fun ShopScreen(
                         GlobalFooter(onTermsClick = { termsModalVisible = true })
                     }
                 }
-            }
         }
     ) { padding ->
         key(languageCode) {
@@ -984,21 +963,6 @@ fun ShopScreen(
                         shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(p)
                     }
                 )
-                selectedProductHandle != null -> key(selectedProductHandle, shopContentReloadNonce) {
-                    ProductDetailScreen(
-                        productHandle = selectedProductHandle!!,
-                        onBack = {
-                            selectedProductHandle = null
-                        },
-                        tokenStore = tokenStore,
-                        onTermsClick = { termsModalVisible = true },
-                        onNavigateToProduct = { productModalHandleState.value = it },
-                        onNavigateToCreator = { name ->
-                            selectedProductHandle = null
-                            selectedCreatorName = name
-                        }
-                    )
-                }
                 selectedCreatorName != null -> CreatorProfileScreen(
                     creatorName = selectedCreatorName!!,
                     api = creatorPollApi,
@@ -1017,7 +981,6 @@ fun ShopScreen(
                     labelForKey = { k, d -> translationStore.t(k, d) },
                     onCreatorClick = { name ->
                         selectedCreatorName = name
-                        selectedProductHandle = null
                         shopSearchQuery = null
                         selectedCollection = null
                     },
@@ -1056,14 +1019,12 @@ fun ShopScreen(
                     onCreatorClick = { name ->
                         selectedCreatorName = name
                         showCreatorsIndex = false
-                        selectedProductHandle = null
                         shopSearchQuery = null
                         selectedCollection = null
                     },
                     onCreatorsTitleClick = {
                         showCreatorsIndex = true
                         selectedCreatorName = null
-                        selectedProductHandle = null
                         shopSearchQuery = null
                         selectedCollection = null
                         productModalHandleState.value = null
@@ -1073,7 +1034,6 @@ fun ShopScreen(
                     },
                     onCategoryClick = { title, handle ->
                         productModalHandleState.value = null
-                        selectedProductHandle = null
                         selectedCreatorName = null
                         showCreatorsIndex = false
                         shopSearchQuery = null
@@ -1097,7 +1057,6 @@ fun ShopScreen(
                         val cleanHandle = handle.trim()
                         if (cleanHandle.isNotBlank()) {
                             shopSearchQuery = null
-                            selectedProductHandle = null
                             selectedCreatorName = null
                             selectedCollection = null
                             productModalHandleState.value = cleanHandle
@@ -1142,7 +1101,7 @@ fun ShopScreen(
     val showGenOverlay = isCreatorMode && eazyGenerationOverlay
     // Full-screen zIndex layer must not cover product detail or product modal — it would steal touches (cart / buy now).
     val showEazyFloatingLayer =
-        (!eazyDocked || showGenOverlay) && selectedProductHandle == null && productModalHandleState.value == null && !showAuthScreen
+        (!eazyDocked || showGenOverlay) && productModalHandleState.value == null && !showAuthScreen
     if (showEazyFloatingLayer) {
         var liveMascotX by remember { mutableStateOf<Float?>(null) }
         var liveMascotY by remember { mutableStateOf<Float?>(null) }
@@ -1481,7 +1440,6 @@ fun ShopScreen(
                     onNavigateToCreator = { name ->
                         favoriteEditContext = null
                         productModalHandleState.value = null
-                        selectedProductHandle = null
                         selectedCreatorName = name
                     },
                     onNavigateToProduct = { handle ->
