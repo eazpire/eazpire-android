@@ -649,7 +649,8 @@ fun ShopScreen(
     }
 
     fun handleUserLogout() {
-        ShopSessionGuard.performFullLogout(context, tokenStore)
+        // Close scrollable modals first — clearing auth in the same frame as sheet teardown
+        // remeasures verticalScroll with infinite height and crashes (see creator-crash-log).
         oauthCallbackForAuth.value = null
         accountModalVisible = false
         menuDrawerVisible = false
@@ -662,10 +663,11 @@ fun ShopScreen(
         productModalHandleState.value = null
         authAutoStartOAuth = false
         showAuthScreen = false
-        // Do not bump sessionEpoch on logout — re-keying disposes scrollable modals mid-frame
-        // and triggers IllegalStateException (verticalScroll + infinite height).
+        showLoginOptions = false
+        // Do not bump sessionEpoch on logout — re-keying disposes scrollable modals mid-frame.
         scope.launch {
-            delay(200)
+            delay(400)
+            ShopSessionGuard.performFullLogout(context, tokenStore)
             showLoginOptions = true
         }
     }

@@ -641,10 +641,7 @@ fun CreatorMainScreen(
                     creatorCodesPrefill = null
                     creatorSettingsInitialTab = 0
                     creatorSettingsInitialEazSub = null
-                    scope.launch {
-                        delay(200)
-                        onLogout()
-                    }
+                    onLogout()
                 },
             )
         }

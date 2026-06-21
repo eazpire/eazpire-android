@@ -248,14 +248,19 @@ fun AccountModalSheet(
                 body = {
                     val tabModifier = Modifier.eazModalBody().padding(16.dp)
                     when (AccountTab.entries[selectedTab]) {
-                        AccountTab.Profile -> AccountProfileTab(
-                            tokenStore = tokenStore,
-                            translationStore = translationStore,
-                            onSaveActionReady = { footerSaveAction = it },
-                            onSavingStateChange = { footerSaveInProgress = it },
-                            onLogout = onLogout,
-                            modifier = tabModifier
-                        )
+                        AccountTab.Profile -> Column(
+                            modifier = tabModifier.verticalScroll(rememberScrollState()),
+                        ) {
+                            AccountProfileTab(
+                                tokenStore = tokenStore,
+                                translationStore = translationStore,
+                                onSaveActionReady = { footerSaveAction = it },
+                                onSavingStateChange = { footerSaveInProgress = it },
+                                onLogout = onLogout,
+                                modifier = Modifier.fillMaxWidth(),
+                                embedInParentScroll = true,
+                            )
+                        }
                         AccountTab.Notifications -> NotificationSettingsContent(
                             scope = NotificationScope.Shop,
                             tokenStore = tokenStore,

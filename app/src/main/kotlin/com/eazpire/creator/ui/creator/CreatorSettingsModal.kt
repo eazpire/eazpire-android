@@ -182,10 +182,7 @@ fun CreatorSettingsModal(
                     currentTab = currentTab,
                     tokenStore = tokenStore,
                     translationStore = translationStore,
-                    onLogout = {
-                        onDismiss()
-                        onLogout()
-                    },
+                    onLogout = onLogout,
                     pendingWearPairToken = pendingWearPairToken,
                     initialRedeemCode = if (currentTab == codesTabIndex) initialRedeemCode else null,
                     onInitialRedeemCodeConsumed = onInitialRedeemCodeConsumed,
