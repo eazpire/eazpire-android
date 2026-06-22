@@ -3,7 +3,7 @@ package com.eazpire.creator.perf
 import android.util.Log
 import androidx.tracing.Trace
 import com.eazpire.creator.BuildConfig
-import com.eazpire.creator.EazpireApplication
+import com.eazpire.creator.EazpireAppTiming
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -161,7 +161,7 @@ object EazPerfTrace {
     private fun sectionTotalMs(section: String): Int = sectionTotalsMs[section]?.get() ?: 0
 
     private fun msSinceProcessStart(): Long {
-        val start = EazpireApplication.processStartMs
+        val start = EazpireAppTiming.processStartMs
         return if (start > 0L) System.currentTimeMillis() - start else 0L
     }
 

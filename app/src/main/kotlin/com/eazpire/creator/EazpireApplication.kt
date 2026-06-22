@@ -9,16 +9,9 @@ import com.eazpire.creator.notifications.NotificationRemoteConfigSync
 import com.eazpire.creator.perf.EazPerfTrace
 
 class EazpireApplication : Application() {
-    companion object {
-        /** Process start — workers skip background notifications during cold-start window. */
-        @Volatile
-        var processStartMs: Long = 0L
-            private set
-    }
-
     override fun onCreate() {
         super.onCreate()
-        processStartMs = System.currentTimeMillis()
+        EazpireAppTiming.markProcessStart()
         EazPerfTrace.init(this)
         EazPerfTrace.mark("application_onCreate_start")
         EazNotificationChannels.ensure(this)
