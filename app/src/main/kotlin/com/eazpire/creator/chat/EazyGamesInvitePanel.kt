@@ -290,7 +290,7 @@ fun EazyGamesInvitePanel(
                                 val reqLabel = if (friend.pendingRequest) {
                                     t("eazy_chat.invite_request_pending", "Pending")
                                 } else {
-                                    t("eazy_chat.invite_request_life", "Request Life")
+                                    t("eazy_chat.invite_request_game", "Request Life")
                                 }
                                 Button(
                                     onClick = {
@@ -310,7 +310,7 @@ fun EazyGamesInvitePanel(
                                     Text(reqLabel, fontSize = 11.sp)
                                 }
                                 val sendLabel = if (friend.pendingSentLife) {
-                                    t("eazy_chat.invite_send_life_pending", "Sent")
+                                    "Sent"
                                 } else {
                                     t("eazy_chat.invite_send_life", "Send Life")
                                 }
@@ -386,7 +386,7 @@ fun EazyGamesInvitePanel(
                                 ) {
                                     Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.size(4.dp))
-                                    Text(t("eazy_chat.invite_accept_life", "Accept Life"), fontSize = 11.sp)
+                                    Text(t("eazy_chat.invite_request_accept", "Accept"), fontSize = 11.sp)
                                 }
                             }
                         }
@@ -421,7 +421,7 @@ fun EazyGamesInvitePanel(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(req.username, fontWeight = FontWeight.SemiBold, color = palette.text)
                                     Text(
-                                        t("eazy_chat.invite_request_life_label", "Requested a life"),
+                                        "Requested a life",
                                         fontSize = 11.sp,
                                         color = palette.muted,
                                     )
