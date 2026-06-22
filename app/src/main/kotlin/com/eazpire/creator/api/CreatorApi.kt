@@ -506,6 +506,33 @@ class CreatorApi(
             mapOf("owner_id" to ownerId),
         )
 
+    suspend fun listGamesLifeInvites(ownerId: String): JSONObject = call(
+        "list-games-life-invites",
+        mapOf("owner_id" to ownerId),
+    )
+
+    suspend fun sendGamesLife(
+        ownerId: String,
+        targetId: String,
+        shop: String,
+        gameSlug: String? = null,
+    ): JSONObject = postJson(
+        "send-games-life",
+        buildMap {
+            put("target_id", targetId)
+            put("shop", shop)
+            gameSlug?.takeIf { it.isNotBlank() }?.let { put("game_slug", it) }
+        },
+        mapOf("owner_id" to ownerId, "shop" to shop),
+    )
+
+    suspend fun acceptGamesLifeInvite(ownerId: String, inviteId: Int): JSONObject =
+        postJson(
+            "accept-games-life-invite",
+            mapOf("invite_id" to inviteId),
+            mapOf("owner_id" to ownerId),
+        )
+
     /** POST ?op=daily-game-play&shop=… Body: owner_id */
     suspend fun postDailyGamePlay(shop: String, ownerId: String): JSONObject =
         postJson("daily-game-play", mapOf("owner_id" to ownerId), mapOf("shop" to shop))

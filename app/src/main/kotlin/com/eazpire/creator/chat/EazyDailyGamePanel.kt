@@ -1,6 +1,11 @@
 package com.eazpire.creator.chat
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -128,6 +133,9 @@ fun EazyDailyGamePanel(
     onLoginClick: () -> Unit,
     onDismiss: () -> Unit,
     t: (String, String) -> String,
+    preferredGameSlug: String? = null,
+    onGameWin: (JSONObject) -> Unit = {},
+    onGameLossNoLives: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val shop = AuthConfig.SHOP_DOMAIN
@@ -151,6 +159,12 @@ fun EazyDailyGamePanel(
     val appContext = LocalContext.current.applicationContext
     var lastStateJson by remember { mutableStateOf<JSONObject?>(null) }
     var activePlayKind by remember { mutableStateOf("standard") }
+    var livesCount by remember { mutableStateOf(0) }
+    var livesUnlimited by remember { mutableStateOf(false) }
+
+    LaunchedEffect(preferredGameSlug) {
+        preferredGameSlug?.takeIf { it.isNotBlank() }?.let { selectedSlug = it }
+    }
 
     fun syncReminderFromState(j: JSONObject?) {
         val root = j ?: return
@@ -217,6 +231,8 @@ fun EazyDailyGamePanel(
         val bonusAvailable =
             j.optBoolean("bonus_play_available", false) && j.optBoolean("standard_play_completed", false)
         activePlayKind = if (bonusAvailable) "bonus" else "standard"
+        livesUnlimited = j.optBoolean("lives_unlimited", false)
+        livesCount = j.optInt("lives_count", 0)
 
         val selectedState = pickerItems.find { it.slug == selectedSlug }
         val winProb = j.optDouble("win_probability", 0.25)
@@ -323,6 +339,12 @@ fun EazyDailyGamePanel(
                 val st = api.getDailyGameState(shop, oid)
                 if (st.optBoolean("ok", false)) {
                     applyStateJson(st)
+                    when {
+                        j.optBoolean("ok", false) && j.optString("outcome") == "win" -> onGameWin(j)
+                        j.optString("outcome") == "loss" &&
+                            !st.optBoolean("lives_unlimited", false) &&
+                            st.optInt("lives_count", 0) == 0 -> onGameLossNoLives()
+                    }
                     return@launch
                 }
             } catch (_: Exception) {
@@ -331,6 +353,7 @@ fun EazyDailyGamePanel(
                 j.optBoolean("ok", false) && j.optString("outcome") == "win" -> {
                     status = t("eazy_chat.games_outcome_win", "You won a gift card!")
                     playEnabled = false
+                    onGameWin(j)
                 }
                 j.optString("outcome") == "loss" || j.optBoolean("already_played", false) -> {
                     status = t("eazy_chat.games_outcome_loss", "Not this time. Come back tomorrow.")
@@ -700,6 +723,11 @@ fun EazyDailyGamePanel(
                 color = LocalEazyModalPalette.current.text,
             )
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
         Button(
             onClick = {
                 val oid = ownerId ?: return@Button
@@ -755,17 +783,40 @@ fun EazyDailyGamePanel(
                 }
             },
             enabled = playEnabled && !busy,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColors(containerColor = LocalEazyModalPalette.current.accent),
         ) {
             Text(
                 if (activePlayKind == "bonus") {
-                    t("eazy_chat.games_bonus_play", "Bonus round")
+                    t("eazy_chat.games_bonus_play", "Extra life")
                 } else {
                     t("eazy_chat.games_play", "Start game")
                 },
                 color = Color.White,
             )
+        }
+        if (canPlay) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = Color(0xFFEF4444),
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    if (livesUnlimited) {
+                        t("eazy_chat.games_lives_unlimited", "∞")
+                    } else {
+                        livesCount.toString()
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalEazyModalPalette.current.accent,
+                )
+            }
+        }
         }
     }
 }

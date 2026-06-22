@@ -52,7 +52,7 @@ import com.eazpire.creator.auth.AuthConfig
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 
-private enum class GamesHubSection { Play, Collection, Exchange, Invite }
+private enum class GamesHubSection { Play, Collection, Exchange, Friends }
 
 private enum class ExchangeTab { Market, MyListings, Trades }
 
@@ -84,11 +84,13 @@ fun EazyGamesHubPanel(
             when (initialSection?.lowercase()) {
                 "collection" -> GamesHubSection.Collection
                 "exchange" -> GamesHubSection.Exchange
-                "invite" -> GamesHubSection.Invite
+                "invite", "friends" -> GamesHubSection.Friends
                 else -> GamesHubSection.Play
             },
         )
     }
+    var friendsSubTab by remember { mutableStateOf("friends") }
+    var playGameSlug by remember { mutableStateOf<String?>(null) }
     val palette = LocalEazyModalPalette.current
     val shop = AuthConfig.SHOP_DOMAIN
 
@@ -96,7 +98,7 @@ fun EazyGamesHubPanel(
         section = when (initialSection?.lowercase()) {
             "collection" -> GamesHubSection.Collection
             "exchange" -> GamesHubSection.Exchange
-            "invite" -> GamesHubSection.Invite
+            "invite", "friends" -> GamesHubSection.Friends
             "play" -> GamesHubSection.Play
             else -> section
         }
@@ -116,7 +118,7 @@ fun EazyGamesHubPanel(
                 GamesHubSection.Play to (Icons.Default.SportsEsports to t("eazy_chat.games_section_play", "Play")),
                 GamesHubSection.Collection to (Icons.Default.EmojiEvents to t("eazy_chat.games_section_collection", "Collection")),
                 GamesHubSection.Exchange to (Icons.Default.SwapHoriz to t("eazy_chat.games_section_exchange", "Exchange")),
-                GamesHubSection.Invite to (Icons.Default.PersonAdd to t("eazy_chat.games_section_invite", "Invite")),
+                GamesHubSection.Friends to (Icons.Default.PersonAdd to t("eazy_chat.games_section_friends", "Friends")),
             ).forEach { (sec, iconLabel) ->
                 val active = section == sec
                 Column(
@@ -150,7 +152,7 @@ fun EazyGamesHubPanel(
                         color = if (active) palette.text else palette.muted,
                     )
                 }
-                if (sec != GamesHubSection.Invite) Spacer(modifier = Modifier.width(4.dp))
+                if (sec != GamesHubSection.Friends) Spacer(modifier = Modifier.width(4.dp))
             }
         }
 
@@ -163,6 +165,14 @@ fun EazyGamesHubPanel(
                     onLoginClick = onLoginClick,
                     onDismiss = onDismiss,
                     t = t,
+                    preferredGameSlug = playGameSlug,
+                    onGameWin = { j ->
+                        section = GamesHubSection.Collection
+                    },
+                    onGameLossNoLives = {
+                        friendsSubTab = "friends"
+                        section = GamesHubSection.Friends
+                    },
                 )
             GamesHubSection.Collection ->
                 EazyCardCollectionUi(
@@ -181,12 +191,18 @@ fun EazyGamesHubPanel(
                     shop = shop,
                     t = t,
                 )
-            GamesHubSection.Invite ->
+            GamesHubSection.Friends ->
                 EazyGamesInvitePanel(
                     api = api,
                     ownerId = ownerId,
                     shop = shop,
                     t = t,
+                    initialTab = friendsSubTab,
+                    selectedGameSlug = playGameSlug,
+                    onLifeAccepted = { slug ->
+                        playGameSlug = slug
+                        section = GamesHubSection.Play
+                    },
                 )
         }
     }

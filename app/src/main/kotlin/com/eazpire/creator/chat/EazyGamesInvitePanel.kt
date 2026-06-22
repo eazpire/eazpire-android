@@ -21,8 +21,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -50,7 +53,7 @@ import com.eazpire.creator.ui.share.getActiveRefUrl
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-private enum class InviteTab { Friends, Requests }
+private enum class InviteTab { Friends, Requests, Invites }
 
 private data class InviteFriendItem(
     val userId: String,
@@ -61,6 +64,8 @@ private data class InviteFriendItem(
     val gamesWon: Int,
     val canRequest: Boolean,
     val pendingRequest: Boolean,
+    val canSendLife: Boolean = true,
+    val pendingSentLife: Boolean = false,
 )
 
 private data class InviteRequestItem(
@@ -70,21 +75,45 @@ private data class InviteRequestItem(
     val avatarUrl: String?,
 )
 
+private data class LifeInviteItem(
+    val id: Int,
+    val senderUsername: String,
+    val avatarUrl: String?,
+    val gameSlug: String?,
+)
+
 @Composable
 fun EazyGamesInvitePanel(
     api: CreatorApi,
     ownerId: String?,
     shop: String,
     t: (String, String) -> String,
+    initialTab: String = "friends",
+    selectedGameSlug: String? = null,
+    onLifeAccepted: (String?) -> Unit = {},
 ) {
     val palette = LocalEazyModalPalette.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var tab by remember { mutableStateOf(InviteTab.Friends) }
+    val resolvedInitialTab = when (initialTab.lowercase()) {
+        "requests" -> InviteTab.Requests
+        "invites" -> InviteTab.Invites
+        else -> InviteTab.Friends
+    }
+    var tab by remember { mutableStateOf(resolvedInitialTab) }
     var loading by remember { mutableStateOf(true) }
     var friends by remember { mutableStateOf<List<InviteFriendItem>>(emptyList()) }
     var requests by remember { mutableStateOf<List<InviteRequestItem>>(emptyList()) }
+    var invites by remember { mutableStateOf<List<LifeInviteItem>>(emptyList()) }
     var refreshKey by remember { mutableStateOf(0) }
+
+    LaunchedEffect(initialTab) {
+        tab = when (initialTab.lowercase()) {
+            "requests" -> InviteTab.Requests
+            "invites" -> InviteTab.Invites
+            else -> InviteTab.Friends
+        }
+    }
 
     fun badgeLabel(badge: String): String = when (badge) {
         "creator" -> t("eazy_chat.invite_badge_creator", "Creator")
@@ -98,6 +127,7 @@ fun EazyGamesInvitePanel(
             loading = false
             friends = emptyList()
             requests = emptyList()
+            invites = emptyList()
             return@LaunchedEffect
         }
         loading = true
@@ -115,8 +145,10 @@ fun EazyGamesInvitePanel(
                             badge = o.optString("invite_badge", "invited"),
                             gamesPlayed = o.optInt("games_played", 0),
                             gamesWon = o.optInt("games_won", 0),
-                            canRequest = o.optBoolean("can_request_game", true),
-                            pendingRequest = o.optBoolean("pending_request", false),
+                            canRequest = o.optBoolean("can_request_life", o.optBoolean("can_request_game", true)),
+                            pendingRequest = o.optBoolean("pending_life_request", o.optBoolean("pending_request", false)),
+                            canSendLife = o.optBoolean("can_send_life", true),
+                            pendingSentLife = o.optBoolean("pending_sent_life", false),
                         )
                     }
                 }
@@ -133,10 +165,24 @@ fun EazyGamesInvitePanel(
                         )
                     }
                 }
+                InviteTab.Invites -> {
+                    val res = api.listGamesLifeInvites(oid)
+                    val arr = res.optJSONArray("invites") ?: org.json.JSONArray()
+                    invites = (0 until arr.length()).mapNotNull { i ->
+                        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                        LifeInviteItem(
+                            id = o.optInt("id", 0),
+                            senderUsername = o.optString("sender_username", ""),
+                            avatarUrl = o.optString("sender_profile_picture_url", "").trim().ifBlank { null },
+                            gameSlug = o.optString("game_slug", "").trim().ifBlank { null },
+                        )
+                    }
+                }
             }
         } catch (_: Exception) {
             friends = emptyList()
             requests = emptyList()
+            invites = emptyList()
         }
         loading = false
     }
@@ -150,6 +196,7 @@ fun EazyGamesInvitePanel(
             listOf(
                 InviteTab.Friends to t("eazy_chat.invite_friends_tab", "Friends"),
                 InviteTab.Requests to t("eazy_chat.invite_requests_tab", "Requests"),
+                InviteTab.Invites to t("eazy_chat.invite_invites_tab", "Invites"),
             ).forEach { (key, label) ->
                 EazyGamesChip(label, tab == key, palette) { tab = key }
             }
@@ -243,7 +290,7 @@ fun EazyGamesInvitePanel(
                                 val reqLabel = if (friend.pendingRequest) {
                                     t("eazy_chat.invite_request_pending", "Pending")
                                 } else {
-                                    t("eazy_chat.invite_request_game", "Request Game")
+                                    t("eazy_chat.invite_request_life", "Request Life")
                                 }
                                 Button(
                                     onClick = {
@@ -258,7 +305,88 @@ fun EazyGamesInvitePanel(
                                     enabled = friend.canRequest && !friend.pendingRequest,
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
+                                    Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.size(4.dp))
                                     Text(reqLabel, fontSize = 11.sp)
+                                }
+                                val sendLabel = if (friend.pendingSentLife) {
+                                    t("eazy_chat.invite_send_life_pending", "Sent")
+                                } else {
+                                    t("eazy_chat.invite_send_life", "Send Life")
+                                }
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                api.sendGamesLife(ownerId, friend.userId, shop, selectedGameSlug)
+                                                refreshKey++
+                                            } catch (_: Exception) {
+                                            }
+                                        }
+                                    },
+                                    enabled = friend.canSendLife && !friend.pendingSentLife,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.size(4.dp))
+                                    Text(sendLabel, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            tab == InviteTab.Invites -> {
+                if (invites.isEmpty()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(
+                            t("eazy_chat.invite_invites_empty", "No pending life invites."),
+                            color = palette.muted,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        invites.forEach { inv ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(inv.senderUsername, fontWeight = FontWeight.SemiBold, color = palette.text)
+                                    Text(
+                                        t("eazy_chat.invite_send_life", "Send Life"),
+                                        fontSize = 11.sp,
+                                        color = palette.muted,
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                val res = api.acceptGamesLifeInvite(ownerId!!, inv.id)
+                                                if (res.optBoolean("ok", false)) {
+                                                    val slug = res.optString("game_slug", inv.gameSlug).ifBlank { inv.gameSlug }
+                                                    onLifeAccepted(slug)
+                                                }
+                                                refreshKey++
+                                            } catch (_: Exception) {
+                                            }
+                                        }
+                                    },
+                                ) {
+                                    Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.size(4.dp))
+                                    Text(t("eazy_chat.invite_accept_life", "Accept Life"), fontSize = 11.sp)
                                 }
                             }
                         }
@@ -293,7 +421,7 @@ fun EazyGamesInvitePanel(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(req.username, fontWeight = FontWeight.SemiBold, color = palette.text)
                                     Text(
-                                        t("eazy_chat.invite_request_game_label", "Requested a bonus game"),
+                                        t("eazy_chat.invite_request_life_label", "Requested a life"),
                                         fontSize = 11.sp,
                                         color = palette.muted,
                                     )
