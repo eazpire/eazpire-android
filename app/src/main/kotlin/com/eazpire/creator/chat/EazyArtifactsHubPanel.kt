@@ -10,7 +10,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
+import com.eazpire.creator.brand.BrandAssetSlots
+import com.eazpire.creator.brand.BrandSlotImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -653,8 +654,9 @@ private fun EazyArtifactsWearPromo(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Image(
-                painter = painterResource(R.drawable.eazpire_wear_logo),
+            BrandSlotImage(
+                slot = BrandAssetSlots.CREATOR_WEAR_PROMO_LOGO,
+                fallbackResId = R.drawable.eazpire_wear_logo,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier

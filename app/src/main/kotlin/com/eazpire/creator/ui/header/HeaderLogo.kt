@@ -1,6 +1,5 @@
 package com.eazpire.creator.ui.header
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -11,9 +10,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.R
+import com.eazpire.creator.brand.BrandAssetSlots
+import com.eazpire.creator.brand.BrandSlotImage
 
 @Composable
 fun HeaderLogo(
@@ -32,8 +32,9 @@ fun HeaderLogo(
             .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(R.drawable.eaz_android_app_logo),
+        BrandSlotImage(
+            slot = BrandAssetSlots.CREATOR_APP_HEADER_LOGO,
+            fallbackResId = R.drawable.eaz_android_app_logo,
             contentDescription = "eazpire",
             modifier = Modifier.size(36.dp),
             contentScale = ContentScale.Fit,

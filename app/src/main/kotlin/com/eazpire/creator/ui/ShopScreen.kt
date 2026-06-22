@@ -54,6 +54,7 @@ import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.debug.langDebug
+import com.eazpire.creator.brand.BrandAssetsRepository
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
@@ -126,6 +127,7 @@ fun ShopScreen(
     val context = LocalContext.current
     val localeStore = remember { LocaleStore(context) }
     val translationStore = remember { TranslationStore(context) }
+    val brandAssets = remember { BrandAssetsRepository.get(context) }
     val languageCode by localeStore.languageCode.collectAsState(initial = java.util.Locale.getDefault().language.lowercase())
     val catalogRegion by localeStore.regionCode.collectAsState(initial = "EU")
 
@@ -158,6 +160,7 @@ fun ShopScreen(
         langDebug("ShopScreen.kt:LaunchedEffect", "languageCode changed, loading", mapOf("languageCode" to languageCode), "H3")
         // #endregion
         translationStore.load(languageCode)
+        brandAssets.refreshIfStale()
     }
 
     CompositionLocalProvider(LocalTranslationStore provides translationStore) {
