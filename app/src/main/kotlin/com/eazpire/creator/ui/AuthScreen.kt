@@ -29,6 +29,7 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyStorefrontCartApi
 import com.eazpire.creator.auth.AuthBrowserLauncher
 import com.eazpire.creator.auth.AuthErrorMessages
+import com.eazpire.creator.auth.AuthSessionCookieClear
 import com.eazpire.creator.auth.AuthException
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.OAuthPkceStore
@@ -175,6 +176,7 @@ fun AuthScreen(
             val attempt = loginAttemptId
             AuthDebugLog.d("[LOGIN#$attempt] START method=$loginMethod")
             try {
+                AuthSessionCookieClear.clearShopifyAuthCookies()
                 val endpoints = authService.discoverEndpoints()
                 AuthDebugLog.d("[LOGIN#$attempt] DISCOVERY authorizationEndpoint=${endpoints.authorizationEndpoint} tokenEndpoint=${endpoints.tokenEndpoint}")
                 val verifier = PkceUtils.generateCodeVerifier()
@@ -185,7 +187,8 @@ fun AuthScreen(
                 val url = authService.buildAuthorizationUrl(
                     endpoints.authorizationEndpoint,
                     verifier,
-                    state
+                    state,
+                    loginMethod,
                 )
                 AuthDebugLog.d("[LOGIN#$attempt] AUTH_URL $url")
                 launchOAuthCustomTab(url)

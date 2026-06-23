@@ -1,5 +1,6 @@
 package com.eazpire.creator.auth
 
+import android.net.Uri
 import com.eazpire.creator.debug.AuthDebugLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -49,10 +50,25 @@ class ShopifyAuthService {
         authorizationEndpoint: String,
         codeVerifier: String,
         state: String,
+        loginMethod: AuthLoginMethod = AuthLoginMethod.EMAIL,
+    ): String {
+        val oauthAuthorizeUrl = buildOAuthAuthorizeUrl(authorizationEndpoint, codeVerifier, state)
+        val built = when (loginMethod) {
+            AuthLoginMethod.GOOGLE -> buildGoogleSocialLoginUrl(oauthAuthorizeUrl)
+            else -> oauthAuthorizeUrl
+        }
+        AuthDebugLog.d("[AUTH_URL_BUILD] method=$loginMethod url=$built")
+        return built
+    }
+
+    private fun buildOAuthAuthorizeUrl(
+        authorizationEndpoint: String,
+        codeVerifier: String,
+        state: String,
     ): String {
         val codeChallenge = PkceUtils.generateCodeChallenge(codeVerifier)
         val nonce = PkceUtils.generateState()
-        val built = buildString {
+        return buildString {
             append(authorizationEndpoint)
             append("?client_id=").append(java.net.URLEncoder.encode(AuthConfig.CLIENT_ID, "UTF-8"))
             append("&response_type=code")
@@ -62,11 +78,27 @@ class ShopifyAuthService {
             append("&nonce=").append(java.net.URLEncoder.encode(nonce, "UTF-8"))
             append("&code_challenge=").append(java.net.URLEncoder.encode(codeChallenge, "UTF-8"))
             append("&code_challenge_method=S256")
-            // Show Google account picker without forcing a fresh credential prompt.
-            append("&prompt=").append(java.net.URLEncoder.encode("select_account", "UTF-8"))
+            // Force identity picker — do not silently reuse a prior Shopify/email session.
+            append("&prompt=").append(java.net.URLEncoder.encode("login select_account", "UTF-8"))
+            append("&max_age=0")
         }
-        AuthDebugLog.d("[AUTH_URL_BUILD] $built")
-        return built
+    }
+
+    /** Direct Google IdP entry (skips Shopify provider screen). */
+    private fun buildGoogleSocialLoginUrl(oauthAuthorizeUrl: String): String {
+        val uri = Uri.parse(oauthAuthorizeUrl)
+        val path = uri.encodedPath.orEmpty()
+        val authorizeUri = buildString {
+            append(path)
+            uri.encodedQuery?.let { append("?").append(it) }
+        }
+        val socialBase =
+            "https://shopify.com/authentication/${AuthConfig.SHOP_ID}/social/google"
+        return buildString {
+            append(socialBase)
+            append("?client_id=").append(java.net.URLEncoder.encode(AuthConfig.CLIENT_ID, "UTF-8"))
+            append("&authorize_uri=").append(java.net.URLEncoder.encode(authorizeUri, "UTF-8"))
+        }
     }
 
     suspend fun exchangeCodeForTokens(code: String, codeVerifier: String): TokenResponse =
