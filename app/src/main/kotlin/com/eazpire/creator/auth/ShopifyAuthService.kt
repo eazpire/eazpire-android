@@ -23,7 +23,11 @@ class ShopifyAuthService {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    data class AuthEndpoints(val authorizationEndpoint: String, val tokenEndpoint: String)
+    data class AuthEndpoints(
+        val authorizationEndpoint: String,
+        val tokenEndpoint: String,
+        val endSessionEndpoint: String? = null,
+    )
 
     suspend fun discoverEndpoints(): AuthEndpoints = withContext(Dispatchers.IO) {
         val url = AuthConfig.OIDC_DISCOVERY_URL
@@ -39,11 +43,12 @@ class ShopifyAuthService {
         val json = JSONObject(body)
         val auth = AuthConfig.normalizeOAuthEndpoint(json.optString("authorization_endpoint"))
         val token = AuthConfig.normalizeOAuthEndpoint(json.optString("token_endpoint"))
+        val endSession = AuthConfig.normalizeOAuthEndpoint(json.optString("end_session_endpoint"))
         if (auth.isBlank() || token.isBlank()) {
             throw AuthException("Missing authorization_endpoint or token_endpoint")
         }
-        AuthDebugLog.d("[DISCOVERY] Parsed authorization_endpoint=$auth token_endpoint=$token")
-        AuthEndpoints(auth, token)
+        AuthDebugLog.d("[DISCOVERY] Parsed authorization_endpoint=$auth token_endpoint=$token end_session=$endSession")
+        AuthEndpoints(auth, token, endSession.takeIf { it.isNotBlank() })
     }
 
     fun buildAuthorizationUrl(
@@ -59,6 +64,28 @@ class ShopifyAuthService {
         }
         AuthDebugLog.d("[AUTH_URL_BUILD] method=$loginMethod url=$built")
         return built
+    }
+
+    /**
+     * Google login: clear Shopify browser session first (normal Chrome keeps Google account picker),
+     * then continue to the Google social OAuth URL in the same tab.
+     */
+    fun buildBrowserLoginUrl(
+        oauthTargetUrl: String,
+        loginMethod: AuthLoginMethod,
+        endSessionEndpoint: String?,
+    ): String {
+        if (loginMethod != AuthLoginMethod.GOOGLE) return oauthTargetUrl
+        val logoutBase = endSessionEndpoint?.takeIf { it.isNotBlank() }
+            ?: "https://shopify.com/authentication/${AuthConfig.SHOP_ID}/logout"
+        val encodedTarget = java.net.URLEncoder.encode(oauthTargetUrl, "UTF-8")
+        val sep = if (logoutBase.contains("?")) "&" else "?"
+        return buildString {
+            append(logoutBase)
+            append(sep)
+            append("post_logout_redirect_uri=").append(encodedTarget)
+            append("&return_url=").append(encodedTarget)
+        }
     }
 
     private fun buildOAuthAuthorizeUrl(

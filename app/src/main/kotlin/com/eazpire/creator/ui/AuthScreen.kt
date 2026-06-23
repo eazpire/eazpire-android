@@ -190,8 +190,14 @@ fun AuthScreen(
                     state,
                     loginMethod,
                 )
+                val browserUrl = authService.buildBrowserLoginUrl(
+                    url,
+                    loginMethod,
+                    endpoints.endSessionEndpoint,
+                )
                 AuthDebugLog.d("[LOGIN#$attempt] AUTH_URL $url")
-                launchOAuthCustomTab(url)
+                AuthDebugLog.d("[LOGIN#$attempt] BROWSER_URL $browserUrl")
+                launchOAuthCustomTab(browserUrl)
             } catch (e: Exception) {
                 error = AuthErrorMessages.fromThrowable(e)
                 AuthDebugLog.e("[LOGIN#$attempt] Failed: ${e.message}", e)

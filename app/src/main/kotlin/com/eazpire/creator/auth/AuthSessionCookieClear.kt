@@ -7,7 +7,7 @@ import kotlin.coroutines.resume
 
 /**
  * Clears Shopify cookies in the WebView jar only (not Chrome Custom Tab cookies).
- * OAuth uses ephemeral Custom Tabs — see [AuthBrowserLauncher].
+ * Google login clears the Shopify browser session via logout URL — see [ShopifyAuthService.buildBrowserLoginUrl].
  */
 object AuthSessionCookieClear {
 
