@@ -6,8 +6,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 /**
- * Clears Shopify customer-account cookies only (not Google) so a prior email login
- * does not auto-complete when the user explicitly chooses Google.
+ * Clears Shopify cookies in the WebView jar only (not Chrome Custom Tab cookies).
+ * OAuth uses ephemeral Custom Tabs — see [AuthBrowserLauncher].
  */
 object AuthSessionCookieClear {
 

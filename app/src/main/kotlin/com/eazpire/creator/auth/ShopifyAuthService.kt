@@ -98,6 +98,9 @@ class ShopifyAuthService {
             append(socialBase)
             append("?client_id=").append(java.net.URLEncoder.encode(AuthConfig.CLIENT_ID, "UTF-8"))
             append("&authorize_uri=").append(java.net.URLEncoder.encode(authorizeUri, "UTF-8"))
+            // Also on the social entry URL — Shopify may not forward prompt from authorize_uri alone.
+            append("&prompt=").append(java.net.URLEncoder.encode("login select_account", "UTF-8"))
+            append("&max_age=0")
         }
     }
 
