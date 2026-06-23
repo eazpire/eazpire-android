@@ -62,9 +62,8 @@ class ShopifyAuthService {
             append("&nonce=").append(java.net.URLEncoder.encode(nonce, "UTF-8"))
             append("&code_challenge=").append(java.net.URLEncoder.encode(codeChallenge, "UTF-8"))
             append("&code_challenge_method=S256")
-            // Force fresh login + Google account picker (Chrome profile SSO otherwise reuses last account).
-            append("&prompt=").append(java.net.URLEncoder.encode("login select_account", "UTF-8"))
-            append("&max_age=0")
+            // Show Google account picker without forcing a fresh credential prompt.
+            append("&prompt=").append(java.net.URLEncoder.encode("select_account", "UTF-8"))
         }
         AuthDebugLog.d("[AUTH_URL_BUILD] $built")
         return built

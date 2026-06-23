@@ -1,7 +1,6 @@
 package com.eazpire.creator.ui
 
 import android.net.Uri
-import android.webkit.CookieManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -43,9 +42,7 @@ import com.eazpire.creator.push.PushTokenRegistrar
 import com.eazpire.creator.wear.sync.WearAuthSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
 
 /**
  * Shopify Customer Account OAuth (PKCE).
@@ -84,14 +81,6 @@ fun AuthScreen(
         AuthDebugLog.d("[CUSTOM TAB] launch url=$url attempt=$loginAttemptId")
         AuthBrowserLauncher.launchOAuth(context, url)
         awaitingOAuthCallback = true
-    }
-
-    suspend fun clearCookiesForLogin() = suspendCancellableCoroutine { cont ->
-        try {
-            CookieManager.getInstance().removeAllCookies { cont.resume(Unit) }
-        } catch (_: Exception) {
-            cont.resume(Unit)
-        }
     }
 
     fun handleCallback(url: String) {
@@ -186,7 +175,6 @@ fun AuthScreen(
             val attempt = loginAttemptId
             AuthDebugLog.d("[LOGIN#$attempt] START method=$loginMethod")
             try {
-                clearCookiesForLogin()
                 val endpoints = authService.discoverEndpoints()
                 AuthDebugLog.d("[LOGIN#$attempt] DISCOVERY authorizationEndpoint=${endpoints.authorizationEndpoint} tokenEndpoint=${endpoints.tokenEndpoint}")
                 val verifier = PkceUtils.generateCodeVerifier()
