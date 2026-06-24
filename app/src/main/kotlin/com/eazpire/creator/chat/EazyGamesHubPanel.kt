@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,7 +53,7 @@ import com.eazpire.creator.auth.AuthConfig
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 
-private enum class GamesHubSection { Play, Collection, Exchange, Friends }
+private enum class GamesHubSection { Play, Collection, Exchange, Friends, Community }
 
 private enum class ExchangeTab { Market, MyListings, Trades }
 
@@ -85,6 +86,7 @@ fun EazyGamesHubPanel(
                 "collection" -> GamesHubSection.Collection
                 "exchange" -> GamesHubSection.Exchange
                 "invite", "friends" -> GamesHubSection.Friends
+                "community" -> GamesHubSection.Community
                 else -> GamesHubSection.Play
             },
         )
@@ -99,6 +101,7 @@ fun EazyGamesHubPanel(
             "collection" -> GamesHubSection.Collection
             "exchange" -> GamesHubSection.Exchange
             "invite", "friends" -> GamesHubSection.Friends
+            "community" -> GamesHubSection.Community
             "play" -> GamesHubSection.Play
             else -> section
         }
@@ -110,7 +113,8 @@ fun EazyGamesHubPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(width = 1.dp, color = palette.border)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -119,11 +123,12 @@ fun EazyGamesHubPanel(
                 GamesHubSection.Collection to (Icons.Default.EmojiEvents to t("eazy_chat.games_section_collection", "Collection")),
                 GamesHubSection.Exchange to (Icons.Default.SwapHoriz to t("eazy_chat.games_section_exchange", "Exchange")),
                 GamesHubSection.Friends to (Icons.Default.PersonAdd to t("eazy_chat.games_section_friends", "Friends")),
+                GamesHubSection.Community to (Icons.Default.Star to t("eazy_chat.games_section_community", "Community")),
             ).forEach { (sec, iconLabel) ->
                 val active = section == sec
                 Column(
                     modifier = Modifier
-                        .width(56.dp)
+                        .width(52.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (active) palette.accent.copy(alpha = 0.1f) else Color.Transparent)
                         .border(
@@ -152,7 +157,7 @@ fun EazyGamesHubPanel(
                         color = if (active) palette.text else palette.muted,
                     )
                 }
-                if (sec != GamesHubSection.Friends) Spacer(modifier = Modifier.width(4.dp))
+                if (sec != GamesHubSection.Community) Spacer(modifier = Modifier.width(4.dp))
             }
         }
 
@@ -203,6 +208,15 @@ fun EazyGamesHubPanel(
                         playGameSlug = slug
                         section = GamesHubSection.Play
                     },
+                )
+            GamesHubSection.Community ->
+                EazyCommunityGamesPanel(
+                    api = api,
+                    ownerId = ownerId,
+                    shop = shop,
+                    isLoggedIn = isLoggedIn,
+                    onLoginClick = onLoginClick,
+                    t = t,
                 )
         }
     }

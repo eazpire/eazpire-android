@@ -482,6 +482,45 @@ class CreatorApi(
         return call("daily-game-state", params)
     }
 
+    suspend fun getCommunityGamesCatalog(shop: String, ownerId: String? = null): JSONObject {
+        val params = mutableMapOf("shop" to shop)
+        ownerId?.trim()?.takeIf { it.isNotBlank() }?.let { id ->
+            params["logged_in_customer_id"] = id
+        }
+        return call("community-games-catalog", params)
+    }
+
+    suspend fun startCommunityGameSession(shop: String, ownerId: String, gameSlug: String): JSONObject =
+        postJson(
+            "community-game-session-start",
+            mapOf(
+                "game_slug" to gameSlug,
+                "logged_in_customer_id" to ownerId,
+                "owner_id" to ownerId,
+            ),
+            mapOf("shop" to shop),
+        )
+
+    suspend fun finishCommunityGameSession(
+        shop: String,
+        ownerId: String,
+        sessionToken: String,
+        outcome: String,
+        score: Int?,
+        durationMs: Long?,
+    ): JSONObject =
+        postJson(
+            "community-game-session-finish",
+            mapOf(
+                "session_token" to sessionToken,
+                "logged_in_customer_id" to ownerId,
+                "outcome" to outcome,
+                "score" to (score ?: 0),
+                "duration_ms" to (durationMs ?: 0),
+            ),
+            mapOf("shop" to shop),
+        )
+
     suspend fun listGamesInviteFriends(ownerId: String, shop: String): JSONObject = call(
         "list-games-invite-friends",
         mapOf("owner_id" to ownerId, "shop" to shop),
