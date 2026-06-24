@@ -895,12 +895,18 @@ fun ProductDetailScreen(
         Column(modifier = layoutHeightModifier) {
         // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
 
-        Column(
+        // Weight on Box, scroll on inner Column — avoids infinite-height crash in modal sheets.
+        Box(
             modifier = Modifier
                 .weight(1f)
-                .background(Color.White)
-                .verticalScroll(rememberScrollState())
+                .fillMaxWidth(),
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .verticalScroll(rememberScrollState())
+            ) {
             // pdp-info (order 1) – Brand, Title, Product Details btn, Subtitle
             Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                 // Brand / Creator — logo + name, links to creator shop page
@@ -1485,6 +1491,7 @@ fun ProductDetailScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+        }
 
         if (favoriteEdit != null) {
             val editCtx = favoriteEdit
@@ -2045,7 +2052,9 @@ fun ProductDetailScreen(
                     onDismiss = { posterArActive = false },
                 )
             } else {
-                posterArActive = false
+                LaunchedEffect(Unit) {
+                    posterArActive = false
+                }
             }
         }
     }
