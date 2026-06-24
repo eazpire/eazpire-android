@@ -8,6 +8,13 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+
+    <queries>
+        <package android:name="com.google.ar.core" />
+    </queries>
+
     <application
         android:name=".EazpireApplication"
         android:allowBackup="true"
@@ -25,6 +32,9 @@
         <meta-data
             android:name="com.google.android.gms.wearable.beta.app"
             android:resource="@xml/wearable_app_desc" />
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="optional" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

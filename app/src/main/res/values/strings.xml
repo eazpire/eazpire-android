@@ -44,4 +44,15 @@
     <string name="notif_info_creator_other">Other creator alerts that do not fit the categories above.</string>
     <string name="notif_test_push_title">Test: %1$s</string>
     <string name="notif_test_push_body">Tap to open the screen linked to this notification type.</string>
+    <string name="poster_ar_camera_denied">Camera access is required to preview the poster in your room.</string>
+    <string name="poster_ar_allow_camera">Allow camera</string>
+    <string name="poster_ar_unsupported">AR is not supported on this device.</string>
+    <string name="poster_ar_installing">Installing AR services…</string>
+    <string name="poster_ar_install_failed">AR services could not be installed.</string>
+    <string name="poster_ar_retry">Retry</string>
+    <string name="poster_ar_session_failed">Could not start the AR camera.</string>
+    <string name="poster_ar_close">Close</string>
+    <string name="poster_ar_scan_hint">Move your phone slowly to scan walls and surfaces.</string>
+    <string name="poster_ar_tap_place">Tap to place the poster</string>
+    <string name="poster_ar_view_in_room">View in room</string>
 </resources>

@@ -71,6 +71,25 @@ android {
     }
     // NDK r28+ aligns ELF segments for 16 KB page-size devices (Play Console requirement).
     ndkVersion = "28.0.12433566"
+    packaging {
+        resources {
+            pickFirsts += setOf(
+                "environments/neutral/neutral_ibl.ktx",
+                "environments/neutral/neutral_skybox.ktx",
+                "environments/neutral/sh.txt",
+                "materials/image_texture.filamat",
+                "materials/opaque_colored.filamat",
+                "materials/opaque_textured.filamat",
+                "materials/transparent_colored.filamat",
+                "materials/transparent_textured.filamat",
+                "materials/video_texture.filamat",
+                "materials/video_texture_chroma_key.filamat",
+                "materials/view_renderable.filamat",
+                "materials/view_texture_lit.filamat",
+                "materials/view_texture_unlit.filamat",
+            )
+        }
+    }
 }
 
 dependencies {
@@ -129,6 +148,11 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
+    // Poster AR (SceneView + ARCore — same stack as wear-android)
+    val sceneViewVersion = "3.6.2"
+    implementation("io.github.sceneview:arsceneview:$sceneViewVersion")
+    implementation("com.google.ar:core:1.46.0")
 
     // Creator theme background video (remote MP4, object-fit cover via RESIZE_MODE_ZOOM)
     val media3Version = "1.5.1"

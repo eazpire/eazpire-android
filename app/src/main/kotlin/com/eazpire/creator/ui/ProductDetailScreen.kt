@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -114,6 +115,9 @@ import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.ui.components.HangerIcon
+import com.eazpire.creator.ar.poster.PosterArCatalog
+import com.eazpire.creator.ar.poster.PosterArOverlay
+import com.eazpire.creator.plp.PlpRotationUrls
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.input.pointer.pointerInput
@@ -504,6 +508,7 @@ fun ProductDetailScreen(
     var tryOnOverlayMessage by remember(productHandle) { mutableStateOf<String?>(null) }
     var activePreviewMockIndex by remember(productHandle) { mutableIntStateOf(0) }
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
+    var posterArActive by remember(productHandle) { mutableStateOf(false) }
     val ownerIdForMocks = remember { tokenStore.getOwnerId()?.takeIf { it.isNotBlank() }.orEmpty() }
 
     LaunchedEffect(ownerIdForMocks) {
@@ -639,12 +644,14 @@ fun ProductDetailScreen(
         p.productKey,
         p.designIdMeta
     )
+    val showPosterArButton = PlpRotationUrls.isPhotopaperLikeProductKey(p.productKey)
 
     // Variant options — Paper → Color → other → Size (parity with web)
     val sortedOptions = remember(p.options) { ProductOptionSort.sort(p.options) }
     val colorOption = p.options.find { ProductOptionSort.kindForName(it.name) == Kind.COLOR }
     val sizeOption = p.options.find { ProductOptionSort.kindForName(it.name) == Kind.SIZE }
     val sizeOptionIndex = p.options.indexOfFirst { ProductOptionSort.kindForName(it.name) == Kind.SIZE }
+    val paperOptionIndex = p.options.indexOfFirst { ProductOptionSort.kindForName(it.name) == Kind.PAPER }
     var selectedByIndex by remember(p.id) {
         mutableStateOf(
             p.options.indices.associateWith { idx ->
@@ -1122,6 +1129,25 @@ fun ProductDetailScreen(
                                 .background(Color.White.copy(alpha = 0.92f), CircleShape)
                         ) {
                             Icon(Icons.Default.ChevronRight, contentDescription = null)
+                        }
+                    }
+                    if (showPosterArButton) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 12.dp)
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.92f))
+                                .clickable { posterArActive = true },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ViewInAr,
+                                contentDescription = t("eaz.pdp.view_in_room", "View in room"),
+                                tint = EazColors.TextPrimary,
+                                modifier = Modifier.size(22.dp),
+                            )
                         }
                     }
                     if (showTryOnButton) {
@@ -1920,6 +1946,106 @@ fun ProductDetailScreen(
                         color = Color.White
                     )
                 }
+            }
+        }
+
+        if (posterArActive) {
+            val baseArConfig = remember(p.id, selectedByIndex) {
+                PosterArCatalog.buildSessionConfig(
+                    product = p,
+                    selectedByIndex = selectedByIndex,
+                    onSelectionChange = { _, _ -> },
+                    onAddToCart = {},
+                    onAddToFavorite = {},
+                )
+            }
+            if (baseArConfig != null) {
+                PosterArOverlay(
+                    config = baseArConfig.copy(
+                        onSelectionChange = { sizeIdx, paperIdx ->
+                            val next = selectedByIndex.toMutableMap()
+                            baseArConfig.sizeEntries.getOrNull(sizeIdx)?.label?.let { label ->
+                                if (sizeOptionIndex >= 0) next[sizeOptionIndex] = label
+                            }
+                            baseArConfig.paperValues.getOrNull(paperIdx)?.let { paper ->
+                                if (paperOptionIndex >= 0) next[paperOptionIndex] = paper
+                            }
+                            selectedByIndex = next
+                        },
+                        onAddToCart = {
+                            val vid = variantIdForCart
+                            if (vid == null) {
+                                Toast.makeText(context, "Pick a product option", Toast.LENGTH_SHORT).show()
+                            } else {
+                                scope.launch {
+                                    val customerToken = resolveValidCustomerAccessToken(context, tokenStore)
+                                    val cartId = storefrontCartStore.cartId
+                                    if (cartId != null) {
+                                        val result = withContext(Dispatchers.IO) {
+                                            storefrontCartApi.addLine(cartId, vid, quantity, customerToken)
+                                        }
+                                        if (result.ok && result.cart != null) {
+                                            storefrontCartStore.cartId = result.cart.cartId
+                                            AppCartStore.setCount(result.cart.itemCount)
+                                            showCartToast = true
+                                            showCartPlusOne = true
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                result.message ?: "Could not add to cart",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    } else {
+                                        val result = withContext(Dispatchers.IO) {
+                                            storefrontCartApi.createCart(listOf(vid to quantity), customerToken, countryCode)
+                                        }
+                                        if (result.ok && result.cartId != null) {
+                                            storefrontCartStore.cartId = result.cartId
+                                            AppCartStore.setCount(quantity)
+                                            showCartToast = true
+                                            showCartPlusOne = true
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                result.message ?: "Could not create cart",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        onAddToFavorite = {
+                            val ownerId = tokenStore.getOwnerId()
+                            if (!ownerId.isNullOrBlank()) {
+                                scope.launch {
+                                    try {
+                                        val resp = creatorApi.addFavorite(
+                                            customerId = ownerId,
+                                            productId = p.id.toString(),
+                                            variantId = selectedVariant?.id?.toString(),
+                                            productTitle = p.title,
+                                            productImage = images.firstOrNull(),
+                                        )
+                                        if (resp.optBoolean("ok", false)) {
+                                            FavoritesRefreshTrigger.trigger()
+                                            showFavoritePlusOne = true
+                                        }
+                                        showFavoriteToast = true
+                                    } catch (_: Exception) {
+                                        showFavoriteToast = true
+                                    }
+                                }
+                            } else {
+                                showFavoriteToast = true
+                            }
+                        },
+                    ),
+                    onDismiss = { posterArActive = false },
+                )
+            } else {
+                posterArActive = false
             }
         }
     }
