@@ -93,7 +93,9 @@ android {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2023.10.01"))
+    // Must match or exceed arsceneview's Compose needs; exclude its transitive BOM below
+    // so compile + runtime resolve the same material3 (avoids rememberModalBottomSheetState NoSuchMethodError).
+    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.tracing:tracing-ktx:1.2.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
@@ -151,7 +153,9 @@ dependencies {
 
     // Poster AR (SceneView + ARCore — same stack as wear-android)
     val sceneViewVersion = "3.6.2"
-    implementation("io.github.sceneview:arsceneview:$sceneViewVersion")
+    implementation("io.github.sceneview:arsceneview:$sceneViewVersion") {
+        exclude(group = "androidx.compose", module = "compose-bom")
+    }
     implementation("com.google.ar:core:1.46.0")
 
     // Creator theme background video (remote MP4, object-fit cover via RESIZE_MODE_ZOOM)
