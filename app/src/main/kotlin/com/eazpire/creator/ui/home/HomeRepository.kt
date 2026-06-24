@@ -294,13 +294,24 @@ class HomeRepository private constructor(context: Context) {
         if (!force) {
             memoryCache[key]?.takeIf { it.isFresh() }?.products?.let { return@withContext it }
         }
-        val products = loadHomeCarouselFromWorker(
+        var products = loadHomeCarouselFromWorker(
             creatorApi,
             sectionId,
             chipId = chipId,
             limit = limit,
             countryCode = countryCode,
         )
+        if (products.isEmpty()) {
+            val sectionDef = HOME_PRODUCT_SECTIONS.find { it.id == sectionId }
+            val shopApi = ShopifyProductsApi()
+            products = loadHomeSectionForChip(
+                api = shopApi,
+                baseCollectionHandle = sectionDef?.baseCollectionHandle,
+                maxProducts = limit,
+                chipId = chipId,
+                initialOnly = limit <= HOME_INITIAL_PRODUCTS,
+            )
+        }
         memoryCache[key] = CacheEntry(products, System.currentTimeMillis())
         products
     }
@@ -347,12 +358,13 @@ class HomeRepository private constructor(context: Context) {
                 async(Dispatchers.IO) {
                     val products = EazPerfTrace.measureSectionSuspend("home.fetch.${def.id}") {
                         EazPerfTrace.incrementCounter("home_api_calls")
-                        loadHomeCarouselFromWorker(
+                        carouselProducts(
                             creatorApi,
                             def.id,
                             chipId = "all",
                             limit = HOME_INITIAL_PRODUCTS,
                             countryCode = countryCode,
+                            force = true,
                         )
                     }
                     def.id to products
