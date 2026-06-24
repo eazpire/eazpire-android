@@ -57,6 +57,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
 import com.eazpire.creator.ui.modal.EazModalInsets
+import com.eazpire.creator.ui.modal.EazModalSheetLayout
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -891,22 +892,10 @@ fun ProductDetailScreen(
         }
     }
 
-    Box(modifier = modifier.then(layoutHeightModifier).background(rootBackground)) {
-        Column(modifier = layoutHeightModifier) {
-        // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
+    val pdpScrollState = rememberScrollState()
 
-        // Weight on Box, scroll on inner Column — avoids infinite-height crash in modal sheets.
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .verticalScroll(rememberScrollState())
-            ) {
+    @Composable
+    fun PdpScrollContent() {
             // pdp-info (order 1) – Brand, Title, Product Details btn, Subtitle
             Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                 // Brand / Creator — logo + name, links to creator shop page
@@ -1024,8 +1013,7 @@ fun ProductDetailScreen(
                     Column(
                         modifier = Modifier
                             .width(60.dp)
-                            .heightIn(max = 280.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .heightIn(max = 280.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         images.forEachIndexed { idx: Int, url: String ->
@@ -1490,9 +1478,10 @@ fun ProductDetailScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-        }
-        }
+    }
 
+    @Composable
+    fun PdpFooterContent() {
         if (favoriteEdit != null) {
             val editCtx = favoriteEdit
             Column(
@@ -1888,6 +1877,48 @@ fun ProductDetailScreen(
             }
         }
         }
+    }
+
+    Box(
+        modifier = if (showCloseButton) {
+            modifier.fillMaxWidth().fillMaxHeight().background(rootBackground)
+        } else {
+            modifier.then(layoutHeightModifier).background(rootBackground)
+        },
+    ) {
+        if (showCloseButton) {
+            EazModalSheetLayout(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                body = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White)
+                            .verticalScroll(pdpScrollState),
+                    ) {
+                        PdpScrollContent()
+                    }
+                },
+                footer = { PdpFooterContent() },
+            )
+        } else {
+            Column(modifier = layoutHeightModifier) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White)
+                            .verticalScroll(pdpScrollState),
+                    ) {
+                        PdpScrollContent()
+                    }
+                }
+                PdpFooterContent()
+            }
         }
 
         // Main Footer – only on full-page PDP, not in product modal
@@ -1896,7 +1927,6 @@ fun ProductDetailScreen(
                 onTermsClick = onTermsClick,
             )
         }
-    }
 
         if (showCloseButton) {
             IconButton(
@@ -2463,6 +2493,9 @@ private fun PdpInfiniteProductCarouselRow(
         )
         LazyRow(
             state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(136.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
@@ -2536,6 +2569,9 @@ private fun PdpProductCarouselRow(
             modifier = Modifier.padding(bottom = 8.dp)
         )
         LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(136.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(bottom = 4.dp)
         ) {
