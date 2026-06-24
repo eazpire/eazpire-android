@@ -52,7 +52,7 @@ fun ProductModal(
                 onNavigateToCreator = onNavigateToCreator,
                 onNavigateToProduct = onNavigateToProduct,
                 favoriteEdit = favoriteEdit,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().fillMaxHeight()
             )
         }
     }

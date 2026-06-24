@@ -57,7 +57,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
 import com.eazpire.creator.ui.modal.EazModalInsets
-import com.eazpire.creator.ui.modal.EazModalSheetLayout
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -892,10 +891,22 @@ fun ProductDetailScreen(
         }
     }
 
-    val pdpScrollState = rememberScrollState()
+    Box(modifier = modifier.then(layoutHeightModifier).background(rootBackground)) {
+        Column(modifier = layoutHeightModifier) {
+        // No back button – navigation via breadcrumb (Home / Collection); optional close for modal
 
-    @Composable
-    fun PdpScrollContent() {
+        // Weight on Box, scroll on inner Column — avoids infinite-height crash in modal sheets.
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .verticalScroll(rememberScrollState())
+            ) {
             // pdp-info (order 1) – Brand, Title, Product Details btn, Subtitle
             Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                 // Brand / Creator — logo + name, links to creator shop page
@@ -1390,7 +1401,7 @@ fun ProductDetailScreen(
                         }
                     }
                 }
-                if (carSameType.isNotEmpty()) {
+                if (!showCloseButton && carSameType.isNotEmpty()) {
                     PdpInfiniteProductCarouselRow(
                         title = t("eaz.pdp.carousel_same_type_designs", "More designs on this product"),
                         products = carSameType,
@@ -1401,7 +1412,7 @@ fun ProductDetailScreen(
                         modifier = Modifier.padding(top = 12.dp)
                     )
                 }
-                if (carSameDesign.isNotEmpty()) {
+                if (!showCloseButton && carSameDesign.isNotEmpty()) {
                     PdpInfiniteProductCarouselRow(
                         title = t("eaz.pdp.carousel_same_design_products", "More products with this design"),
                         products = carSameDesign,
@@ -1478,10 +1489,9 @@ fun ProductDetailScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-    }
+        }
+        }
 
-    @Composable
-    fun PdpFooterContent() {
         if (favoriteEdit != null) {
             val editCtx = favoriteEdit
             Column(
@@ -1877,48 +1887,6 @@ fun ProductDetailScreen(
             }
         }
         }
-    }
-
-    Box(
-        modifier = if (showCloseButton) {
-            modifier.fillMaxWidth().fillMaxHeight().background(rootBackground)
-        } else {
-            modifier.then(layoutHeightModifier).background(rootBackground)
-        },
-    ) {
-        if (showCloseButton) {
-            EazModalSheetLayout(
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-                body = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White)
-                            .verticalScroll(pdpScrollState),
-                    ) {
-                        PdpScrollContent()
-                    }
-                },
-                footer = { PdpFooterContent() },
-            )
-        } else {
-            Column(modifier = layoutHeightModifier) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White)
-                            .verticalScroll(pdpScrollState),
-                    ) {
-                        PdpScrollContent()
-                    }
-                }
-                PdpFooterContent()
-            }
         }
 
         // Main Footer – only on full-page PDP, not in product modal
@@ -1927,6 +1895,7 @@ fun ProductDetailScreen(
                 onTermsClick = onTermsClick,
             )
         }
+    }
 
         if (showCloseButton) {
             IconButton(
@@ -2476,13 +2445,7 @@ private fun PdpInfiniteProductCarouselRow(
     val context = LocalContext.current
     val base = products.take(50)
     if (base.isEmpty()) return
-    val repeated = remember(base) {
-        if (base.size <= 1) base
-        else List(base.size * 40) { idx -> base[idx % base.size] }
-    }
-    val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = if (base.size <= 1) 0 else base.size * 20
-    )
+    val thumbScroll = rememberScrollState()
     Column(modifier = modifier.fillMaxWidth().padding(top = 4.dp)) {
         Text(
             text = title,
@@ -2491,16 +2454,13 @@ private fun PdpInfiniteProductCarouselRow(
             color = EazColors.TextPrimary,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        LazyRow(
-            state = listState,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(136.dp),
+                .horizontalScroll(thumbScroll),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(bottom = 4.dp),
         ) {
-            items(repeated.size, key = { "pdp-carousel-$it-${repeated[it].handle}" }) { index ->
-                val item = repeated[index]
+            base.forEach { item ->
                 val pk = item.metaProductKey.takeIf { it.isNotBlank() }
                 val (dt, _) = splitProductTitle(item.title, item.productType, pk)
                 Column(
@@ -2560,6 +2520,7 @@ private fun PdpProductCarouselRow(
 ) {
     if (products.isEmpty()) return
     val context = LocalContext.current
+    val rowScroll = rememberScrollState()
     Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
         Text(
             text = title,
@@ -2568,14 +2529,13 @@ private fun PdpProductCarouselRow(
             color = EazColors.TextPrimary,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        LazyRow(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(136.dp),
+                .horizontalScroll(rowScroll),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(bottom = 4.dp)
         ) {
-            items(products, key = { it.handle }) { item ->
+            products.forEach { item ->
                 val pk = item.metaProductKey.takeIf { it.isNotBlank() }
                 val (dt, _) = splitProductTitle(item.title, item.productType, pk)
                 Column(
