@@ -15,7 +15,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.eazpire.creator"
-    compileSdk = 35
+    compileSdk = 36
     // Build in temp – vermeidet OneDrive-Sperren im Projektordner (nur lokal, nicht in CI)
     if (System.getenv("CI") != "true") {
         buildDir = file("${System.getProperty("java.io.tmpdir")}/eazpire-android-build/${project.name}")
