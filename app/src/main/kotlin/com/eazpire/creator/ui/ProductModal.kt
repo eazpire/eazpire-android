@@ -10,6 +10,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.eazpire.creator.ar.poster.PosterArSessionConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.ui.header.FavoriteEditContext
@@ -27,6 +28,7 @@ fun ProductModal(
     onTermsClick: (() -> Unit)? = null,
     onNavigateToCreator: ((String) -> Unit)? = null,
     onNavigateToProduct: ((String) -> Unit)? = null,
+    onPosterArOpen: ((PosterArSessionConfig) -> Unit)? = null,
     favoriteEdit: FavoriteEditContext? = null,
     modifier: Modifier = Modifier
 ) {
@@ -51,6 +53,7 @@ fun ProductModal(
                 onTermsClick = onTermsClick,
                 onNavigateToCreator = onNavigateToCreator,
                 onNavigateToProduct = onNavigateToProduct,
+                onPosterArOpen = onPosterArOpen,
                 favoriteEdit = favoriteEdit,
                 modifier = Modifier.fillMaxWidth().fillMaxHeight()
             )

@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.ui.modal.EazStandardDialog
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.ar.poster.PosterArOverlay
+import com.eazpire.creator.ar.poster.PosterArSessionConfig
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
@@ -112,12 +114,14 @@ fun VoucherModal(
     var giftCardDetailId by remember { mutableStateOf<String?>(null) }
     var loyaliteePickerRewardId by remember { mutableStateOf<String?>(null) }
     var loyaliteeProductHandle by remember { mutableStateOf<String?>(null) }
+    var posterArSessionConfig by remember { mutableStateOf<PosterArSessionConfig?>(null) }
     var checkoutUrl by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(visible) {
         if (!visible) {
             giftCardDetailId = null
             loyaliteePickerRewardId = null
             loyaliteeProductHandle = null
+            posterArSessionConfig = null
             checkoutUrl = null
         }
     }
@@ -416,9 +420,17 @@ fun VoucherModal(
                     onBack = { loyaliteeProductHandle = null },
                     tokenStore = tokenStore,
                     showCloseButton = true,
+                    onPosterArOpen = { config -> posterArSessionConfig = config },
                 )
             }
         }
+    }
+
+    posterArSessionConfig?.let { config ->
+        PosterArOverlay(
+            config = config,
+            onDismiss = { posterArSessionConfig = null },
+        )
     }
 }
 

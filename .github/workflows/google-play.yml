@@ -97,7 +97,7 @@ jobs:
       - name: Build release AAB
         env:
           CI: "true"
-        run: ./gradlew bundleRelease --no-daemon --stacktrace
+        run: ./gradlew :app:bundleRelease --no-daemon --stacktrace
 
       - name: Upload to Google Play
         uses: r0adkll/upload-google-play@v1

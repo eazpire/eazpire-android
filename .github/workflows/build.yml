@@ -38,7 +38,7 @@ jobs:
           GRADLE_OPTS: ""
           JAVA_OPTS: ""
           VERSION_CODE: ${{ github.run_number }}
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug --no-daemon
 
       # Release-AAB: nur im Workflow „Google Play (AAB)“ (signiert, Secrets) — bundleRelease hier ohne Keystore schlägt fehl und täuscht mit continue-on-error „Success“.
 
