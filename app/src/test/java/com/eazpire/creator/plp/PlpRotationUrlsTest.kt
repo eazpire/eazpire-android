@@ -49,6 +49,31 @@ class PlpRotationUrlsTest {
         assertTrue(build.urls.contains("https://shop/a3.jpg"))
     }
 
+    @Test
+    fun posterArEligible_fromTitleWhenProductKeyMissing() {
+        assertTrue(
+            PlpRotationUrls.isPosterArEligible(
+                productKey = null,
+                images = emptyList(),
+                productType = null,
+                title = "Cool Design | Photopaper Poster",
+            )
+        )
+    }
+
+    @Test
+    fun posterArEligible_fromContextAltLayout() {
+        assertTrue(
+            PlpRotationUrls.isPosterArEligible(
+                productKey = null,
+                images = listOf(
+                    img("https://shop/a4.jpg", "a4-vertical|front|preview-default"),
+                    img("https://shop/a4-context.jpg", "a4-vertical|context_1"),
+                ),
+            )
+        )
+    }
+
     private fun img(src: String, alt: String) =
         ShopifyProductsApi.ProductImage(src = src, variantIds = emptyList(), alt = alt)
 }

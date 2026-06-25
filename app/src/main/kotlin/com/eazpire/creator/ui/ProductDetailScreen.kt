@@ -644,7 +644,12 @@ fun ProductDetailScreen(
         p.productKey,
         p.designIdMeta
     )
-    val showPosterArButton = PlpRotationUrls.isPhotopaperLikeProductKey(p.productKey)
+    val showPosterArButton = PlpRotationUrls.isPosterArEligible(
+        productKey = p.productKey,
+        images = p.images,
+        productType = p.productType,
+        title = p.title,
+    )
 
     // Variant options — Paper → Color → other → Size (parity with web)
     val sortedOptions = remember(p.options) { ProductOptionSort.sort(p.options) }
@@ -1188,6 +1193,34 @@ fun ProductDetailScreen(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            if (showPosterArButton) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                        .clip(RoundedCornerShape(100.dp))
+                        .border(1.dp, EazColors.TextPrimary.copy(alpha = 0.18f), RoundedCornerShape(100.dp))
+                        .clickable { posterArActive = true }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ViewInAr,
+                        contentDescription = null,
+                        tint = EazColors.TextPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        t("eaz.pdp.view_in_room", "View in room"),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = EazColors.TextPrimary,
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             // Mobile options (order 3) — Paper → Color → other → Size
             Column(modifier = Modifier.padding(horizontal = 8.dp)) {

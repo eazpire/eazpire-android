@@ -37,7 +37,27 @@ object PlpRotationUrls {
         return false
     }
 
-    private fun isPhotopaperLikeAltLayout(images: List<ShopifyProductsApi.ProductImage>): Boolean {
+    /** PDP poster AR — same signals as web eaz-product-card-redesign (product_key, alt layout, type/title hints). */
+    fun isPosterArEligible(
+        productKey: String?,
+        images: List<ShopifyProductsApi.ProductImage>,
+        productType: String? = null,
+        title: String? = null,
+    ): Boolean {
+        if (isPhotopaperLikeProductKey(productKey)) return true
+        if (isPhotopaperLikeAltLayout(images)) return true
+        val typeHint = productType?.trim()?.lowercase().orEmpty()
+        if (typeHint.contains("photopaper") || (typeHint.contains("poster") && !typeHint.contains("frame"))) {
+            return true
+        }
+        val titleHint = title?.trim()?.lowercase().orEmpty()
+        if (titleHint.contains("photopaper") || (titleHint.contains("poster") && !titleHint.contains("frame"))) {
+            return true
+        }
+        return false
+    }
+
+    fun isPhotopaperLikeAltLayout(images: List<ShopifyProductsApi.ProductImage>): Boolean {
         var hasStructured = false
         for (pi in images) {
             val alt = (pi.alt ?: "").trim()
