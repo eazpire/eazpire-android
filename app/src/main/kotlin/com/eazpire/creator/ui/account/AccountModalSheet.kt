@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
 import com.eazpire.creator.ui.modal.EazModalFooterSurface
 import com.eazpire.creator.ui.modal.EazModalSheetLayout
+import com.eazpire.creator.ui.modal.dismissBottomSheetThen
 import com.eazpire.creator.ui.modal.eazModalBody
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,9 +87,16 @@ fun AccountModalSheet(
     var wardrobeSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var wardrobeCanSave by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val translationStore = LocalTranslationStore.current
     fun t(key: String, default: String) = translationStore?.t(key, default) ?: default
+    val logoutAfterDismiss: () -> Unit = {
+        scope.dismissBottomSheetThen(sheetState) {
+            onDismiss()
+            onLogout()
+        }
+    }
 
     EazBottomSheet(
         onDismissRequest = onDismiss,
@@ -256,7 +265,7 @@ fun AccountModalSheet(
                                 translationStore = translationStore,
                                 onSaveActionReady = { footerSaveAction = it },
                                 onSavingStateChange = { footerSaveInProgress = it },
-                                onLogout = onLogout,
+                                onLogout = logoutAfterDismiss,
                                 modifier = Modifier.fillMaxWidth(),
                                 embedInParentScroll = true,
                             )

@@ -635,14 +635,7 @@ fun CreatorMainScreen(
                     creatorSettingsInitialEazSub = null
                 },
                 onLoginClick = onAccountClick,
-                onLogout = {
-                    creatorSettingsVisible = false
-                    wearPairTokenForSettings = null
-                    creatorCodesPrefill = null
-                    creatorSettingsInitialTab = 0
-                    creatorSettingsInitialEazSub = null
-                    onLogout()
-                },
+                onLogout = { onLogout() },
             )
         }
         if (audioModalVisible) {

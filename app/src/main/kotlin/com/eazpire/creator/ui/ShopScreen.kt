@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -200,6 +201,7 @@ fun ShopScreen(
     }
     // #endregion
     var accountModalVisible by remember { mutableStateOf(false) }
+    var authSessionTick by remember { mutableIntStateOf(0) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
     var shopContentReloadNonce by remember { mutableIntStateOf(0) }
@@ -641,26 +643,26 @@ fun ShopScreen(
     }
 
     fun handleUserLogout() {
-        // Close scrollable modals first — clearing auth in the same frame as sheet teardown
-        // remeasures verticalScroll with infinite height and crashes (see creator-crash-log).
         oauthCallbackForAuth.value = null
-        accountModalVisible = false
+        authAutoStartOAuth = false
+        showAuthScreen = false
+        showLoginOptions = false
+        favoriteEditContext = null
+        productModalHandleState.value = null
         menuDrawerVisible = false
         cartDrawerVisible = false
         favoritesModalVisible = false
         eazyChatVisible = false
         voucherModalVisible = false
         termsModalVisible = false
-        favoriteEditContext = null
-        productModalHandleState.value = null
-        authAutoStartOAuth = false
-        showAuthScreen = false
-        showLoginOptions = false
-        // Do not bump sessionEpoch on logout — re-keying disposes scrollable modals mid-frame.
+        // Account / creator settings modals dismiss via animated sheet hide, then onDismiss + onLogout.
         scope.launch {
-            delay(400)
+            withFrameNanos { }
+            withFrameNanos { }
+            delay(350)
             ShopSessionGuard.performFullLogout(context, tokenStore)
-            showLoginOptions = true
+            refreshShopContent()
+            authSessionTick++
         }
     }
 
@@ -732,7 +734,7 @@ fun ShopScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
     if (isCreatorMode) {
-        key("creator") {
+        key("creator", authSessionTick) {
         CreatorMainScreen(
             tokenStore = tokenStore,
             localeStore = localeStore,
@@ -791,7 +793,7 @@ fun ShopScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            key(languageCode) {
+            key(languageCode, authSessionTick) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 MainHeader(
                     localeStore = localeStore,
@@ -930,7 +932,7 @@ fun ShopScreen(
             }
         },
         bottomBar = {
-            key(languageCode) {
+            key(languageCode, authSessionTick) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         SubFooter(
                             localeStore = localeStore,

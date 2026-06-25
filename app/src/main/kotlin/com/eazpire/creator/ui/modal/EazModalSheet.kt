@@ -28,6 +28,8 @@ import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -87,6 +89,19 @@ fun EazModalSheetLayout(
 
 /** Body slot inside [EazModalSheetLayout] — width only, height from parent weight. */
 fun Modifier.eazModalBody(): Modifier = fillMaxWidth()
+
+/**
+ * Hides a bottom sheet before running [onComplete].
+ * Avoids tearing down [Modifier.verticalScroll] children in the same frame (logout crash).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+fun CoroutineScope.dismissBottomSheetThen(sheetState: SheetState, onComplete: () -> Unit) {
+    launch {
+        sheetState.hide()
+    }.invokeOnCompletion {
+        if (!sheetState.isVisible) onComplete()
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

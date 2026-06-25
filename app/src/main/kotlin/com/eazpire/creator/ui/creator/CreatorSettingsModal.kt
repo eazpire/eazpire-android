@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
 import com.eazpire.creator.ui.modal.EazModalSheetLayout
 import com.eazpire.creator.ui.modal.EazModalFooterSurface
+import com.eazpire.creator.ui.modal.dismissBottomSheetThen
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.animation.core.RepeatMode
@@ -49,6 +50,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,6 +83,13 @@ fun CreatorSettingsModal(
     val isLoggedIn = tokenStore.isLoggedIn()
     var currentTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 9)) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val logoutAfterDismiss: () -> Unit = {
+        scope.dismissBottomSheetThen(sheetState) {
+            onDismiss()
+            onLogout()
+        }
+    }
 
     val tabs = listOf(
         SettingsTabItem(translationStore.t("creator.settings.nav_profile", "Profile"), Icons.Default.Person),
@@ -182,7 +191,7 @@ fun CreatorSettingsModal(
                     currentTab = currentTab,
                     tokenStore = tokenStore,
                     translationStore = translationStore,
-                    onLogout = onLogout,
+                    onLogout = logoutAfterDismiss,
                     pendingWearPairToken = pendingWearPairToken,
                     initialRedeemCode = if (currentTab == codesTabIndex) initialRedeemCode else null,
                     onInitialRedeemCodeConsumed = onInitialRedeemCodeConsumed,
