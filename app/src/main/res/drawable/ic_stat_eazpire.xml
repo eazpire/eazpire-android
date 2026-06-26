@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Vector fallback for status bar notification icon (white on transparent).
+  Legacy status-bar vector (unused at runtime; notifications use ic_notification.xml).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
