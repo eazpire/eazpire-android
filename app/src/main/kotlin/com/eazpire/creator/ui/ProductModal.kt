@@ -8,12 +8,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.eazpire.creator.ar.poster.PosterArSessionConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.debug.debugLog
 import com.eazpire.creator.ui.header.FavoriteEditContext
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.launch
 
 /**
  * Produkt-Modal für Hero-Hotspot-Klicks.
@@ -29,6 +32,8 @@ fun ProductModal(
     onNavigateToCreator: ((String) -> Unit)? = null,
     onNavigateToProduct: ((String) -> Unit)? = null,
     onPosterArOpen: ((PosterArSessionConfig) -> Unit)? = null,
+    /** True while Poster AR fullscreen viewer is open — sheet hides but stays mounted. */
+    posterArActive: Boolean = false,
     favoriteEdit: FavoriteEditContext? = null,
     modifier: Modifier = Modifier
 ) {
@@ -37,6 +42,20 @@ fun ProductModal(
     // #endregion
     Log.d("ProductModalDebug", "[8] ProductModal COMPOSING: handle=$productHandle")
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val posterArOpen: ((PosterArSessionConfig) -> Unit)? = onPosterArOpen?.let { open ->
+        { config ->
+            scope.launch {
+                sheetState.hide()
+                open(config)
+            }
+        }
+    }
+    LaunchedEffect(posterArActive) {
+        if (!posterArActive && !sheetState.isVisible) {
+            sheetState.expand()
+        }
+    }
     EazBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -53,7 +72,7 @@ fun ProductModal(
                 onTermsClick = onTermsClick,
                 onNavigateToCreator = onNavigateToCreator,
                 onNavigateToProduct = onNavigateToProduct,
-                onPosterArOpen = onPosterArOpen,
+                onPosterArOpen = posterArOpen,
                 favoriteEdit = favoriteEdit,
                 modifier = Modifier.fillMaxWidth().fillMaxHeight()
             )

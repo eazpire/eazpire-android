@@ -11,6 +11,7 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import com.eazpire.creator.ar.poster.PosterArOverlay
+import com.eazpire.creator.ar.poster.PosterArSessionConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionCoordinator
 import com.eazpire.creator.debug.AuthDebugLog
@@ -78,6 +81,8 @@ class MainActivity : ComponentActivity() {
     /** Creator Settings → Creator Codes (from FCM / in-app notification). */
     val pendingCreatorCodesNav = mutableStateOf<PendingCreatorCodesNav?>(null)
     val pendingOpenGiftCardsWon = mutableStateOf(false)
+    /** Hoisted above ShopScreen — avoids Dialog+BottomSheet conflicts when opening Poster AR. */
+    val posterArSessionConfig = mutableStateOf<PosterArSessionConfig?>(null)
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -136,6 +141,7 @@ class MainActivity : ComponentActivity() {
         playInAppUpdateHelper = PlayInAppUpdateHelper(this, playInAppUpdateLauncher)
         EazPerfTrace.mark("mainActivity_setContent")
         setContent {
+            val activePosterAr = posterArSessionConfig.value
             EazpireCreatorTheme {
                 Surface(
                     modifier = Modifier
@@ -144,20 +150,30 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                     tonalElevation = 0.dp,
                 ) {
-                    ShopScreen(
-                        tokenStore = tokenStore,
-                        pendingDeepLink = pendingDeepLink,
-                        pendingEazyTab = pendingEazyTab,
-                        pendingOpenCart = pendingOpenCart,
-                        pendingOpenShop = pendingOpenShop,
-                        pendingWearPairToken = pendingWearPairToken,
-                        pendingArtifactClaimToken = pendingArtifactClaimToken,
-                        pendingGamesSection = pendingGamesSection,
-                        pendingTradeOfferId = pendingTradeOfferId,
-                        pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
-                        pendingCreatorCodesNav = pendingCreatorCodesNav,
-                        pendingOpenGiftCardsWon = pendingOpenGiftCardsWon,
-                    )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        ShopScreen(
+                            tokenStore = tokenStore,
+                            pendingDeepLink = pendingDeepLink,
+                            pendingEazyTab = pendingEazyTab,
+                            pendingOpenCart = pendingOpenCart,
+                            pendingOpenShop = pendingOpenShop,
+                            pendingWearPairToken = pendingWearPairToken,
+                            pendingArtifactClaimToken = pendingArtifactClaimToken,
+                            pendingGamesSection = pendingGamesSection,
+                            pendingTradeOfferId = pendingTradeOfferId,
+                            pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
+                            pendingCreatorCodesNav = pendingCreatorCodesNav,
+                            pendingOpenGiftCardsWon = pendingOpenGiftCardsWon,
+                            posterArActive = activePosterAr != null,
+                            onPosterArOpen = { posterArSessionConfig.value = it },
+                        )
+                        activePosterAr?.let { config ->
+                            PosterArOverlay(
+                                config = config,
+                                onDismiss = { posterArSessionConfig.value = null },
+                            )
+                        }
+                    }
                 }
             }
         }

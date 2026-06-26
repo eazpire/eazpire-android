@@ -47,7 +47,6 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.MainActivity
-import com.eazpire.creator.ar.poster.PosterArOverlay
 import com.eazpire.creator.ar.poster.PosterArSessionConfig
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.OAuthPkceStore
@@ -125,6 +124,8 @@ fun ShopScreen(
     pendingOpenGiftCardsWon: MutableState<Boolean>? = null,
     pendingGamesSection: MutableState<String?>? = null,
     pendingTradeOfferId: MutableState<Int?>? = null,
+    onPosterArOpen: (PosterArSessionConfig) -> Unit = {},
+    posterArActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -169,7 +170,6 @@ fun ShopScreen(
     CompositionLocalProvider(LocalTranslationStore provides translationStore) {
         /** Outside [key(sessionEpoch)] — OAuth callback + login UI survive session refresh re-key. */
         val productModalHandleState = remember { mutableStateOf<String?>(null) }
-        var posterArSessionConfig by remember { mutableStateOf<PosterArSessionConfig?>(null) }
         var showLoginOptions by remember { mutableStateOf(false) }
         var showAuthScreen by remember { mutableStateOf(false) }
         var authAutoStartOAuth by remember { mutableStateOf(false) }
@@ -1370,6 +1370,7 @@ fun ShopScreen(
         translationStore = translationStore,
         initialTab = voucherModalInitialTab,
         initialGiftSubTab = voucherModalInitialGiftSubTab,
+        onPosterArOpen = onPosterArOpen,
     )
 
     if (termsModalVisible) {
@@ -1456,23 +1457,11 @@ fun ShopScreen(
                             productModalHandleState.value = handle
                         }
                     },
-                    onPosterArOpen = { config -> posterArSessionConfig = config },
+                    onPosterArOpen = onPosterArOpen,
+                    posterArActive = posterArActive,
                     favoriteEdit = favoriteEditContext,
                 )
             }
-        }
-    }
-
-    posterArSessionConfig?.let { config ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(Float.MAX_VALUE)
-        ) {
-            PosterArOverlay(
-                config = config,
-                onDismiss = { posterArSessionConfig = null },
-            )
         }
     }
 
