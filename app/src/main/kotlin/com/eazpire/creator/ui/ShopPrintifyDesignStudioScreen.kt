@@ -37,9 +37,14 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
@@ -57,6 +62,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import com.eazpire.creator.ui.modal.EazBottomSheet
@@ -159,8 +166,8 @@ private fun resolveMockFromConfig(cfg: JSONObject): Pair<String?, PrintAreaFrac>
         val item = arr.optJSONObject(i) ?: continue
         val pos = item.optString("position", "").lowercase()
         if (pos == "front" || i == 0) {
-            val url = item.optString("shop_mock_url", "")
-                .ifBlank { item.optString("editor_mock_url", "") }
+            val url = item.optString("editor_mock_url", "")
+                .ifBlank { item.optString("clean_mock_url", "") }
                 .ifBlank { item.optString("mock_url", "") }
                 .trim()
             val frac = parsePrintAreaFrac(item.optJSONObject("print_area_frac"))
@@ -214,6 +221,8 @@ internal fun ShopPrintifyDesignStudioScreen(
     var selectedColorId by remember { mutableStateOf<Long?>(null) }
     var selectedSizeId by remember { mutableStateOf<Long?>(null) }
     var showDesignPicker by remember { mutableStateOf<String?>(null) }
+    var showLivePreview by remember { mutableStateOf(false) }
+    var livePreviewViewIndex by remember { mutableStateOf(0) }
     var existingShopHandle by remember { mutableStateOf<String?>(null) }
     var existingShopProductName by remember { mutableStateOf<String?>(null) }
     val optionsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -369,6 +378,15 @@ internal fun ShopPrintifyDesignStudioScreen(
             } else if (mockUrl.isNullOrBlank()) {
                 mockUrl = product.mockUrls.firstOrNull()
             }
+            val openRes = withContext(Dispatchers.IO) {
+                withTimeoutOrNull(45_000) {
+                    api.printifyStudioTestOpen(oid, product.productKey)
+                }
+            }
+            if (openRes != null && openRes.optBoolean("ok", false)) {
+                val pid = openRes.optString("printify_product_id", "").trim()
+                if (pid.isNotEmpty()) printifyProductId = pid
+            }
             if (cfg == null) {
                 error =
                     translation(
@@ -414,14 +432,15 @@ internal fun ShopPrintifyDesignStudioScreen(
         }
     }
 
-    BackHandler(enabled = sourcesDrawerOpen || optionsSheetOpen || showDesignPicker != null) {
+    BackHandler(enabled = showLivePreview || sourcesDrawerOpen || optionsSheetOpen || showDesignPicker != null) {
         when {
+            showLivePreview -> showLivePreview = false
             showDesignPicker != null -> showDesignPicker = null
             optionsSheetOpen -> optionsSheetOpen = false
             sourcesDrawerOpen -> sourcesDrawerOpen = false
         }
     }
-    BackHandler(enabled = !sourcesDrawerOpen && !optionsSheetOpen, onBack = onDismiss)
+    BackHandler(enabled = !showLivePreview && !sourcesDrawerOpen && !optionsSheetOpen && showDesignPicker == null, onBack = onDismiss)
 
     EazStandardDialog(onDismissRequest = onDismiss) {
         Box(
@@ -458,6 +477,19 @@ internal fun ShopPrintifyDesignStudioScreen(
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            livePreviewViewIndex = 0
+                            showLivePreview = true
+                        },
+                        enabled = productMeta != null
+                    ) {
+                        Text(
+                            t("design_studio.shop.printify_preview", "Preview"),
+                            color = if (productMeta != null) Color(0xFFF97316) else Color.White.copy(0.35f),
+                            fontWeight = FontWeight.Bold
                         )
                     }
                     IconButton(onClick = onDismiss) {
@@ -989,6 +1021,23 @@ internal fun ShopPrintifyDesignStudioScreen(
             }
         )
     }
+
+    if (showLivePreview) {
+        val meta = productMeta
+        val colors = parseColorOptions(meta)
+        StudioLivePreviewDialog(
+            meta = meta,
+            colors = colors,
+            selectedColorId = selectedColorId,
+            selectedSizeId = selectedSizeId,
+            activeViewIndex = livePreviewViewIndex,
+            onViewIndexChange = { livePreviewViewIndex = it },
+            onColorPick = { selectedColorId = it },
+            onMetaUpdate = { productMeta = it },
+            onDismiss = { showLivePreview = false },
+            t = ::t
+        )
+    }
 }
 
 @Composable
@@ -1451,11 +1500,9 @@ private fun StudioRightPanel(
                         if (colors.isNotEmpty()) {
                             Text(t("creator.shop_printify_studio_test.pick_color_title", "Color"), color = Color.White.copy(0.75f))
                             Spacer(Modifier.height(6.dp))
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 28.dp),
-                                modifier = Modifier.heightIn(max = 120.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 items(colors, key = { it.id }) { c ->
                                     Box(
@@ -1610,6 +1657,111 @@ private fun findVariantBySelections(meta: JSONObject, colorId: Long?, sizeId: Lo
         if (v.optBoolean("is_enabled", true)) return v
     }
     return null
+}
+
+private data class StudioMockView(val position: String, val src: String, val label: String)
+
+private fun mockLabelFromPosition(position: String): String {
+    val p = position.trim().lowercase()
+    return when {
+        p.contains("front") -> "Front"
+        p.contains("back") -> "Back"
+        p.isNotBlank() -> p.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        else -> "View"
+    }
+}
+
+private fun collectPrintifyMockViews(meta: JSONObject?, variantId: Long?): List<StudioMockView> {
+    val images = meta?.optJSONArray("images") ?: return emptyList()
+    val seen = linkedSetOf<String>()
+    val out = mutableListOf<StudioMockView>()
+    for (i in 0 until images.length()) {
+        val im = images.optJSONObject(i) ?: continue
+        val src = im.optString("src", "").trim()
+        if (src.isEmpty()) continue
+        val variantIds = im.optJSONArray("variant_ids")
+        if (variantId != null && variantIds != null && variantIds.length() > 0) {
+            var match = false
+            for (j in 0 until variantIds.length()) {
+                if (variantIds.optLong(j, -1) == variantId) {
+                    match = true
+                    break
+                }
+            }
+            if (!match) continue
+        }
+        val pos = im.optString("position", "").trim()
+        val label = mockLabelFromPosition(pos.ifBlank { im.optString("label", "View") })
+        val key = "${label.lowercase()}|${src.substringBefore('?')}"
+        if (!seen.add(key)) continue
+        out.add(StudioMockView(pos, src, label))
+    }
+    return out
+}
+
+private fun stepColorId(colors: List<StudioColorOpt>, current: Long?, delta: Int): Long? {
+    if (colors.isEmpty()) return current
+    val idx = colors.indexOfFirst { it.id == current }.let { if (it < 0) 0 else it }
+    val next = (idx + delta + colors.size) % colors.size
+    return colors[next].id
+}
+
+private fun isColorEnabledInMeta(meta: JSONObject, colorId: Long): Boolean {
+    val options = meta.optJSONArray("options") ?: return true
+    val (colorIdx, _) = inferColorSizeIndices(options)
+    if (colorIdx < 0) return true
+    val variants = meta.optJSONArray("variants") ?: return true
+    for (i in 0 until variants.length()) {
+        val v = variants.optJSONObject(i) ?: continue
+        val opts = v.optJSONArray("options") ?: continue
+        if (opts.optLong(colorIdx, -1) == colorId) {
+            return v.optBoolean("is_enabled", true)
+        }
+    }
+    return true
+}
+
+private fun setColorEnabledInMeta(meta: JSONObject, colorId: Long, enabled: Boolean) {
+    val options = meta.optJSONArray("options") ?: return
+    val (colorIdx, _) = inferColorSizeIndices(options)
+    if (colorIdx < 0) return
+    val variants = meta.optJSONArray("variants") ?: return
+    for (i in 0 until variants.length()) {
+        val v = variants.optJSONObject(i) ?: continue
+        val opts = v.optJSONArray("options") ?: continue
+        if (opts.optLong(colorIdx, -1) == colorId) {
+            v.put("is_enabled", enabled)
+        }
+    }
+}
+
+private fun livePreviewMetaLine(meta: JSONObject?, colorId: Long?, sizeId: Long?): String {
+    if (meta == null) return ""
+    val options = meta.optJSONArray("options") ?: return ""
+    val (colorIdx, sizeIdx) = inferColorSizeIndices(options)
+    var colorTitle = ""
+    var sizeTitle = ""
+    if (colorIdx >= 0 && colorIdx < options.length()) {
+        val vals = options.optJSONObject(colorIdx)?.optJSONArray("values") ?: JSONArray()
+        for (i in 0 until vals.length()) {
+            val v = vals.optJSONObject(i) ?: continue
+            if (v.optLong("id", -1) == (colorId ?: -1L)) {
+                colorTitle = v.optString("title", "").trim()
+                break
+            }
+        }
+    }
+    if (sizeIdx >= 0 && sizeIdx < options.length()) {
+        val vals = options.optJSONObject(sizeIdx)?.optJSONArray("values") ?: JSONArray()
+        for (i in 0 until vals.length()) {
+            val v = vals.optJSONObject(i) ?: continue
+            if (v.optLong("id", -1) == (sizeId ?: -1L)) {
+                sizeTitle = v.optString("title", "").trim()
+                break
+            }
+        }
+    }
+    return listOf(colorTitle, sizeTitle).filter { it.isNotEmpty() }.joinToString(" / ")
 }
 
 @Composable
@@ -1937,7 +2089,7 @@ private fun StudioDesignPickerDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(items, key = { it.id }) { row ->
+                    gridItems(items, key = { it.id }) { row ->
                         Box(
                             modifier = Modifier
                                 .aspectRatio(1f)
@@ -2051,6 +2203,192 @@ private fun StudioPublicDesignFilterSheet(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF97316))
             ) {
                 Text(t("creator.common.close", "Close"), color = Color(0xFFF97316))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioLivePreviewDialog(
+    meta: JSONObject?,
+    colors: List<StudioColorOpt>,
+    selectedColorId: Long?,
+    selectedSizeId: Long?,
+    activeViewIndex: Int,
+    onViewIndexChange: (Int) -> Unit,
+    onColorPick: (Long) -> Unit,
+    onMetaUpdate: (JSONObject) -> Unit,
+    onDismiss: () -> Unit,
+    t: (String, String) -> String
+) {
+    val variant = meta?.let { findVariantBySelections(it, selectedColorId, selectedSizeId) }
+    val variantId = variant?.optLong("id", -1L)?.takeIf { it >= 0 }
+    val views = remember(meta, variantId) { collectPrintifyMockViews(meta, variantId) }
+    val safeViewIndex = if (views.isEmpty()) 0 else activeViewIndex.coerceIn(0, views.lastIndex)
+    val activeView = views.getOrNull(safeViewIndex)
+    val metaLine = livePreviewMetaLine(meta, selectedColorId, selectedSizeId)
+    val includeVariant = meta?.let { selectedColorId?.let { cid -> isColorEnabledInMeta(it, cid) } } ?: true
+
+    EazStandardDialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0F172A))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF020617))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    t("design_studio.shop.live_preview_title", "Live Preview"),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = t("creator.common.close", "Close"), tint = Color.White)
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .width(72.dp)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(views.size) { idx ->
+                        val view = views[idx]
+                        val selected = idx == safeViewIndex
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.75f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(
+                                    width = if (selected) 2.dp else 1.dp,
+                                    color = if (selected) Color(0xFFF97316) else Color.White.copy(0.2f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { onViewIndexChange(idx) }
+                        ) {
+                            AsyncImage(
+                                model = view.src,
+                                contentDescription = view.label,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF020617)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (activeView != null) {
+                            AsyncImage(
+                                model = activeView.src,
+                                contentDescription = activeView.label,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            Text(
+                                t("creator.shop_printify_studio_test.preview_empty", "No preview available yet."),
+                                color = Color.White.copy(0.6f),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+                    if (colors.size > 1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    stepColorId(colors, selectedColorId, -1)?.let {
+                                        onColorPick(it)
+                                        onViewIndexChange(0)
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.ChevronLeft, null, tint = Color.White)
+                            }
+                            Text(
+                                metaLine.ifBlank { t("creator.shop_printify_studio_test.pick_color_title", "Color") },
+                                color = Color.White.copy(0.85f),
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                            IconButton(
+                                onClick = {
+                                    stepColorId(colors, selectedColorId, 1)?.let {
+                                        onColorPick(it)
+                                        onViewIndexChange(0)
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.ChevronRight, null, tint = Color.White)
+                            }
+                        }
+                    } else if (metaLine.isNotBlank()) {
+                        Text(
+                            metaLine,
+                            color = Color.White.copy(0.85f),
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                    }
+                    if (meta != null && selectedColorId != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Text(
+                                t("design_studio.shop.live_preview_include_variant", "Include this variant"),
+                                color = Color.White.copy(0.8f),
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Checkbox(
+                                checked = includeVariant,
+                                onCheckedChange = { enabled ->
+                                    setColorEnabledInMeta(meta, selectedColorId, enabled)
+                                    onMetaUpdate(meta)
+                                },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = Color(0xFFF97316),
+                                    uncheckedColor = Color.White.copy(0.5f),
+                                    checkmarkColor = Color.White
+                                )
+                            )
+                        }
+                    }
+                }
             }
         }
     }
