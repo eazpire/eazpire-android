@@ -18,6 +18,8 @@ object BrandAssetSlots {
     const val WEAR_LOGO = "wear_logo"
     const val CREATOR_WATCH_LOGO = "creator_watch_logo"
     const val EAZ_APP_FAVICON = "eaz_app_favicon"
+    const val EAZV_COIN_LOGO = "eazv_coin_logo"
+    const val EAZC_COIN_LOGO = "eazc_coin_logo"
 }
 
 /**

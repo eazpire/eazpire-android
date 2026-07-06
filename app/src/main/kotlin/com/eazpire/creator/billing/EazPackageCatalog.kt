@@ -16,9 +16,9 @@ object EazPackageCatalog {
     )
 
     val packs: List<Pack> = listOf(
-        Pack(eaz = 150, priceUsd = 19.99, recommended = false, label = "150 EAZ"),
-        Pack(eaz = 410, priceUsd = 44.99, recommended = false, label = "410 EAZ"),
-        Pack(eaz = 1050, priceUsd = 99.99, recommended = true, label = "1050 EAZ"),
+        Pack(eaz = 150, priceUsd = 19.99, recommended = false, label = "150 EAZV"),
+        Pack(eaz = 410, priceUsd = 44.99, recommended = false, label = "410 EAZV"),
+        Pack(eaz = 1050, priceUsd = 99.99, recommended = true, label = "1050 EAZV"),
     )
 
     fun fmtUsd(amount: Double): String {

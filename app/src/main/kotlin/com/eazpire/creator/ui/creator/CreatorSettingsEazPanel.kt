@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import coil.compose.AsyncImage
+import com.eazpire.creator.brand.BrandAssetSlots
+import com.eazpire.creator.brand.EazCoinImage
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -399,14 +401,17 @@ private fun EazBalanceSubPanel(
     val eazcLocked = data.optDouble("balance_eazc_locked", data.optDouble("balance_earned_locked", 0.0))
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            translationStore.t("creator.settings.eazg_title", "EAZG — Game balance"),
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            EazCoinImage(slot = BrandAssetSlots.EAZV_COIN_LOGO, size = 24.dp)
+            Text(
+                translationStore.t("creator.settings.eazg_title", "EAZV — Game balance"),
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White
+            )
+        }
         EazStatRow(
-            translationStore.t("creator.settings.eazg_title", "EAZG"),
-            "${EazCostCatalog.fmtEaz(eazg)} EAZG"
+            translationStore.t("creator.settings.eazg_title", "EAZV"),
+            "${EazCostCatalog.fmtEaz(eazg)} EAZV"
         )
         EazStatRow(
             translationStore.t("creator.settings.eazg_free_label", "Free daily"),
@@ -414,15 +419,17 @@ private fun EazBalanceSubPanel(
         )
         EazStatRow(
             translationStore.t("creator.settings.eazg_purchased_label", "Purchased"),
-            "${EazCostCatalog.fmtEaz(purchased)} EAZG"
+            "${EazCostCatalog.fmtEaz(purchased)} EAZV"
         )
 
-        Text(
-            translationStore.t("creator.settings.eazc_title", "EAZC — Earnings"),
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            EazCoinImage(slot = BrandAssetSlots.EAZC_COIN_LOGO, size = 24.dp)
+            Text(
+                translationStore.t("creator.settings.eazc_title", "EAZC — Earnings"),
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+            )
+        }
         EazStatRow(
             translationStore.t("creator.settings.eazc_total_label", "Total"),
             "${EazCostCatalog.fmtEaz(eazcTotal)} EAZC"
@@ -490,7 +497,7 @@ private fun EazBalanceSubPanel(
             colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange)
         ) {
             Text(
-                translationStore.t("creator.settings.eaz_buy_cta", "Buy EAZG packs"),
+                translationStore.t("creator.settings.eaz_buy_cta", "Buy EAZV packs"),
                 color = Color.White
             )
         }
@@ -797,7 +804,7 @@ private fun EazPackageCard(
     val ucStr = if (uploadCost % 1.0 == 0.0) uploadCost.toLong().toString() else EazCostCatalog.fmtEaz(uploadCost)
     val gensTpl = translationStore.t(
         "creator.settings.eaz_pkg_gens_tpl",
-        "Up to {{count}} design generations ({{cost}} EAZ each)\nUp to {{upload_count}} uploads ({{upload_cost}} EAZ each)\nFree pool: up to {{free_uploads}} uploads ({{free_cap}} EAZ cap)"
+        "Up to {{count}} design generations ({{cost}} EAZV each)\nUp to {{upload_count}} uploads ({{upload_cost}} EAZV each)\nFree pool: up to {{free_uploads}} uploads ({{free_cap}} EAZV cap)"
     )
     val gensLine = gensTpl
         .replace("{{count}}", gens.toString())
@@ -809,7 +816,7 @@ private fun EazPackageCard(
 
     val priceTpl = translationStore.t("creator.settings.eaz_pkg_price_usd", "{{price}}")
     val priceStr = EazPackageCatalog.fmtUsd(pack.priceUsd)
-    val per10Tpl = translationStore.t("creator.settings.eaz_pkg_per_10_tpl", "{{price}} per 10 EAZ")
+    val per10Tpl = translationStore.t("creator.settings.eaz_pkg_per_10_tpl", "{{price}} per 10 EAZV")
     val per10 = EazPackageCatalog.per10Usd(pack)?.let { EazPackageCatalog.fmtUsd(it) }
     val per10Line = if (per10 != null) per10Tpl.replace("{{price}}", per10) else "—"
 
@@ -841,12 +848,18 @@ private fun EazPackageCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = pack.label,
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                EazCoinImage(slot = BrandAssetSlots.EAZV_COIN_LOGO, size = 20.dp)
+                Text(
+                    text = pack.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             if (pack.recommended) {
                 Text(
                     text = translationStore.t("creator.settings.eaz_pkg_recommended_badge", "Recommended"),

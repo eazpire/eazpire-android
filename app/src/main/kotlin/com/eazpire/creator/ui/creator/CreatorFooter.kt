@@ -33,8 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.eazpire.creator.brand.BrandAssetSlots
+import com.eazpire.creator.brand.EazCoinImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.ui.components.GlassCircularFlag
@@ -224,12 +224,10 @@ fun CreatorFooter(
                         contentDescription = uploadTitle
                     )
                 } else {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data("https://pub-2ffb11d4a361463498b9a842a87a870c.r2.dev/brand/coin/eaz-coin-logo.png")
-                            .build(),
+                    EazCoinImage(
+                        slot = BrandAssetSlots.EAZV_COIN_LOGO,
+                        size = 14.dp,
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp)
                     )
                     Text(
                         text = eazBalance,
@@ -240,7 +238,7 @@ fun CreatorFooter(
                         color = EazColors.Orange
                     )
                     Text(
-                        text = "EAZ",
+                        text = "EAZV",
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold
