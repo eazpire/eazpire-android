@@ -402,7 +402,7 @@ private fun EazBalanceSubPanel(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            EazCoinImage(slot = BrandAssetSlots.EAZV_COIN_LOGO, size = 24.dp)
+            EazCoinImage(slot = BrandAssetSlots.EAZV_COIN_LOGO, size = 32.dp)
             Text(
                 translationStore.t("creator.settings.eazg_title", "EAZV — Game balance"),
                 style = MaterialTheme.typography.titleSmall,
@@ -423,7 +423,7 @@ private fun EazBalanceSubPanel(
         )
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-            EazCoinImage(slot = BrandAssetSlots.EAZC_COIN_LOGO, size = 24.dp)
+            EazCoinImage(slot = BrandAssetSlots.EAZC_COIN_LOGO, size = 32.dp)
             Text(
                 translationStore.t("creator.settings.eazc_title", "EAZC — Earnings"),
                 style = MaterialTheme.typography.titleSmall,
@@ -436,7 +436,8 @@ private fun EazBalanceSubPanel(
         )
         EazStatRow(
             translationStore.t("creator.settings.eazc_available_label", "Available"),
-            "${EazCostCatalog.fmtEaz(eazcAvail)} EAZC"
+            "${EazCostCatalog.fmtEaz(eazcAvail)} EAZC",
+            showEazcCoin = true,
         )
         EazStatRow(
             translationStore.t("creator.settings.eazc_locked_label", "Pending"),
@@ -917,7 +918,7 @@ private fun EazPackageCard(
 }
 
 @Composable
-private fun EazStatRow(label: String, value: String) {
+private fun EazStatRow(label: String, value: String, showEazcCoin: Boolean = false) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -926,7 +927,15 @@ private fun EazStatRow(label: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.82f))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (showEazcCoin) {
+                EazCoinImage(slot = BrandAssetSlots.EAZC_COIN_LOGO, size = 18.dp)
+            }
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.82f))
+        }
         Text(value, style = MaterialTheme.typography.bodyMedium, color = EazColors.Orange, fontWeight = FontWeight.SemiBold)
     }
 }
@@ -987,7 +996,7 @@ private fun EazCostsSubPanel(
                 } else if (hasDiscount) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "${EazCostCatalog.fmtEaz(baseCost)} EAZ",
+                            "${EazCostCatalog.fmtEaz(baseCost)} EAZV",
                             style = MaterialTheme.typography.bodyLarge,
                             color = Color.White.copy(alpha = 0.45f),
                             textDecoration = TextDecoration.LineThrough
@@ -999,7 +1008,7 @@ private fun EazCostsSubPanel(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            "${EazCostCatalog.fmtEaz(cost)} EAZ",
+                            "${EazCostCatalog.fmtEaz(cost)} EAZV",
                             style = MaterialTheme.typography.bodyMedium,
                             color = EazColors.Orange,
                             fontWeight = FontWeight.Bold
@@ -1007,7 +1016,7 @@ private fun EazCostsSubPanel(
                     }
                 } else {
                     Text(
-                        "${EazCostCatalog.fmtEaz(cost)} EAZ",
+                        "${EazCostCatalog.fmtEaz(cost)} EAZV",
                         style = MaterialTheme.typography.bodyMedium,
                         color = EazColors.Orange,
                         fontWeight = FontWeight.SemiBold

@@ -94,6 +94,8 @@ import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.brand.BrandAssetSlots
+import com.eazpire.creator.brand.EazCoinImage
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.modal.EazFullScreenDialog
 import kotlinx.coroutines.Dispatchers
@@ -123,9 +125,6 @@ private val JOURNEY_CATEGORY_ORDER = listOf(
     "automation", "promotion", "hero", "social",
     "variant", "design_slot", "creator_name",
 )
-
-private const val EAZ_COIN_URL =
-    "https://pub-2ffb11d4a361463498b9a842a87a870c.r2.dev/brand/coin/eaz-coin-logo.png"
 
 private fun journeyCategoryIcon(category: String): ImageVector = when (category) {
     "eaz_economy" -> Icons.Default.AccountBalance
@@ -450,11 +449,9 @@ private fun JourneyNavDrawer(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    AsyncImage(
-                        model = EAZ_COIN_URL,
-                        contentDescription = null,
-                        modifier = Modifier.size(40.dp),
-                        contentScale = ContentScale.Fit,
+                    EazCoinImage(
+                        slot = BrandAssetSlots.EAZV_COIN_LOGO,
+                        size = 44.dp,
                     )
                     Column {
                         Text(
@@ -463,7 +460,7 @@ private fun JourneyNavDrawer(
                             fontSize = 11.sp,
                         )
                         Text(
-                            text = "$balanceValue EAZ",
+                            text = "$balanceValue EAZV",
                             color = EazColors.Orange,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
@@ -960,13 +957,13 @@ private fun JourneyUnlockTreePanel(
     commitTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { commitTarget = null },
-            title = { Text(t("creator.journey.commit_modal_title", "Commit EAZ")) },
+            title = { Text(t("creator.journey.commit_modal_title", "Commit EAZV")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(t("creator.journey.commit_modal_hint", "How much EAZ do you want to allocate?"), fontSize = 13.sp)
+                    Text(t("creator.journey.commit_modal_hint", "How much EAZV do you want to allocate?"), fontSize = 13.sp)
                     Text(target.title, color = EazColors.Orange, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                     Text(
-                        tpl("creator.journey.commit_modal_available", "Available: {{ amount }} EAZ", mapOf("amount" to balance.toString())),
+                        tpl("creator.journey.commit_modal_available", "Available: {{ amount }} EAZV", mapOf("amount" to balance.toString())),
                         fontSize = 12.sp,
                         color = Color(0xFF9CA3AF),
                     )
@@ -1474,7 +1471,7 @@ private fun journeyEazBadgeLabel(
     } else {
         String.format(java.util.Locale.US, "%.2f", cost)
     }
-    var s = translationStore.t("creator.journey.eaz_badge", "{{ committed }}/{{ cost }} EAZ")
+    var s = translationStore.t("creator.journey.eaz_badge", "{{ committed }}/{{ cost }} EAZV")
     s = s.replace("{{ committed }}", committedLabel).replace("{{committed}}", committedLabel)
     s = s.replace("{{ cost }}", costLabel).replace("{{cost}}", costLabel)
     return s

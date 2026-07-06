@@ -29,7 +29,7 @@ fun EazCoinImage(
     LaunchedEffect(slot) { repo.refreshIfStale() }
     val fallback = when (slot) {
         BrandAssetSlots.EAZC_COIN_LOGO -> "$R2_COIN/eazc-coin-logo.png"
-        else -> "$R2_COIN/eaz-coin-logo.png"
+        else -> "$R2_COIN/eazv-coin-logo.png"
     }
     val url = urls[slot] ?: fallback
     AsyncImage(
