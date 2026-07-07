@@ -34,34 +34,41 @@ object PushTokenRegistrar {
             }
             return
         }
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (!task.isSuccessful) {
-                AuthDebugLog.d("[PUSH] FCM token fetch failed: ${task.exception?.message}")
-                return@addOnCompleteListener
-            }
-            val token = task.result ?: return@addOnCompleteListener
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val res = CreatorApi(jwt = jwt).registerFcmToken(token)
-                    AuthDebugLog.d("[PUSH] register-fcm-token ok=${res.optBoolean("ok")}")
-                    NotificationRemoteConfigRepository.syncFromServer(app, CreatorApi(jwt = jwt))
-                } catch (e: Exception) {
-                    AuthDebugLog.d("[PUSH] register-fcm-token failed: ${e.message}")
+        try {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    AuthDebugLog.d("[PUSH] FCM token fetch failed: ${task.exception?.message}")
+                    return@addOnCompleteListener
+                }
+                val token = task.result ?: return@addOnCompleteListener
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val res = CreatorApi(jwt = jwt).registerFcmToken(token)
+                        AuthDebugLog.d("[PUSH] register-fcm-token ok=${res.optBoolean("ok")}")
+                        NotificationRemoteConfigRepository.syncFromServer(app, CreatorApi(jwt = jwt))
+                    } catch (e: Exception) {
+                        AuthDebugLog.d("[PUSH] register-fcm-token failed: ${e.message}")
+                    }
                 }
             }
+        } catch (e: Exception) {
+            AuthDebugLog.d("[PUSH] FCM unavailable: ${e.message}")
         }
     }
 
     fun unregisterBeforeLogout(context: Context, tokenStore: SecureTokenStore) {
         val jwt = tokenStore.getJwt() ?: return
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            val fcmToken = task.result ?: return@addOnCompleteListener
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    CreatorApi(jwt = jwt).unregisterFcmToken(fcmToken)
-                } catch (_: Exception) {
+        try {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                val fcmToken = task.result ?: return@addOnCompleteListener
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        CreatorApi(jwt = jwt).unregisterFcmToken(fcmToken)
+                    } catch (_: Exception) {
+                    }
                 }
             }
+        } catch (_: Exception) {
         }
     }
 }

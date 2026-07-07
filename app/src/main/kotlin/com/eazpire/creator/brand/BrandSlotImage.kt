@@ -21,12 +21,14 @@ fun BrandSlotImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
+    /** Wide logo URL before manifest loads (matches web header asset). */
+    fallbackUrl: String? = null,
 ) {
     val context = LocalContext.current
     val repo = remember { BrandAssetsRepository.get(context) }
     val urls by repo.urls.collectAsState()
     LaunchedEffect(slot) { repo.refreshIfStale() }
-    val remoteUrl = urls[slot]
+    val remoteUrl = urls[slot]?.takeIf { it.isNotBlank() } ?: fallbackUrl?.takeIf { it.isNotBlank() }
     if (!remoteUrl.isNullOrBlank()) {
         AsyncImage(
             model = ImageRequest.Builder(context).data(remoteUrl).crossfade(true).build(),

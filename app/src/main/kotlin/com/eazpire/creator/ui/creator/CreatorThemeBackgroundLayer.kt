@@ -49,11 +49,16 @@ fun CreatorThemeBackgroundLayer(
     Box(modifier = modifier.fillMaxSize()) {
         when {
             background != null && background.isVideo && videoEnabled -> {
-                CreatorThemeVideoBackground(
-                    videoUrl = background.url!!,
-                    posterUrl = background.posterUrl,
-                    resumeNonce = resumeNonce,
-                )
+                val videoUrl = background.url
+                if (!videoUrl.isNullOrBlank()) {
+                    CreatorThemeVideoBackground(
+                        videoUrl = videoUrl,
+                        posterUrl = background.posterUrl,
+                        resumeNonce = resumeNonce,
+                    )
+                } else {
+                    DefaultGalaxyNebulaBackground()
+                }
             }
             background != null && !background.imageUrl.isNullOrBlank() -> {
                 AsyncImage(

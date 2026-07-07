@@ -31,12 +31,19 @@ object WearAuthSync {
             dataMap.putString("payload", payload)
             dataMap.putLong("updated_at", System.currentTimeMillis())
         }.asPutDataRequest().setUrgent()
-        Wearable.getDataClient(appContext).putDataItem(request)
+        try {
+            Wearable.getDataClient(appContext).putDataItem(request)
+        } catch (_: Exception) {
+            // Play Services / Wear API unavailable — must not crash cold start.
+        }
     }
 
     fun clear(context: Context) {
         val appContext = context.applicationContext
         val uri = Uri.Builder().scheme("wear").path(DATA_PATH).build()
-        Wearable.getDataClient(appContext).deleteDataItems(uri)
+        try {
+            Wearable.getDataClient(appContext).deleteDataItems(uri)
+        } catch (_: Exception) {
+        }
     }
 }

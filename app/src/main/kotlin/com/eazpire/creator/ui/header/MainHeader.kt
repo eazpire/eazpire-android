@@ -100,12 +100,16 @@ fun MainHeader(
     val storefrontCartStore = remember { StorefrontCartStore(context) }
     val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
     LaunchedEffect(Unit) {
-        val cartId = storefrontCartStore.cartId
-        if (cartId != null) {
-            val cart = withContext(Dispatchers.IO) { storefrontCartApi.getCart(cartId) }
-            AppCartStore.setCount(cart?.itemCount ?: 0)
-            if (cart == null) storefrontCartStore.clear()
-        } else {
+        try {
+            val cartId = storefrontCartStore.cartId
+            if (cartId != null) {
+                val cart = withContext(Dispatchers.IO) { storefrontCartApi.getCart(cartId) }
+                AppCartStore.setCount(cart?.itemCount ?: 0)
+                if (cart == null) storefrontCartStore.clear()
+            } else {
+                AppCartStore.setCount(0)
+            }
+        } catch (_: Exception) {
             AppCartStore.setCount(0)
         }
     }
