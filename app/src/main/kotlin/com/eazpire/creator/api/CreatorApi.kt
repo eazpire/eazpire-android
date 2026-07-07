@@ -3593,6 +3593,7 @@ class CreatorApi(
         vote: String,
         rejectReasons: List<String>? = null,
         note: String? = null,
+        entityType: String? = null,
     ): JSONObject = postJson(
         "verify-submit-vote",
         buildMap<String, Any?> {
@@ -3600,7 +3601,15 @@ class CreatorApi(
             put("vote", vote)
             rejectReasons?.takeIf { it.isNotEmpty() }?.let { put("reject_reasons", it) }
             note?.takeIf { it.isNotBlank() }?.let { put("note", it) }
+            entityType?.takeIf { it.isNotBlank() }?.let { put("entity_type", it) }
         },
+        mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+    )
+
+    /** POST ?op=verify-admin-approve-all — admin only */
+    suspend fun verifyAdminApproveAll(ownerId: String): JSONObject = postJson(
+        "verify-admin-approve-all",
+        emptyMap(),
         mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
     )
 

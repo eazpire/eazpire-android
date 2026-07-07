@@ -94,6 +94,20 @@ fun EazyVerifyPanel(
     var qualityOtherNote by remember { mutableStateOf("") }
     var statusMsg by remember { mutableStateOf<String?>(null) }
     var completedItems by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var availableCount by remember { mutableStateOf(0) }
+    var completedCount by remember { mutableStateOf(0) }
+    var isVerifyAdmin by remember { mutableStateOf(false) }
+    var approveAllBusy by remember { mutableStateOf(false) }
+
+    fun applyVerifyMeta(payload: JSONObject) {
+        payload.optJSONObject("counts")?.let { counts ->
+            availableCount = counts.optInt("available", 0).coerceAtLeast(0)
+            completedCount = counts.optInt("completed", 0).coerceAtLeast(0)
+        }
+        if (payload.has("is_admin")) {
+            isVerifyAdmin = payload.optBoolean("is_admin", false)
+        }
+    }
 
     fun refresh() {
         val oid = ownerId?.trim().orEmpty()
@@ -113,11 +127,13 @@ fun EazyVerifyPanel(
                 }
                 if (viewMode == "completed") {
                     val list = api.verifyCompletedList(oid, entityType, completedOutcome)
+                    applyVerifyMeta(list)
                     val arr = list.optJSONArray("items") ?: JSONArray()
                     completedItems = (0 until arr.length()).map { arr.getJSONObject(it) }
                     currentItem = null
                 } else {
                     val next = api.verifyNextItem(oid, entityType)
+                    applyVerifyMeta(next)
                     if (next.optString("error") == "terms_not_accepted") {
                         termsAccepted = false
                         currentItem = null
@@ -176,8 +192,44 @@ fun EazyVerifyPanel(
             EazyVerifyPrimaryBar(
                 entityType = entityType,
                 viewMode = viewMode,
+                availableCount = availableCount,
+                completedCount = completedCount,
+                isAdmin = isVerifyAdmin,
+                approveAllBusy = approveAllBusy,
                 onEntity = { entityType = it },
                 onView = { viewMode = it },
+                onApproveAll = {
+                    val oid = ownerId?.trim().orEmpty()
+                    if (oid.isBlank() || approveAllBusy) return@EazyVerifyPrimaryBar
+                    scope.launch {
+                        approveAllBusy = true
+                        statusMsg = null
+                        try {
+                            val res = api.verifyAdminApproveAll(oid)
+                            applyVerifyMeta(res)
+                            if (res.optBoolean("ok", false)) {
+                                val n = res.optInt("approved", 0)
+                                statusMsg = t(
+                                    "eazy_verify.admin_approve_all_done",
+                                    "Approved $n item(s).",
+                                ).replace("{{ count }}", n.toString())
+                                refresh()
+                            } else {
+                                statusMsg = t(
+                                    "eazy_verify.admin_approve_all_fail",
+                                    "Could not approve all items. Try again.",
+                                )
+                            }
+                        } catch (_: Exception) {
+                            statusMsg = t(
+                                "eazy_verify.admin_approve_all_fail",
+                                "Could not approve all items. Try again.",
+                            )
+                        } finally {
+                            approveAllBusy = false
+                        }
+                    }
+                },
                 t = t,
             )
             if (viewMode == "completed") {
@@ -318,13 +370,13 @@ fun EazyVerifyPanel(
                                 when {
                                     dragX > 80f -> {
                                         scope.launch {
-                                            api.verifySubmitVote(ownerId, item.optLong("id"), "approve")
+                                            api.verifySubmitVote(ownerId, item.optLong("id"), "approve", entityType = entityType)
                                             refresh()
                                         }
                                     }
                                     dragX < -80f -> {
                                         scope.launch {
-                                            api.verifySubmitVote(ownerId, item.optLong("id"), "not_sure")
+                                            api.verifySubmitVote(ownerId, item.optLong("id"), "not_sure", entityType = entityType)
                                             refresh()
                                         }
                                     }
@@ -357,7 +409,7 @@ fun EazyVerifyPanel(
                     Button(
                         onClick = {
                             scope.launch {
-                                api.verifySubmitVote(ownerId, item.optLong("id"), "approve")
+                                api.verifySubmitVote(ownerId, item.optLong("id"), "approve", entityType = entityType)
                                 refresh()
                             }
                         },
@@ -366,7 +418,7 @@ fun EazyVerifyPanel(
                     Button(
                         onClick = {
                             scope.launch {
-                                api.verifySubmitVote(ownerId, item.optLong("id"), "not_sure")
+                                api.verifySubmitVote(ownerId, item.optLong("id"), "not_sure", entityType = entityType)
                                 refresh()
                             }
                         },
@@ -582,6 +634,7 @@ fun EazyVerifyPanel(
                                     "reject",
                                     payload,
                                     noteParts.joinToString("\n").ifBlank { null },
+                                    entityType = entityType,
                                 )
                                 selectedReasons = emptySet()
                                 selectedQualitySubs = emptySet()
@@ -620,8 +673,13 @@ fun EazyVerifyPanel(
 private fun EazyVerifyPrimaryBar(
     entityType: String,
     viewMode: String,
+    availableCount: Int,
+    completedCount: Int,
+    isAdmin: Boolean,
+    approveAllBusy: Boolean,
     onEntity: (String) -> Unit,
     onView: (String) -> Unit,
+    onApproveAll: () -> Unit,
     t: (String, String) -> String,
 ) {
     Column(
@@ -646,18 +704,38 @@ private fun EazyVerifyPrimaryBar(
             )
         }
         Divider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             EazyVerifySegmentSwitch(
                 selected = viewMode,
                 options = listOf(
-                    "available" to t("eazy_verify.available", "Available"),
-                    "completed" to t("eazy_verify.completed", "Completed"),
+                    "available" to "${t("eazy_verify.available", "Available")} $availableCount",
+                    "completed" to "${t("eazy_verify.completed", "Completed")} $completedCount",
                 ),
                 onSelect = onView,
             )
+            if (isAdmin && viewMode == "available") {
+                Button(
+                    onClick = onApproveAll,
+                    enabled = !approveAllBusy,
+                    modifier = Modifier.heightIn(min = 32.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0x1F22C55E),
+                        contentColor = Color(0xFF86EFAC),
+                        disabledContainerColor = Color(0x1422C55E),
+                        disabledContentColor = Color(0x6686EFAC),
+                    ),
+                ) {
+                    Text(
+                        t("eazy_verify.admin_approve_all", "Approve all designs & products"),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
     }
 }
