@@ -64,6 +64,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -94,6 +95,8 @@ import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.billing.EazBalanceCache
+import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.brand.BrandAssetSlots
 import com.eazpire.creator.brand.EazCoinImage
 import com.eazpire.creator.i18n.TranslationStore
@@ -106,43 +109,6 @@ import org.json.JSONObject
 
 private data class JourneyTabItem(val label: String, val icon: ImageVector)
 
-private data class JourneyNodeItem(
-    val nodeKey: String,
-    val category: String,
-    val title: String,
-    val cost: Double,
-    val committed: Double,
-    val minLevel: Int,
-    val unlocked: Boolean,
-    val lockedReason: String,
-    val imageUrl: String? = null,
-    val catalogIsActive: Int = 2,
-)
-
-private val JOURNEY_CATEGORY_ORDER = listOf(
-    "royalty",
-    "product", "design_type", "market", "channel",
-    "automation", "promotion", "hero", "social",
-    "variant", "design_slot", "creator_name",
-)
-
-private fun journeyCategoryIcon(category: String): ImageVector = when (category) {
-    "eaz_economy" -> Icons.Default.AccountBalance
-    "royalty" -> Icons.Default.AccountBalance
-    "product" -> Icons.Default.ShoppingCart
-    "design_type" -> Icons.Default.Layers
-    "market" -> Icons.Default.Store
-    "channel" -> Icons.Default.Tv
-    "automation" -> Icons.Default.Bolt
-    "promotion" -> Icons.Default.Star
-    "hero" -> Icons.Default.Shield
-    "social" -> Icons.Default.Groups
-    "variant" -> Icons.Default.Apps
-    "design_slot" -> Icons.Default.Image
-    "creator_name" -> Icons.Default.Person
-    else -> Icons.Default.Star
-}
-
 @Composable
 fun CreatorJourneyModal(
     tokenStore: SecureTokenStore,
@@ -151,9 +117,10 @@ fun CreatorJourneyModal(
     initialTab: Int = 0,
     modifier: Modifier = Modifier,
 ) {
-    val ownerId = tokenStore.getOwnerId()
+    val ownerId = tokenStore.getOwnerId()?.trim()?.takeIf { it.isNotBlank() }
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val scope = rememberCoroutineScope()
+    val balanceRefreshTick by EazBalanceRefreshBus.tick.collectAsState()
     var currentTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 2)) }
     var drawerOpen by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
@@ -175,6 +142,7 @@ fun CreatorJourneyModal(
         loading = true
         try {
             journeyData = withContext(Dispatchers.IO) { api.getCreatorJourney(ownerId) }
+            journeyData?.optDouble("balance_eaz")?.takeIf { it.isFinite() }?.let { EazBalanceCache.write(it) }
         } catch (_: Exception) {
             journeyData = null
         } finally {
@@ -182,7 +150,7 @@ fun CreatorJourneyModal(
         }
     }
 
-    LaunchedEffect(ownerId) { reload() }
+    LaunchedEffect(ownerId, balanceRefreshTick) { reload() }
 
     EazFullScreenDialog(onDismissRequest = onDismiss) {
         Box(
@@ -302,6 +270,7 @@ fun CreatorJourneyModal(
                                 ownerId = ownerId.orEmpty(),
                                 api = api,
                                 translationStore = translationStore,
+                                refreshKey = currentTab,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .verticalScroll(rememberScrollState())
@@ -334,6 +303,7 @@ fun CreatorJourneyModal(
                     tabs = tabs,
                     currentTab = currentTab,
                     journeyData = journeyData,
+                    loading = loading,
                     ownerId = ownerId,
                     api = api,
                     translationStore = translationStore,
@@ -353,6 +323,7 @@ private fun JourneyNavDrawer(
     tabs: List<JourneyTabItem>,
     currentTab: Int,
     journeyData: JSONObject?,
+    loading: Boolean,
     ownerId: String?,
     api: CreatorApi,
     translationStore: TranslationStore,
@@ -428,8 +399,8 @@ private fun JourneyNavDrawer(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            val showBalance = journeyData?.optBoolean("is_creator", false) == true &&
-                journeyData.has("balance_eaz")
+            val showBalance = journeyData?.optBoolean("is_creator", false) == true ||
+                EazBalanceCache.read() != null
 
             JourneySidebarLevelWidget(
                 ownerId = ownerId,
@@ -438,7 +409,13 @@ private fun JourneyNavDrawer(
             )
 
             if (showBalance) {
-                val balanceValue = journeyData?.opt("balance_eaz")?.toString().orEmpty()
+                val balanceValue = when {
+                    journeyData?.has("balance_eaz") == true ->
+                        "${journeyData?.opt("balance_eaz")?.toString().orEmpty()} EAZV"
+                    else -> EazBalanceCache.formatSidebarBalance() ?: "—"
+                }
+                val balanceLoading = loading && journeyData?.has("balance_eaz") != true &&
+                    EazBalanceCache.read() == null
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -460,8 +437,8 @@ private fun JourneyNavDrawer(
                             fontSize = 11.sp,
                         )
                         Text(
-                            text = "$balanceValue EAZV",
-                            color = EazColors.Orange,
+                            text = if (balanceLoading) "—" else balanceValue,
+                            color = if (balanceLoading) Color.White.copy(alpha = 0.45f) else EazColors.Orange,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                         )
@@ -755,58 +732,24 @@ private fun JourneyUnlockTreePanel(
         vars.forEach { (k, v) -> s = s.replace("{{ $k }}", v).replace("{{$k}}", v) }
         return s
     }
-    fun categoryLabel(cat: String): String =
-        t("creator.journey.cat_$cat", cat.replace('_', ' '))
+    fun categoryLabel(cat: String): String = journeyCategoryLabel(cat, translationStore)
 
-    val balance = data?.optDouble("balance_eaz", 0.0) ?: 0.0
+    val balance = data?.optDouble("balance_eaz", EazBalanceCache.read() ?: 0.0) ?: 0.0
     val isCreator = data?.optBoolean("is_creator", false) == true
     var commitTarget by remember { mutableStateOf<JourneyNodeItem?>(null) }
     var commitAmount by remember { mutableStateOf("") }
+    var infoTarget by remember { mutableStateOf<JourneyNodeItem?>(null) }
+    val expandState = remember { JourneyExpandState() }
 
-    val nodes = remember(data) {
-        val arr = data?.optJSONArray("nodes") ?: JSONArray()
-        buildList {
-            for (i in 0 until arr.length()) {
-                val n = arr.getJSONObject(i)
-                val meta = n.optJSONObject("metadata")
-                val title = when {
-                    meta?.has("royalty_percent") == true -> tpl(
-                        "creator.journey.royalty_tier_title",
-                        "{{ pct }}% royalty",
-                        mapOf("pct" to meta.optInt("royalty_percent").toString())
-                    )
-                    meta?.optString("title")?.isNotBlank() == true -> meta.optString("title")
-                    n.optString("product_key").isNotBlank() -> n.optString("product_key")
-                    n.optString("design_type").isNotBlank() -> n.optString("design_type")
-                    n.optString("region_code").isNotBlank() -> n.optString("region_code")
-                    n.optString("channel_id").isNotBlank() -> n.optString("channel_id")
-                    else -> n.optString("node_key")
-                }
-                add(
-                    JourneyNodeItem(
-                        nodeKey = n.optString("node_key"),
-                        category = n.optString("category", "other"),
-                        title = title,
-                        cost = n.optDouble("cost_eaz", 0.0),
-                        committed = n.optDouble("eaz_committed", 0.0),
-                        minLevel = n.optInt("min_level", 2),
-                        unlocked = n.optBoolean("unlocked", false),
-                        lockedReason = n.optString("locked_reason", ""),
-                        imageUrl = meta?.optString("image_url")?.takeIf { it.isNotBlank() },
-                        catalogIsActive = meta?.optInt("catalog_is_active", 2) ?: 2,
-                    )
-                )
-            }
-        }
-    }
+    val nodes = remember(data) { parseJourneyNodes(data) }
 
     val filterCats = remember(nodes) {
         buildList {
             if (nodes.any { it.category == "royalty" }) add("royalty")
             add("eaz_economy")
             addAll(
-                JOURNEY_CATEGORY_ORDER
-                    .filter { it != "royalty" }
+                JOURNEY_TREE_TAB_ORDER
+                    .filter { it != "royalty" && it != "eaz_economy" }
                     .filter { cat -> nodes.any { it.category == cat } }
             )
         }
@@ -815,6 +758,12 @@ private fun JourneyUnlockTreePanel(
 
     LaunchedEffect(filterCats) {
         if (treeFilter !in filterCats) treeFilter = filterCats.firstOrNull() ?: "eaz_economy"
+    }
+
+    LaunchedEffect(treeFilter) {
+        expandState.creationLimitParent = null
+        expandState.listingLimitChannel = null
+        expandState.designSlotLevel = null
     }
 
     val filteredNodes = remember(nodes, treeFilter) {
@@ -826,6 +775,13 @@ private fun JourneyUnlockTreePanel(
             .groupBy { it.minLevel }
             .toSortedMap()
             .map { (level, items) -> level to items }
+    }
+
+    fun openCommit(node: JourneyNodeItem) {
+        commitTarget = node
+        commitAmount = if (balance > 0) {
+            String.format(java.util.Locale.US, "%.2f", balance)
+        } else ""
     }
 
     Column(modifier = modifier) {
@@ -896,6 +852,7 @@ private fun JourneyUnlockTreePanel(
         } else if (treeFilter == "product") {
             JourneyProductTreePanel(
                 nodes = filteredNodes,
+                allNodes = nodes,
                 data = data,
                 displayLevel = data?.optInt("display_level", 1) ?: 1,
                 isCreator = isCreator,
@@ -905,12 +862,47 @@ private fun JourneyUnlockTreePanel(
                     .fillMaxSize()
                     .padding(horizontal = 12.dp),
                 onSaveStarter = onSaveStarter,
-                onCommitClick = { node ->
-                    commitTarget = node
-                    commitAmount = if (balance > 0) {
-                        String.format(java.util.Locale.US, "%.2f", balance)
-                    } else ""
-                },
+                onCommitClick = ::openCommit,
+                onUnlock = onUnlock,
+                onInfoClick = { infoTarget = it },
+            )
+        } else if (treeFilter == "creation_limit") {
+            JourneyCreationLimitTreePanel(
+                nodes = filteredNodes,
+                allNodes = nodes,
+                expandState = expandState,
+                isCreator = isCreator,
+                busy = busy,
+                translationStore = translationStore,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                onInfoClick = { infoTarget = it },
+                onCommitClick = ::openCommit,
+                onUnlock = onUnlock,
+            )
+        } else if (treeFilter == "listing_limit") {
+            JourneyListingLimitTreePanel(
+                nodes = filteredNodes,
+                allNodes = nodes,
+                expandState = expandState,
+                isCreator = isCreator,
+                busy = busy,
+                translationStore = translationStore,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                onInfoClick = { infoTarget = it },
+                onCommitClick = ::openCommit,
+                onUnlock = onUnlock,
+            )
+        } else if (treeFilter == "design_slot") {
+            JourneyDesignSlotTreePanel(
+                nodes = filteredNodes,
+                allNodes = nodes,
+                expandState = expandState,
+                isCreator = isCreator,
+                busy = busy,
+                translationStore = translationStore,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                onInfoClick = { infoTarget = it },
+                onCommitClick = ::openCommit,
                 onUnlock = onUnlock,
             )
         } else {
@@ -937,16 +929,13 @@ private fun JourneyUnlockTreePanel(
                 items(items, key = { it.nodeKey }) { node ->
                     JourneyGridCard(
                         node = node,
+                        allNodes = nodes,
                         isCreator = isCreator,
                         busy = busy,
                         translationStore = translationStore,
-                        onCommitClick = {
-                            commitTarget = node
-                            commitAmount = if (balance > 0) {
-                                String.format(java.util.Locale.US, "%.2f", balance)
-                            } else ""
-                        },
+                        onCommitClick = { openCommit(node) },
                         onUnlockClick = { onUnlock(node.nodeKey) },
+                        onInfoClick = { infoTarget = node },
                     )
                 }
             }
@@ -995,6 +984,14 @@ private fun JourneyUnlockTreePanel(
             containerColor = Color(0xFF0B1220),
             titleContentColor = Color.White,
             textContentColor = Color(0xFFE5E7EB),
+        )
+    }
+
+    infoTarget?.let { target ->
+        JourneySkillInfoDialog(
+            info = resolveJourneySkillInfo(target, nodes, translationStore),
+            translationStore = translationStore,
+            onDismiss = { infoTarget = null },
         )
     }
 }
@@ -1051,6 +1048,7 @@ private fun JourneyUnlockedStrip(
 @Composable
 private fun JourneyProductTreePanel(
     nodes: List<JourneyNodeItem>,
+    allNodes: List<JourneyNodeItem>,
     data: JSONObject?,
     displayLevel: Int,
     isCreator: Boolean,
@@ -1060,6 +1058,7 @@ private fun JourneyProductTreePanel(
     onSaveStarter: (String, String) -> Unit,
     onCommitClick: (JourneyNodeItem) -> Unit,
     onUnlock: (String) -> Unit,
+    onInfoClick: (JourneyNodeItem) -> Unit,
 ) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
     fun tpl(key: String, fallback: String, vars: Map<String, String>): String {
@@ -1246,17 +1245,18 @@ private fun JourneyProductCard(
 @Composable
 private fun JourneyGridCard(
     node: JourneyNodeItem,
+    allNodes: List<JourneyNodeItem>,
     isCreator: Boolean,
     busy: Boolean,
     translationStore: TranslationStore,
     onCommitClick: () -> Unit,
     onUnlockClick: () -> Unit,
+    onInfoClick: () -> Unit,
 ) {
     val locked = !node.unlocked && node.lockedReason in listOf("level_required", "creator_code_required")
-    val canAct = !node.unlocked && isCreator && node.lockedReason.isEmpty() && node.cost > 0
-    val unlockReady = canAct && node.committed + 1e-9 >= node.cost
-    val hasAction = canAct
     val pulse = rememberInfiniteTransition(label = "unlockPulse")
+    val unlockReady = !node.unlocked && isCreator && node.lockedReason.isEmpty() && node.cost > 0 &&
+        node.committed + 1e-9 >= node.cost
     val unlockScale by pulse.animateFloat(
         initialValue = 1f,
         targetValue = if (unlockReady) 1.04f else 1f,
@@ -1270,12 +1270,16 @@ private fun JourneyGridCard(
             .alpha(if (locked) 0.62f else 1f)
             .then(if (unlockReady) Modifier.scale(unlockScale) else Modifier),
     ) {
-        JourneyTreeSkillStack(
+        JourneyTreeCardShell(
             node = node,
-            translationStore = translationStore,
-            hasAction = hasAction,
-            unlockReady = unlockReady,
+            allNodes = allNodes,
+            isCreator = isCreator,
             busy = busy,
+            translationStore = translationStore,
+            expandable = false,
+            expanded = false,
+            onCardClick = onInfoClick,
+            onInfoClick = null,
             onCommitClick = onCommitClick,
             onUnlockClick = onUnlockClick,
         )
@@ -1363,27 +1367,41 @@ private fun JourneyTreeSkillStack(
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.42f)
-                                .aspectRatio(1f)
-                                .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp)),
-                        )
+                        val icon = journeySkillIcon(node)
+                        if (icon != null) {
+                            Icon(
+                                icon,
+                                contentDescription = null,
+                                tint = EazColors.Orange,
+                                modifier = Modifier.size(40.dp),
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.42f)
+                                    .aspectRatio(1f)
+                                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(12.dp)),
+                            )
+                        }
                     }
                 }
-                Text(
-                    text = journeyEazBadgeLabel(translationStore, node.committed, node.cost, node.unlocked),
-                    color = EazColors.Orange,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .padding(bottom = 10.dp)
-                        .background(EazColors.Orange.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
-                        .border(1.dp, EazColors.Orange.copy(alpha = 0.28f), RoundedCornerShape(999.dp))
-                        .padding(horizontal = 10.dp, vertical = 3.dp),
-                )
+                if (!node.unlocked && !unlockReady && node.cost > 0) {
+                    Text(
+                        text = journeyEazBadgeLabel(translationStore, node.committed, node.cost, node.unlocked),
+                        color = EazColors.Orange,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .padding(bottom = 10.dp)
+                            .background(EazColors.Orange.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
+                            .border(1.dp, EazColors.Orange.copy(alpha = 0.28f), RoundedCornerShape(999.dp))
+                            .padding(horizontal = 10.dp, vertical = 3.dp),
+                    )
+                } else if (node.unlocked) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
             }
             if (node.unlocked) {
                 Box(
@@ -1408,71 +1426,4 @@ private fun JourneyTreeSkillStack(
             )
         }
     }
-}
-
-@Composable
-private fun JourneyTreeSkillActionButton(
-    unlockReady: Boolean,
-    busy: Boolean,
-    translationStore: TranslationStore,
-    onCommitClick: () -> Unit,
-    onUnlockClick: () -> Unit,
-) {
-    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
-    val shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
-    val label = if (unlockReady) {
-        t("creator.journey.unlock_short", "Unlock")
-    } else {
-        t("creator.journey.commit_eaz", "Commit")
-    }
-    Button(
-        onClick = { if (unlockReady) onUnlockClick() else onCommitClick() },
-        enabled = !busy,
-        shape = shape,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(38.dp)
-            .border(2.dp, Color(0xFFFF9D00).copy(alpha = 0.35f), shape),
-        colors = if (unlockReady) {
-            ButtonDefaults.buttonColors(
-                containerColor = EazColors.Orange,
-                contentColor = Color(0xFF111827),
-                disabledContainerColor = EazColors.Orange.copy(alpha = 0.45f),
-                disabledContentColor = Color(0xFF111827).copy(alpha = 0.6f),
-            )
-        } else {
-            ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF0C1018),
-                contentColor = Color.White,
-                disabledContainerColor = Color(0xFF0C1018).copy(alpha = 0.45f),
-                disabledContentColor = Color.White.copy(alpha = 0.6f),
-            )
-        },
-    ) {
-        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-private fun journeyEazBadgeLabel(
-    translationStore: TranslationStore,
-    committed: Double,
-    cost: Double,
-    unlocked: Boolean,
-): String {
-    if (unlocked) return translationStore.t("creator.journey.unlocked", "Unlocked")
-    if (cost <= 0) return translationStore.t("creator.journey.eaz_free", "Free")
-    val committedLabel = if (kotlin.math.abs(committed - committed.toLong()) < 1e-9) {
-        committed.toLong().toString()
-    } else {
-        String.format(java.util.Locale.US, "%.2f", committed)
-    }
-    val costLabel = if (kotlin.math.abs(cost - cost.toLong()) < 1e-9) {
-        cost.toLong().toString()
-    } else {
-        String.format(java.util.Locale.US, "%.2f", cost)
-    }
-    var s = translationStore.t("creator.journey.eaz_badge", "{{ committed }}/{{ cost }} EAZV")
-    s = s.replace("{{ committed }}", committedLabel).replace("{{committed}}", committedLabel)
-    s = s.replace("{{ cost }}", costLabel).replace("{{cost}}", costLabel)
-    return s
 }

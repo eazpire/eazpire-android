@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.eazpire.creator.brand.BrandAssetSlots
 import com.eazpire.creator.brand.EazCoinImage
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.billing.EazBalanceCache
 import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.ui.components.GlassCircularFlag
 import com.eazpire.creator.i18n.TranslationStore
@@ -101,6 +102,7 @@ fun CreatorFooter(
                             "balance_total",
                             r.optDouble("balance_eaz", r.optDouble("balance", 0.0))
                         )
+                        EazBalanceCache.write(bal)
                         eazBalance = formatEazBalance(bal)
                     }
                 } else {

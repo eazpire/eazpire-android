@@ -55,19 +55,21 @@ fun CreatorSettingsLevelPanel(
     api: CreatorApi,
     translationStore: TranslationStore,
     modifier: Modifier = Modifier,
+    refreshKey: Int = 0,
 ) {
     var isLoading by remember { mutableStateOf(true) }
     var levelData by remember { mutableStateOf<JSONObject?>(null) }
 
-    LaunchedEffect(ownerId) {
-        if (ownerId.isBlank()) {
+    LaunchedEffect(ownerId, refreshKey) {
+        val resolvedOwnerId = ownerId.trim()
+        if (resolvedOwnerId.isBlank()) {
             levelData = null
             isLoading = false
             return@LaunchedEffect
         }
         isLoading = true
         try {
-            levelData = withContext(Dispatchers.IO) { api.getLevel(ownerId) }
+            levelData = withContext(Dispatchers.IO) { api.getLevel(resolvedOwnerId) }
         } catch (_: Exception) {
             levelData = null
         } finally {
