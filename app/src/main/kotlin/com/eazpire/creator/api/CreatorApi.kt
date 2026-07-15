@@ -1522,7 +1522,9 @@ class CreatorApi(
     data class ShopReferenceImage(
         val url: String,
         val label: String,
-        val strength: Int = 80
+        val strength: Int = 60,
+        val inspirationMode: String? = null,
+        val excludeElements: List<String> = emptyList()
     )
 
     /**
@@ -1577,12 +1579,18 @@ class CreatorApi(
             if (referenceImages.isNotEmpty()) {
                 val arr = JSONArray()
                 referenceImages.forEach { r ->
-                    arr.put(
-                        JSONObject()
-                            .put("url", r.url)
-                            .put("label", r.label)
-                            .put("strength", r.strength.coerceIn(0, 100))
-                    )
+                    val o = JSONObject()
+                        .put("url", r.url)
+                        .put("label", r.label)
+                        .put("strength", r.strength.coerceIn(0, 100))
+                    r.inspirationMode?.takeIf { it.isNotBlank() }?.let { o.put("inspiration_mode", it) }
+                    if (r.excludeElements.isNotEmpty()) {
+                        o.put("exclude_elements", JSONArray().apply { r.excludeElements.forEach { put(it) } })
+                        val els = JSONObject()
+                        r.excludeElements.forEach { els.put(it, "exclude") }
+                        o.put("elements", els)
+                    }
+                    arr.put(o)
                 }
                 put("reference_images", arr)
                 put("image_url", referenceImages.first().url)

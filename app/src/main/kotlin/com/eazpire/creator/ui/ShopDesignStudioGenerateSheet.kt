@@ -57,7 +57,6 @@ import androidx.compose.material3.MaterialTheme
 import com.eazpire.creator.ui.modal.EazBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -114,10 +113,34 @@ import org.json.JSONObject
 private data class ShopRefSlot(
     val label: String,
     val url: String,
-    val strength: Int = 80,
+    val strength: Int = 60,
+    val inspirationMode: String = "inspired",
+    val excludeElements: Set<String> = emptySet(),
     /** JSON array string of canvas strokes (same schema as web `creator-canvas-sketch-modal.js`). */
     val canvasStrokesJson: String? = null
 )
+
+private val REF_INFLUENCE_MODES = listOf(
+    Triple("faithful", 100, "Faithful"),
+    Triple("inspired", 60, "Inspired"),
+    Triple("creative", 20, "Creative"),
+    Triple("innovative", 5, "Innovative")
+)
+
+private val REF_ELEMENT_KEYS = listOf(
+    "style" to "Style",
+    "theme" to "Theme",
+    "colors" to "Colors",
+    "layout" to "Layout",
+    "elements" to "Elements",
+    "typography" to "Typography",
+    "details" to "Details"
+)
+
+private fun strengthToInspirationMode(strength: Int): String {
+    val s = strength.coerceIn(0, 100)
+    return REF_INFLUENCE_MODES.minByOrNull { kotlin.math.abs(it.second - s) }?.first ?: "inspired"
+}
 
 private fun serializeCanvasStrokes(strokes: List<CanvasStroke>): String {
     val arr = JSONArray()
@@ -215,17 +238,24 @@ internal fun ShopDesignStudioGenerateSheet(
 
     fun addRef(url: String, canvasStrokesJson: String? = null) {
         if (refs.size >= 5) return
-        refs = relabel(refs + ShopRefSlot("?", url, 80, canvasStrokesJson = canvasStrokesJson))
+        refs = relabel(refs + ShopRefSlot("?", url, strength = 60, canvasStrokesJson = canvasStrokesJson))
     }
 
     fun removeRef(index: Int) {
         refs = relabel(refs.filterIndexed { i, _ -> i != index })
     }
 
-    fun updateRefStrength(index: Int, strength: Int) {
+    fun updateRefStrength(index: Int, strength: Int, mode: String? = null, exclude: Set<String>? = null) {
         if (index !in refs.indices) return
         val v = strength.coerceIn(0, 100)
-        refs = relabel(refs.mapIndexed { i, r -> if (i == index) r.copy(strength = v) else r })
+        refs = relabel(refs.mapIndexed { i, r ->
+            if (i != index) r
+            else r.copy(
+                strength = v,
+                inspirationMode = mode ?: strengthToInspirationMode(v),
+                excludeElements = exclude ?: r.excludeElements
+            )
+        })
     }
 
     var lastCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -424,23 +454,87 @@ internal fun ShopDesignStudioGenerateSheet(
 
     similarityEditIndex?.let { simIdx ->
         if (simIdx in refs.indices) {
-            var pct by remember(simIdx, refs) { mutableStateOf(refs[simIdx].strength.toFloat()) }
+            val current = refs[simIdx]
+            var mode by remember(simIdx, refs) {
+                mutableStateOf(current.inspirationMode.ifBlank { strengthToInspirationMode(current.strength) })
+            }
+            var exclude by remember(simIdx, refs) { mutableStateOf(current.excludeElements) }
             AlertDialog(
                 onDismissRequest = { similarityEditIndex = null },
-                title = { Text(t("creator.reference_influence.adjust_influence", "Adjust influence")) },
+                title = { Text(t("creator.reference_influence.title", "Reference image influence")) },
                 text = {
-                    Column {
-                        Text("${pct.toInt()}%", style = MaterialTheme.typography.titleMedium)
-                        Slider(
-                            value = pct,
-                            onValueChange = { pct = it },
-                            valueRange = 0f..100f
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Text(
+                            t("creator.reference_influence.inspiration_heading", "Inspiration"),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        REF_INFLUENCE_MODES.forEach { (key, pct, fallbackLabel) ->
+                            val label = t("creator.reference_influence.mode_$key", fallbackLabel)
+                            val selected = mode == key
+                            Text(
+                                text = "$label (~$pct%)",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (selected) Color(0xFFFFFBEB) else Color(0xFFF9FAFB)
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (selected) Color(0xFFF59E0B) else Color(0xFFE5E7EB),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { mode = key }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            t("creator.reference_influence.elements_heading", "Design elements"),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        REF_ELEMENT_KEYS.forEach { (key, fallback) ->
+                            val included = key !in exclude
+                            val label = t("creator.reference_influence.element_$key", fallback)
+                            val toggle = if (included) {
+                                t("creator.reference_influence.include", "Include")
+                            } else {
+                                t("creator.reference_influence.exclude", "Exclude")
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(label, modifier = Modifier.weight(1f))
+                                Text(
+                                    toggle,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(if (included) Color(0xFFECFDF5) else Color(0xFFFEF2F2))
+                                        .clickable {
+                                            exclude = if (included) exclude + key else exclude - key
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    color = if (included) Color(0xFF065F46) else Color(0xFF991B1B),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
                 },
                 confirmButton = {
                     androidx.compose.material3.TextButton(onClick = {
-                        updateRefStrength(simIdx, pct.toInt())
+                        val pct = REF_INFLUENCE_MODES.find { it.first == mode }?.second ?: 60
+                        updateRefStrength(simIdx, pct, mode, exclude)
                         similarityEditIndex = null
                     }) {
                         Text(t("creator.common.apply", "Apply"))
@@ -770,7 +864,9 @@ internal fun ShopDesignStudioGenerateSheet(
                                             CreatorApi.ShopReferenceImage(
                                                 url = it.url,
                                                 label = it.label,
-                                                strength = it.strength
+                                                strength = it.strength,
+                                                inspirationMode = it.inspirationMode,
+                                                excludeElements = it.excludeElements.toList()
                                             )
                                         }
                                         val bgMode = if (colorState.backgroundTransparent) "transparent" else "solid"
