@@ -70,7 +70,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="eazpire" android:host="wear-pair" />
             </intent-filter>
-            <intent-filter>
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -79,7 +79,7 @@
                     android:host="creator-engine.eazpire.workers.dev"
                     android:pathPrefix="/artifacts/claim" />
             </intent-filter>
-            <intent-filter>
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
