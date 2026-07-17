@@ -61,15 +61,16 @@ fun CreatorsIndexScreen(
     labelForKey: (String, String) -> String,
     onCreatorClick: (String) -> Unit,
     onProductClick: (String) -> Unit,
+    customerId: String = "",
     modifier: Modifier = Modifier,
 ) {
     var sortTab by remember { mutableStateOf("recommend") }
     var creators by remember { mutableStateOf<List<ShopCreatorCard>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(sortTab) {
+    LaunchedEffect(sortTab, customerId) {
         loading = true
-        creators = loadShopCreatorsForIndex(creatorApi, sortTab, limit = 48)
+        creators = loadShopCreatorsForIndex(creatorApi, sortTab, limit = 48, customerId = customerId.ifBlank { null })
         loading = false
     }
 
@@ -163,10 +164,19 @@ private fun CreatorsIndexHeader(
                 .padding(3.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            listOf("recommend" to "eaz.home.recommended", "new" to "eaz.product_card.new").forEach { (sort, key) ->
+            listOf(
+                "recommend" to "eaz.home.recommended",
+                "new" to "eaz.product_card.new",
+                "subscribed" to "eaz.creator_follow.subscribed",
+            ).forEach { (sort, key) ->
                 val active = sortTab == sort
+                val fallback = when (sort) {
+                    "recommend" -> "Recommended"
+                    "new" -> "New"
+                    else -> "Subscribed"
+                }
                 Text(
-                    text = labelForKey(key, if (sort == "recommend") "Recommended" else "New"),
+                    text = labelForKey(key, fallback),
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
                         .background(if (active) EazColors.Orange else Color.Transparent)

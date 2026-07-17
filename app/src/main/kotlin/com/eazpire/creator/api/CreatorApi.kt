@@ -2124,13 +2124,15 @@ class CreatorApi(
         creatorName: String? = null,
         creatorSlug: String? = null,
         ownerId: String? = null,
-        region: String? = null
+        region: String? = null,
+        customerId: String? = null,
     ): JSONObject {
         val params = mutableMapOf<String, String>()
         creatorName?.takeIf { it.isNotBlank() }?.let { params["creator_name"] = it }
         creatorSlug?.takeIf { it.isNotBlank() }?.let { params["creator_slug"] = it }
         ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
         region?.takeIf { it.isNotBlank() }?.let { params["region"] = it }
+        customerId?.takeIf { it.isNotBlank() }?.let { params["customer_id"] = it }
         return call("get-creator-profile", params)
     }
 
@@ -2268,12 +2270,13 @@ class CreatorApi(
     suspend fun listPromotions(ownerId: String): JSONObject =
         call("list-promotions", mapOf("owner_id" to ownerId))
 
-    /** GET ?op=list-shop-creators&sort=recommend|new&limit=24 — public homepage creators carousel */
+    /** GET ?op=list-shop-creators&sort=recommend|new|subscribed&limit=24 */
     suspend fun listShopCreators(
         sort: String = "recommend",
         limit: Int = 20,
         includeProducts: Boolean = false,
         productsPerCreator: Int = 12,
+        customerId: String? = null,
     ): JSONObject =
         call(
             "list-shop-creators",
@@ -2284,6 +2287,67 @@ class CreatorApi(
                     put("include_products", "1")
                     put("products_per_creator", productsPerCreator.coerceIn(1, 20).toString())
                 }
+                customerId?.takeIf { it.isNotBlank() }?.let { put("customer_id", it) }
+            },
+        )
+
+    /** POST ?op=follow-creator */
+    suspend fun followCreator(
+        customerId: String,
+        creatorName: String,
+        creatorOwnerId: String? = null,
+        focusProducts: Boolean = true,
+        notifyEmail: Boolean = true,
+        notifyEazy: Boolean = true,
+        notifyPush: Boolean = true,
+    ): JSONObject = postJsonBodyOp(
+        "follow-creator",
+        JSONObject().apply {
+            put("customer_id", customerId)
+            put("creator_name", creatorName)
+            creatorOwnerId?.takeIf { it.isNotBlank() }?.let { put("creator_owner_id", it) }
+            put("focus_products", focusProducts)
+            put("notify_email", notifyEmail)
+            put("notify_eazy", notifyEazy)
+            put("notify_push", notifyPush)
+        },
+    )
+
+    /** POST ?op=unfollow-creator */
+    suspend fun unfollowCreator(customerId: String, creatorName: String): JSONObject =
+        postJsonBodyOp(
+            "unfollow-creator",
+            JSONObject()
+                .put("customer_id", customerId)
+                .put("creator_name", creatorName),
+        )
+
+    /** POST ?op=update-creator-follow */
+    suspend fun updateCreatorFollow(
+        customerId: String,
+        creatorName: String,
+        focusProducts: Boolean,
+        notifyEmail: Boolean,
+        notifyEazy: Boolean,
+        notifyPush: Boolean,
+    ): JSONObject = postJsonBodyOp(
+        "update-creator-follow",
+        JSONObject()
+            .put("customer_id", customerId)
+            .put("creator_name", creatorName)
+            .put("focus_products", focusProducts)
+            .put("notify_email", notifyEmail)
+            .put("notify_eazy", notifyEazy)
+            .put("notify_push", notifyPush),
+    )
+
+    /** GET ?op=get-creator-follow */
+    suspend fun getCreatorFollow(customerId: String?, creatorName: String): JSONObject =
+        call(
+            "get-creator-follow",
+            buildMap {
+                put("creator_name", creatorName)
+                customerId?.takeIf { it.isNotBlank() }?.let { put("customer_id", it) }
             },
         )
 

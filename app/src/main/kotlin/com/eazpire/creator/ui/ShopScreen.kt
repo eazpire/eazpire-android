@@ -996,6 +996,7 @@ fun ShopScreen(
                     onProductClick = { handle ->
                         if (handle.isNotBlank()) productModalHandleState.value = handle
                     },
+                    customerId = tokenStore.getOwnerId().orEmpty(),
                     modifier = Modifier.fillMaxSize(),
                 )
                 shopSearchQuery != null -> ShopSearchScreen(

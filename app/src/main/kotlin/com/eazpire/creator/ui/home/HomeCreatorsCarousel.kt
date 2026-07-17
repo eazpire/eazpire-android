@@ -56,6 +56,10 @@ data class ShopCreatorCard(
     val ratingCount: Int,
     val productCount: Int,
     val products: List<ShopCreatorProductPreview> = emptyList(),
+    val ownerId: String? = null,
+    val followerCount: Int = 0,
+    val isFollowing: Boolean = false,
+    val focusProducts: Boolean = false,
 )
 
 internal val HomeCreatorsPanelGradient = Brush.linearGradient(
@@ -70,10 +74,17 @@ suspend fun loadShopCreatorsForHome(
     creatorApi: CreatorApi,
     sortTab: String,
     limit: Int = 20,
+    customerId: String? = null,
 ): List<ShopCreatorCard> =
     withContext(Dispatchers.IO) {
         runCatching {
-            parseShopCreators(creatorApi.listShopCreators(sort = sortTab, limit = limit))
+            parseShopCreators(
+                creatorApi.listShopCreators(
+                    sort = sortTab,
+                    limit = limit,
+                    customerId = customerId,
+                ),
+            )
         }.getOrElse { emptyList() }
     }
 
@@ -81,6 +92,7 @@ suspend fun loadShopCreatorsForIndex(
     creatorApi: CreatorApi,
     sortTab: String,
     limit: Int = 48,
+    customerId: String? = null,
 ): List<ShopCreatorCard> =
     withContext(Dispatchers.IO) {
         runCatching {
@@ -90,6 +102,7 @@ suspend fun loadShopCreatorsForIndex(
                     limit = limit,
                     includeProducts = true,
                     productsPerCreator = 12,
+                    customerId = customerId,
                 ),
             )
         }.getOrElse { emptyList() }
@@ -144,10 +157,19 @@ fun HomeCreatorsCarousel(
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                listOf("recommend" to "eaz.home.recommended", "new" to "eaz.product_card.new").forEach { (sort, key) ->
+                listOf(
+                    "recommend" to "eaz.home.recommended",
+                    "new" to "eaz.product_card.new",
+                    "subscribed" to "eaz.creator_follow.subscribed",
+                ).forEach { (sort, key) ->
                     val active = sortTab == sort
+                    val fallback = when (sort) {
+                        "recommend" -> "Recommended"
+                        "new" -> "New"
+                        else -> "Subscribed"
+                    }
                     Text(
-                        text = labelForKey(key, if (sort == "recommend") "Recommended" else "New"),
+                        text = labelForKey(key, fallback),
                         modifier = Modifier
                             .clip(RoundedCornerShape(999.dp))
                             .background(
@@ -365,6 +387,10 @@ private fun parseShopCreators(json: JSONObject): List<ShopCreatorCard> {
                 ratingCount = o.optInt("rating_count", 0),
                 productCount = o.optInt("product_count", 0),
                 products = products,
+                ownerId = o.optString("owner_id", "").trim().ifBlank { null },
+                followerCount = o.optInt("follower_count", 0),
+                isFollowing = o.optBoolean("is_following", false),
+                focusProducts = o.optBoolean("focus_products", false),
             ),
         )
     }

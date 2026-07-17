@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.formatCountLabel
@@ -82,7 +83,11 @@ data class CreatorProfilePreview(
     val coverUrl: String? = null,
     val ratingAvg: Double? = null,
     val ratingCount: Int? = null,
-    val productCount: Int = 0
+    val productCount: Int = 0,
+    val followerCount: Int = 0,
+    val isFollowing: Boolean = false,
+    val followPrefs: com.eazpire.creator.ui.home.CreatorFollowPrefs? = null,
+    val ownerId: String? = null,
 )
 
 data class CreatorShopProduct(
@@ -163,6 +168,7 @@ fun CreatorProfileScreen(
     var showSortSheet by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showReviewsModal by remember { mutableStateOf(false) }
+    var showFollowSheet by remember { mutableStateOf(false) }
     var resolvedCreatorName by remember(creatorName) { mutableStateOf(creatorName) }
     var ownerId by remember(creatorName) { mutableStateOf<String?>(null) }
 
@@ -227,7 +233,8 @@ fun CreatorProfileScreen(
                 api.getCreatorProfile(
                     creatorName = creatorName,
                     creatorSlug = creatorName,
-                    region = catalogRegion
+                    region = catalogRegion,
+                    customerId = viewerOwnerId.ifBlank { null },
                 )
             }
             if (!profileJson.optBoolean("ok", false)) {
@@ -254,7 +261,11 @@ fun CreatorProfileScreen(
                     ?: ratingObj?.optDouble("rating")?.takeIf { it > 0.0 },
                 ratingCount = ratingObj?.optInt("count")?.takeIf { it > 0 }
                     ?: ratingObj?.optInt("rating_count")?.takeIf { it > 0 },
-                productCount = 0
+                productCount = 0,
+                followerCount = profileJson.optInt("follower_count", 0),
+                isFollowing = profileJson.optBoolean("is_following", false),
+                followPrefs = com.eazpire.creator.ui.home.parseCreatorFollowPrefs(profileJson.optJSONObject("follow")),
+                ownerId = resolvedOwnerId,
             )
             profileReady = true
         } catch (e: Exception) {
@@ -405,10 +416,19 @@ fun CreatorProfileScreen(
                                 ratingAvg = p?.ratingAvg,
                                 ratingCount = p?.ratingCount,
                                 productCount = p?.productCount ?: filteredTotalCount,
+                                followerCount = p?.followerCount ?: 0,
+                                isFollowing = p?.isFollowing == true,
                                 t = t,
                                 onRatingClick = {
                                     if ((p?.ratingCount ?: 0) > 0) showReviewsModal = true
-                                }
+                                },
+                                onFollowClick = {
+                                    if (viewerOwnerId.isBlank()) {
+                                        // Login required — stay silent; ShopScreen handles account entry elsewhere
+                                    } else {
+                                        showFollowSheet = true
+                                    }
+                                },
                             )
                         }
                         stickyHeader {
@@ -509,6 +529,28 @@ fun CreatorProfileScreen(
         }
     )
 
+    if (showFollowSheet && viewerOwnerId.isNotBlank()) {
+        com.eazpire.creator.ui.home.CreatorFollowSheet(
+            visible = true,
+            creatorName = profile?.name ?: resolvedCreatorName,
+            creatorOwnerId = profile?.ownerId ?: ownerId,
+            customerId = viewerOwnerId,
+            following = profile?.isFollowing == true,
+            initialPrefs = profile?.followPrefs ?: com.eazpire.creator.ui.home.CreatorFollowPrefs(),
+            followerCount = profile?.followerCount ?: 0,
+            api = api,
+            t = t,
+            onDismiss = { showFollowSheet = false },
+            onChanged = { following, prefs, count ->
+                profile = profile?.copy(
+                    isFollowing = following,
+                    followPrefs = prefs,
+                    followerCount = count,
+                )
+            },
+        )
+    }
+
     if (showFilterSheet) {
         CollectionFilterDrawer(
             filters = productFilters,
@@ -531,8 +573,11 @@ private fun CreatorProfileHero(
     ratingAvg: Double?,
     ratingCount: Int?,
     productCount: Int,
+    followerCount: Int = 0,
+    isFollowing: Boolean = false,
     t: (String, String) -> String,
-    onRatingClick: () -> Unit = {}
+    onRatingClick: () -> Unit = {},
+    onFollowClick: () -> Unit = {},
 ) {
     Box(
         modifier = Modifier
@@ -574,14 +619,39 @@ private fun CreatorProfileHero(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.Top
         ) {
-            CreatorAvatarLogo(
-                name = name,
-                avatarUrl = avatarUrl,
-                size = 72.dp,
-                cornerRadius = 12.dp,
-                borderWidth = 3.dp,
-                borderColor = Color.White
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CreatorAvatarLogo(
+                    name = name,
+                    avatarUrl = avatarUrl,
+                    size = 72.dp,
+                    cornerRadius = 12.dp,
+                    borderWidth = 3.dp,
+                    borderColor = Color.White
+                )
+                Text(
+                    text = if (isFollowing) {
+                        t("eaz.creator_follow.following", "Following")
+                    } else {
+                        t("eaz.creator_follow.follow", "Follow")
+                    },
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (isFollowing) Color.White.copy(alpha = 0.92f) else EazColors.Orange)
+                        .clickable(onClick = onFollowClick)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isFollowing) Color(0xFF222222) else Color.White,
+                )
+                Text(
+                    text = com.eazpire.creator.ui.home.formatFollowersLabel(t, followerCount),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = name,
@@ -603,7 +673,7 @@ private fun CreatorProfileHero(
                     )
                 }
                 if (ratingAvg != null && ratingCount != null) {
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     CreatorHeroRatingRow(
                         avg = ratingAvg,
                         count = ratingCount,
@@ -614,7 +684,6 @@ private fun CreatorProfileHero(
         }
     }
 }
-
 @Composable
 private fun CreatorHeroRatingRow(avg: Double, count: Int, onClick: () -> Unit = {}) {
     Row(

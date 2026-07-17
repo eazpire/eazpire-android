@@ -136,10 +136,11 @@ class HomeViewModel(
             if (!state.loadCreatorsSection) return@launch
             _state.update { it.copy(homeCreatorsLoading = it.homeCreators.isEmpty()) }
             val api = creatorApi()
-            val initial = loadShopCreatorsForHome(api, state.homeCreatorsSort, HOME_INITIAL_CREATORS)
+            val customerId = tokenStore.getOwnerId()
+            val initial = loadShopCreatorsForHome(api, state.homeCreatorsSort, HOME_INITIAL_CREATORS, customerId)
             _state.update { it.copy(homeCreators = initial, homeCreatorsLoading = false) }
             if (initial.size < 20) {
-                val full = loadShopCreatorsForHome(api, state.homeCreatorsSort, 20)
+                val full = loadShopCreatorsForHome(api, state.homeCreatorsSort, 20, customerId)
                 if (full.size > initial.size) {
                     _state.update { it.copy(homeCreators = full) }
                 }
