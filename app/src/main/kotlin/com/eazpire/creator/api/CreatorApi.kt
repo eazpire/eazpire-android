@@ -344,6 +344,12 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /** GET ?op=get-journey-product-skill-info&product_key=xxx */
+    suspend fun getJourneyProductSkillInfo(productKey: String): JSONObject = call(
+        "get-journey-product-skill-info",
+        mapOf("product_key" to productKey)
+    )
+
     /** POST ?op=set-starter-selection */
     suspend fun setStarterSelection(
         ownerId: String,

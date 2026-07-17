@@ -988,11 +988,20 @@ private fun JourneyUnlockTreePanel(
     }
 
     infoTarget?.let { target ->
-        JourneySkillInfoDialog(
-            info = resolveJourneySkillInfo(target, nodes, translationStore),
-            translationStore = translationStore,
-            onDismiss = { infoTarget = null },
-        )
+        if (target.category == "product" && target.productKey.isNotBlank()) {
+            JourneyProductSkillInfoDialog(
+                node = target,
+                api = api,
+                translationStore = translationStore,
+                onDismiss = { infoTarget = null },
+            )
+        } else {
+            JourneySkillInfoDialog(
+                info = resolveJourneySkillInfo(target, nodes, translationStore),
+                translationStore = translationStore,
+                onDismiss = { infoTarget = null },
+            )
+        }
     }
 }
 
