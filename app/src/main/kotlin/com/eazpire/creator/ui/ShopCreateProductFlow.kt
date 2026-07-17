@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -271,8 +272,14 @@ private fun sortCatalogProducts(products: List<CatalogProduct>, sortBy: String):
     else -> products
 }
 
+private data class PublicCatalogDesign(
+    val id: String,
+    val previewUrl: String,
+    val designUrl: String
+)
+
 /**
- * Inline Create catalog PLP — same chrome as [CollectionScreen] (filter bar, sort, 2-col grid).
+ * Inline Create catalog PLP — Products | Designs tabs; design pick then product → studio.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -280,16 +287,30 @@ fun ShopCreateCollectionScreen(
     api: CreatorApi,
     region: String,
     modifier: Modifier = Modifier,
-    onProductClick: (CatalogProduct) -> Unit,
+    ownerId: String? = null,
+    onProductClick: (CatalogProduct, designUrl: String?) -> Unit,
     onProductsLoaded: (List<CatalogProduct>) -> Unit = {}
 ) {
     val store = LocalTranslationStore.current
-    val tr = store?.translations?.collectAsState(initial = emptyMap())?.value
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
+
+    var catalogTab by remember { mutableStateOf("products") }
+    var pendingDesignUrl by remember { mutableStateOf<String?>(null) }
 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var products by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
+
+    var designs by remember { mutableStateOf<List<PublicCatalogDesign>>(emptyList()) }
+    var designCursor by remember { mutableStateOf<String?>(null) }
+    var designsLoading by remember { mutableStateOf(false) }
+    var designsLoaded by remember { mutableStateOf(false) }
+    var designSearch by remember { mutableStateOf("") }
+    var designFilterRatio by remember { mutableStateOf<String?>(null) }
+    var designFilterContent by remember { mutableStateOf<String?>(null) }
+    var designFilterType by remember { mutableStateOf<String?>(null) }
+    var designFilterDrawer by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(region) {
         loading = true
@@ -335,14 +356,160 @@ fun ShopCreateCollectionScreen(
         }
     }
 
-    ShopCreateCatalogGrid(
-        loading = loading,
-        error = error,
-        products = products,
-        t = t,
-        modifier = modifier,
-        onProductClick = onProductClick
-    )
+    suspend fun loadDesigns(reset: Boolean) {
+        if (designsLoading) return
+        if (!reset && designCursor == null && designsLoaded) return
+        designsLoading = true
+        try {
+            val filters = buildMap {
+                designFilterRatio?.let { put("filter_ratio", it) }
+                designFilterContent?.let { put("filter_content_type", it) }
+                designFilterType?.let { put("filter_design_type", it) }
+            }
+            val data = withContext(Dispatchers.IO) {
+                api.listPublic(
+                    limit = 48,
+                    search = designSearch.takeIf { it.isNotBlank() },
+                    cursor = if (reset) null else designCursor,
+                    filterParams = filters,
+                    activePublicOnly = true,
+                    excludeOwnerId = ownerId
+                )
+            }
+            if (!data.optBoolean("ok", false)) {
+                if (reset) designs = emptyList()
+            } else {
+                val arr = data.optJSONArray("items") ?: JSONArray()
+                val page = mutableListOf<PublicCatalogDesign>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val id = o.optString("id", "").trim()
+                    val preview = o.optString("preview_url", "").trim()
+                    val original = o.optString("original_url", "").trim()
+                    val url = original.ifBlank { preview }
+                    if (id.isEmpty() || url.isEmpty()) continue
+                    page.add(PublicCatalogDesign(id = id, previewUrl = preview.ifBlank { url }, designUrl = url))
+                }
+                designs = if (reset) page else designs + page
+                designCursor = data.optString("next_cursor", "").trim().ifBlank { null }
+            }
+            designsLoaded = true
+        } catch (_: Exception) {
+            if (reset) designs = emptyList()
+            designsLoaded = true
+        } finally {
+            designsLoading = false
+        }
+    }
+
+    LaunchedEffect(catalogTab, designSearch, designFilterRatio, designFilterContent, designFilterType) {
+        if (catalogTab != "designs") return@LaunchedEffect
+        delay(180)
+        loadDesigns(reset = true)
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                "products" to t("creator.shop_create_product.catalog_tab_products", "Products"),
+                "designs" to t("creator.shop_create_product.catalog_tab_designs", "Designs")
+            ).forEach { (key, label) ->
+                val active = catalogTab == key
+                Text(
+                    text = label,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (active) EazColors.Orange.copy(alpha = 0.15f) else Color(0xFFF3F3F3))
+                        .clickable { catalogTab = key }
+                        .padding(vertical = 10.dp),
+                    textAlign = TextAlign.Center,
+                    color = if (active) EazColors.Orange else Color(0xFF444444),
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        }
+
+        if (!pendingDesignUrl.isNullOrBlank() && catalogTab == "products") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(EazColors.Orange.copy(alpha = 0.12f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    t("creator.shop_create_product.catalog_select_product_for_design", "Select a product for this design"),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    t("creator.shop_create_product.catalog_clear_pending_design", "Clear"),
+                    modifier = Modifier.clickable { pendingDesignUrl = null },
+                    color = EazColors.Orange,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            Spacer(Modifier = Modifier.height(6.dp))
+        }
+
+        when (catalogTab) {
+            "designs" -> {
+                ShopCreateDesignsGrid(
+                    loading = designsLoading && designs.isEmpty(),
+                    designs = designs,
+                    hasMore = designCursor != null,
+                    search = designSearch,
+                    t = t,
+                    onSearchChange = { designSearch = it },
+                    onOpenFilters = { designFilterDrawer = true },
+                    onLoadMore = {
+                        if (!designsLoading) scope.launch { loadDesigns(false) }
+                    },
+                    onDesignClick = { d ->
+                        pendingDesignUrl = d.designUrl
+                        catalogTab = "products"
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            else -> ShopCreateCatalogGrid(
+                loading = loading,
+                error = error,
+                products = products,
+                t = t,
+                onProductClick = { p ->
+                    val url = pendingDesignUrl
+                    pendingDesignUrl = null
+                    onProductClick(p, url)
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+
+    if (designFilterDrawer) {
+        ShopCreateDesignFilterSheet(
+            ratio = designFilterRatio,
+            contentType = designFilterContent,
+            designType = designFilterType,
+            t = t,
+            onDismiss = { designFilterDrawer = false },
+            onApply = { r, c, dt ->
+                designFilterRatio = r
+                designFilterContent = c
+                designFilterType = dt
+                designFilterDrawer = false
+            }
+        )
+    }
 }
 
 /**
@@ -546,6 +713,205 @@ private fun ModeSheetHeader(
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.width(48.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShopCreateDesignsGrid(
+    loading: Boolean,
+    designs: List<PublicCatalogDesign>,
+    hasMore: Boolean,
+    search: String,
+    t: (String, String) -> String,
+    onSearchChange: (String) -> Unit,
+    onOpenFilters: () -> Unit,
+    onLoadMore: () -> Unit,
+    onDesignClick: (PublicCatalogDesign) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = search,
+                onValueChange = onSearchChange,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                placeholder = {
+                    Text(t("creator.shop_create_product.catalog_search_placeholder", "Search by title"))
+                }
+            )
+            IconButton(onClick = onOpenFilters) {
+                Icon(Icons.Filled.FilterList, contentDescription = t("eaz.collection.filter", "Filter"))
+            }
+        }
+        when {
+            loading -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = EazColors.Orange)
+            }
+            designs.isEmpty() -> Text(
+                t("creator.shop_create_product.catalog_designs_empty", "No public designs found."),
+                modifier = Modifier.padding(16.dp)
+            )
+            else -> LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(designs.chunked(2), key = { row -> row.joinToString("-") { it.id } }) { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        row.forEach { d ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFF0F0F0))
+                                    .clickable { onDesignClick(d) }
+                            ) {
+                                AsyncImage(
+                                    model = d.previewUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+                        if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+                if (hasMore) {
+                    item(key = "designs_load_more") {
+                        LaunchedEffect(Unit) { onLoadMore() }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = EazColors.Orange,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShopCreateDesignFilterSheet(
+    ratio: String?,
+    contentType: String?,
+    designType: String?,
+    t: (String, String) -> String,
+    onDismiss: () -> Unit,
+    onApply: (ratio: String?, contentType: String?, designType: String?) -> Unit
+) {
+    var localRatio by remember { mutableStateOf(ratio) }
+    var localContent by remember { mutableStateOf(contentType) }
+    var localType by remember { mutableStateOf(designType) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    EazBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        maxHeightFraction = 0.85f
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(t("creator.filter_modal.ratio", "Ratio"), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("portrait", "landscape", "square").forEach { v ->
+                    val on = localRatio == v
+                    Text(
+                        v.replaceFirstChar { it.uppercase() },
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (on) EazColors.Orange else Color(0xFFEEEEEE))
+                            .clickable { localRatio = if (on) null else v }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = if (on) Color.White else Color.Black
+                    )
+                }
+            }
+            Text(t("creator.filter_modal.content_type", "Content Type"), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("design_text", "design_only", "text_only").forEach { v ->
+                    val on = localContent == v
+                    Text(
+                        v,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (on) EazColors.Orange else Color(0xFFEEEEEE))
+                            .clickable { localContent = if (on) null else v }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = if (on) Color.White else Color.Black
+                    )
+                }
+            }
+            Text(t("creator.filter_modal.design_type", "Design Type"), style = MaterialTheme.typography.titleSmall)
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("classic", "pattern", "all_over", "full_surface", "panorama").forEach { v ->
+                    val on = localType == v
+                    Text(
+                        v,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (on) EazColors.Orange else Color(0xFFEEEEEE))
+                            .clickable { localType = if (on) null else v }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = if (on) Color.White else Color.Black
+                    )
+                }
+            }
+            Text(
+                t("creator.shop_create_product.catalog_reset_filters", "Reset filters"),
+                modifier = Modifier
+                    .clickable {
+                        localRatio = null
+                        localContent = null
+                        localType = null
+                    }
+                    .padding(vertical = 8.dp),
+                color = EazColors.Orange
+            )
+            Text(
+                t("creator.common.apply", "Apply"),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(EazColors.Orange)
+                    .clickable { onApply(localRatio, localContent, localType) }
+                    .padding(vertical = 12.dp),
+                textAlign = TextAlign.Center,
+                color = Color.White,
+                style = MaterialTheme.typography.titleSmall
+            )
+        }
     }
 }
 

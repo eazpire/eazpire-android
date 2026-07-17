@@ -965,10 +965,11 @@ fun ShopScreen(
                 shopCreateActive && shopCreateStudioPhase == null -> ShopCreateCollectionScreen(
                     api = creatorPollApi,
                     region = catalogRegion,
+                    ownerId = tokenStore.getOwnerId(),
                     modifier = Modifier.fillMaxSize(),
                     onProductsLoaded = { shopCreateCatalogProducts = it },
-                    onProductClick = { p ->
-                        shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(p)
+                    onProductClick = { p, designUrl ->
+                        shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(p, designUrl = designUrl)
                     }
                 )
                 selectedCreatorName != null -> CreatorProfileScreen(

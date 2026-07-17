@@ -2019,11 +2019,15 @@ class CreatorApi(
         limit: Int = 200,
         search: String? = null,
         cursor: String? = null,
-        filterParams: Map<String, String> = emptyMap()
+        filterParams: Map<String, String> = emptyMap(),
+        activePublicOnly: Boolean = false,
+        excludeOwnerId: String? = null
     ): JSONObject {
         val params = mutableMapOf("limit" to limit.coerceIn(1, 200).toString())
         search?.takeIf { it.isNotBlank() }?.let { params["search"] = it }
         cursor?.takeIf { it.isNotBlank() }?.let { params["cursor"] = it }
+        if (activePublicOnly) params["active_public_only"] = "1"
+        excludeOwnerId?.takeIf { it.isNotBlank() }?.let { params["exclude_owner_id"] = it }
         filterParams.forEach { (k, v) -> if (v.isNotBlank()) params[k] = v }
         return call("list-public", params)
     }
