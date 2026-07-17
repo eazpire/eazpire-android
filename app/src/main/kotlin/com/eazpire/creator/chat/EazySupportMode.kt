@@ -1,25 +1,17 @@
 package com.eazpire.creator.chat
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -30,12 +22,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Mirrors web `WHATSAPP_SUPPORT_AGENT_NAME` default. */
-const val EAZY_SUPPORT_AGENT_NAME = "Tobias"
-
 val EazySupportRed = Color(0xFFDC2626)
 val EazySupportRedActive = Color(0xFFEF4444)
-val EazySupportOnlineGreen = Color(0xFF22C55E)
 
 data class EazyConvMeta(
     val mode: String = "ai",
@@ -162,43 +150,6 @@ suspend fun submitSupportSurveyOnServer(
 
 fun maxNumericMessageId(messages: List<ChatMessage>): Int =
     messages.mapNotNull { it.id.toIntOrNull() }.maxOrNull() ?: 0
-
-@Composable
-fun EazySupportOnlineFloat(
-    visible: Boolean,
-    agentName: String,
-    t: (String, String) -> String,
-    modifier: Modifier = Modifier,
-) {
-    if (!visible) return
-    Row(
-        modifier = modifier
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(999.dp))
-            .background(Color(0xF015172A))
-            .border(1.dp, EazySupportOnlineGreen.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(EazySupportOnlineGreen)
-        )
-        Text(
-            text = t("support_agent_online", "Online").uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF86EFAC),
-        )
-        Text(
-            text = agentName,
-            style = MaterialTheme.typography.labelLarge,
-            color = Color.White,
-        )
-    }
-}
 
 @Composable
 fun EazySupportSurveyPanel(

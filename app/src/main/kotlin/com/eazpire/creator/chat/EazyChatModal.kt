@@ -1117,14 +1117,6 @@ fun EazyChatModal(
                                     Column(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
-                                        // Online float badge (mirrors web #creator-chat-support-float)
-                                        EazySupportOnlineFloat(
-                                            visible = supportAgentOnline && isLiveSupportActive,
-                                            agentName = EAZY_SUPPORT_AGENT_NAME,
-                                            t = t,
-                                            modifier = Modifier.fillMaxWidth(),
-                                        )
-
                                         // Support survey panel
                                         if (supportSurveyStep != null) {
                                             EazySupportSurveyPanel(
