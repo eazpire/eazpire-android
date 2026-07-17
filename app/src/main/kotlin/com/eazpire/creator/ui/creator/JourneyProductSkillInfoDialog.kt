@@ -92,12 +92,6 @@ internal fun JourneyProductSkillInfoDialog(
             .onSuccess { res ->
                 if (res.optBoolean("ok", false)) {
                     payload = res
-                    val firstContinent = res.optJSONObject("regions")
-                        ?.optJSONArray("continents")
-                        ?.optJSONObject(0)
-                        ?.optString("code")
-                        .orEmpty()
-                    if (firstContinent.isNotBlank()) expandedContinent = firstContinent
                 } else {
                     error = t("creator.journey.product_skill.load_error", "Could not load product information.")
                 }
@@ -252,7 +246,7 @@ private fun ProductSkillOverview(data: JSONObject, translationStore: Translation
     val audience = ov.optJSONArray("audience").toStringList()
     val printAreas = ov.optJSONArray("print_areas").toStringList()
     KvRow(t("creator.journey.product_skill.audience", "Audience"), audience.joinToString(", ").ifBlank { "—" })
-    KvRow(t("creator.journey.product_skill.shipping_country", "Shipping country"), ov.optString("shipping_country").ifBlank { "—" })
+    ShippingCountryRow(ov, translationStore)
     KvRow(
         t("creator.journey.product_skill.base_product_model", "Base product model"),
         ov.optString("base_product_model").ifBlank { data.optString("title").ifBlank { "—" } },
@@ -402,8 +396,19 @@ private fun ProductSkillVariantsTab(data: JSONObject, translationStore: Translat
                             .background(parseHexColor(v.optString("hex"), Color(0xFF888888))),
                     )
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(v.optString("name"), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp),
+                ) {
+                    Text(
+                        v.optString("name"),
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        lineHeight = 16.sp,
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
                     Text(priceLabel, color = Color(0xFFFFD28A), fontSize = 12.sp)
                 }
             }
@@ -508,11 +513,6 @@ private fun ProductSkillPrintAreasTab(data: JSONObject, translationStore: Transl
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         for (i in 0 until areas.length()) {
             val a = areas.optJSONObject(i) ?: continue
-            val frac = a.optJSONObject("print_area_frac") ?: JSONObject()
-            val l = frac.optDouble("l", 0.28)
-            val top = frac.optDouble("t", 0.22)
-            val w = frac.optDouble("w", 0.44)
-            val h = frac.optDouble("h", 0.48)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -534,6 +534,7 @@ private fun ProductSkillPrintAreasTab(data: JSONObject, translationStore: Transl
                         .aspectRatio(1f)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color(0x33000000)),
+                    contentAlignment = Alignment.Center,
                 ) {
                     val url = a.optString("shop_mock_url")
                     if (url.isNotBlank()) {
@@ -543,22 +544,6 @@ private fun ProductSkillPrintAreasTab(data: JSONObject, translationStore: Transl
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize(),
                         )
-                    }
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Spacer(modifier = Modifier.fillMaxHeight(top.toFloat().coerceIn(0f, 0.95f)))
-                        Row(modifier = Modifier.fillMaxHeight(h.toFloat().coerceIn(0.05f, 1f))) {
-                            Spacer(modifier = Modifier.fillMaxWidth(l.toFloat().coerceIn(0f, 0.95f)))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(w.toFloat().coerceIn(0.05f, 1f))
-                                    .fillMaxHeight()
-                                    .border(2.dp, Color(0xFFF97316), RoundedCornerShape(8.dp))
-                                    .background(Color(0x14F97316)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("↑", color = Color(0xFFF97316), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
                     }
                 }
             }
@@ -602,6 +587,54 @@ private fun ProductSkillDetailsTab(
                     fontSize = 13.sp,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShippingCountryRow(ov: JSONObject, translationStore: TranslationStore) {
+    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
+    val flagCode = ov.optString("shipping_flag_code").ifBlank {
+        ov.optString("shipping_country").lowercase(Locale.US)
+    }
+    val name = ov.optString("shipping_country_name").ifBlank {
+        ov.optString("shipping_country")
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            t("creator.journey.product_skill.shipping_country", "Shipping country"),
+            color = Color(0xFF9CA3AF),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.width(120.dp),
+        )
+        if (name.isBlank()) {
+            Text("—", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        } else {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (flagCode.isNotBlank()) {
+                    AsyncImage(
+                        model = "https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.2/flags/4x3/$flagCode.svg",
+                        contentDescription = null,
+                        modifier = Modifier
+                            .width(22.dp)
+                            .height(16.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+                Text(name, color = Color.White, fontSize = 13.sp)
             }
         }
     }

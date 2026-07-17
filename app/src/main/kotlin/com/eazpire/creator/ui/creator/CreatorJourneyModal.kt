@@ -1078,9 +1078,9 @@ private fun JourneyProductTreePanel(
     val ps = data?.optJSONObject("product_sections")
     val previewLevel = ps?.optInt("preview_min_level", 3) ?: 3
     val premiumLevel = ps?.optInt("premium_min_level", 5) ?: 5
-    val starter = nodes.filter { it.catalogIsActive == 2 }
-    val preview = nodes.filter { it.catalogIsActive == 1 }
-    val offline = nodes.filter { it.catalogIsActive == 0 }
+    val starter = nodes.filter { isJourneyStarterProductNode(it, data) }
+    val preview = nodes.filter { !isJourneyStarterProductNode(it, data) && it.catalogIsActive == 1 }
+    val offline = nodes.filter { !isJourneyStarterProductNode(it, data) && it.catalogIsActive != 1 }
 
     LazyColumn(
         modifier = modifier,

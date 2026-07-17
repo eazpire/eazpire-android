@@ -184,6 +184,22 @@ private fun parseJourneyNode(n: JSONObject, meta: JSONObject?): JourneyNodeItem 
     )
 }
 
+internal fun isJourneyStarterProductNode(node: JourneyNodeItem, data: JSONObject?): Boolean {
+    val meta = node.metadata
+    if (meta?.has("journey_starter") == true) {
+        return meta.optBoolean("journey_starter", false)
+    }
+    val starterKeys = data?.optJSONObject("starter")?.optJSONArray("product_keys")
+    if (starterKeys != null && starterKeys.length() > 0) {
+        val pk = node.productKey
+        for (i in 0 until starterKeys.length()) {
+            if (starterKeys.optString(i) == pk) return true
+        }
+        return false
+    }
+    return node.catalogIsActive == 2
+}
+
 private fun buildJourneyNodeTitle(n: JSONObject, meta: JSONObject?, category: String): String {
     if (meta?.has("royalty_percent") == true) {
         return "${meta.optInt("royalty_percent")}% royalty"
