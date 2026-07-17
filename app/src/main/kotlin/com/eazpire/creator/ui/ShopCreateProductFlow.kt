@@ -892,7 +892,7 @@ private fun ShopCreateDesignsGrid(
                             model = d.previewUrl,
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Fit
                         )
                     }
                 }

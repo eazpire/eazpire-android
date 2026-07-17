@@ -619,7 +619,7 @@ private fun CreatorProfileHero(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.Start) {
                 CreatorAvatarLogo(
                     name = name,
                     avatarUrl = avatarUrl,
@@ -628,29 +628,33 @@ private fun CreatorProfileHero(
                     borderWidth = 3.dp,
                     borderColor = Color.White
                 )
-                Text(
-                    text = if (isFollowing) {
-                        t("eaz.creator_follow.following", "Following")
-                    } else {
-                        t("eaz.creator_follow.follow", "Follow")
-                    },
-                    modifier = Modifier
-                        .padding(top = 8.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(if (isFollowing) Color.White.copy(alpha = 0.92f) else EazColors.Orange)
-                        .clickable(onClick = onFollowClick)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isFollowing) Color(0xFF222222) else Color.White,
-                )
-                Text(
-                    text = com.eazpire.creator.ui.home.formatFollowersLabel(t, followerCount),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White.copy(alpha = 0.9f),
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+                Row(
+                    modifier = Modifier.padding(top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = if (isFollowing) {
+                            t("eaz.creator_follow.following", "Following")
+                        } else {
+                            t("eaz.creator_follow.follow", "Follow")
+                        },
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (isFollowing) Color.White.copy(alpha = 0.92f) else EazColors.Orange)
+                            .clickable(onClick = onFollowClick)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isFollowing) Color(0xFF222222) else Color.White,
+                    )
+                    Text(
+                        text = com.eazpire.creator.ui.home.formatFollowersLabel(t, followerCount),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.9f),
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
