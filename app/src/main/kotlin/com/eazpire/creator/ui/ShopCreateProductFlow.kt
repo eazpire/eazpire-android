@@ -30,6 +30,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -279,7 +283,8 @@ private data class PublicCatalogDesign(
 )
 
 /**
- * Inline Create catalog PLP — Products | Designs tabs; design pick then product → studio.
+ * Inline Create catalog PLP — Products | Designs tabs;
+ * design pick opens product picker sheet → studio (parity with web My Creations modal).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -295,7 +300,8 @@ fun ShopCreateCollectionScreen(
     val t = store?.let { { k: String, d: String -> it.t(k, d) } } ?: { _: String, d: String -> d }
 
     var catalogTab by remember { mutableStateOf("products") }
-    var pendingDesignUrl by remember { mutableStateOf<String?>(null) }
+    /** When set, show product picker sheet for this design (same UX as web Create Product modal). */
+    var pickerDesignUrl by remember { mutableStateOf<String?>(null) }
 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -435,31 +441,6 @@ fun ShopCreateCollectionScreen(
             }
         }
 
-        if (!pendingDesignUrl.isNullOrBlank() && catalogTab == "products") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(EazColors.Orange.copy(alpha = 0.12f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    t("creator.shop_create_product.catalog_select_product_for_design", "Select a product for this design"),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    t("creator.shop_create_product.catalog_clear_pending_design", "Clear"),
-                    modifier = Modifier.clickable { pendingDesignUrl = null },
-                    color = EazColors.Orange,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-            Box(modifier = Modifier.height(6.dp))
-        }
-
         when (catalogTab) {
             "designs" -> {
                 ShopCreateDesignsGrid(
@@ -474,8 +455,7 @@ fun ShopCreateCollectionScreen(
                         if (!designsLoading) scope.launch { loadDesigns(false) }
                     },
                     onDesignClick = { d ->
-                        pendingDesignUrl = d.designUrl
-                        catalogTab = "products"
+                        pickerDesignUrl = d.designUrl
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -485,11 +465,7 @@ fun ShopCreateCollectionScreen(
                 error = error,
                 products = products,
                 t = t,
-                onProductClick = { p ->
-                    val url = pendingDesignUrl
-                    pendingDesignUrl = null
-                    onProductClick(p, url)
-                },
+                onProductClick = { p -> onProductClick(p, null) },
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -509,6 +485,43 @@ fun ShopCreateCollectionScreen(
                 designFilterDrawer = false
             }
         )
+    }
+
+    val designUrlForPicker = pickerDesignUrl
+    if (!designUrlForPicker.isNullOrBlank()) {
+        val pickerSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        BackHandler(onBack = { pickerDesignUrl = null })
+        EazBottomSheet(
+            onDismissRequest = { pickerDesignUrl = null },
+            sheetState = pickerSheetState,
+            containerColor = Color.White,
+            maxHeightFraction = 0.92f
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .padding(horizontal = 8.dp)
+            ) {
+                CatalogSheetHeader(
+                    translation = t,
+                    onClose = { pickerDesignUrl = null }
+                )
+                ShopCreateCatalogGrid(
+                    loading = loading,
+                    error = error,
+                    products = products,
+                    t = t,
+                    onProductClick = { p ->
+                        pickerDesignUrl = null
+                        onProductClick(p, designUrlForPicker)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
+            }
+        }
     }
 }
 
@@ -761,38 +774,37 @@ private fun ShopCreateDesignsGrid(
                 t("creator.shop_create_product.catalog_designs_empty", "No public designs found."),
                 modifier = Modifier.padding(16.dp)
             )
-            else -> LazyColumn(
-                modifier = Modifier.weight(1f),
+            else -> LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 contentPadding = PaddingValues(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(designs.chunked(2), key = { row -> row.joinToString("-") { it.id } }) { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                items(designs, key = { it.id }) { d ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF0F0F0))
+                            .clickable { onDesignClick(d) }
                     ) {
-                        row.forEach { d ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFFF0F0F0))
-                                    .clickable { onDesignClick(d) }
-                            ) {
-                                AsyncImage(
-                                    model = d.previewUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit
-                                )
-                            }
-                        }
-                        if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                        AsyncImage(
+                            model = d.previewUrl,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
                     }
                 }
                 if (hasMore) {
-                    item(key = "designs_load_more") {
+                    item(
+                        key = "designs_load_more",
+                        span = { GridItemSpan(maxLineSpan) }
+                    ) {
                         LaunchedEffect(Unit) { onLoadMore() }
                         Box(
                             modifier = Modifier
