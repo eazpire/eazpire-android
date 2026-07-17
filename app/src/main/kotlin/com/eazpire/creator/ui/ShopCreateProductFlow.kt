@@ -457,7 +457,7 @@ fun ShopCreateCollectionScreen(
                     style = MaterialTheme.typography.labelLarge
                 )
             }
-            Spacer(Modifier = Modifier.height(6.dp))
+            Box(modifier = Modifier.height(6.dp))
         }
 
         when (catalogTab) {
