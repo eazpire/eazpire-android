@@ -99,7 +99,10 @@ fun CreatorsIndexScreen(
             }
             creators.isEmpty() -> {
                 Text(
-                    text = labelForKey("eaz.home.no_recommended_products", "No creators to show right now."),
+                    text = labelForKey(
+                        if (sortTab == "subscribed") "eaz.creator_follow.empty_subscribed" else "eaz.home.no_recommended_products",
+                        if (sortTab == "subscribed") "You are not following any creators yet." else "No creators to show right now.",
+                    ),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = EazColors.TextSecondary,
@@ -126,6 +129,7 @@ fun CreatorsIndexScreen(
                                 labelForKey("eaz.creator_profile.products_count", "{{ count }} products"),
                                 creator.productCount,
                             ),
+                            labelForKey = labelForKey,
                             onCreatorClick = { onCreatorClick(creator.name) },
                             onProductClick = onProductClick,
                         )
@@ -196,6 +200,7 @@ private fun CreatorsIndexCard(
     creator: ShopCreatorCard,
     reviewsLabel: String,
     productsLabel: String,
+    labelForKey: (String, String) -> String,
     onCreatorClick: () -> Unit,
     onProductClick: (String) -> Unit,
 ) {
@@ -264,6 +269,25 @@ private fun CreatorsIndexCard(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 2.dp),
             )
+            Text(
+                text = formatCountLabel(
+                    labelForKey("eaz.creator_follow.followers_count", "{{ count }} followers"),
+                    creator.followerCount,
+                ),
+                fontSize = 11.sp,
+                color = EazColors.TextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            if (creator.isFollowing) {
+                Text(
+                    text = labelForKey("eaz.creator_follow.subscribed_badge", "Subscribed"),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = EazColors.Orange,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
         if (creator.products.isNotEmpty()) {
             Divider(color = Color(0xFFE8E8E8))
