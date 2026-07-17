@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import java.text.DateFormat
@@ -616,10 +617,14 @@ private fun CreatorProfileHero(
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Column(horizontalAlignment = Alignment.Start) {
+            // Width matches avatar so name/stats sit next to the logo (not after Follow + followers).
+            Column(
+                modifier = Modifier.width(72.dp),
+                horizontalAlignment = Alignment.Start,
+            ) {
                 CreatorAvatarLogo(
                     name = name,
                     avatarUrl = avatarUrl,
@@ -629,9 +634,11 @@ private fun CreatorProfileHero(
                     borderColor = Color.White
                 )
                 Row(
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .wrapContentWidth(unbounded = true, align = Alignment.Start),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         text = if (isFollowing) {
