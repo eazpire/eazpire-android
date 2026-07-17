@@ -958,36 +958,20 @@ fun ProductDetailScreen(
                     }
                 }
 
-                // Title row: design title + Product Details btn (like web pdp-title-row)
+                // Title + product type with info icon (opens details sheet)
                 val (designTitle, productTypeTitle) = remember(p.title, p.productType, p.productKey) {
                     splitProductTitle(p.title, p.productType, p.productKey)
                 }
-                Row(
+                val detailsLabel = t("product.details", "Product Details")
+                Text(
+                    designTitle,
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        designTitle,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = EazColors.TextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(100.dp))
-                            .clickable { detailsSheetVisible = true }
-                            .padding(horizontal = 18.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = EazColors.TextPrimary, modifier = Modifier.size(14.dp))
-                        Text(t("product.details", "Product Details"), style = MaterialTheme.typography.labelMedium, color = EazColors.TextPrimary)
-                    }
-                }
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = EazColors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
                 if (favoriteEdit != null) {
                     val variantLabel = buildPdpVariantSelectionLabel(
                         selectedColor = selectedColor,
@@ -1005,11 +989,41 @@ fun ProductDetailScreen(
                         )
                     }
                 } else if (productTypeTitle.isNotBlank() && !productTypeTitle.equals("null", ignoreCase = true)) {
-                    Text(
-                        productTypeTitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = EazColors.TextSecondary,
-                        modifier = Modifier.padding(top = 2.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            productTypeTitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EazColors.TextSecondary,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = detailsLabel,
+                            tint = EazColors.TextSecondary,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(RoundedCornerShape(50))
+                                .clickable { detailsSheetVisible = true }
+                                .padding(2.dp)
+                        )
+                    }
+                } else {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = detailsLabel,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(20.dp)
+                            .clip(RoundedCornerShape(50))
+                            .clickable { detailsSheetVisible = true }
+                            .padding(2.dp)
                     )
                 }
 
