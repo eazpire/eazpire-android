@@ -61,8 +61,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -87,10 +91,24 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 
 /** Catalog card image rotation: matches web shop-create-product.js */
 private const val CATALOG_ROTATION_MS = 1500L
 private const val CATALOG_CROSSFADE_MS = 450
+
+/** First Design Studio card slide — Admin default view + print-area placement. */
+data class StudioCardSlidePreview(
+    val mockUrl: String,
+    val zoneL: Float = 0.28f,
+    val zoneT: Float = 0.22f,
+    val zoneW: Float = 0.44f,
+    val zoneH: Float = 0.48f,
+    val placeX: Float = 0.5f,
+    val placeY: Float = 0.5f,
+    val placeScale: Float = 0.95f,
+    val placeRotate: Float = 0f,
+)
 
 data class CatalogProduct(
     val productKey: String,
@@ -103,7 +121,8 @@ data class CatalogProduct(
     val audience: List<String> = emptyList(),
     val visibleDesignTypes: List<String> = emptyList(),
     val productionType: String = "print",
-    val providerKey: String? = null
+    val providerKey: String? = null,
+    val studioCardSlide: StudioCardSlidePreview? = null,
 )
 
 private data class CatalogFacetTriSelection(
@@ -257,6 +276,56 @@ private fun parseJsonStringList(arr: JSONArray?): List<String> {
     }
 }
 
+private fun parseStudioCardSlide(o: JSONObject): StudioCardSlidePreview? {
+    val preview = o.optJSONObject("studio_card_preview") ?: return null
+    val slides = preview.optJSONArray("slides") ?: return null
+    val slide = slides.optJSONObject(0) ?: return null
+    val mockUrl = slide.optString("mock_url", "").trim()
+    if (mockUrl.isEmpty()) return null
+    val frac = slide.optJSONObject("print_area_frac")
+    val placement = slide.optJSONObject("placement")
+    fun fracF(key: String, fallback: Float): Float {
+        if (frac == null || !frac.has(key)) return fallback
+        val v = frac.optDouble(key, Double.NaN)
+        return if (v.isNaN()) fallback else v.toFloat()
+    }
+    fun placeF(key: String, fallback: Float): Float {
+        if (placement == null || !placement.has(key)) return fallback
+        val v = placement.optDouble(key, Double.NaN)
+        return if (v.isNaN()) fallback else v.toFloat()
+    }
+    return StudioCardSlidePreview(
+        mockUrl = mockUrl,
+        zoneL = fracF("l", 0.28f),
+        zoneT = fracF("t", 0.22f),
+        zoneW = fracF("w", 0.44f),
+        zoneH = fracF("h", 0.48f),
+        placeX = placeF("x", 0.5f),
+        placeY = placeF("y", 0.5f),
+        placeScale = placeF("scale", 0.95f),
+        placeRotate = placeF("rotate", 0f),
+    )
+}
+
+private fun catalogProductFromJson(o: JSONObject): CatalogProduct? {
+    val pk = o.optString("product_key", "").trim()
+    if (pk.isEmpty()) return null
+    return CatalogProduct(
+        productKey = pk,
+        title = o.optString("title", pk).ifBlank { pk },
+        mockUrls = catalogPreviewUrlsFromJson(o),
+        catalogAvailability = catalogAvailabilityFromJson(o),
+        categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
+        categoryKey = o.optString("category_key", "").trim().ifBlank { null },
+        categoryGroup = o.optString("category_group", "").trim().ifBlank { null },
+        audience = parseJsonStringList(o.optJSONArray("audience")),
+        visibleDesignTypes = parseJsonStringList(o.optJSONArray("visible_design_types")),
+        productionType = o.optString("production_type", "print").ifBlank { "print" },
+        providerKey = o.optString("provider_key", "").trim().ifBlank { null },
+        studioCardSlide = parseStudioCardSlide(o),
+    )
+}
+
 sealed interface ShopCreateProductPhase {
     data class Mode(val product: CatalogProduct) : ShopCreateProductPhase
     data class StudioGenerate(val product: CatalogProduct, val catalogProducts: List<CatalogProduct>) : ShopCreateProductPhase
@@ -302,6 +371,9 @@ fun ShopCreateCollectionScreen(
     var catalogTab by remember { mutableStateOf("products") }
     /** When set, show product picker sheet for this design (same UX as web Create Product modal). */
     var pickerDesignUrl by remember { mutableStateOf<String?>(null) }
+    var pickerDesignId by remember { mutableStateOf<String?>(null) }
+    var pickerProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
+    var pickerLoading by remember { mutableStateOf(false) }
 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -333,23 +405,7 @@ fun ShopCreateCollectionScreen(
                 val list = mutableListOf<CatalogProduct>()
                 for (i in 0 until arr.length()) {
                     val o = arr.optJSONObject(i) ?: continue
-                    val pk = o.optString("product_key", "").trim()
-                    if (pk.isEmpty()) continue
-                    list.add(
-                        CatalogProduct(
-                            productKey = pk,
-                            title = o.optString("title", pk).ifBlank { pk },
-                            mockUrls = catalogPreviewUrlsFromJson(o),
-                            catalogAvailability = catalogAvailabilityFromJson(o),
-                            categoryLeaf = o.optString("category_leaf", "").trim().ifBlank { null },
-                            categoryKey = o.optString("category_key", "").trim().ifBlank { null },
-                            categoryGroup = o.optString("category_group", "").trim().ifBlank { null },
-                            audience = parseJsonStringList(o.optJSONArray("audience")),
-                            visibleDesignTypes = parseJsonStringList(o.optJSONArray("visible_design_types")),
-                            productionType = o.optString("production_type", "print").ifBlank { "print" },
-                            providerKey = o.optString("provider_key", "").trim().ifBlank { null }
-                        )
-                    )
+                    catalogProductFromJson(o)?.let { list.add(it) }
                 }
                 products = list
             }
@@ -455,6 +511,7 @@ fun ShopCreateCollectionScreen(
                         if (!designsLoading) scope.launch { loadDesigns(false) }
                     },
                     onDesignClick = { d ->
+                        pickerDesignId = d.id
                         pickerDesignUrl = d.designUrl
                     },
                     modifier = Modifier.fillMaxSize()
@@ -488,11 +545,49 @@ fun ShopCreateCollectionScreen(
     }
 
     val designUrlForPicker = pickerDesignUrl
+    LaunchedEffect(designUrlForPicker, pickerDesignId, region, ownerId) {
+        if (designUrlForPicker.isNullOrBlank()) {
+            pickerProducts = emptyList()
+            return@LaunchedEffect
+        }
+        pickerLoading = true
+        try {
+            val data = withContext(Dispatchers.IO) {
+                api.getShopCreateProductCatalog(
+                    region = region,
+                    includeStudioCardPreview = true,
+                    ownerId = ownerId,
+                    designId = pickerDesignId,
+                )
+            }
+            if (!data.optBoolean("ok", false)) {
+                pickerProducts = products
+            } else {
+                val arr = data.optJSONArray("products") ?: JSONArray()
+                val list = mutableListOf<CatalogProduct>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    catalogProductFromJson(o)?.let { list.add(it) }
+                }
+                pickerProducts = list.ifEmpty { products }
+            }
+        } catch (_: Exception) {
+            pickerProducts = products
+        } finally {
+            pickerLoading = false
+        }
+    }
+
     if (!designUrlForPicker.isNullOrBlank()) {
         val pickerSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        BackHandler(onBack = { pickerDesignUrl = null })
+        fun dismissPicker() {
+            pickerDesignUrl = null
+            pickerDesignId = null
+            pickerProducts = emptyList()
+        }
+        BackHandler(onBack = { dismissPicker() })
         EazBottomSheet(
-            onDismissRequest = { pickerDesignUrl = null },
+            onDismissRequest = { dismissPicker() },
             sheetState = pickerSheetState,
             containerColor = Color.White,
             maxHeightFraction = 0.92f
@@ -505,15 +600,16 @@ fun ShopCreateCollectionScreen(
             ) {
                 CatalogSheetHeader(
                     translation = t,
-                    onClose = { pickerDesignUrl = null }
+                    onClose = { dismissPicker() }
                 )
                 ShopCreateCatalogGrid(
-                    loading = loading,
-                    error = error,
-                    products = products,
+                    loading = pickerLoading && pickerProducts.isEmpty(),
+                    error = null,
+                    products = if (pickerProducts.isNotEmpty()) pickerProducts else products,
                     t = t,
+                    designUrl = designUrlForPicker,
                     onProductClick = { p ->
-                        pickerDesignUrl = null
+                        dismissPicker()
                         onProductClick(p, designUrlForPicker)
                     },
                     modifier = Modifier
@@ -935,7 +1031,8 @@ private fun ShopCreateCatalogGrid(
     products: List<CatalogProduct>,
     t: (String, String) -> String,
     onProductClick: (CatalogProduct) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    designUrl: String? = null,
 ) {
     var facetSel by remember { mutableStateOf(CatalogFacetTriSelection()) }
     var withinSearchQuery by remember { mutableStateOf("") }
@@ -1010,6 +1107,7 @@ private fun ShopCreateCatalogGrid(
                                     row = row,
                                     t = t,
                                     onProductClick = onProductClick,
+                                    designUrl = designUrl,
                                 )
                             }
                         }
@@ -1035,6 +1133,7 @@ private fun ShopCreateCatalogGrid(
                                     row = row,
                                     t = t,
                                     onProductClick = onProductClick,
+                                    designUrl = designUrl,
                                 )
                             }
                         }
@@ -1415,6 +1514,7 @@ private fun ShopCreateCatalogProductRow(
     row: List<CatalogProduct>,
     t: (String, String) -> String,
     onProductClick: (CatalogProduct) -> Unit,
+    designUrl: String? = null,
 ) {
     Row(
         modifier = Modifier
@@ -1427,6 +1527,7 @@ private fun ShopCreateCatalogProductRow(
                 product = product,
                 t = t,
                 onClick = { onProductClick(product) },
+                designUrl = designUrl,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -1442,9 +1543,15 @@ private fun CatalogProductCard(
     t: (String, String) -> String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    designUrl: String? = null,
 ) {
-    val previewUrl = product.mockUrls.firstOrNull().orEmpty()
+    val slide = product.studioCardSlide
+    val previewUrl = (slide?.mockUrl?.takeIf { it.isNotBlank() }
+        ?: product.mockUrls.firstOrNull().orEmpty())
     val isComingSoon = product.catalogAvailability == "coming_soon"
+    val showDesign = !designUrl.isNullOrBlank() && !isComingSoon && slide != null
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current
 
     Column(
         modifier = modifier
@@ -1459,6 +1566,7 @@ private fun CatalogProductCard(
                 .fillMaxWidth()
                 .aspectRatio(4f / 5f)
                 .clip(RoundedCornerShape(8.dp))
+                .onSizeChanged { boxSize = it }
                 .then(
                     if (isComingSoon) {
                         Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
@@ -1472,10 +1580,34 @@ private fun CatalogProductCard(
                     model = previewUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(if (isComingSoon) Modifier else Modifier),
+                    modifier = Modifier.fillMaxSize(),
                     alpha = if (isComingSoon) 0.72f else 1f,
+                )
+            }
+            if (showDesign && slide != null && boxSize.width > 0 && boxSize.height > 0) {
+                val zoneW = boxSize.width * slide.zoneW
+                val zoneH = boxSize.height * slide.zoneH
+                val zoneL = boxSize.width * slide.zoneL
+                val zoneT = boxSize.height * slide.zoneT
+                val designSize = minOf(zoneW, zoneH) * slide.placeScale.coerceIn(0.1f, 2.5f)
+                val centerX = zoneL + zoneW * slide.placeX
+                val centerY = zoneT + zoneH * slide.placeY
+                AsyncImage(
+                    model = designUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .graphicsLayer {
+                            translationX = centerX - designSize / 2f
+                            translationY = centerY - designSize / 2f
+                            rotationZ = slide.placeRotate
+                        }
+                        .then(
+                            with(density) {
+                                Modifier.size(designSize.toDp())
+                            }
+                        ),
                 )
             }
             if (isComingSoon) {

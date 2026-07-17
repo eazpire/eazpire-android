@@ -153,10 +153,29 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
-    /** GET ?op=get-shop-create-product-catalog&region=EU — online-only catalog + mock_urls for Shop Create Product */
-    suspend fun getShopCreateProductCatalog(region: String): JSONObject = call(
+    /**
+     * GET ?op=get-shop-create-product-catalog&region=EU — online catalog + mock_urls.
+     * Pass [includeStudioCardPreview] + [ownerId] for My Creations / Designs product-picker
+     * previews (Admin default view + placement; design composited client-side).
+     */
+    suspend fun getShopCreateProductCatalog(
+        region: String,
+        includeStudioCardPreview: Boolean = false,
+        ownerId: String? = null,
+        designId: String? = null,
+    ): JSONObject = call(
         "get-shop-create-product-catalog",
-        mapOf("region" to region)
+        buildMap {
+            put("region", region)
+            if (includeStudioCardPreview) {
+                put("include_studio_card_preview", "1")
+                ownerId?.takeIf { it.isNotBlank() }?.let {
+                    put("owner_id", it)
+                    put("logged_in_customer_id", it)
+                }
+                designId?.takeIf { it.isNotBlank() }?.let { put("design_id", it) }
+            }
+        }
     )
 
     /** GET ?op=design-studio-config — mock URLs + print area for shop design studio */
