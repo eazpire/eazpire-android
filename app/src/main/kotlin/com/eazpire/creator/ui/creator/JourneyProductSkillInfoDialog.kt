@@ -22,8 +22,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +44,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
@@ -78,6 +84,7 @@ internal fun JourneyProductSkillInfoDialog(
     var expandedVariant by remember(node.nodeKey) { mutableStateOf<String?>(null) }
     var expandedContinent by remember(node.nodeKey) { mutableStateOf<String?>(null) }
     var expandedDetail by remember(node.nodeKey) { mutableStateOf("product_features") }
+    var previewUrl by remember(node.nodeKey) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(node.productKey) {
         loading = true
@@ -211,6 +218,7 @@ internal fun JourneyProductSkillInfoDialog(
                                         onToggleVariant = { name ->
                                             expandedVariant = if (expandedVariant == name) null else name
                                         },
+                                        onPreview = { url -> previewUrl = url },
                                     )
                                     ProductSkillTab.Regions -> ProductSkillRegionsTab(
                                         data = data,
@@ -220,7 +228,11 @@ internal fun JourneyProductSkillInfoDialog(
                                             expandedContinent = if (expandedContinent == code) null else code
                                         },
                                     )
-                                    ProductSkillTab.PrintAreas -> ProductSkillPrintAreasTab(data, translationStore)
+                                    ProductSkillTab.PrintAreas -> ProductSkillPrintAreasTab(
+                                        data = data,
+                                        translationStore = translationStore,
+                                        onPreview = { url -> previewUrl = url },
+                                    )
                                     ProductSkillTab.Details -> ProductSkillDetailsTab(
                                         data = data,
                                         translationStore = translationStore,
@@ -245,6 +257,62 @@ internal fun JourneyProductSkillInfoDialog(
         titleContentColor = Color.White,
         textContentColor = Color(0xFFE5E7EB),
     )
+
+    val openPreviewUrl = previewUrl
+    if (!openPreviewUrl.isNullOrBlank()) {
+        ProductSkillMockPreviewDialog(
+            url = openPreviewUrl,
+            closeLabel = t("creator.journey.product_skill.mock_preview_close", "Close preview"),
+            previewLabel = t("creator.journey.product_skill.mock_preview_aria", "Preview mock"),
+            onDismiss = { previewUrl = null },
+        )
+    }
+}
+
+@Composable
+private fun ProductSkillMockPreviewDialog(
+    url: String,
+    closeLabel: String,
+    previewLabel: String,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.88f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onDismiss),
+            )
+            AsyncImage(
+                model = url,
+                contentDescription = previewLabel,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp)
+                    .align(Alignment.Center),
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp),
+            ) {
+                Icon(Icons.Default.Close, contentDescription = closeLabel, tint = Color.White)
+            }
+        }
+    }
 }
 
 @Composable
@@ -372,6 +440,7 @@ private fun ProductSkillVariantsTab(
     translationStore: TranslationStore,
     expandedVariant: String?,
     onToggleVariant: (String) -> Unit,
+    onPreview: (String) -> Unit,
 ) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
     val variants = data.optJSONArray("variants") ?: JSONArray()
@@ -428,12 +497,16 @@ private fun ProductSkillVariantsTab(
                             thumbUrls.forEach { url ->
                                 AsyncImage(
                                     model = url,
-                                    contentDescription = null,
+                                    contentDescription = t(
+                                        "creator.journey.product_skill.mock_preview_aria",
+                                        "Preview mock",
+                                    ),
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier
                                         .size(if (thumbUrls.size > 1) 44.dp else 48.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0x14FFFFFF)),
+                                        .background(Color(0x14FFFFFF))
+                                        .clickable { onPreview(url) },
                                 )
                             }
                         }
@@ -607,7 +680,11 @@ private fun ProductSkillRegionsTab(
 }
 
 @Composable
-private fun ProductSkillPrintAreasTab(data: JSONObject, translationStore: TranslationStore) {
+private fun ProductSkillPrintAreasTab(
+    data: JSONObject,
+    translationStore: TranslationStore,
+    onPreview: (String) -> Unit,
+) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
     val areas = data.optJSONArray("print_areas") ?: JSONArray()
     if (areas.length() == 0) {
@@ -656,9 +733,14 @@ private fun ProductSkillPrintAreasTab(data: JSONObject, translationStore: Transl
                             if (url.isNotBlank()) {
                                 AsyncImage(
                                     model = url,
-                                    contentDescription = null,
+                                    contentDescription = t(
+                                        "creator.journey.product_skill.mock_preview_aria",
+                                        "Preview mock",
+                                    ),
                                     contentScale = ContentScale.Fit,
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clickable { onPreview(url) },
                                 )
                             } else {
                                 Text(
