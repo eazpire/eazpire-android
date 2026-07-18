@@ -184,7 +184,11 @@ private fun parseJourneyNode(n: JSONObject, meta: JSONObject?): JourneyNodeItem 
     )
 }
 
+/** Softstyle tee — color → size drill-down — is always a Starter product, regardless of admin config. */
+internal const val JOURNEY_SOFTSTYLE_PRODUCT_KEY = "unisex-softstyle-cotton-tee"
+
 internal fun isJourneyStarterProductNode(node: JourneyNodeItem, data: JSONObject?): Boolean {
+    if (node.productKey == JOURNEY_SOFTSTYLE_PRODUCT_KEY) return true
     val meta = node.metadata
     if (meta?.has("journey_starter") == true) {
         return meta.optBoolean("journey_starter", false)
@@ -198,6 +202,13 @@ internal fun isJourneyStarterProductNode(node: JourneyNodeItem, data: JSONObject
         return false
     }
     return node.catalogIsActive == 2
+}
+
+/** True once the owner used their free starter pick — a saved selection or any unlocked starter product. */
+internal fun ownerHasStarterPick(nodes: List<JourneyNodeItem>, data: JSONObject?): Boolean {
+    val selection = data?.optJSONObject("starter")?.optJSONObject("selection")
+    if (selection != null && selection.optString("product_key").isNotBlank()) return true
+    return nodes.any { isJourneyStarterProductNode(it, data) && it.unlocked }
 }
 
 private fun buildJourneyNodeTitle(n: JSONObject, meta: JSONObject?, category: String): String {

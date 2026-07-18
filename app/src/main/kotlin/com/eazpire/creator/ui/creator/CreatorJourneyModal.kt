@@ -1078,8 +1078,22 @@ private fun JourneyProductTreePanel(
     val ps = data?.optJSONObject("product_sections")
     val previewLevel = ps?.optInt("preview_min_level", 3) ?: 3
     val premiumLevel = ps?.optInt("premium_min_level", 5) ?: 5
-    val starter = nodes.filter { isJourneyStarterProductNode(it, data) }
-    val preview = nodes.filter { !isJourneyStarterProductNode(it, data) && it.catalogIsActive == 1 }
+    val starterAll = nodes.filter { isJourneyStarterProductNode(it, data) }
+    // Once the free starter pick is used, remaining locked starters move to the Level 3 /
+    // preview section instead of staying in the always-free Starter Products carousel.
+    // Softstyle stays in Starter Products regardless (color → size drill-down stays up front).
+    val hasStarterPick = ownerHasStarterPick(nodes, data)
+    val starter = if (hasStarterPick) {
+        starterAll.filter { it.productKey == JOURNEY_SOFTSTYLE_PRODUCT_KEY || it.unlocked }
+    } else {
+        starterAll
+    }
+    val demotedStarters = if (hasStarterPick) {
+        starterAll.filter { it.productKey != JOURNEY_SOFTSTYLE_PRODUCT_KEY && !it.unlocked }
+    } else {
+        emptyList()
+    }
+    val preview = nodes.filter { !isJourneyStarterProductNode(it, data) && it.catalogIsActive == 1 } + demotedStarters
     val offline = nodes.filter { !isJourneyStarterProductNode(it, data) && it.catalogIsActive != 1 }
 
     LazyColumn(
