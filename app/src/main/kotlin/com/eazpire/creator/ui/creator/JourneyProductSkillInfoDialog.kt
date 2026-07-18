@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,8 +61,16 @@ private enum class ProductSkillTab {
     Variants,
     Regions,
     PrintAreas,
+    Preview,
     Details,
 }
+
+private data class PsiMockPreviewItem(val url: String, val label: String = "")
+
+private data class PsiMockPreviewState(
+    val items: List<PsiMockPreviewItem>,
+    val index: Int,
+)
 
 @Composable
 internal fun JourneyProductSkillInfoDialog(
@@ -84,7 +94,14 @@ internal fun JourneyProductSkillInfoDialog(
     var expandedVariant by remember(node.nodeKey) { mutableStateOf<String?>(null) }
     var expandedContinent by remember(node.nodeKey) { mutableStateOf<String?>(null) }
     var expandedDetail by remember(node.nodeKey) { mutableStateOf("product_features") }
-    var previewUrl by remember(node.nodeKey) { mutableStateOf<String?>(null) }
+    var previewState by remember(node.nodeKey) { mutableStateOf<PsiMockPreviewState?>(null) }
+
+    fun openPreview(items: List<PsiMockPreviewItem>, startUrl: String) {
+        val clean = items.filter { it.url.isNotBlank() }
+        if (clean.isEmpty()) return
+        val idx = clean.indexOfFirst { it.url == startUrl }.coerceAtLeast(0)
+        previewState = PsiMockPreviewState(clean, idx)
+    }
 
     LaunchedEffect(node.productKey) {
         loading = true
@@ -125,6 +142,7 @@ internal fun JourneyProductSkillInfoDialog(
         ProductSkillTab.Variants to t("creator.journey.product_skill.tab_variants", "Variants"),
         ProductSkillTab.Regions to t("creator.journey.product_skill.tab_regions", "Regions"),
         ProductSkillTab.PrintAreas to t("creator.journey.product_skill.tab_print_areas", "Print Areas"),
+        ProductSkillTab.Preview to t("creator.journey.product_skill.tab_preview", "Preview"),
         ProductSkillTab.Details to t("creator.journey.product_skill.tab_details", "Product Details"),
     )
 
@@ -218,7 +236,7 @@ internal fun JourneyProductSkillInfoDialog(
                                         onToggleVariant = { name ->
                                             expandedVariant = if (expandedVariant == name) null else name
                                         },
-                                        onPreview = { url -> previewUrl = url },
+                                        onPreview = { items, startUrl -> openPreview(items, startUrl) },
                                     )
                                     ProductSkillTab.Regions -> ProductSkillRegionsTab(
                                         data = data,
@@ -231,7 +249,12 @@ internal fun JourneyProductSkillInfoDialog(
                                     ProductSkillTab.PrintAreas -> ProductSkillPrintAreasTab(
                                         data = data,
                                         translationStore = translationStore,
-                                        onPreview = { url -> previewUrl = url },
+                                        onPreview = { items, startUrl -> openPreview(items, startUrl) },
+                                    )
+                                    ProductSkillTab.Preview -> ProductSkillPreviewTab(
+                                        data = data,
+                                        translationStore = translationStore,
+                                        onPreview = { items, startUrl -> openPreview(items, startUrl) },
                                     )
                                     ProductSkillTab.Details -> ProductSkillDetailsTab(
                                         data = data,
@@ -258,24 +281,43 @@ internal fun JourneyProductSkillInfoDialog(
         textContentColor = Color(0xFFE5E7EB),
     )
 
-    val openPreviewUrl = previewUrl
-    if (!openPreviewUrl.isNullOrBlank()) {
+    val openPreview = previewState
+    if (openPreview != null && openPreview.items.isNotEmpty()) {
         ProductSkillMockPreviewDialog(
-            url = openPreviewUrl,
+            state = openPreview,
             closeLabel = t("creator.journey.product_skill.mock_preview_close", "Close preview"),
             previewLabel = t("creator.journey.product_skill.mock_preview_aria", "Preview mock"),
-            onDismiss = { previewUrl = null },
+            prevLabel = t("creator.journey.product_skill.mock_preview_prev", "Previous mock"),
+            nextLabel = t("creator.journey.product_skill.mock_preview_next", "Next mock"),
+            counterTemplate = t("creator.journey.product_skill.mock_preview_counter", "{{ current }} / {{ total }}"),
+            onIndexChange = { next ->
+                previewState = openPreview.copy(index = next)
+            },
+            onDismiss = { previewState = null },
         )
     }
 }
 
 @Composable
 private fun ProductSkillMockPreviewDialog(
-    url: String,
+    state: PsiMockPreviewState,
     closeLabel: String,
     previewLabel: String,
+    prevLabel: String,
+    nextLabel: String,
+    counterTemplate: String,
+    onIndexChange: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val items = state.items
+    val index = state.index.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+    val current = items.getOrNull(index) ?: return
+    val multi = items.size > 1
+    fun step(delta: Int) {
+        if (!multi) return
+        val next = (index + delta).mod(items.size)
+        onIndexChange(next)
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -294,15 +336,44 @@ private fun ProductSkillMockPreviewDialog(
                     .fillMaxSize()
                     .clickable(onClick = onDismiss),
             )
-            AsyncImage(
-                model = url,
-                contentDescription = previewLabel,
-                contentScale = ContentScale.Fit,
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp)
-                    .align(Alignment.Center),
-            )
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                AsyncImage(
+                    model = current.url,
+                    contentDescription = current.label.ifBlank { previewLabel },
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .heightIn(max = 520.dp),
+                )
+                if (current.label.isNotBlank()) {
+                    Text(
+                        current.label,
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+                if (multi) {
+                    Text(
+                        counterTemplate
+                            .replace("{{ current }}", (index + 1).toString())
+                            .replace("{{current}}", (index + 1).toString())
+                            .replace("{{ total }}", items.size.toString())
+                            .replace("{{total}}", items.size.toString()),
+                        color = Color.White.copy(alpha = 0.65f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -310,6 +381,24 @@ private fun ProductSkillMockPreviewDialog(
                     .padding(12.dp),
             ) {
                 Icon(Icons.Default.Close, contentDescription = closeLabel, tint = Color.White)
+            }
+            if (multi) {
+                IconButton(
+                    onClick = { step(-1) },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(8.dp),
+                ) {
+                    Icon(Icons.Default.ChevronLeft, contentDescription = prevLabel, tint = Color.White)
+                }
+                IconButton(
+                    onClick = { step(1) },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(8.dp),
+                ) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = nextLabel, tint = Color.White)
+                }
             }
         }
     }
@@ -440,7 +529,7 @@ private fun ProductSkillVariantsTab(
     translationStore: TranslationStore,
     expandedVariant: String?,
     onToggleVariant: (String) -> Unit,
-    onPreview: (String) -> Unit,
+    onPreview: (List<PsiMockPreviewItem>, String) -> Unit,
 ) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
     val variants = data.optJSONArray("variants") ?: JSONArray()
@@ -462,9 +551,9 @@ private fun ProductSkillVariantsTab(
             val open = expandedVariant == name
             val frontUrl = psiVariantViewUrl(v, "front", v.optString("image_url"))
             val backUrl = if (backEnabled) psiVariantViewUrl(v, "back") else ""
-            val thumbUrls = buildList {
-                if (frontUrl.isNotBlank()) add(frontUrl)
-                if (backUrl.isNotBlank() && backUrl != frontUrl) add(backUrl)
+            val thumbItems = buildList {
+                if (frontUrl.isNotBlank()) add(PsiMockPreviewItem(frontUrl))
+                if (backUrl.isNotBlank() && backUrl != frontUrl) add(PsiMockPreviewItem(backUrl))
             }
             val sizes = v.optJSONArray("sizes") ?: JSONArray()
             val sizeNames = buildList {
@@ -492,21 +581,23 @@ private fun ProductSkillVariantsTab(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (thumbUrls.isNotEmpty()) {
+                    if (thumbItems.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            thumbUrls.forEach { url ->
+                            thumbItems.forEach { item ->
                                 AsyncImage(
-                                    model = url,
-                                    contentDescription = t(
-                                        "creator.journey.product_skill.mock_preview_aria",
-                                        "Preview mock",
-                                    ),
+                                    model = item.url,
+                                    contentDescription = item.label.ifBlank {
+                                        t(
+                                            "creator.journey.product_skill.mock_preview_aria",
+                                            "Preview mock",
+                                        )
+                                    },
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier
-                                        .size(if (thumbUrls.size > 1) 44.dp else 48.dp)
+                                        .size(if (thumbItems.size > 1) 44.dp else 48.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(Color(0x14FFFFFF))
-                                        .clickable { onPreview(url) },
+                                        .clickable { onPreview(thumbItems, item.url) },
                                 )
                             }
                         }
@@ -683,13 +774,22 @@ private fun ProductSkillRegionsTab(
 private fun ProductSkillPrintAreasTab(
     data: JSONObject,
     translationStore: TranslationStore,
-    onPreview: (String) -> Unit,
+    onPreview: (List<PsiMockPreviewItem>, String) -> Unit,
 ) {
     fun t(key: String, fallback: String) = translationStore.t(key, fallback)
     val areas = data.optJSONArray("print_areas") ?: JSONArray()
     if (areas.length() == 0) {
         Text(t("creator.journey.product_skill.empty", "No data available yet."), color = Color(0xFF9CA3AF))
         return
+    }
+    val gallery = buildList {
+        for (i in 0 until areas.length()) {
+            val a = areas.optJSONObject(i) ?: continue
+            val url = a.optString("shop_mock_url").trim()
+            if (url.isBlank()) continue
+            val label = a.optString("label").ifBlank { a.optString("position") }
+            add(PsiMockPreviewItem(url, label))
+        }
     }
     // Phone: 2 columns (matches web mobile). Larger widths still stay compact tiles.
     val chunked = (0 until areas.length()).chunked(2)
@@ -740,7 +840,7 @@ private fun ProductSkillPrintAreasTab(
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clickable { onPreview(url) },
+                                        .clickable { onPreview(gallery, url) },
                                 )
                             } else {
                                 Text(
@@ -749,6 +849,88 @@ private fun ProductSkillPrintAreasTab(
                                     fontSize = 10.sp,
                                 )
                             }
+                        }
+                    }
+                }
+                if (rowIdxs.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProductSkillPreviewTab(
+    data: JSONObject,
+    translationStore: TranslationStore,
+    onPreview: (List<PsiMockPreviewItem>, String) -> Unit,
+) {
+    fun t(key: String, fallback: String) = translationStore.t(key, fallback)
+    val images = data.optJSONArray("preview_images") ?: JSONArray()
+    if (images.length() == 0) {
+        Text(t("creator.journey.product_skill.empty", "No data available yet."), color = Color(0xFF9CA3AF))
+        return
+    }
+    val gallery = buildList {
+        for (i in 0 until images.length()) {
+            val item = images.optJSONObject(i) ?: continue
+            val url = item.optString("url").ifBlank { item.optString("image_url") }.trim()
+            if (url.isBlank()) continue
+            add(PsiMockPreviewItem(url, item.optString("label").trim()))
+        }
+    }
+    if (gallery.isEmpty()) {
+        Text(t("creator.journey.product_skill.empty", "No data available yet."), color = Color(0xFF9CA3AF))
+        return
+    }
+    val chunked = gallery.indices.chunked(2)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        chunked.forEach { rowIdxs ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                rowIdxs.forEach { i ->
+                    val item = gallery[i]
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x14FFFFFF))
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
+                            .padding(8.dp),
+                    ) {
+                        if (item.label.isNotBlank()) {
+                            Text(
+                                item.label,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x33000000))
+                                .clickable { onPreview(gallery, item.url) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AsyncImage(
+                                model = item.url,
+                                contentDescription = item.label.ifBlank {
+                                    t(
+                                        "creator.journey.product_skill.mock_preview_aria",
+                                        "Preview mock",
+                                    )
+                                },
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
                     }
                 }
