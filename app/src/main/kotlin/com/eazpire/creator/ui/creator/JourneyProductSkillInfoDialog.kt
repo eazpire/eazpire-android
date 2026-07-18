@@ -408,6 +408,15 @@ private fun ProductSkillVariantsTab(data: JSONObject, translationStore: Translat
                         fontSize = 13.sp,
                         lineHeight = 16.sp,
                     )
+                    val sizes = v.optJSONArray("sizes").toStringList()
+                    if (sizes.isNotEmpty()) {
+                        Text(
+                            sizes.joinToString(" · "),
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                        )
+                    }
                     Spacer(modifier = Modifier.weight(1f))
                     Text(priceLabel, color = Color(0xFFFFD28A), fontSize = 12.sp)
                 }
@@ -510,9 +519,11 @@ private fun ProductSkillPrintAreasTab(data: JSONObject, translationStore: Transl
         Text(t("creator.journey.product_skill.empty", "No data available yet."), color = Color(0xFF9CA3AF))
         return
     }
+    var expanded by remember { mutableStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         for (i in 0 until areas.length()) {
             val a = areas.optJSONObject(i) ?: continue
+            val open = expanded == i
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -526,24 +537,35 @@ private fun ProductSkillPrintAreasTab(data: JSONObject, translationStore: Transl
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0x33000000)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val url = a.optString("shop_mock_url")
-                    if (url.isNotBlank()) {
-                        AsyncImage(
-                            model = url,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        .clickable { expanded = if (open) -1 else i },
+                )
+                if (open) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x33000000)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val url = a.optString("shop_mock_url")
+                        if (url.isNotBlank()) {
+                            AsyncImage(
+                                model = url,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            Text(
+                                t("creator.journey.product_skill.empty", "No data available yet."),
+                                color = Color(0xFF9CA3AF),
+                                fontSize = 12.sp,
+                            )
+                        }
                     }
                 }
             }
