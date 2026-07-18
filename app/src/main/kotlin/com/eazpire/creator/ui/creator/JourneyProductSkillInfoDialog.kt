@@ -353,6 +353,19 @@ private fun ProductSkillSkillTab(
     }
 }
 
+private fun psiVariantViewUrl(variant: JSONObject, position: String, fallback: String = ""): String {
+    val views = variant.optJSONArray("views") ?: return fallback
+    val want = position.lowercase(Locale.US)
+    for (i in 0 until views.length()) {
+        val row = views.optJSONObject(i) ?: continue
+        if (row.optString("position").lowercase(Locale.US) == want) {
+            val url = row.optString("image_url").trim()
+            if (url.isNotBlank()) return url
+        }
+    }
+    return fallback
+}
+
 @Composable
 private fun ProductSkillVariantsTab(
     data: JSONObject,
@@ -366,11 +379,35 @@ private fun ProductSkillVariantsTab(
         Text(t("creator.journey.product_skill.empty", "No data available yet."), color = Color(0xFF9CA3AF))
         return
     }
+    val enabledAreas = data.optJSONObject("overview")?.optJSONArray("print_areas")
+    val backEnabled = when {
+        enabledAreas == null || enabledAreas.length() == 0 -> true
+        else -> (0 until enabledAreas.length()).any {
+            enabledAreas.optString(it).lowercase(Locale.US) == "back"
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (i in 0 until variants.length()) {
             val v = variants.optJSONObject(i) ?: continue
             val name = v.optString("name")
             val open = expandedVariant == name
+            val frontUrl = psiVariantViewUrl(v, "front", v.optString("image_url"))
+            val backUrl = if (backEnabled) psiVariantViewUrl(v, "back") else ""
+            val thumbUrls = buildList {
+                if (frontUrl.isNotBlank()) add(frontUrl)
+                if (backUrl.isNotBlank() && backUrl != frontUrl) add(backUrl)
+            }
+            val sizes = v.optJSONArray("sizes") ?: JSONArray()
+            val sizeNames = buildList {
+                for (j in 0 until sizes.length()) {
+                    val szObj = sizes.optJSONObject(j)
+                    val sizeName = when {
+                        szObj != null -> szObj.optString("name").ifBlank { szObj.optString("size") }
+                        else -> sizes.optString(j)
+                    }.trim()
+                    if (sizeName.isNotBlank()) add(sizeName)
+                }
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -386,17 +423,20 @@ private fun ProductSkillVariantsTab(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val imageUrl = v.optString("image_url")
-                    if (imageUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = imageUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x14FFFFFF)),
-                        )
+                    if (thumbUrls.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            thumbUrls.forEach { url ->
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier
+                                        .size(if (thumbUrls.size > 1) 44.dp else 48.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0x14FFFFFF)),
+                                )
+                            }
+                        }
                     } else {
                         Box(
                             modifier = Modifier
@@ -405,16 +445,39 @@ private fun ProductSkillVariantsTab(
                                 .background(parseHexColor(v.optString("hex"), Color(0xFF888888))),
                         )
                     }
-                    Text(
-                        name,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
+                    Column(
                         modifier = Modifier.weight(1f),
-                    )
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            name,
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                        )
+                        if (sizeNames.isNotEmpty()) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            ) {
+                                sizeNames.forEach { sizeName ->
+                                    Text(
+                                        sizeName,
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0x14FFFFFF))
+                                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 if (open) {
-                    val sizes = v.optJSONArray("sizes") ?: JSONArray()
                     Column(
                         modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
