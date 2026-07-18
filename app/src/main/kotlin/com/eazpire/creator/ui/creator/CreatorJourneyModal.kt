@@ -988,7 +988,12 @@ private fun JourneyUnlockTreePanel(
     }
 
     infoTarget?.let { target ->
-        if (target.category == "product" && target.productKey.isNotBlank()) {
+        // Only catalog product unlocks use the tabbed product skill UI.
+        val isProductSkill = target.category == "product" &&
+            target.productKey.isNotBlank() &&
+            target.designType.isBlank() &&
+            !target.nodeKey.startsWith("design_type:")
+        if (isProductSkill) {
             JourneyProductSkillInfoDialog(
                 node = target,
                 api = api,
