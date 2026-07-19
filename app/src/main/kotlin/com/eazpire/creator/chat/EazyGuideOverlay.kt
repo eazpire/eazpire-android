@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -188,19 +189,40 @@ fun EazyGuideOverlay(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(bottom = 16.dp)
+                .widthIn(max = 420.dp)
+                .fillMaxWidth(0.92f)
+                .background(GuideBg, RoundedCornerShape(16.dp))
+                .border(1.dp, GuideOrange.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .widthIn(max = 420.dp)
-                    .fillMaxWidth(0.92f)
-                    .background(GuideBg, RoundedCornerShape(14.dp))
-                    .border(1.dp, GuideOrange.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
-                    .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = when {
+                        EazyGuideModeStore.screenshotContext != null -> "Screenshot"
+                        !EazyGuideModeStore.elementContext?.label.isNullOrBlank() ->
+                            EazyGuideModeStore.elementContext?.label.orEmpty()
+                        else -> "Select something, then ask…"
+                    },
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                GuideChip("Click", toolClick) { EazyGuideModeStore.toggleTool("click") }
+                GuideChip("Screenshot", toolScreenshot) { EazyGuideModeStore.toggleTool("screenshot") }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 BasicTextField(
                     value = promptText,
@@ -226,17 +248,6 @@ fun EazyGuideOverlay(
                 ) {
                     Text("➤", color = Color.White, fontSize = 14.sp)
                 }
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .background(GuideBg, RoundedCornerShape(999.dp))
-                    .border(1.dp, GuideOrange.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                GuideChip("Click", toolClick) { EazyGuideModeStore.toggleTool("click") }
-                GuideChip("Screenshot", toolScreenshot) { EazyGuideModeStore.toggleTool("screenshot") }
             }
         }
     }
@@ -375,13 +386,14 @@ private fun GuideSpeechBubble(
                                 scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
                             }
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp)
                             ) {
                                 repeat(safePages.size) { i ->
                                     Box(
                                         modifier = Modifier
-                                            .size(7.dp)
+                                            .size(8.dp)
                                             .clip(CircleShape)
                                             .background(
                                                 if (i == pagerState.currentPage) GuideOrange
