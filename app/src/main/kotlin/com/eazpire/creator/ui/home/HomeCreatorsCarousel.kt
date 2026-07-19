@@ -131,7 +131,7 @@ fun HomeCreatorsCarousel(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -139,23 +139,29 @@ fun HomeCreatorsCarousel(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
-                modifier = Modifier.then(
-                    if (onCreatorsTitleClick != null) {
-                        Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable(onClick = onCreatorsTitleClick)
-                    } else {
-                        Modifier
-                    },
-                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .then(
+                        if (onCreatorsTitleClick != null) {
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(onClick = onCreatorsTitleClick)
+                        } else {
+                            Modifier
+                        },
+                    ),
             )
+            // Keep Recommend / New / Subscribed on one line so the widget header doesn't wrap.
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .background(Color.White.copy(alpha = 0.1f))
                     .border(1.dp, Color(0x40F97316), RoundedCornerShape(999.dp))
                     .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 listOf(
                     "recommend" to "eaz.home.recommended",
@@ -184,10 +190,13 @@ fun HomeCreatorsCarousel(
                                 },
                             )
                             .clickable { onSortTabChange(sort) }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        fontSize = 13.sp,
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = if (active) Color.White else Color.White.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
                     )
                 }
             }

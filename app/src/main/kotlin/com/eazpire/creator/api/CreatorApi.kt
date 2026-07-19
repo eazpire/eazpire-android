@@ -1741,6 +1741,299 @@ class CreatorApi(
         parseJsonResponse(response)
     }
 
+    /** GET ?op=video-generator-results&owner_id=xxx → { ok, items: [...] } */
+    suspend fun videoGeneratorResults(ownerId: String): JSONObject = call(
+        "video-generator-results",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** POST multipart ?op=upload-video-motion-ref&owner_id=xxx → { ok, url } */
+    suspend fun uploadVideoMotionRef(
+        ownerId: String,
+        videoBytes: ByteArray,
+        filename: String,
+        contentType: String?,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val mime = contentType?.takeIf { it.isNotBlank() } ?: "video/mp4"
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "video",
+                filename.ifBlank { "motion.mp4" },
+                videoBytes.toRequestBody(mime.toMediaType())
+            )
+            .build()
+        val url =
+            "$baseUrl/apps/creator-dispatch?op=upload-video-motion-ref&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        parseJsonResponse(client.newCall(request).execute())
+    }
+
+    /**
+     * POST ?op=video-generate — motion-control path.
+     * Body: owner_id, motion_video_url, source_image_url, prompt, character_orientation, keep_original_sound
+     */
+    suspend fun videoGenerateMotionControl(
+        ownerId: String,
+        motionVideoUrl: String,
+        sourceImageUrl: String,
+        prompt: String,
+        characterOrientation: String,
+        keepOriginalSound: Boolean,
+    ): JSONObject = postJson(
+        "video-generate",
+        mapOf(
+            "owner_id" to ownerId,
+            "motion_video_url" to motionVideoUrl,
+            "source_image_url" to sourceImageUrl,
+            "prompt" to prompt,
+            "character_orientation" to characterOrientation,
+            "keep_original_sound" to keepOriginalSound,
+            "content_type" to "motion_control",
+        ),
+        mapOf("owner_id" to ownerId),
+    )
+
+    /** POST ?op=video-save-to-library — Body: owner_id, result_id */
+    suspend fun videoSaveToLibrary(ownerId: String, resultId: String): JSONObject =
+        postJson(
+            "video-save-to-library",
+            mapOf("owner_id" to ownerId, "result_id" to resultId),
+            mapOf("owner_id" to ownerId),
+        )
+
+    /** POST ?op=video-studio-link-ingest — Body: owner_id, url, kind → { ok, url } */
+    suspend fun videoStudioLinkIngest(ownerId: String, url: String, kind: String): JSONObject =
+        postJson(
+            "video-studio-link-ingest",
+            mapOf("owner_id" to ownerId, "url" to url, "kind" to kind),
+            mapOf("owner_id" to ownerId),
+        )
+
+    // ── Social Media Manager (IDEA-040 / IDEA-043) ─────────────────────────
+
+    /** GET ?op=creator-social-connections → normalized as { ok, channels:[{channel, connected}] } */
+    suspend fun creatorSocialChannelsStatus(ownerId: String): JSONObject {
+        val raw = call("creator-social-connections", mapOf("owner_id" to ownerId))
+        if (!raw.optBoolean("ok", false) && raw.has("channels")) {
+            // already shaped
+        }
+        val channels = raw.optJSONArray("channels") ?: raw.optJSONArray("items")
+        if (channels != null) {
+            val normalized = org.json.JSONArray()
+            for (i in 0 until channels.length()) {
+                val o = channels.optJSONObject(i) ?: continue
+                val channel = o.optString("channel", o.optString("id", "")).lowercase()
+                val connected = o.optBoolean(
+                    "connected",
+                    o.optBoolean("online", false) || o.optInt("account_count", 0) > 0,
+                )
+                normalized.put(
+                    JSONObject()
+                        .put("channel", channel)
+                        .put("connected", connected)
+                        .put("account_count", o.optInt("account_count", if (connected) 1 else 0)),
+                )
+            }
+            return JSONObject().put("ok", true).put("channels", normalized)
+        }
+        // Map object-keyed response { facebook: {...}, tiktok: {...} }
+        val out = org.json.JSONArray()
+        val keys = raw.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (key == "ok" || key == "error") continue
+            val o = raw.optJSONObject(key) ?: continue
+            val connected = o.optBoolean("online", false) ||
+                o.optBoolean("connected", false) ||
+                o.optInt("account_count", 0) > 0
+            out.put(
+                JSONObject()
+                    .put("channel", key.lowercase())
+                    .put("connected", connected)
+                    .put("account_count", o.optInt("account_count", if (connected) 1 else 0)),
+            )
+        }
+        return JSONObject().put("ok", raw.optBoolean("ok", true)).put("channels", out)
+    }
+
+    /** POST ?op=creator-social-oauth-start — platform=android stores return_to in OAuth state */
+    suspend fun creatorSocialOAuthStart(
+        ownerId: String,
+        channel: String,
+        platform: String = "android",
+    ): JSONObject = postJson(
+        "creator-social-oauth-start",
+        mapOf(
+            "owner_id" to ownerId,
+            "channel" to channel,
+            "platform" to platform,
+            "return_to" to "eazpire://smm-oauth-callback",
+        ),
+        mapOf("owner_id" to ownerId),
+    )
+
+    /** POST ?op=creator-social-disconnect */
+    suspend fun creatorSocialDisconnect(ownerId: String, channel: String): JSONObject =
+        postJson(
+            "creator-social-disconnect",
+            mapOf("owner_id" to ownerId, "channel" to channel),
+            mapOf("owner_id" to ownerId),
+        )
+
+    /** GET ?op=creator-social-compose-assets */
+    suspend fun composerAssets(ownerId: String): JSONObject =
+        call("creator-social-compose-assets", mapOf("owner_id" to ownerId))
+
+    /** GET ?op=creator-social-posts-list */
+    suspend fun creatorSocialPostsList(ownerId: String, limit: Int = 50): JSONObject =
+        call(
+            "creator-social-posts-list",
+            mapOf("owner_id" to ownerId, "limit" to limit.toString()),
+        )
+
+    /** POST ?op=creator-social-posts-create */
+    suspend fun creatorSocialPostsCreate(ownerId: String, body: JSONObject): JSONObject {
+        val payload = JSONObject(body.toString()).put("owner_id", ownerId)
+        return postDispatchJson("creator-social-posts-create", payload, mapOf("owner_id" to ownerId))
+    }
+
+    // ── Video Studio (IDEA-028 / IDEA-043) ──────────────────────────────────
+
+    suspend fun videoStudioProjectsList(ownerId: String): JSONObject =
+        call("video-studio-project-list", mapOf("owner_id" to ownerId))
+
+    suspend fun videoStudioProjectCreate(
+        ownerId: String,
+        name: String,
+        aspectRatio: String,
+    ): JSONObject = postJson(
+        "video-studio-project-create",
+        mapOf(
+            "owner_id" to ownerId,
+            "name" to name,
+            "aspect_ratio" to aspectRatio,
+        ),
+        mapOf("owner_id" to ownerId),
+    )
+
+    suspend fun videoStudioProjectDelete(ownerId: String, projectId: String): JSONObject =
+        postJson(
+            "video-studio-project-delete",
+            mapOf("owner_id" to ownerId, "project_id" to projectId),
+            mapOf("owner_id" to ownerId),
+        )
+
+    suspend fun videoStudioProjectUpdate(
+        ownerId: String,
+        projectId: String,
+        body: JSONObject,
+    ): JSONObject {
+        val payload = JSONObject(body.toString())
+            .put("owner_id", ownerId)
+            .put("project_id", projectId)
+        return postDispatchJson("video-studio-project-save", payload, mapOf("owner_id" to ownerId))
+    }
+
+    suspend fun videoStudioAssetsList(ownerId: String, projectId: String): JSONObject =
+        call(
+            "video-studio-project-assets-list",
+            mapOf("owner_id" to ownerId, "project_id" to projectId),
+        )
+
+    suspend fun videoStudioAssetUpload(
+        ownerId: String,
+        projectId: String,
+        bytes: ByteArray,
+        filename: String,
+        mime: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "file",
+                filename.ifBlank { "asset.bin" },
+                bytes.toRequestBody(mime.toMediaType()),
+            )
+            .addFormDataPart("project_id", projectId)
+            .build()
+        val url =
+            "$baseUrl/apps/creator-dispatch?op=video-studio-asset-upload-simple" +
+                "&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}" +
+                "&_t=${System.currentTimeMillis()}"
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        parseJsonResponse(client.newCall(request).execute())
+    }
+
+    suspend fun videoStudioAssetDelete(
+        ownerId: String,
+        projectId: String,
+        assetId: String,
+    ): JSONObject = postJson(
+        "video-studio-asset-delete",
+        mapOf("owner_id" to ownerId, "project_id" to projectId, "asset_id" to assetId),
+        mapOf("owner_id" to ownerId),
+    )
+
+    suspend fun videoStudioExport(ownerId: String, projectId: String): JSONObject =
+        postJson(
+            "video-studio-export",
+            mapOf("owner_id" to ownerId, "project_id" to projectId),
+            mapOf("owner_id" to ownerId),
+        )
+
+    suspend fun videoStudioAssetCut(
+        ownerId: String,
+        projectId: String,
+        assetId: String,
+        atMs: Long,
+    ): JSONObject = postJson(
+        "video-studio-asset-overwrite",
+        mapOf(
+            "owner_id" to ownerId,
+            "project_id" to projectId,
+            "asset_id" to assetId,
+            "action" to "cut",
+            "at_ms" to atMs,
+        ),
+        mapOf("owner_id" to ownerId),
+    )
+
+    suspend fun videoStudioAssetRemoveAudio(
+        ownerId: String,
+        projectId: String,
+        assetId: String,
+    ): JSONObject = postJson(
+        "video-studio-asset-overwrite",
+        mapOf(
+            "owner_id" to ownerId,
+            "project_id" to projectId,
+            "asset_id" to assetId,
+            "action" to "remove_audio",
+        ),
+        mapOf("owner_id" to ownerId),
+    )
+
+    suspend fun videoStudioAssetDuplicate(
+        ownerId: String,
+        projectId: String,
+        assetId: String,
+    ): JSONObject = postJson(
+        "video-studio-asset-duplicate",
+        mapOf("owner_id" to ownerId, "project_id" to projectId, "asset_id" to assetId),
+        mapOf("owner_id" to ownerId),
+    )
+
     /** GET ?op=get-creator-code&owner_id=xxx → { is_creator, can_generate, active_code?, ref_url? } */
     suspend fun getCreatorCode(ownerId: String): JSONObject = call(
         "get-creator-code",

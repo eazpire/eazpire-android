@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
     val pendingOpenShop = mutableStateOf(false)
     /** From eazpire://wear-pair or /wear-pair deep link — opens Creator Settings → Wear + claim. */
     val pendingWearPairToken = mutableStateOf<String?>(null)
+    /** Incremented when Social Media Manager OAuth returns via eazpire://smm-oauth-callback. */
+    val pendingSmmOAuthRefresh = mutableStateOf(0)
     /** From /artifacts/claim?t=… — opens Eazy Artifacts tab and claims slot NFT. */
     val pendingArtifactClaimToken = mutableStateOf<String?>(null)
     /** Optional open Games tab in specific section (e.g. collection). */
@@ -136,6 +138,7 @@ class MainActivity : ComponentActivity() {
         pendingDeepLink.value = intent?.data
         consumeWearPairDeepLink(intent)
         consumeArtifactsClaimDeepLink(intent)
+        consumeSmmOAuthDeepLink(intent)
         consumeIntentExtras(intent)
         requestNotificationPermissionAndSyncPush()
         playInAppUpdateHelper = PlayInAppUpdateHelper(this, playInAppUpdateLauncher)
@@ -210,8 +213,17 @@ class MainActivity : ComponentActivity() {
         intent.data?.let { pendingDeepLink.value = it }
         consumeWearPairDeepLink(intent)
         consumeArtifactsClaimDeepLink(intent)
+        consumeSmmOAuthDeepLink(intent)
         consumeIntentExtras(intent)
         handleOAuthCallback(intent)
+    }
+
+    private fun consumeSmmOAuthDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "eazpire" && data.host == "smm-oauth-callback") {
+            AuthDebugLog.d("[SMM OAUTH] callback ok=${data.getQueryParameter("ok")} channel=${data.getQueryParameter("channel")}")
+            pendingSmmOAuthRefresh.value = pendingSmmOAuthRefresh.value + 1
+        }
     }
 
     private fun consumeWearPairDeepLink(intent: Intent?) {
@@ -314,5 +326,6 @@ class MainActivity : ComponentActivity() {
             // Actual handling happens in ShopScreen -> oauthCallbackForAuth -> AuthScreen.
             // Do not exchange tokens here, otherwise state/verifier ownership becomes split.
         }
+        consumeSmmOAuthDeepLink(intent)
     }
 }

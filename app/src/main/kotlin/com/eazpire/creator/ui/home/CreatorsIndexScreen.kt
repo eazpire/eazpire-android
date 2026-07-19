@@ -151,7 +151,7 @@ private fun CreatorsIndexHeader(
             .fillMaxWidth()
             .background(Color.White)
             .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -159,6 +159,9 @@ private fun CreatorsIndexHeader(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = EazColors.TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
         )
         Row(
             modifier = Modifier
@@ -166,7 +169,8 @@ private fun CreatorsIndexHeader(
                 .background(Color(0xFFF3F3F3))
                 .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(999.dp))
                 .padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             listOf(
                 "recommend" to "eaz.home.recommended",
@@ -185,10 +189,13 @@ private fun CreatorsIndexHeader(
                         .clip(RoundedCornerShape(999.dp))
                         .background(if (active) EazColors.Orange else Color.Transparent)
                         .clickable { onSortTabChange(sort) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (active) Color.White else EazColors.TextSecondary,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
                 )
             }
         }

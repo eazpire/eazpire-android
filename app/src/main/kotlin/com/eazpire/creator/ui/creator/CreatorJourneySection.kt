@@ -495,7 +495,12 @@ private fun JourneyTodoItem(
                         val oid = ownerId ?: return@clickable
                         scope.launch {
                             try {
-                                val urlToShare = buildReferralShareUrl(api, oid, ReferralShareTarget.AndroidApp)
+                                val urlToShare = buildReferralShareUrl(
+                                    api,
+                                    oid,
+                                    ReferralShareTarget.AndroidApp,
+                                    context,
+                                )
                                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, urlToShare)

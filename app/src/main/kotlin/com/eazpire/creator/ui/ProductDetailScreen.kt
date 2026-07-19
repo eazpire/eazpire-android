@@ -111,7 +111,8 @@ import com.eazpire.creator.ui.header.FavoriteEditContext
 import com.eazpire.creator.i18n.formatCountLabel
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
-import com.eazpire.creator.ui.share.resolveShareUrl
+import com.eazpire.creator.ui.share.prefetchShareUrl
+import com.eazpire.creator.ui.share.sharePageLink
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.ui.components.HangerIcon
 import com.eazpire.creator.ar.poster.PosterArSessionActions
@@ -523,6 +524,15 @@ fun ProductDetailScreen(
         isLoading = true
         product = withContext(Dispatchers.IO) { api.getProductByHandle(productHandle) }
         isLoading = false
+    }
+
+    // Prefetch short ref link while product loads — Share opens without waiting
+    LaunchedEffect(productHandle, ownerIdForMocks) {
+        val oid = ownerIdForMocks
+        if (oid.isBlank() || productHandle.isBlank()) return@LaunchedEffect
+        try {
+            prefetchShareUrl(creatorApi, oid, "/products/$productHandle", context)
+        } catch (_: Exception) {}
     }
 
     LaunchedEffect(productHandle) {
@@ -1672,18 +1682,18 @@ fun ProductDetailScreen(
             IconButton(onClick = {
                 scope.launch {
                     val productPath = "/products/${p.handle}"
-                    val urlToShare = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() }?.let { ownerId ->
+                    val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() }
+                    if (ownerId != null) {
                         try {
-                            resolveShareUrl(creatorApi, ownerId, productPath)
-                        } catch (_: Exception) {
-                            null
-                        }
-                    } ?: p.url
+                            sharePageLink(context, creatorApi, ownerId, productPath, "Share")
+                            return@launch
+                        } catch (_: Exception) {}
+                    }
                     withContext(Dispatchers.Main) {
                         try {
                             val sendIntent = Intent().apply {
                                 action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, urlToShare)
+                                putExtra(Intent.EXTRA_TEXT, p.url)
                                 type = "text/plain"
                             }
                             context.startActivity(Intent.createChooser(sendIntent, "Share"))

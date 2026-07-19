@@ -70,6 +70,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="eazpire" android:host="wear-pair" />
             </intent-filter>
+            <!-- Social Media Manager OAuth return (Custom Tabs → app) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="eazpire" android:host="smm-oauth-callback" />
+            </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

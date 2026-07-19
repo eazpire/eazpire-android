@@ -688,11 +688,11 @@ fun ShopScreen(
         pendingDeepLink.value = null
         val path = when (uri.host) {
             "join.eazpire.com" -> {
-                val urlParam = uri.getQueryParameter("url")
-                urlParam?.let { java.net.URLDecoder.decode(it, "UTF-8") }
-                    ?.substringAfter("www.eazpire.com")
-                    ?.substringAfter("eazpire.com")
-                    ?: "/"
+                // Opaque short links (/s/{token}) and legacy ?url= — resolve via redirect/helper
+                val resolved = withContext(Dispatchers.IO) {
+                    com.eazpire.creator.ui.share.resolveJoinDeepLink(uri)
+                }
+                resolved.path
             }
             "www.eazpire.com", "eazpire.com" -> uri.path ?: "/"
             else -> uri.path ?: "/"

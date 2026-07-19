@@ -468,39 +468,44 @@ fun CreatorMainScreen(
                                 currentScreen = 1
                             }
                         )
-                        3 -> MarketingScreen(
-                            tokenStore = tokenStore,
-                            translationStore = translationStore,
-                            onHeaderTitleChange = { marketingTitleOverride = it },
-                            sessionKey = marketingSessionKey,
-                            initialOpenHeroImages = pendingMarketingHero,
-                            onInitialOpenHeroImagesConsumed = { pendingMarketingHero = false },
-                            maxHeight = contentMaxHeight,
-                            onEazyChatOpen = onEazyChatOpen,
-                            onHeroJobStarted = onHeroJobStarted,
-                            onVideoJobStarted = onVideoJobStarted,
-                            onHeroEazyReadyChange = { heroEazyReady = it },
-                            onVideoEazyReadyChange = { videoEazyReady = it },
-                            onVideoGeneratingChange = { videoGenerating = it },
-                            heroHeaderStartNonce = heroHeaderStartNonce,
-                            videoHeaderStartNonce = videoHeaderStartNonce,
-                            onHeroGeneratingChange = { heroGenerating = it },
-                            showHeroDockedComposeBar = eazyDocked &&
-                                (heroEazyReady || heroGenerating) &&
-                                !shopGenerationOverlayActive,
-                            heroDockedComposeLoading = heroGenerating,
-                            onHeroDockedComposeStart = { heroHeaderStartNonce++ },
-                            showVideoDockedComposeBar = eazyDocked &&
-                                (videoEazyReady || videoGenerating) &&
-                                !shopGenerationOverlayActive,
-                            videoDockedComposeLoading = videoGenerating,
-                            onVideoDockedComposeStart = { videoHeaderStartNonce++ },
-                            onMarketingTabVisibility = { heroVis, videoVis ->
-                                marketingHeroTabVisible = heroVis
-                                marketingVideoTabVisible = videoVis
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        3 -> {
+                            val activity = LocalContext.current as? MainActivity
+                            val smmOAuthRefresh = activity?.pendingSmmOAuthRefresh?.value ?: 0
+                            MarketingScreen(
+                                tokenStore = tokenStore,
+                                translationStore = translationStore,
+                                onHeaderTitleChange = { marketingTitleOverride = it },
+                                sessionKey = marketingSessionKey,
+                                initialOpenHeroImages = pendingMarketingHero,
+                                onInitialOpenHeroImagesConsumed = { pendingMarketingHero = false },
+                                maxHeight = contentMaxHeight,
+                                onEazyChatOpen = onEazyChatOpen,
+                                onHeroJobStarted = onHeroJobStarted,
+                                onVideoJobStarted = onVideoJobStarted,
+                                onHeroEazyReadyChange = { heroEazyReady = it },
+                                onVideoEazyReadyChange = { videoEazyReady = it },
+                                onVideoGeneratingChange = { videoGenerating = it },
+                                heroHeaderStartNonce = heroHeaderStartNonce,
+                                videoHeaderStartNonce = videoHeaderStartNonce,
+                                onHeroGeneratingChange = { heroGenerating = it },
+                                showHeroDockedComposeBar = eazyDocked &&
+                                    (heroEazyReady || heroGenerating) &&
+                                    !shopGenerationOverlayActive,
+                                heroDockedComposeLoading = heroGenerating,
+                                onHeroDockedComposeStart = { heroHeaderStartNonce++ },
+                                showVideoDockedComposeBar = eazyDocked &&
+                                    (videoEazyReady || videoGenerating) &&
+                                    !shopGenerationOverlayActive,
+                                videoDockedComposeLoading = videoGenerating,
+                                onVideoDockedComposeStart = { videoHeaderStartNonce++ },
+                                onMarketingTabVisibility = { heroVis, videoVis ->
+                                    marketingHeroTabVisible = heroVis
+                                    marketingVideoTabVisible = videoVis
+                                },
+                                smmOAuthRefreshNonce = smmOAuthRefresh,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                         4 -> AutomationsScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,

@@ -44,7 +44,8 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.share.getActiveRefUrl
-import com.eazpire.creator.ui.share.resolveShareUrl
+import com.eazpire.creator.ui.share.prefetchShareUrl
+import com.eazpire.creator.ui.share.sharePageLink
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -77,6 +78,9 @@ fun CreatorLevelBadge(
         LaunchedEffect(ownerId, economyRefreshTick) {
             levelLoadFailed = false
             shareUrl = getActiveRefUrl(api, ownerId!!)
+            try {
+                prefetchShareUrl(api, ownerId!!, "/pages/creator-dashboard", context)
+            } catch (_: Exception) {}
             try {
                 val r = withContext(Dispatchers.IO) { api.getLevel(ownerId!!) }
                 if (r.optBoolean("ok", false)) {
@@ -357,16 +361,16 @@ fun CreatorLevelBadge(
                     } else {
                         scope.launch {
                             val api = CreatorApi(jwt = tokenStore.getJwt())
-                            val urlToShare = try {
-                                resolveShareUrl(api, oid, "/pages/creator-dashboard")
+                            try {
+                                sharePageLink(context, api, oid, "/pages/creator-dashboard")
                             } catch (_: Exception) {
-                                shareUrl ?: "https://www.eazpire.com/pages/creator-dashboard"
+                                val fallback = shareUrl ?: "https://www.eazpire.com/pages/creator-dashboard"
+                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, fallback)
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, null))
                             }
-                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, urlToShare)
-                            }
-                            context.startActivity(Intent.createChooser(sendIntent, null))
                         }
                     }
                 },
