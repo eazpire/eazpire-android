@@ -43,9 +43,11 @@ import com.eazpire.creator.billing.EazBalanceRefreshBus
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
-import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
+import com.eazpire.creator.ui.share.resolveShareUrl
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
@@ -61,6 +63,7 @@ fun CreatorLevelBadge(
 ) {
     val context = LocalContext.current
     val economyRefreshTick by EazBalanceRefreshBus.tick.collectAsState()
+    val scope = rememberCoroutineScope()
     var shareUrl by remember { mutableStateOf<String?>(null) }
     var levelNum by remember { mutableStateOf(1) }
     var levelName by remember { mutableStateOf(translationStore.t("creator.overview.loading", "Loading…")) }
@@ -343,13 +346,29 @@ fun CreatorLevelBadge(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) {
-                    val urlToShare = shareUrl?.let { buildShareUrl(it, "/pages/creator-dashboard") }
-                        ?: "https://www.eazpire.com/pages/creator-dashboard"
-                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, urlToShare)
+                    val oid = ownerId
+                    if (oid.isNullOrBlank()) {
+                        val fallback = "https://www.eazpire.com/pages/creator-dashboard"
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, fallback)
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, null))
+                    } else {
+                        scope.launch {
+                            val api = CreatorApi(jwt = tokenStore.getJwt())
+                            val urlToShare = try {
+                                resolveShareUrl(api, oid, "/pages/creator-dashboard")
+                            } catch (_: Exception) {
+                                shareUrl ?: "https://www.eazpire.com/pages/creator-dashboard"
+                            }
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, urlToShare)
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, null))
+                        }
                     }
-                    context.startActivity(Intent.createChooser(sendIntent, null))
                 },
             contentAlignment = Alignment.Center
         ) {

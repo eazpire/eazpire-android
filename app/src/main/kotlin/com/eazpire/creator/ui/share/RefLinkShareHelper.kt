@@ -18,11 +18,16 @@ enum class ReferralShareTarget {
     AndroidApp,
 }
 
+private data class ActiveRefMeta(val joinUrl: String, val refName: String)
+
 /**
- * Baut die aktive Ref-Link-URL aus API-Daten.
- * Format wie Web: join.eazpire.com/{slug} oder join.eazpire.com/{code}
+ * Baut die aktive Ref-Link-Basis aus API-Daten.
+ * Format: join.eazpire.com/{slug} oder join.eazpire.com/{code}
  */
-suspend fun getActiveRefUrl(api: CreatorApi, ownerId: String): String? = withContext(Dispatchers.IO) {
+suspend fun getActiveRefUrl(api: CreatorApi, ownerId: String): String? =
+    getActiveRefMeta(api, ownerId)?.joinUrl
+
+private suspend fun getActiveRefMeta(api: CreatorApi, ownerId: String): ActiveRefMeta? = withContext(Dispatchers.IO) {
     if (ownerId.isBlank()) return@withContext null
     try {
         val ref = api.getReferralCode(ownerId)
@@ -34,7 +39,10 @@ suspend fun getActiveRefUrl(api: CreatorApi, ownerId: String): String? = withCon
         val activeLink = links.find { it.id == activeId } ?: links.firstOrNull()
         val slug = activeLink?.slug?.takeIf { it.isNotBlank() }
         val pathPart = (slug ?: code).lowercase()
-        "$JOIN_BASE/$pathPart"
+        ActiveRefMeta(
+            joinUrl = "$JOIN_BASE/$pathPart",
+            refName = slug?.lowercase() ?: "main",
+        )
     } catch (_: Exception) {
         null
     }
@@ -76,12 +84,69 @@ private fun slugifyLabel(name: String): String = name
     .replace(Regex("-+"), "-")
     .take(40)
 
+private fun sanitizeShareTargetUrl(targetUrl: String): String {
+    return try {
+        val u = java.net.URI(targetUrl)
+        val query = u.query
+            ?.split("&")
+            ?.mapNotNull { part ->
+                val key = part.substringBefore("=").lowercase()
+                if (key in setOf("eaz_pdp_modal", "ref", "ref_name", "logged_in_customer_id", "path_prefix")) {
+                    null
+                } else {
+                    part
+                }
+            }
+            ?.joinToString("&")
+            ?.takeIf { it.isNotBlank() }
+        buildString {
+            append(u.scheme).append("://").append(u.host)
+            if (u.port > 0) append(":").append(u.port)
+            append(u.path ?: "/")
+            if (!query.isNullOrBlank()) append("?").append(query)
+        }
+    } catch (_: Exception) {
+        targetUrl
+    }
+}
+
 /**
- * Baut Share-URL im Web-Format: join.eazpire.com/{slug}?url={encoded_target}
- * Worker leitet weiter zu target + ?ref=code. Ohne App: Web lädt. Mit App: App öffnet via Deep Link.
- *
- * @param refUrl join.eazpire.com/{slug} oder join.eazpire.com/{code}
- * @param pagePath Zielpfad (z.B. /collections/women, /products/xyz)
+ * Resolve a shareable URL: prefers opaque short link join.eazpire.com/s/{token}.
+ * Falls back to legacy join/{slug}?url=… when the shortener is unavailable.
+ */
+suspend fun resolveShareUrl(api: CreatorApi, ownerId: String, pagePath: String): String = withContext(Dispatchers.IO) {
+    val targetUrl = when {
+        pagePath.isBlank() || pagePath == "/" -> WEB_BASE
+        pagePath.startsWith("http://") || pagePath.startsWith("https://") -> pagePath
+        else -> WEB_BASE + (if (pagePath.startsWith("/")) pagePath else "/$pagePath")
+    }.let(::sanitizeShareTargetUrl)
+
+    val meta = getActiveRefMeta(api, ownerId)
+    val refUrl = meta?.joinUrl
+    val refName = meta?.refName ?: "main"
+
+    try {
+        val shortRes = api.createShortRefLink(ownerId, targetUrl, refName)
+        if (shortRes.optBoolean("ok", false)) {
+            val shortUrl = shortRes.optString("short_url", "").takeIf { it.isNotBlank() }
+            if (!shortUrl.isNullOrBlank()) return@withContext shortUrl
+            if (shortRes.optBoolean("home", false) && !refUrl.isNullOrBlank()) {
+                return@withContext refUrl
+            }
+        }
+    } catch (_: Exception) {
+        // fall through
+    }
+
+    if (!refUrl.isNullOrBlank()) {
+        return@withContext encodeJoinUrlWithTarget(refUrl, targetUrl)
+    }
+    targetUrl
+}
+
+/**
+ * Baut Share-URL im Web-Format: bevorzugt Short-Link, sonst join?url=
+ * @deprecated Prefer [resolveShareUrl] which creates opaque short tokens.
  */
 fun buildShareUrl(refUrl: String, pagePath: String): String {
     val targetUrl = when {
@@ -89,10 +154,20 @@ fun buildShareUrl(refUrl: String, pagePath: String): String {
         pagePath.startsWith("http://") || pagePath.startsWith("https://") -> pagePath
         else -> WEB_BASE + (if (pagePath.startsWith("/")) pagePath else "/$pagePath")
     }
-    return encodeJoinUrlWithTarget(refUrl, targetUrl)
+    return encodeJoinUrlWithTarget(refUrl, sanitizeShareTargetUrl(targetUrl))
 }
 
-/** Ref share URL for journey invite etc. */
+/** Ref share URL for journey invite etc. — uses opaque shortener when possible. */
+suspend fun buildReferralShareUrl(
+    api: CreatorApi,
+    ownerId: String,
+    target: ReferralShareTarget,
+): String = when (target) {
+    ReferralShareTarget.Homepage -> resolveShareUrl(api, ownerId, "/")
+    ReferralShareTarget.AndroidApp -> resolveShareUrl(api, ownerId, PLAY_STORE_APP)
+}
+
+/** Legacy overload kept for call sites that already have a join base URL. */
 fun buildReferralShareUrl(refUrl: String, target: ReferralShareTarget): String = when (target) {
     ReferralShareTarget.Homepage -> buildShareUrl(refUrl, "/")
     ReferralShareTarget.AndroidApp -> buildShareUrl(refUrl, PLAY_STORE_APP)

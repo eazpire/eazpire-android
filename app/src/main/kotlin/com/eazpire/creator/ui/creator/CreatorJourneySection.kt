@@ -38,7 +38,6 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.share.ReferralShareTarget
 import com.eazpire.creator.ui.share.buildReferralShareUrl
-import com.eazpire.creator.ui.share.getActiveRefUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -496,8 +495,7 @@ private fun JourneyTodoItem(
                         val oid = ownerId ?: return@clickable
                         scope.launch {
                             try {
-                                val refUrl = getActiveRefUrl(api, oid) ?: return@launch
-                                val urlToShare = buildReferralShareUrl(refUrl, ReferralShareTarget.AndroidApp)
+                                val urlToShare = buildReferralShareUrl(api, oid, ReferralShareTarget.AndroidApp)
                                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, urlToShare)

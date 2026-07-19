@@ -1712,6 +1712,35 @@ class CreatorApi(
         mapOf("owner_id" to ownerId)
     )
 
+    /**
+     * POST ?op=create-short-ref-link&owner_id=xxx
+     * Body: { url, ref_name? } → { ok, token, short_url, landing_path, reused, home? }
+     */
+    suspend fun createShortRefLink(
+        ownerId: String,
+        url: String,
+        refName: String? = null,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val endpoint = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=create-short-ref-link")
+            append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&_t=${System.currentTimeMillis()}")
+        }
+        val payload = JSONObject().put("url", url)
+        if (!refName.isNullOrBlank()) payload.put("ref_name", refName)
+        val request = Request.Builder()
+            .url(endpoint)
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply {
+                jwt?.let { addHeader("Authorization", "Bearer $it") }
+            }
+            .build()
+        val response = client.newCall(request).execute()
+        parseJsonResponse(response)
+    }
+
     /** GET ?op=get-creator-code&owner_id=xxx → { is_creator, can_generate, active_code?, ref_url? } */
     suspend fun getCreatorCode(ownerId: String): JSONObject = call(
         "get-creator-code",

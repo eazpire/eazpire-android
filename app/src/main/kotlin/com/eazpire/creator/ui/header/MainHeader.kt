@@ -54,8 +54,8 @@ import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.ui.header.HeaderActions
-import com.eazpire.creator.ui.share.buildShareUrl
 import com.eazpire.creator.ui.share.getActiveRefUrl
+import com.eazpire.creator.ui.share.resolveShareUrl
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
@@ -191,15 +191,24 @@ fun MainHeader(
                 val ctx = LocalContext.current
                 IconButton(
                     onClick = {
-                        val urlToShare = shareUrl?.let { buildShareUrl(it, currentPagePath) }
-                            ?: "https://www.eazpire.com" + if (currentPagePath.isNotBlank() && currentPagePath != "/") currentPagePath else ""
-                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, urlToShare)
+                        coroutineScope.launch {
+                            val urlToShare = if (ownerId.isNotBlank()) {
+                                try {
+                                    resolveShareUrl(api, ownerId, currentPagePath)
+                                } catch (_: Exception) {
+                                    shareUrl ?: ("https://www.eazpire.com" + if (currentPagePath.isNotBlank() && currentPagePath != "/") currentPagePath else "")
+                                }
+                            } else {
+                                "https://www.eazpire.com" + if (currentPagePath.isNotBlank() && currentPagePath != "/") currentPagePath else ""
+                            }
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, urlToShare)
+                            }
+                            val chooser = Intent.createChooser(sendIntent, null)
+                            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            ctx.startActivity(chooser)
                         }
-                        val chooser = Intent.createChooser(sendIntent, null)
-                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        ctx.startActivity(chooser)
                     },
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = Color.Transparent,

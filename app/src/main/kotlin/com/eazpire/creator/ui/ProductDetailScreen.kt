@@ -111,8 +111,7 @@ import com.eazpire.creator.ui.header.FavoriteEditContext
 import com.eazpire.creator.i18n.formatCountLabel
 import com.eazpire.creator.ui.footer.GlobalFooter
 import com.eazpire.creator.ui.header.CheckoutDrawer
-import com.eazpire.creator.ui.share.buildShareUrl
-import com.eazpire.creator.ui.share.getActiveRefUrl
+import com.eazpire.creator.ui.share.resolveShareUrl
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.ui.components.HangerIcon
 import com.eazpire.creator.ar.poster.PosterArSessionActions
@@ -1673,11 +1672,11 @@ fun ProductDetailScreen(
             IconButton(onClick = {
                 scope.launch {
                     val productPath = "/products/${p.handle}"
-                    val urlToShare = tokenStore.getJwt()?.let { jwt ->
-                        tokenStore.getOwnerId()?.let { ownerId ->
-                            getActiveRefUrl(creatorApi, ownerId)?.let { refUrl ->
-                                buildShareUrl(refUrl, productPath)
-                            }
+                    val urlToShare = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() }?.let { ownerId ->
+                        try {
+                            resolveShareUrl(creatorApi, ownerId, productPath)
+                        } catch (_: Exception) {
+                            null
                         }
                     } ?: p.url
                     withContext(Dispatchers.Main) {
