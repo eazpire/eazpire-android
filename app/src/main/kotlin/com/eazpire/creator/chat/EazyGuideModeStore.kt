@@ -27,8 +27,11 @@ object EazyGuideModeStore {
     private val _toolPrompt = MutableStateFlow(false)
     val toolPrompt: StateFlow<Boolean> = _toolPrompt.asStateFlow()
 
-    private val _bubbleText = MutableStateFlow<String?>(null)
-    val bubbleText: StateFlow<String?> = _bubbleText.asStateFlow()
+    private val _bubblePages = MutableStateFlow<List<EazyGuidePage>>(emptyList())
+    val bubblePages: StateFlow<List<EazyGuidePage>> = _bubblePages.asStateFlow()
+
+    private val _bubblePageIndex = MutableStateFlow(0)
+    val bubblePageIndex: StateFlow<Int> = _bubblePageIndex.asStateFlow()
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
@@ -52,13 +55,20 @@ object EazyGuideModeStore {
         elementContext = null
         screenshotContext = null
         _promptText.value = ""
-        _bubbleText.value = "Guide Mode on! Long-press any element, drag a screenshot, or ask me."
+        setBubblePages(
+            listOf(
+                EazyGuidePage(
+                    category = "Guide Mode",
+                    body = "Guide Mode on! Tap a control for a tip, or ask me about your selection."
+                )
+            )
+        )
     }
 
     fun exit() {
         _active.value = false
         _loading.value = false
-        _bubbleText.value = null
+        clearBubble()
         elementContext = null
         screenshotContext = null
         _promptText.value = ""
@@ -67,11 +77,17 @@ object EazyGuideModeStore {
 
     fun toggleTool(tool: String) {
         when (tool) {
-            "click" -> _toolClick.value = !_toolClick.value
-            "screenshot" -> _toolScreenshot.value = !_toolScreenshot.value
+            "click" -> {
+                _toolClick.value = true
+                _toolScreenshot.value = false
+            }
+            "screenshot" -> {
+                _toolScreenshot.value = true
+                _toolClick.value = false
+            }
             "prompt" -> _toolPrompt.value = !_toolPrompt.value
         }
-        if (!_toolClick.value && !_toolScreenshot.value && !_toolPrompt.value) {
+        if (!_toolClick.value && !_toolScreenshot.value) {
             _toolClick.value = true
         }
     }
@@ -88,8 +104,25 @@ object EazyGuideModeStore {
         screenshotContext = ctx
     }
 
-    fun setBubble(text: String?, loading: Boolean = false) {
+    fun setBubblePages(pages: List<EazyGuidePage>, loading: Boolean = false) {
         _loading.value = loading
-        _bubbleText.value = text
+        _bubblePages.value = pages
+        _bubblePageIndex.value = 0
+    }
+
+    fun setBubble(text: String?, loading: Boolean = false) {
+        val pages = if (text.isNullOrBlank()) emptyList() else EazyGuideRegistry.pagesFromPlainText(text)
+        setBubblePages(pages, loading)
+    }
+
+    fun clearBubble() {
+        _bubblePages.value = emptyList()
+        _bubblePageIndex.value = 0
+        _loading.value = false
+    }
+
+    fun setBubblePageIndex(index: Int) {
+        val max = (_bubblePages.value.size - 1).coerceAtLeast(0)
+        _bubblePageIndex.value = index.coerceIn(0, max)
     }
 }

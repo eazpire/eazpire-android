@@ -2,8 +2,11 @@ package com.eazpire.creator.chat
 
 import android.graphics.Bitmap
 import android.util.Base64
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -12,28 +15,37 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -41,11 +53,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.api.CreatorApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -54,6 +68,9 @@ import kotlin.math.roundToInt
 
 private val GuideOrange = Color(0xFFF97316)
 private val GuideBg = Color(0xEB0F0A1E)
+private val BubbleTop = Color(0xFA22183A)
+private val BubbleBottom = Color(0xFA0F0B1E)
+private val BubbleBorder = Color(0x73F97316)
 
 @Composable
 fun EazyGuideOverlay(
@@ -69,8 +86,7 @@ fun EazyGuideOverlay(
     val scope = rememberCoroutineScope()
     val toolClick by EazyGuideModeStore.toolClick.collectAsState()
     val toolScreenshot by EazyGuideModeStore.toolScreenshot.collectAsState()
-    val toolPrompt by EazyGuideModeStore.toolPrompt.collectAsState()
-    val bubbleText by EazyGuideModeStore.bubbleText.collectAsState()
+    val bubblePages by EazyGuideModeStore.bubblePages.collectAsState()
     val loading by EazyGuideModeStore.loading.collectAsState()
     val promptText by EazyGuideModeStore.promptText.collectAsState()
     val view = LocalView.current
@@ -81,9 +97,9 @@ fun EazyGuideOverlay(
             val prompt = EazyGuideModeStore.promptText.value.trim()
             val screenshot = EazyGuideModeStore.screenshotContext
             if (key != null && screenshot == null && prompt.isEmpty()) {
-                val local = EazyGuideRegistry.textFor(context, key)
-                if (local != null) {
-                    EazyGuideModeStore.setBubble(local)
+                val pages = EazyGuideRegistry.pagesFor(context, key)
+                if (!pages.isNullOrEmpty()) {
+                    EazyGuideModeStore.setBubblePages(pages)
                     return@launch
                 }
             }
@@ -147,7 +163,7 @@ fun EazyGuideOverlay(
         }
 
         Text(
-            text = "Guide Mode — click Eazy to exit",
+            text = "Guide Mode — tap Eazy to exit",
             color = Color.White.copy(alpha = 0.85f),
             fontSize = 11.sp,
             modifier = Modifier
@@ -157,24 +173,16 @@ fun EazyGuideOverlay(
                 .padding(horizontal = 14.dp, vertical = 6.dp)
         )
 
-        bubbleText?.let { msg ->
-            Box(
+        if (bubblePages.isNotEmpty() || loading) {
+            GuideSpeechBubble(
+                pages = bubblePages,
+                loading = loading,
+                onClose = { EazyGuideModeStore.clearBubble() },
+                onPageChange = { EazyGuideModeStore.setBubblePageIndex(it) },
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 48.dp, start = 16.dp, end = 16.dp)
-                    .widthIn(max = 320.dp)
-                    .background(Color.White, RoundedCornerShape(16.dp))
-                    .padding(12.dp)
-            ) {
-                if (loading) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = GuideOrange, strokeWidth = 2.dp)
-                        Text(msg, color = Color(0xFF1E293B), fontSize = 13.sp)
-                    }
-                } else {
-                    Text(msg, color = Color(0xFF1E293B), fontSize = 13.sp, lineHeight = 18.sp)
-                }
-            }
+                    .align(Alignment.TopEnd)
+                    .padding(top = 52.dp, end = 52.dp, start = 16.dp)
+            )
         }
 
         Column(
@@ -184,41 +192,39 @@ fun EazyGuideOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (toolPrompt) {
-                Row(
-                    modifier = Modifier
-                        .widthIn(max = 420.dp)
-                        .fillMaxWidth(0.92f)
-                        .background(GuideBg, RoundedCornerShape(14.dp))
-                        .border(1.dp, GuideOrange.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    BasicTextField(
-                        value = promptText,
-                        onValueChange = { EazyGuideModeStore.setPrompt(it) },
-                        textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
-                        modifier = Modifier.weight(1f),
-                        decorationBox = { inner ->
-                            if (promptText.isEmpty()) {
-                                Text("Ask about what you see…", color = Color.White.copy(alpha = 0.45f), fontSize = 14.sp)
-                            }
-                            inner()
+            Row(
+                modifier = Modifier
+                    .widthIn(max = 420.dp)
+                    .fillMaxWidth(0.92f)
+                    .background(GuideBg, RoundedCornerShape(14.dp))
+                    .border(1.dp, GuideOrange.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BasicTextField(
+                    value = promptText,
+                    onValueChange = { EazyGuideModeStore.setPrompt(it) },
+                    textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        if (promptText.isEmpty()) {
+                            Text("Ask about what you see…", color = Color.White.copy(alpha = 0.45f), fontSize = 14.sp)
                         }
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(GuideOrange)
-                            .pointerInput(Unit) {
-                                detectTapGestures { requestExplain() }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("➤", color = Color.White, fontSize = 14.sp)
+                        inner()
                     }
+                )
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(GuideOrange)
+                        .pointerInput(Unit) {
+                            detectTapGestures { requestExplain() }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("➤", color = Color.White, fontSize = 14.sp)
                 }
             }
 
@@ -231,10 +237,185 @@ fun EazyGuideOverlay(
             ) {
                 GuideChip("Click", toolClick) { EazyGuideModeStore.toggleTool("click") }
                 GuideChip("Screenshot", toolScreenshot) { EazyGuideModeStore.toggleTool("screenshot") }
-                GuideChip("Prompt", toolPrompt) { EazyGuideModeStore.toggleTool("prompt") }
-                GuideChip("Explain", true) { requestExplain() }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GuideSpeechBubble(
+    pages: List<EazyGuidePage>,
+    loading: Boolean,
+    onClose: () -> Unit,
+    onPageChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val safePages = if (pages.isEmpty() && loading) {
+        listOf(EazyGuidePage("", "Let me look at that…"))
+    } else {
+        pages
+    }
+    val pagerState = rememberPagerState(pageCount = { safePages.size.coerceAtLeast(1) })
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(safePages) {
+        pagerState.scrollToPage(0)
+        onPageChange(0)
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }
+            .distinctUntilChanged()
+            .collect { onPageChange(it) }
+    }
+
+    Column(modifier = modifier.widthIn(max = 320.dp)) {
+        // Tail pointing up toward Eazy (top-right)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 18.dp)
+                    .size(16.dp, 10.dp)
+            ) {
+                val path = Path().apply {
+                    moveTo(size.width / 2f, 0f)
+                    lineTo(0f, size.height)
+                    lineTo(size.width, size.height)
+                    close()
+                }
+                drawPath(path, color = BubbleTop)
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(listOf(BubbleTop, BubbleBottom)),
+                    RoundedCornerShape(18.dp)
+                )
+                .border(1.dp, BubbleBorder, RoundedCornerShape(18.dp))
+                .padding(top = 10.dp, start = 12.dp, end = 12.dp, bottom = 10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 4.dp, y = (-4).dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("×", color = Color.White.copy(alpha = 0.9f), fontSize = 18.sp)
+            }
+
+            Column(modifier = Modifier.padding(end = 22.dp)) {
+                if (loading) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = GuideOrange,
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            safePages.firstOrNull()?.body.orEmpty(),
+                            color = Color.White.copy(alpha = 0.94f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                } else {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 72.dp, max = 180.dp)
+                    ) { page ->
+                        val item = safePages.getOrNull(page) ?: return@HorizontalPager
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(end = 4.dp)
+                        ) {
+                            if (item.category.isNotBlank()) {
+                                Text(
+                                    item.category.uppercase(),
+                                    color = Color(0xFFFB923C),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.4.sp,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                            }
+                            Text(
+                                item.body,
+                                color = Color.White.copy(alpha = 0.94f),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
+
+                    if (safePages.size > 1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            GuidePagerNav("‹", enabled = pagerState.currentPage > 0) {
+                                scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+                            }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                repeat(safePages.size) { i ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (i == pagerState.currentPage) GuideOrange
+                                                else Color.White.copy(alpha = 0.28f)
+                                            )
+                                            .clickable {
+                                                scope.launch { pagerState.animateScrollToPage(i) }
+                                            }
+                                    )
+                                }
+                            }
+                            GuidePagerNav("›", enabled = pagerState.currentPage < safePages.lastIndex) {
+                                scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GuidePagerNav(label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = if (enabled) 0.08f else 0.03f))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), CircleShape)
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, color = Color.White.copy(alpha = if (enabled) 1f else 0.35f), fontSize = 18.sp)
     }
 }
 
@@ -273,6 +454,10 @@ private fun EazyGuideLongPressLayer(
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(
+                    onTap = { offset ->
+                        val hit = guideTargetKeys.entries.firstOrNull { it.key.contains(offset) }
+                        onLongPress(hit?.value?.first, hit?.value?.second)
+                    },
                     onLongPress = { offset ->
                         val hit = guideTargetKeys.entries.firstOrNull { it.key.contains(offset) }
                         onLongPress(hit?.value?.first, hit?.value?.second)
