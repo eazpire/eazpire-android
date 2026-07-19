@@ -121,6 +121,7 @@ fun SocialMediaManagerScreen(
     onDismiss: () -> Unit,
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
+    oauthRefreshNonce: Int = 0,
 ) {
     if (!visible) return
 
@@ -135,6 +136,10 @@ fun SocialMediaManagerScreen(
     var connectedChannels by remember { mutableStateOf<Set<String>>(emptySet()) }
     var channelsLoading by remember { mutableStateOf(false) }
     var channelsRefreshNonce by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(oauthRefreshNonce) {
+        if (oauthRefreshNonce > 0) channelsRefreshNonce++
+    }
 
     fun loadChannelStatus() {
         if (ownerId.isBlank()) return

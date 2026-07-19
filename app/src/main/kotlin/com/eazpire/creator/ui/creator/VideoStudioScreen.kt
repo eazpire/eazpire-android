@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.eazpire.creator.ui.creator
 
 import android.net.Uri
@@ -47,6 +49,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -94,11 +97,6 @@ import kotlin.math.roundToInt
 /**
  * Native Video Studio shell — projects, assets, a simplified multi-track timeline editor and
  * export. Parity shell for the marketing web "Video Studio" module.
- *
- * NOTE: All `CreatorApi.videoStudio*` methods used below (projects list/create/delete, assets
- * list/upload/delete, timeline save, export, and per-asset cut/remove-audio/duplicate) are
- * expected to be added to `CreatorApi` by the parent agent — see assumptions documented at each
- * call site.
  */
 
 private const val MAX_TRACKS = 12

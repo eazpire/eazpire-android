@@ -1,6 +1,7 @@
-# Android WIP (nicht im Compile-Pfad)
+# Android WIP
 
-Unfertige Screen-Dateien, die vorübergehend aus `app/src/main/kotlin/` verschoben wurden, weil fehlende `CreatorApi`-Methoden den Debug-Build blockiert haben.
+Empty placeholder. Full marketing tool screens live in:
 
-Zurückholen: Dateien wieder nach  
-`app/src/main/kotlin/com/eazpire/creator/ui/creator/` verschieben und die zugehörigen API-Methoden in `CreatorApi.kt` ergänzen.
+`app/src/main/kotlin/com/eazpire/creator/ui/creator/`
+
+(HeroImagesCreateModal, VideoGeneratorScreen, VideoStudioScreen, SocialMediaManagerScreen)
