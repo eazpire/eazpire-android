@@ -59,9 +59,10 @@ const val MKT_PARENT_PROMOTIONS = "promotions"
 const val MKT_CHILD_HERO = "hero-images"
 const val MKT_CHILD_VIDEO = "videos"
 const val MKT_CHILD_IMAGES = "images"
-
 const val MKT_FN_STUDIO = "video-studio"
 const val MKT_FN_GENERATOR = "video-generator"
+const val MKT_FN_HERO_GENERATOR = "hero-generator"
+const val MKT_FN_CHARACTER_GENERATOR = "character-generator"
 const val MKT_FN_SMM = "social-media-manager"
 
 private val GoldLine = Color(0xFFE8C547)
@@ -238,10 +239,10 @@ fun rememberMarketingParentCards(translationStore: TranslationStore): List<Marke
 @Composable
 fun rememberMarketingCreationChildren(translationStore: TranslationStore): List<MarketingCardSpec> = listOf(
     MarketingCardSpec(
-        id = MKT_CHILD_HERO,
-        title = translationStore.t("creator.marketing.hero_images", "Hero Images"),
-        icon = "🖼️",
-        bgRes = R.drawable.cmkt_bg_hero_images,
+        id = MKT_CHILD_IMAGES,
+        title = translationStore.t("creator.marketing.images", "Images"),
+        icon = "📷",
+        bgRes = R.drawable.cmkt_bg_images,
     ),
     MarketingCardSpec(
         id = MKT_CHILD_VIDEO,
@@ -249,11 +250,31 @@ fun rememberMarketingCreationChildren(translationStore: TranslationStore): List<
         icon = "🎬",
         bgRes = R.drawable.cmkt_bg_videos,
     ),
+)
+
+@Composable
+fun rememberMarketingImageFunctions(translationStore: TranslationStore): List<MarketingCardSpec> = listOf(
     MarketingCardSpec(
-        id = MKT_CHILD_IMAGES,
-        title = translationStore.t("creator.marketing.images", "Images"),
-        icon = "📷",
+        id = MKT_FN_HERO_GENERATOR,
+        title = translationStore.t("creator.marketing.hero_generator", "Hero Generator"),
+        icon = "🖼️",
         bgRes = R.drawable.cmkt_bg_images,
+        description = translationStore.t(
+            "creator.content_creation.videos.tool_hero_generator_desc",
+            "Create shop hero images with your products.",
+        ),
+        isFunction = true,
+    ),
+    MarketingCardSpec(
+        id = MKT_FN_CHARACTER_GENERATOR,
+        title = translationStore.t("creator.marketing.character_generator", "Character Generator"),
+        icon = "🧑",
+        bgRes = R.drawable.cmkt_bg_images,
+        description = translationStore.t(
+            "creator.content_creation.videos.tool_character_generator_desc",
+            "Create character images for video and social posts.",
+        ),
+        isFunction = true,
     ),
 )
 

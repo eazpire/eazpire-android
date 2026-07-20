@@ -98,8 +98,9 @@ fun MarketingScreen(
 
     val parents = rememberMarketingParentCards(translationStore)
     val creationChildren = rememberMarketingCreationChildren(translationStore)
-    val publishChildren = rememberMarketingPublishChildren(translationStore)
+    val imageFunctions = rememberMarketingImageFunctions(translationStore)
     val videoFunctions = rememberMarketingVideoFunctions(translationStore)
+    val publishChildren = rememberMarketingPublishChildren(translationStore)
 
     fun updateHeaderTitle() {
         val title = when {
@@ -110,7 +111,7 @@ fun MarketingScreen(
             showVideoGenerator ->
                 translationStore.t("creator.video_generator.title", "Video Generator")
             showHeroCreateModal ->
-                translationStore.t("creator.marketing.hero_images", "Hero Images")
+                translationStore.t("creator.marketing.hero_generator", "Hero Generator")
             expandedParent == MKT_PARENT_PROMOTIONS ->
                 translationStore.t("creator.marketing.promotion", "Promotion")
             expandedParent == MKT_PARENT_PUBLISH && selectedChild == MKT_CHILD_HERO ->
@@ -132,7 +133,7 @@ fun MarketingScreen(
     LaunchedEffect(initialOpenHeroImages) {
         if (initialOpenHeroImages) {
             expandedParent = MKT_PARENT_CREATION
-            selectedChild = MKT_CHILD_HERO
+            selectedChild = MKT_CHILD_IMAGES
             showHeroCreateModal = true
             onInitialOpenHeroImagesConsumed()
         }
@@ -237,9 +238,9 @@ fun MarketingScreen(
                             onClick = {
                                 selectedChild = if (selectedChild == spec.id) "" else spec.id
                                 when (spec.id) {
-                                    MKT_CHILD_HERO -> showHeroCreateModal = true
-                                    MKT_CHILD_VIDEO -> { /* expand functions below */ }
-                                    MKT_CHILD_IMAGES -> { /* coming soon panel */ }
+                                    MKT_CHILD_VIDEO -> { /* expand video functions below */ }
+                                    MKT_CHILD_IMAGES -> { /* expand image functions below */ }
+                                    MKT_CHILD_HERO -> showHeroCreateModal = true // legacy deep-link
                                 }
                             },
                             onPositioned = {
@@ -285,14 +286,35 @@ fun MarketingScreen(
                 }
 
                 if (selectedChild == MKT_CHILD_IMAGES) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    MarketingComingSoonBlock(
-                        label = translationStore.t("creator.marketing.images", "Images"),
-                        translationStore = translationStore,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
+                    MarketingForkConnector(
+                        parentCenterXPx = geometry.centerX("child-$MKT_PARENT_CREATION-$MKT_CHILD_IMAGES"),
+                        childCenterXsPx = imageFunctions.map { geometry.centerX("fn-${it.id}") },
+                        animate = true,
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        imageFunctions.forEach { spec ->
+                            MarketingSkillTreeCard(
+                                spec = spec,
+                                isActive = false,
+                                dimmed = false,
+                                onClick = {
+                                    when (spec.id) {
+                                        MKT_FN_HERO_GENERATOR -> showHeroCreateModal = true
+                                        MKT_FN_CHARACTER_GENERATOR -> showHeroCreateModal = true
+                                    }
+                                },
+                                onPositioned = {
+                                    geometry.updateCard("fn-${spec.id}", it)
+                                    connectorTick++
+                                },
+                                modifier = Modifier.weight(1f),
+                                minHeightDp = 110,
+                            )
+                        }
+                    }
                 }
             }
 
