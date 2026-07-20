@@ -840,16 +840,13 @@ class ShopifyProductsApi(
                 }
                 val prelaunch = o.optBoolean("promo_prelaunch", false)
                 val outside = o.optBoolean("promo_outside_slot", false)
-                val promoStrike = if (!outside && !beforeRaw.isNaN() && beforeRaw > price + 1e-6) beforeRaw else null
-                val promoPreview =
-                    if (outside && !beforeRaw.isNaN() && beforeRaw < price - 1e-6) beforeRaw else null
-                val compareForDisplay = when {
-                    outside -> null
-                    else -> promoStrike ?: compare
-                }
                 val promoEndsMs = parsePromotionEndsAtMs(o)
-                val promoNextMs = parsePromoNextWindowStartsAtMs(o)
-                val promoCampaignStartMs = parsePromoCampaignStartsAtMs(o)
+                // Live slot discounts only — skip upcoming “Discount in …” / prelaunch teasers.
+                if (outside || prelaunch || promoEndsMs == null || promoEndsMs <= System.currentTimeMillis()) {
+                    continue
+                }
+                val promoStrike = if (!beforeRaw.isNaN() && beforeRaw > price + 1e-6) beforeRaw else null
+                val compareForDisplay = promoStrike ?: compare
                 out.add(
                     ProductItem(
                         id = o.optLong("id", 0L),
@@ -874,11 +871,11 @@ class ShopifyProductsApi(
                         designId = "",
                         promotionEndsAtMs = promoEndsMs,
                         promoBeforePrice = promoStrike,
-                        promoNextWindowStartsAtMs = promoNextMs,
-                        promoOutsideSlot = outside,
-                        promoPreviewPrice = promoPreview,
-                        promoPrelaunch = prelaunch,
-                        promoCampaignStartsAtMs = promoCampaignStartMs
+                        promoNextWindowStartsAtMs = null,
+                        promoOutsideSlot = false,
+                        promoPreviewPrice = null,
+                        promoPrelaunch = false,
+                        promoCampaignStartsAtMs = null
                     )
                 )
             }
@@ -999,12 +996,11 @@ class ShopifyProductsApi(
     }
 }
 
-/** True when the product card should use promotion-style pricing (compare-at sale or worker promo fields). Matches web eaz-promo-card / Liquid on_sale. */
+/** True when the product card should use promotion-style pricing (compare-at sale or worker promo fields). Matches web eaz-promo-card / Liquid on_sale. Live discounts only — no upcoming “Discount in …” teasers. */
 fun ShopifyProductsApi.ProductItem.hasPromoPricingUi(): Boolean {
     val cmp = compareAtPrice
     if (cmp != null && cmp > price + 1e-6) return true
-    if (promotionEndsAtMs != null) return true
-    if (promoOutsideSlot) return true
-    if (promoPrelaunch) return true
+    val ends = promotionEndsAtMs
+    if (ends != null && ends > System.currentTimeMillis() && !promoOutsideSlot && !promoPrelaunch) return true
     return false
 }

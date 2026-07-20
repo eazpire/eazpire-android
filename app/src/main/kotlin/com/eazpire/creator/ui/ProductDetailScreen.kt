@@ -742,12 +742,12 @@ fun ProductDetailScreen(
         ?: 0.0
     val po = promoOverlay
     val displayPrice = when {
-        po != null && po.promoOutsideSlot -> price
-        po != null && !po.promoOutsideSlot && po.price > 0 -> po.price
+        po != null && !po.promoOutsideSlot && !po.promoPrelaunch && po.price > 0 -> po.price
         else -> price
     }
     val comparePrice = when {
-        po != null && po.promoOutsideSlot -> null
+        po != null && (po.promoOutsideSlot || po.promoPrelaunch) ->
+            selectedVariant?.compareAtPrice?.takeIf { it > displayPrice }
         po?.promoBeforePrice != null && po.promoBeforePrice > displayPrice -> po.promoBeforePrice
         po?.compareAtPrice != null && po.compareAtPrice > displayPrice -> po.compareAtPrice
         else -> selectedVariant?.compareAtPrice?.takeIf { it > displayPrice }
@@ -1744,31 +1744,18 @@ fun ProductDetailScreen(
                 }
                 promoOverlay?.let { po ->
                     val ends = po.promotionEndsAtMs
-                    val nextSlot = po.promoCampaignStartsAtMs ?: po.promoNextWindowStartsAtMs
-                    if (po.promoOutsideSlot && po.promoPreviewPrice != null && po.promoPreviewPrice > 0) {
-                        Text(
-                            "${t("eaz.shop.promo_next_price_hint_prefix", "Promo from")} CHF %.2f".format(po.promoPreviewPrice),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = EazColors.Orange,
-                            maxLines = 1,
+                    // Live slot only — no “Promo from …” / “Discount in …” for upcoming windows.
+                    if (
+                        !po.promoOutsideSlot &&
+                        !po.promoPrelaunch &&
+                        ends != null &&
+                        ends > System.currentTimeMillis()
+                    ) {
+                        PdpPromoCountdownLine(
+                            endsAtMs = ends,
+                            prefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
+                            endedLabel = t("eaz.shop.promo_countdown_ended", "Ended")
                         )
-                    }
-                    when {
-                        ends != null && ends > System.currentTimeMillis() -> {
-                            PdpPromoCountdownLine(
-                                endsAtMs = ends,
-                                prefix = t("eaz.shop.promo_countdown_prefix", "Ends in"),
-                                endedLabel = t("eaz.shop.promo_countdown_ended", "Ended")
-                            )
-                        }
-                        (po.promoOutsideSlot || po.promoPrelaunch) && nextSlot != null && nextSlot > 0L -> {
-                            PdpPromoCountdownLine(
-                                endsAtMs = nextSlot,
-                                prefix = if (po.promoPrelaunch) t("eaz.shop.promo_starts_prefix", "Starts in") else t("eaz.shop.promo_next_discount_prefix", "Discount in"),
-                                endedLabel = t("eaz.shop.promo_countdown_ended", "Ended")
-                            )
-                        }
-                        else -> {}
                     }
                 }
                 Row(
