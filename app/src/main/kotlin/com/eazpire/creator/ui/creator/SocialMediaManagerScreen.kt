@@ -327,6 +327,7 @@ fun SocialMediaManagerScreen(
                             ownerId = ownerId,
                             api = api,
                             connectedChannels = connectedChannels,
+                            facebookSkillUnlocked = facebookSkillUnlocked,
                             translationStore = translationStore,
                             onPosted = { currentTab = TAB_MANAGE_POSTS }
                         )
@@ -641,6 +642,7 @@ private fun SocialNewPostPanel(
     ownerId: String,
     api: CreatorApi,
     connectedChannels: Set<String>,
+    facebookSkillUnlocked: Boolean,
     translationStore: TranslationStore,
     onPosted: () -> Unit,
 ) {
@@ -1587,7 +1589,7 @@ private fun SocialChannelSettingsPanel(
             style = MaterialTheme.typography.labelLarge,
             color = Color.White
         )
-        Spacer(modifier.height(10.dp))
+        Spacer(Modifier.height(10.dp))
         when (channelKey) {
             "facebook" -> {
                 val destOptions = buildList {
@@ -1623,7 +1625,7 @@ private fun SocialChannelSettingsPanel(
                         options = destOptions,
                         onSelect = onFbDestinationChange,
                     )
-                    Spacer(modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         text = if (fbDestination == "profile" || fbDestination == "both") {
                             t(
@@ -1639,7 +1641,7 @@ private fun SocialChannelSettingsPanel(
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.5f),
                     )
-                    Spacer(modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
                 if (fbDestination == "pages" || fbDestination == "both") {
                     SocialDropdownField(
@@ -1672,7 +1674,7 @@ private fun SocialChannelSettingsPanel(
                     ),
                     onSelect = onTiktokPrivacyChange
                 )
-                Spacer(modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     text = t(
                         "creator.social_media_manager.tiktok_sandbox_note",
