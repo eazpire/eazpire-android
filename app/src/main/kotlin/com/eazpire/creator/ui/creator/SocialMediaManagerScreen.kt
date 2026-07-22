@@ -3,6 +3,7 @@ package com.eazpire.creator.ui.creator
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -207,6 +208,7 @@ fun SocialMediaManagerScreen(
 
     var currentTab by remember { mutableIntStateOf(TAB_OVERVIEW) }
     var connectedChannels by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var facebookSkillUnlocked by remember { mutableStateOf(false) }
     var channelsLoading by remember { mutableStateOf(false) }
     var channelsRefreshNonce by remember { mutableIntStateOf(0) }
 
@@ -219,18 +221,21 @@ fun SocialMediaManagerScreen(
         scope.launch {
             channelsLoading = true
             try {
-                // Assumed: GET ?op=creator-social-channels-status&owner_id= -> { ok, channels:[{channel, connected}] }
                 val resp = withContext(Dispatchers.IO) { api.creatorSocialChannelsStatus(ownerId) }
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("channels") ?: JSONArray()
                     val next = mutableSetOf<String>()
+                    var fbUnlocked = false
                     for (i in 0 until arr.length()) {
                         val obj = arr.optJSONObject(i) ?: continue
-                        if (obj.optBoolean("connected", false)) {
-                            obj.optString("channel", "").takeIf { it.isNotBlank() }?.let { next.add(it) }
+                        val channel = obj.optString("channel", "").takeIf { it.isNotBlank() } ?: continue
+                        if (obj.optBoolean("connected", false)) next.add(channel)
+                        if (channel == "facebook" && obj.optBoolean("skill_unlocked", false)) {
+                            fbUnlocked = true
                         }
                     }
                     connectedChannels = next
+                    facebookSkillUnlocked = fbUnlocked
                 }
             } catch (_: Exception) {}
             channelsLoading = false
@@ -661,6 +666,7 @@ private fun SocialNewPostPanel(
     val channelEnabled = remember { mutableStateMapOf<String, Boolean>() }
     var expandedChannel by remember { mutableStateOf<String?>(null) }
     var fbPostType by remember { mutableStateOf("photo") }
+    var fbDestination by remember { mutableStateOf("pages") }
     var tiktokPrivacy by remember { mutableStateOf("SELF_ONLY") }
 
     var scheduleEnabled by remember { mutableStateOf(false) }
@@ -673,12 +679,27 @@ private fun SocialNewPostPanel(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var statusError by remember { mutableStateOf(false) }
 
-    val liveConnectedChannels = SOCIAL_CHANNELS.filter { it.live && connectedChannels.contains(it.key) }
-    val enabledChannels = liveConnectedChannels.filter { channelEnabled[it.key] != false }
+    val facebookPageConnected = connectedChannels.contains("facebook")
+    val liveComposeChannels = SOCIAL_CHANNELS.filter {
+        it.live && (
+            connectedChannels.contains(it.key) ||
+                (it.key == "facebook" && facebookSkillUnlocked)
+            )
+    }
+    val enabledChannels = liveComposeChannels.filter { channelEnabled[it.key] != false }
 
-    LaunchedEffect(liveConnectedChannels.map { it.key }) {
-        liveConnectedChannels.forEach { channel ->
+    LaunchedEffect(liveComposeChannels.map { it.key }, facebookPageConnected) {
+        liveComposeChannels.forEach { channel ->
             if (channel.key !in channelEnabled) channelEnabled[channel.key] = true
+        }
+        if (!facebookPageConnected && facebookSkillUnlocked && fbDestination == "pages") {
+            fbDestination = "profile"
+        }
+    }
+
+    LaunchedEffect(scheduleEnabled) {
+        if (scheduleEnabled && fbDestination == "profile") {
+            fbDestination = if (facebookPageConnected) "pages" else "pages"
         }
     }
 
@@ -802,7 +823,16 @@ private fun SocialNewPostPanel(
                 }
                 val channelSettings = JSONObject()
                 if (enabledChannelKeys.contains("facebook")) {
-                    channelSettings.put("facebook", JSONObject().put("post_type", fbPostType))
+                    val dest = when {
+                        scheduleEnabled -> "pages"
+                        else -> fbDestination
+                    }
+                    channelSettings.put(
+                        "facebook",
+                        JSONObject()
+                            .put("post_type", fbPostType)
+                            .put("destination", dest),
+                    )
                 }
                 if (enabledChannelKeys.contains("tiktok")) {
                     channelSettings.put("tiktok", JSONObject().put("privacy_level", tiktokPrivacy))
@@ -816,6 +846,31 @@ private fun SocialNewPostPanel(
                 }
                 val resp = withContext(Dispatchers.IO) { api.creatorSocialPostsCreate(ownerId, body) }
                 if (resp.optBoolean("ok", false)) {
+                    val shareDialogs = resp.optJSONArray("share_dialogs")
+                    if (shareDialogs != null && shareDialogs.length() > 0) {
+                        for (i in 0 until shareDialogs.length()) {
+                            val dialogUrl = shareDialogs.optJSONObject(i)
+                                ?.optString("dialog_url", "")
+                                ?.takeIf { it.isNotBlank() }
+                                ?: continue
+                            try {
+                                CustomTabsIntent.Builder()
+                                    .setShowTitle(true)
+                                    .build()
+                                    .launchUrl(context, Uri.parse(dialogUrl))
+                            } catch (_: Exception) {
+                                try {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            Uri.parse(dialogUrl),
+                                        ),
+                                    )
+                                } catch (_: Exception) {
+                                }
+                            }
+                        }
+                    }
                     caption = ""
                     postLink = ""
                     selectedAsset = null
@@ -1002,15 +1057,18 @@ private fun SocialNewPostPanel(
         }
         if (channelsExpanded) {
             Spacer(Modifier.height(8.dp))
-            if (liveConnectedChannels.isEmpty()) {
+            if (liveComposeChannels.isEmpty()) {
                 Text(
-                    text = t("creator.social_media_manager.connect_channel_first", "Connect a channel first"),
+                    text = t(
+                        "creator.social_media_manager.no_targets_with_hint",
+                        "Connect a Facebook Page in Connect, or unlock Facebook in Creator Journey to share to your profile.",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.55f)
                 )
             } else {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(liveConnectedChannels, key = { it.key }) { channel ->
+                    items(liveComposeChannels, key = { it.key }) { channel ->
                         val enabled = channelEnabled[channel.key] != false
                         val expanded = enabled && expandedChannel == channel.key
                         SocialChannelCard(
@@ -1036,6 +1094,11 @@ private fun SocialNewPostPanel(
                             channelKey = chKey,
                             fbPostType = fbPostType,
                             onFbPostTypeChange = { fbPostType = it },
+                            fbDestination = fbDestination,
+                            onFbDestinationChange = { fbDestination = it },
+                            facebookPageConnected = facebookPageConnected,
+                            facebookProfileAvailable = facebookSkillUnlocked,
+                            scheduleEnabled = scheduleEnabled,
                             tiktokPrivacy = tiktokPrivacy,
                             onTiktokPrivacyChange = { tiktokPrivacy = it },
                             mediaKind = selectedAsset?.kind ?: "image",
@@ -1186,7 +1249,23 @@ private fun SocialNewPostPanel(
                     val channelLines = enabledChannelKeys.joinToString(", ") { key ->
                         val name = SOCIAL_CHANNELS.firstOrNull { it.key == key }?.label ?: key
                         when (key) {
-                            "facebook" -> "$name (${if (fbPostType == "link") "Link" else "Photo"})"
+                            "facebook" -> {
+                                val destLabel = when (fbDestination) {
+                                    "profile" -> t(
+                                        "creator.social_media_manager.facebook_destination_profile",
+                                        "My profile (Share dialog)",
+                                    )
+                                    "both" -> t(
+                                        "creator.social_media_manager.facebook_destination_both",
+                                        "Pages + my profile",
+                                    )
+                                    else -> t(
+                                        "creator.social_media_manager.facebook_destination_pages",
+                                        "Connected pages",
+                                    )
+                                }
+                                "$name ($destLabel)"
+                            }
                             "tiktok" -> "$name (${tiktokPrivacy.replace("_", " ")})"
                             else -> name
                         }
@@ -1484,6 +1563,11 @@ private fun SocialChannelSettingsPanel(
     channelKey: String,
     fbPostType: String,
     onFbPostTypeChange: (String) -> Unit,
+    fbDestination: String,
+    onFbDestinationChange: (String) -> Unit,
+    facebookPageConnected: Boolean,
+    facebookProfileAvailable: Boolean,
+    scheduleEnabled: Boolean,
     tiktokPrivacy: String,
     onTiktokPrivacyChange: (String) -> Unit,
     mediaKind: String,
@@ -1503,17 +1587,72 @@ private fun SocialChannelSettingsPanel(
             style = MaterialTheme.typography.labelLarge,
             color = Color.White
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(modifier.height(10.dp))
         when (channelKey) {
-            "facebook" -> SocialDropdownField(
-                label = t("creator.social_media_manager.facebook_post_type", "Post type"),
-                selected = fbPostType,
-                options = listOf(
-                    "photo" to t("creator.social_media_manager.facebook_post_photo", "Photo post"),
-                    "link" to t("creator.social_media_manager.facebook_post_link", "Link post"),
-                ),
-                onSelect = onFbPostTypeChange
-            )
+            "facebook" -> {
+                val destOptions = buildList {
+                    if (facebookPageConnected) {
+                        add(
+                            "pages" to t(
+                                "creator.social_media_manager.facebook_destination_pages",
+                                "Connected pages",
+                            ),
+                        )
+                    }
+                    if (facebookProfileAvailable && !scheduleEnabled) {
+                        add(
+                            "profile" to t(
+                                "creator.social_media_manager.facebook_destination_profile",
+                                "My profile (Share dialog)",
+                            ),
+                        )
+                    }
+                    if (facebookPageConnected && facebookProfileAvailable && !scheduleEnabled) {
+                        add(
+                            "both" to t(
+                                "creator.social_media_manager.facebook_destination_both",
+                                "Pages + my profile",
+                            ),
+                        )
+                    }
+                }
+                if (destOptions.isNotEmpty()) {
+                    SocialDropdownField(
+                        label = t("creator.social_media_manager.facebook_destination", "Post to"),
+                        selected = fbDestination,
+                        options = destOptions,
+                        onSelect = onFbDestinationChange,
+                    )
+                    Spacer(modifier.height(8.dp))
+                    Text(
+                        text = if (fbDestination == "profile" || fbDestination == "both") {
+                            t(
+                                "creator.social_media_manager.facebook_profile_share_note",
+                                "Profile posts open Facebook so you can confirm. Add a link for the best preview. Scheduling is for pages only.",
+                            )
+                        } else {
+                            t(
+                                "creator.social_media_manager.facebook_pages_note",
+                                "Posts to your connected Facebook Pages automatically.",
+                            )
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.5f),
+                    )
+                    Spacer(modifier.height(8.dp))
+                }
+                if (fbDestination == "pages" || fbDestination == "both") {
+                    SocialDropdownField(
+                        label = t("creator.social_media_manager.facebook_post_type", "Post type"),
+                        selected = fbPostType,
+                        options = listOf(
+                            "photo" to t("creator.social_media_manager.facebook_post_photo", "Photo post"),
+                            "link" to t("creator.social_media_manager.facebook_post_link", "Link post"),
+                        ),
+                        onSelect = onFbPostTypeChange,
+                    )
+                }
+            }
             "tiktok" -> {
                 if (mediaKind != "video") {
                     Text(
@@ -1533,7 +1672,7 @@ private fun SocialChannelSettingsPanel(
                     ),
                     onSelect = onTiktokPrivacyChange
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(modifier.height(8.dp))
                 Text(
                     text = t(
                         "creator.social_media_manager.tiktok_sandbox_note",

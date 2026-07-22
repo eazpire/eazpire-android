@@ -1817,7 +1817,7 @@ class CreatorApi(
 
     // ── Social Media Manager (IDEA-040 / IDEA-043) ─────────────────────────
 
-    /** GET ?op=creator-social-connections → normalized as { ok, channels:[{channel, connected}] } */
+    /** GET ?op=creator-social-connections → normalized as { ok, channels:[{channel, connected, skill_unlocked}] } */
     suspend fun creatorSocialChannelsStatus(ownerId: String): JSONObject {
         val raw = call("creator-social-connections", mapOf("owner_id" to ownerId))
         if (!raw.optBoolean("ok", false) && raw.has("channels")) {
@@ -1837,6 +1837,7 @@ class CreatorApi(
                     JSONObject()
                         .put("channel", channel)
                         .put("connected", connected)
+                        .put("skill_unlocked", o.optBoolean("skill_unlocked", false))
                         .put("account_count", o.optInt("account_count", if (connected) 1 else 0)),
                 )
             }
@@ -1856,6 +1857,7 @@ class CreatorApi(
                 JSONObject()
                     .put("channel", key.lowercase())
                     .put("connected", connected)
+                    .put("skill_unlocked", o.optBoolean("skill_unlocked", false))
                     .put("account_count", o.optInt("account_count", if (connected) 1 else 0)),
             )
         }
