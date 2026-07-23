@@ -94,12 +94,14 @@ internal data class JourneyNodeItem(
     val slotIndex: Int = 0,
     val parentKey: String = "",
     val freePickEligible: Boolean = false,
+    val socialPlatform: String = "",
 )
 
 internal class JourneyExpandState {
     var creationLimitParent by mutableStateOf<String?>(null)
     var listingLimitChannel by mutableStateOf<String?>(null)
     var designSlotLevel by mutableStateOf<String?>(null)
+    var socialPlatform by mutableStateOf<String?>(null)
 
     fun toggleCreationLimit(key: String) {
         creationLimitParent = if (creationLimitParent == key) null else key
@@ -111,6 +113,10 @@ internal class JourneyExpandState {
 
     fun toggleDesignSlotLevel(key: String) {
         designSlotLevel = if (designSlotLevel == key) null else key
+    }
+
+    fun toggleSocialPlatform(key: String) {
+        socialPlatform = if (socialPlatform == key) null else key
     }
 }
 
@@ -181,6 +187,9 @@ private fun parseJourneyNode(n: JSONObject, meta: JSONObject?): JourneyNodeItem 
         slotIndex = n.optInt("slot_index", 0),
         parentKey = n.optString("parent_key"),
         freePickEligible = n.optBoolean("free_pick_eligible", false),
+        socialPlatform = n.optString("social_platform").ifBlank {
+            meta?.optString("social_platform").orEmpty()
+        },
     )
 }
 
@@ -221,6 +230,11 @@ private fun buildJourneyNodeTitle(n: JSONObject, meta: JSONObject?, category: St
     if (meta?.optString("listing_limit_kind") == "channel") {
         return n.optString("channel_id").ifBlank { meta.optString("title") }
     }
+    if (meta?.optString("social_post_limit_kind") == "platform") {
+        return meta.optString("title").ifBlank {
+            n.optString("social_platform").ifBlank { n.optString("node_key") }
+        }
+    }
     if (isDesignSlotLevelNode(category, n.optString("node_key"), meta)) {
         val lv = designSlotLevelFromNode(n.optString("node_key"), meta)
         return "Level $lv"
@@ -239,6 +253,11 @@ internal fun isCreationLimitParent(node: JourneyNodeItem): Boolean =
 
 internal fun isListingLimitChannel(node: JourneyNodeItem): Boolean =
     node.category == "listing_limit" && node.metadata?.optString("listing_limit_kind") == "channel"
+
+internal fun isSocialPlatformNode(node: JourneyNodeItem): Boolean =
+    node.category == "social" &&
+        node.parentKey.isBlank() &&
+        node.metadata?.optString("social_post_limit_kind") != "tier"
 
 internal fun isDesignSlotLevelNode(node: JourneyNodeItem): Boolean =
     isDesignSlotLevelNode(node.category, node.nodeKey, node.metadata)
@@ -283,6 +302,27 @@ internal fun listingLimitTierNodes(all: List<JourneyNodeItem>, channel: JourneyN
             it.metadata?.optString("listing_limit_kind") == "tier" &&
             it.channelId == ch
     }.sortedBy { it.metadata?.optInt("listing_tier_level", 0) ?: 0 }
+}
+
+internal fun socialPlatformId(node: JourneyNodeItem): String {
+    if (node.socialPlatform.isNotBlank()) return node.socialPlatform
+    val fromMeta = node.metadata?.optString("social_platform").orEmpty()
+    if (fromMeta.isNotBlank()) return fromMeta
+    val key = node.nodeKey
+    if (key.startsWith("social:")) {
+        return key.removePrefix("social:").substringBefore(":").ifBlank { "" }
+    }
+    return ""
+}
+
+internal fun socialPostTierNodes(all: List<JourneyNodeItem>, platform: JourneyNodeItem): List<JourneyNodeItem> {
+    val plat = socialPlatformId(platform)
+    if (plat.isBlank()) return emptyList()
+    return all.filter {
+        it.category == "social" &&
+            it.metadata?.optString("social_post_limit_kind") == "tier" &&
+            socialPlatformId(it) == plat
+    }.sortedBy { it.metadata?.optInt("social_tier_level", 0) ?: 0 }
 }
 
 internal fun designSlotChildren(all: List<JourneyNodeItem>, levelNode: JourneyNodeItem): List<JourneyNodeItem> =
@@ -349,6 +389,13 @@ internal fun journeyParentLimitLabel(
             tpl("creator.journey.limit_daily_label", "{{ n }} Daily", mapOf("n" to it.toString()))
         }
     }
+    if (isSocialPlatformNode(node)) {
+        val active = socialPostTierNodes(allNodes, node).lastOrNull { it.unlocked }
+        val daily = active?.metadata?.optInt("posts_per_day")
+        return daily?.let {
+            tpl("creator.journey.limit_daily_label", "{{ n }} Daily", mapOf("n" to it.toString()))
+        }
+    }
     if (isDesignSlotLevelNode(node)) {
         val cap = node.metadata?.optInt("slot_count")
             ?: designSlotChildren(allNodes, node).size.takeIf { it > 0 }
@@ -365,6 +412,9 @@ internal fun isExpandableJourneyNode(node: JourneyNodeItem, allNodes: List<Journ
     }
     if (isListingLimitChannel(node)) {
         return node.unlocked && listingLimitTierNodes(allNodes, node).any { !it.unlocked }
+    }
+    if (isSocialPlatformNode(node)) {
+        return node.unlocked && socialPostTierNodes(allNodes, node).any { !it.unlocked }
     }
     if (isDesignSlotLevelNode(node)) {
         return node.unlocked && designSlotChildren(allNodes, node).any { !it.unlocked }
@@ -647,6 +697,136 @@ internal fun JourneyListingLimitTreePanel(
 }
 
 @Composable
+internal fun JourneySocialTreePanel(
+    nodes: List<JourneyNodeItem>,
+    allNodes: List<JourneyNodeItem>,
+    expandState: JourneyExpandState,
+    isCreator: Boolean,
+    busy: Boolean,
+    translationStore: TranslationStore,
+    modifier: Modifier = Modifier,
+    onInfoClick: (JourneyNodeItem) -> Unit,
+    onCommitClick: (JourneyNodeItem) -> Unit,
+    onUnlock: (String) -> Unit,
+) {
+    val platforms = nodes.filter { isSocialPlatformNode(it) }
+    val unlocked = platforms.filter { it.unlocked }
+    val available = platforms.filter { !it.unlocked }
+    if (platforms.isEmpty()) {
+        Box(modifier = modifier.padding(16.dp), contentAlignment = Alignment.Center) {
+            Text(
+                translationStore.t("creator.journey.starter_empty", "No items in this category yet."),
+                color = Color(0xFF9CA3AF),
+            )
+        }
+        return
+    }
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        if (unlocked.isNotEmpty()) {
+            item {
+                Text(
+                    translationStore.t("creator.journey.unlocked_skills", "Unlocked"),
+                    color = EazColors.Orange,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(unlocked, key = { it.nodeKey }) { platform ->
+                        JourneyLimitParentCard(
+                            node = platform,
+                            allNodes = allNodes,
+                            expanded = expandState.socialPlatform == platform.nodeKey,
+                            isCreator = isCreator,
+                            busy = busy,
+                            translationStore = translationStore,
+                            onExpandToggle = { expandState.toggleSocialPlatform(platform.nodeKey) },
+                            onInfoClick = { onInfoClick(platform) },
+                            onCommitClick = onCommitClick,
+                            onUnlock = onUnlock,
+                            modifier = Modifier.width(156.dp),
+                        )
+                    }
+                }
+            }
+            expandState.socialPlatform?.let { platformKey ->
+                val platform = unlocked.firstOrNull { it.nodeKey == platformKey } ?: return@let
+                val tiers = socialPostTierNodes(allNodes, platform).filter { !it.unlocked }
+                if (tiers.isNotEmpty()) {
+                    item {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            JourneyVariantConnector()
+                            Text(
+                                platform.title + " · " +
+                                    translationStore.t("creator.journey.social_posts_title", "Daily posts"),
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(tiers, key = { it.nodeKey }) { tier ->
+                                    JourneyLimitTierCard(
+                                        node = tier,
+                                        allNodes = allNodes,
+                                        isCreator = isCreator,
+                                        busy = busy,
+                                        translationStore = translationStore,
+                                        onInfoClick = { onInfoClick(tier) },
+                                        onCommitClick = onCommitClick,
+                                        onUnlock = onUnlock,
+                                        modifier = Modifier.width(156.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (available.isNotEmpty()) {
+            item {
+                Text(
+                    translationStore.t("creator.journey.available_skills", "Available"),
+                    color = EazColors.Orange,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(available, key = { it.nodeKey }) { platform ->
+                        JourneyLimitParentCard(
+                            node = platform,
+                            allNodes = allNodes,
+                            expanded = false,
+                            isCreator = isCreator,
+                            busy = busy,
+                            translationStore = translationStore,
+                            onExpandToggle = {},
+                            onInfoClick = { onInfoClick(platform) },
+                            onCommitClick = onCommitClick,
+                            onUnlock = onUnlock,
+                            modifier = Modifier.width(156.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun JourneyDesignSlotTreePanel(
     nodes: List<JourneyNodeItem>,
     allNodes: List<JourneyNodeItem>,
@@ -825,7 +1005,7 @@ private fun JourneyLimitParentCard(
             onInfoClick = if (expandable) onInfoClick else null,
             onCommitClick = { onCommitClick(node) },
             onUnlockClick = { onUnlock(node.nodeKey) },
-            skipParentActions = isCreationLimitParent(node) || isListingLimitChannel(node),
+            skipParentActions = isCreationLimitParent(node) || isListingLimitChannel(node) || isSocialPlatformNode(node),
         )
     }
 }

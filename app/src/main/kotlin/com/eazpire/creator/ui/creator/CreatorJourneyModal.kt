@@ -892,6 +892,19 @@ private fun JourneyUnlockTreePanel(
                 onCommitClick = ::openCommit,
                 onUnlock = onUnlock,
             )
+        } else if (treeFilter == "social") {
+            JourneySocialTreePanel(
+                nodes = filteredNodes,
+                allNodes = nodes,
+                expandState = expandState,
+                isCreator = isCreator,
+                busy = busy,
+                translationStore = translationStore,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                onInfoClick = { infoTarget = it },
+                onCommitClick = ::openCommit,
+                onUnlock = onUnlock,
+            )
         } else if (treeFilter == "design_slot") {
             JourneyDesignSlotTreePanel(
                 nodes = filteredNodes,
