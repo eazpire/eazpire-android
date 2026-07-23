@@ -1892,6 +1892,13 @@ class CreatorApi(
     suspend fun composerAssets(ownerId: String): JSONObject =
         call("creator-social-compose-assets", mapOf("owner_id" to ownerId))
 
+    /** GET ?op=creator-social-post-targets */
+    suspend fun creatorSocialPostTargets(ownerId: String, mediaKind: String = "image"): JSONObject =
+        call(
+            "creator-social-post-targets",
+            mapOf("owner_id" to ownerId, "media_kind" to mediaKind),
+        )
+
     /** GET ?op=creator-social-posts-list */
     suspend fun creatorSocialPostsList(ownerId: String, limit: Int = 50): JSONObject =
         call(

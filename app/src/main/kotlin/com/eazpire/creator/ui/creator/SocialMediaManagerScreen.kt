@@ -682,19 +682,66 @@ private fun SocialNewPostPanel(
     var statusError by remember { mutableStateOf(false) }
 
     val facebookPageConnected = connectedChannels.contains("facebook")
+    var brandComposeChannels by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var brandDefaults by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    LaunchedEffect(ownerId, selectedAsset?.kind) {
+        if (ownerId.isBlank()) return@LaunchedEffect
+        try {
+            val kind = selectedAsset?.kind?.ifBlank { "image" } ?: "image"
+            val resp = withContext(Dispatchers.IO) {
+                api.creatorSocialPostTargets(ownerId, kind)
+            }
+            val arr = resp.optJSONArray("targets") ?: JSONArray()
+            val channels = linkedSetOf<String>()
+            val defaults = linkedSetOf<String>()
+            val defaultIds = resp.optJSONArray("default_selected") ?: JSONArray()
+            val defaultIdSet = (0 until defaultIds.length()).mapNotNull { defaultIds.optString(it).takeIf { s -> s.isNotBlank() } }.toSet()
+            for (i in 0 until arr.length()) {
+                val t = arr.optJSONObject(i) ?: continue
+                val ch = t.optString("channel", "").trim().lowercase()
+                if (ch.isBlank()) continue
+                val source = t.optString("source", "")
+                val adminAuto = t.optBoolean("admin_auto", false)
+                val online = t.optBoolean("online", false)
+                val id = t.optString("id", "")
+                if (source == "admin" && adminAuto) {
+                    channels.add(ch)
+                    if (id.isNotBlank() && (defaultIdSet.isEmpty() || id in defaultIdSet)) defaults.add(ch)
+                } else if (online) {
+                    channels.add(ch)
+                }
+            }
+            brandComposeChannels = channels
+            brandDefaults = defaults
+        } catch (_: Exception) {
+            /* keep previous */
+        }
+    }
+
     val liveComposeChannels = SOCIAL_CHANNELS.filter {
-        it.live && (
-            connectedChannels.contains(it.key) ||
-                (it.key == "facebook" && facebookSkillUnlocked)
-            )
+        val fromBrandOrTargets = brandComposeChannels.contains(it.key)
+        val fromCreatorConnect =
+            it.live && (
+                connectedChannels.contains(it.key) ||
+                    (it.key == "facebook" && facebookSkillUnlocked)
+                )
+        fromCreatorConnect || fromBrandOrTargets
     }
     val enabledChannels = liveComposeChannels.filter { channelEnabled[it.key] != false }
 
-    LaunchedEffect(liveComposeChannels.map { it.key }, facebookPageConnected) {
+    LaunchedEffect(liveComposeChannels.map { it.key }, facebookPageConnected, brandDefaults) {
         liveComposeChannels.forEach { channel ->
-            if (channel.key !in channelEnabled) channelEnabled[channel.key] = true
+            if (channel.key !in channelEnabled) {
+                channelEnabled[channel.key] =
+                    brandDefaults.contains(channel.key) ||
+                        connectedChannels.contains(channel.key) ||
+                        (channel.key == "facebook" && facebookSkillUnlocked)
+            }
         }
-        if (!facebookPageConnected && facebookSkillUnlocked && fbDestination == "pages") {
+        if (!facebookPageConnected && facebookSkillUnlocked && fbDestination == "pages" &&
+            !brandComposeChannels.contains("facebook")
+        ) {
             fbDestination = "profile"
         }
     }
