@@ -104,8 +104,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         EazPerfTrace.mark("mainActivity_onCreate_start")
-        // API 35+: Edge-to-edge ist Standard; setDecorFitsSystemWindows(true) reicht oft nicht mehr zuverlässig.
-        // Insets werden in Compose auf der Root-Surface gesetzt (systemBarsPadding).
+        // API 35+/36: Edge-to-edge is enforced for targetSdk 36 (opt-out removed).
+        // Insets are applied in Compose on the root surface (systemBarsPadding).
         WindowCompat.setDecorFitsSystemWindows(window, false)
         initDebugLog(this)
         initLangSwitchDebug(this)

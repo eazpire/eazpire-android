@@ -24,12 +24,13 @@ android {
     defaultConfig {
         applicationId = "com.eazpire.creator"
         minSdk = 26
-        targetSdk = 35
+        // Google Play (from 2026-08-31): app updates must target Android 16 / API 36+.
+        targetSdk = 36
         // Increment for every Play upload (must be > previous release).
-        val appVersionCode = (System.getenv("VERSION_CODE") ?: "3").toIntOrNull() ?: 3
+        val appVersionCode = (System.getenv("VERSION_CODE") ?: "4").toIntOrNull() ?: 4
         versionCode = appVersionCode
         // Play Console: same versionName for every build is confusing — include versionCode (or set VERSION_NAME in CI).
-        versionName = System.getenv("VERSION_NAME") ?: "1.0.3 ($appVersionCode)"
+        versionName = System.getenv("VERSION_NAME") ?: "1.0.4 ($appVersionCode)"
     }
 
     signingConfigs {
