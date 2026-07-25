@@ -818,6 +818,9 @@ fun ShopScreen(
                     onCreatorModeChange = { switchCreatorMode(toCreator = it) },
                     creatorCodeShopHintActive = creatorCodeHintActive,
                     creatorCodeProfileHintActive = creatorCodeHintActive,
+                    onWalletClick = { voucherModalVisible = true },
+                    onCountryChange = { refreshShopContent() },
+                    onLanguageChange = { refreshShopContent() },
                     onLogoClick = {
                         if (!showAuthScreen) {
                             accountModalVisible = false
@@ -936,11 +939,7 @@ fun ShopScreen(
         bottomBar = {
             key(languageCode, authSessionTick) {
                     CollapsibleShopFooter(
-                        localeStore = localeStore,
                         translationStore = translationStore,
-                        tokenStore = tokenStore,
-                        onWalletClick = { voucherModalVisible = true },
-                        onCountryChange = { refreshShopContent() },
                         onTermsClick = { termsModalVisible = true }
                     )
                 }

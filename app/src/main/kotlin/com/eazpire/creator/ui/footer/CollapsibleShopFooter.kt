@@ -29,25 +29,19 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
-import com.eazpire.creator.locale.LocaleStore
 
 private val TabBg = Color(0xF7FFFFFF)
 private val HandleIdle = Color(0xFFC4C4C4)
 
 /**
- * Collapsible shop footer stack (SubFooter + GlobalFooter) with a narrow centered tab.
+ * Collapsible shop footer (GlobalFooter) with a narrow centered tab.
  * Matches web mobile `.eaz-footer-stack__tab` behaviour; persists via SharedPreferences.
+ * Locale / wallet widgets live in the main header.
  */
 @Composable
 fun CollapsibleShopFooter(
-    localeStore: LocaleStore,
     translationStore: TranslationStore? = null,
-    tokenStore: SecureTokenStore? = null,
-    onWalletClick: () -> Unit = {},
-    onCountryChange: (String) -> Unit = {},
-    onLanguageChange: (String) -> Unit = {},
     onTermsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -105,14 +99,6 @@ fun CollapsibleShopFooter(
             exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                SubFooter(
-                    localeStore = localeStore,
-                    translationStore = translationStore,
-                    tokenStore = tokenStore,
-                    onWalletClick = onWalletClick,
-                    onCountryChange = onCountryChange,
-                    onLanguageChange = onLanguageChange
-                )
                 GlobalFooter(onTermsClick = onTermsClick)
             }
         }

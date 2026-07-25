@@ -6,23 +6,23 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -43,7 +43,6 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.chat.EazyGuideModeStore
@@ -53,14 +52,12 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
-import com.eazpire.creator.ui.header.HeaderActions
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.ui.share.prefetchShareUrl
 import com.eazpire.creator.ui.share.sharePageLink
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
-import com.eazpire.creator.util.DebugLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -90,9 +87,13 @@ fun MainHeader(
     creatorCodeProfileHintActive: Boolean = false,
     onSearchNavigate: (String) -> Unit = {},
     onSearchQuerySubmit: (String) -> Unit = {},
+    onWalletClick: () -> Unit = {},
+    onCountryChange: (String) -> Unit = {},
+    onLanguageChange: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var searchModalVisible by remember { mutableStateOf(false) }
     var internalCartDrawerVisible by remember { mutableStateOf(false) }
     val cartDrawerVisible = cartDrawerVisibleControl ?: internalCartDrawerVisible
     val onCartDrawerChangeActual = onCartDrawerChange ?: { internalCartDrawerVisible = it }
@@ -181,6 +182,27 @@ fun MainHeader(
             }
         } catch (_: Exception) {}
     }
+
+    val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
+    val languageCode by localeStore.languageCode.collectAsState(initial = localeStore.getLanguageCodeSync())
+    var languageStandard by remember { mutableStateOf(AVAILABLE_LANGUAGES) }
+    var languageChildren by remember { mutableStateOf<Map<String, LanguageChildren>>(emptyMap()) }
+    LaunchedEffect(Unit) {
+        try {
+            val resp = CreatorApi().getLanguages()
+            if (resp.standard.isNotEmpty()) {
+                languageStandard = resp.standard.map { LocaleModalItem(it.code, it.label, it.flagCode) }
+                languageChildren = resp.children.mapValues { (_, v) ->
+                    LanguageChildren(
+                        dialects = v.dialects.map { LocaleModalItem(it.code, it.label, it.flagCode) },
+                        scripts = v.scripts.map { LocaleModalItem(it.code, it.label, it.flagCode) }
+                    )
+                }.mapKeys { it.key.lowercase() }
+            }
+        } catch (_: Exception) { /* keep fallback */ }
+    }
+    val translationStore = LocalTranslationStore.current
+    val searchAria = translationStore?.t("eaz.search.input_aria", "Search") ?: "Search"
 
     Box {
     Column(
@@ -283,28 +305,39 @@ fun MainHeader(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            HeaderSearch(
-                query = searchQuery,
-                onQueryChange = { searchQuery = it },
-                onSearch = { },
-                onSubmitSearchQuery = { q ->
-                    searchQuery = ""
-                    onSearchQuerySubmit(q)
-                },
-                onNavigateToUrl = onSearchNavigate,
-                ownerId = ownerId,
-                creatorApi = api,
-                mockPreviewRevision = mockPreviewRevision,
-                placeholder = run {
-                    val store = LocalTranslationStore.current
-                    store?.t("search.placeholder", "Search...") ?: "Search..."
-                },
-                modifier = Modifier.weight(1f)
+            IconButton(
+                onClick = { searchModalVisible = true },
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = searchAria,
+                    tint = EazColors.TextPrimary
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            HeaderLocaleRow(
+                localeStore = localeStore,
+                countryCode = countryCode,
+                languageCode = languageCode,
+                translationStore = translationStore,
+                standardLanguages = languageStandard,
+                languageChildren = languageChildren,
+                onCountryChange = onCountryChange,
+                onLanguageChange = onLanguageChange
             )
+            HeaderWalletPill(
+                tokenStore = tokenStore,
+                onClick = onWalletClick,
+                translationStore = translationStore
+            )
+            Spacer(modifier = Modifier.width(2.dp))
             HeaderActions(
                 cartCount = AppCartStore.itemCount,
                 favoritesCount = favoritesCount,
@@ -321,6 +354,24 @@ fun MainHeader(
                 .background(EazColors.TopbarBorder)
         )
     }
+        HeaderSearchModal(
+            visible = searchModalVisible,
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            onDismiss = {
+                searchModalVisible = false
+                searchQuery = ""
+            },
+            onSubmitSearchQuery = { q ->
+                searchQuery = ""
+                searchModalVisible = false
+                onSearchQuerySubmit(q)
+            },
+            onNavigateToUrl = onSearchNavigate,
+            ownerId = ownerId,
+            creatorApi = api,
+            mockPreviewRevision = mockPreviewRevision
+        )
         CartDrawer(
             visible = cartDrawerVisible,
             tokenStore = tokenStore,
