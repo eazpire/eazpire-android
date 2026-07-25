@@ -73,8 +73,7 @@ import com.eazpire.creator.chat.EazyMascot
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.chat.EazyMascotStore
 import com.eazpire.creator.ui.account.AccountModalSheet
-import com.eazpire.creator.ui.footer.GlobalFooter
-import com.eazpire.creator.ui.footer.SubFooter
+import com.eazpire.creator.ui.footer.CollapsibleShopFooter
 import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.creator.CreatorHeaderEazyStartBubble
 import com.eazpire.creator.ui.creator.CreatorMainScreen
@@ -936,16 +935,14 @@ fun ShopScreen(
         },
         bottomBar = {
             key(languageCode, authSessionTick) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        SubFooter(
-                            localeStore = localeStore,
-                            translationStore = translationStore,
-                            tokenStore = tokenStore,
-                            onWalletClick = { voucherModalVisible = true },
-                            onCountryChange = { refreshShopContent() },
-                        )
-                        GlobalFooter(onTermsClick = { termsModalVisible = true })
-                    }
+                    CollapsibleShopFooter(
+                        localeStore = localeStore,
+                        translationStore = translationStore,
+                        tokenStore = tokenStore,
+                        onWalletClick = { voucherModalVisible = true },
+                        onCountryChange = { refreshShopContent() },
+                        onTermsClick = { termsModalVisible = true }
+                    )
                 }
         }
     ) { padding ->
