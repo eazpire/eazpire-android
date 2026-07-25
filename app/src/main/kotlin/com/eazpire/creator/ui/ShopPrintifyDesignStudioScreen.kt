@@ -1938,6 +1938,8 @@ private fun StudioPlacedDesignImage(
 
 @Composable
 private fun StudioSourcesDrawer(
+    onGenerate: () -> Unit = {},
+    showGenerate: Boolean = false,
     onUpload: () -> Unit,
     onPublicDesigns: () -> Unit,
     onMyDesigns: () -> Unit,
@@ -1945,8 +1947,13 @@ private fun StudioSourcesDrawer(
     t: (String, String) -> String
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (showGenerate) {
+            StudioDarkBtn(onClick = onGenerate) {
+                Text(t("design_studio.shop.design_generator", "Design Generator"))
+            }
+        }
         StudioDarkBtn(onClick = onUpload) {
-            Text(t("design_studio.shop.browse_device", "Upload from device"))
+            Text(t("design_studio.shop.upload", "Upload"))
         }
         StudioDarkBtn(onClick = onPublicDesigns) {
             Text(t("design_studio.shop.public_designs", "Public inspirations"))
