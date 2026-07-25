@@ -163,10 +163,19 @@ class CreatorApi(
         includeStudioCardPreview: Boolean = false,
         ownerId: String? = null,
         designId: String? = null,
+        lite: Boolean = false,
+        limit: Int? = null,
+        includeOutOfRegion: Boolean = true,
     ): JSONObject = call(
         "get-shop-create-product-catalog",
         buildMap {
             put("region", region)
+            if (includeOutOfRegion) put("include_out_of_region", "1")
+            if (lite) {
+                put("lite", "1")
+                put("home_rail", "1")
+            }
+            limit?.takeIf { it > 0 }?.let { put("limit", it.coerceAtMost(if (lite) 48 else 500).toString()) }
             if (includeStudioCardPreview) {
                 put("include_studio_card_preview", "1")
                 ownerId?.takeIf { it.isNotBlank() }?.let {

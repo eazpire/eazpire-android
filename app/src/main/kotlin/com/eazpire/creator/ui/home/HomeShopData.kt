@@ -75,7 +75,13 @@ fun parseHomeCarouselBootstrapResponse(
 suspend fun loadCreateScratchCatalogFromWorker(creatorApi: CreatorApi, region: String): List<CatalogProduct> =
     withContext(Dispatchers.IO) {
         runCatching {
-            val data = creatorApi.getShopCreateProductCatalog(region)
+            // Lite home-rail catalog: capped + skips slow mock/pricing enrichment (web parity).
+            val data = creatorApi.getShopCreateProductCatalog(
+                region = region,
+                lite = true,
+                limit = 24,
+                includeOutOfRegion = true,
+            )
             if (!data.optBoolean("ok", false)) return@runCatching emptyList()
             val arr = data.optJSONArray("products") ?: JSONArray()
             val list = mutableListOf<CatalogProduct>()

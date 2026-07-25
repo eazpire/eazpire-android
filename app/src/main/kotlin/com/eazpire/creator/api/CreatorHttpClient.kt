@@ -19,11 +19,14 @@ object CreatorHttpClient {
             .build()
     }
 
-    /** Read-mostly home carousel ops — skip cache-busting query param for HTTP/CDN reuse. */
+    /** Read-mostly home/catalog ops — skip cache-busting query param for HTTP/CDN reuse. */
     val cacheableGetOps: Set<String> = setOf(
         "list-home-carousel-products",
         "list-home-carousel-bootstrap",
         "list-active-shop-promotion-products",
+        "get-shop-create-product-catalog",
+        "get-catalog-products",
+        "get-storefront-products",
     )
 
     fun shouldCacheBust(op: String): Boolean = op !in cacheableGetOps
