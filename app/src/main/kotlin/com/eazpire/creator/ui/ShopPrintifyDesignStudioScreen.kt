@@ -45,10 +45,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.OutlinedTextField
@@ -67,6 +67,7 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import com.eazpire.creator.ui.modal.EazBottomSheet
+import com.eazpire.creator.ui.modal.EazInsetDialog
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -101,6 +102,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.statusBarsPadding
 import com.eazpire.creator.ui.modal.EazStandardDialog
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
@@ -130,6 +132,13 @@ private data class PrintAreaFrac(
     val h: Float = 0.48f
 )
 
+private data class StudioEditorMockView(
+    val position: String,
+    val label: String,
+    val url: String,
+    val printAreaFrac: PrintAreaFrac
+)
+
 private data class StudioPickResult(
     val url: String,
     val designId: String? = null,
@@ -152,29 +161,55 @@ private fun parsePrintAreaFrac(obj: JSONObject?): PrintAreaFrac {
     return PrintAreaFrac(l, t, w, h)
 }
 
-private fun resolveMockFromConfig(cfg: JSONObject): Pair<String?, PrintAreaFrac> {
-    val byColor = cfg.optJSONObject("mocks_by_color") ?: return null to PrintAreaFrac()
+private fun editorPositionLabel(pos: String): String {
+    val p = pos.lowercase()
+    return when {
+        p.contains("front") -> "Front"
+        p.contains("back") -> "Back"
+        p.contains("sleeve") && p.contains("left") -> "Left sleeve"
+        p.contains("sleeve") && p.contains("right") -> "Right sleeve"
+        p.contains("neck") -> "Neck"
+        else -> pos.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }.ifBlank { "Front" }
+    }
+}
+
+private fun resolveMockViewsFromConfig(cfg: JSONObject): List<StudioEditorMockView> {
+    val byColor = cfg.optJSONObject("mocks_by_color") ?: return emptyList()
     val keys = byColor.keys()
     var listKey = "default"
     while (keys.hasNext()) {
-        val k = keys.next()
-        listKey = k
+        listKey = keys.next()
         break
     }
-    val arr = byColor.optJSONArray(listKey) ?: return null to PrintAreaFrac()
+    val arr = byColor.optJSONArray(listKey) ?: return emptyList()
+    val out = mutableListOf<StudioEditorMockView>()
+    val seen = mutableSetOf<String>()
     for (i in 0 until arr.length()) {
         val item = arr.optJSONObject(i) ?: continue
-        val pos = item.optString("position", "").lowercase()
-        if (pos == "front" || i == 0) {
-            val url = item.optString("editor_mock_url", "")
-                .ifBlank { item.optString("clean_mock_url", "") }
-                .ifBlank { item.optString("mock_url", "") }
-                .trim()
-            val frac = parsePrintAreaFrac(item.optJSONObject("print_area_frac"))
-            if (url.isNotEmpty()) return url to frac
-        }
+        val pos = item.optString("position", "").ifBlank { if (i == 0) "front" else "view_$i" }
+        val key = pos.lowercase()
+        if (!seen.add(key)) continue
+        val url = item.optString("editor_mock_url", "")
+            .ifBlank { item.optString("clean_mock_url", "") }
+            .ifBlank { item.optString("mock_url", "") }
+            .trim()
+        if (url.isEmpty()) continue
+        out.add(
+            StudioEditorMockView(
+                position = pos,
+                label = editorPositionLabel(pos),
+                url = url,
+                printAreaFrac = parsePrintAreaFrac(item.optJSONObject("print_area_frac"))
+            )
+        )
     }
-    return null to PrintAreaFrac()
+    return out
+}
+
+private fun resolveMockFromConfig(cfg: JSONObject): Pair<String?, PrintAreaFrac> {
+    val views = resolveMockViewsFromConfig(cfg)
+    val preferred = views.firstOrNull { it.position.lowercase().contains("front") } ?: views.firstOrNull()
+    return if (preferred != null) preferred.url to preferred.printAreaFrac else null to PrintAreaFrac()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -187,7 +222,8 @@ internal fun ShopPrintifyDesignStudioScreen(
     translationStore: TranslationStore,
     translation: (String, String) -> String,
     onDismiss: () -> Unit,
-    onRequireLogin: () -> Unit
+    onRequireLogin: () -> Unit,
+    onOpenGenerate: (() -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -199,6 +235,8 @@ internal fun ShopPrintifyDesignStudioScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var mockUrl by remember { mutableStateOf<String?>(product.mockUrls.firstOrNull()) }
     var printAreaFrac by remember { mutableStateOf(PrintAreaFrac()) }
+    var mockViews by remember { mutableStateOf<List<StudioEditorMockView>>(emptyList()) }
+    var activeMockPosition by remember { mutableStateOf("front") }
     var printifyProductId by remember { mutableStateOf("") }
     var designUrl by remember { mutableStateOf(initialDesignUrl) }
     var designSelected by remember { mutableStateOf(initialDesignUrl != null) }
@@ -275,7 +313,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                     .put("scale", designScale.toDouble())
                     .put("angle", designRotate.toDouble())
                     .put("pattern", pattern)
-                    .put("printify_position", "front")
+                    .put("printify_position", activeMockPosition.ifBlank { "front" })
                 val pid = printifyProductId.trim().ifEmpty { null }
                 val inlineB64: String?
                 val inlineMime: String?
@@ -372,9 +410,18 @@ internal fun ShopPrintifyDesignStudioScreen(
                     }
                 }
             if (cfg != null && cfg.optBoolean("ok", false)) {
-                val (url, frac) = resolveMockFromConfig(cfg)
-                if (!url.isNullOrEmpty()) mockUrl = url
-                printAreaFrac = frac
+                val views = resolveMockViewsFromConfig(cfg)
+                mockViews = views
+                val preferred = views.firstOrNull { it.position.lowercase().contains("front") } ?: views.firstOrNull()
+                if (preferred != null) {
+                    mockUrl = preferred.url
+                    printAreaFrac = preferred.printAreaFrac
+                    activeMockPosition = preferred.position
+                } else {
+                    val (url, frac) = resolveMockFromConfig(cfg)
+                    if (!url.isNullOrEmpty()) mockUrl = url
+                    printAreaFrac = frac
+                }
             } else if (mockUrl.isNullOrBlank()) {
                 mockUrl = product.mockUrls.firstOrNull()
             }
@@ -442,13 +489,20 @@ internal fun ShopPrintifyDesignStudioScreen(
     }
     BackHandler(enabled = !showLivePreview && !sourcesDrawerOpen && !optionsSheetOpen && showDesignPicker == null, onBack = onDismiss)
 
-    EazStandardDialog(onDismissRequest = onDismiss) {
+    // Manual insets: status on shell, navigation on compact footer — matches web mobile
+    // safe-area handling and avoids burying the footer under the Android nav bar.
+    EazInsetDialog(onDismissRequest = onDismiss, applySystemBarInsets = false) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF0F172A))
+                .statusBarsPadding()
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -458,40 +512,21 @@ internal fun ShopPrintifyDesignStudioScreen(
                     if (isCompact) {
                         IconButton(onClick = { sourcesDrawerOpen = true }) {
                             Icon(
-                                Icons.Default.Add,
+                                Icons.Default.Menu,
                                 contentDescription = translation("design_studio.shop.design_source", "Design source"),
-                                tint = Color(0xFFF97316)
+                                tint = Color.White
                             )
                         }
                     }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = translation("creator.shop_printify_studio_test.title", "Design Studio"),
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = product.title,
-                            color = Color.White.copy(alpha = 0.75f),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    TextButton(
-                        onClick = {
-                            livePreviewViewIndex = 0
-                            showLivePreview = true
-                        },
-                        enabled = productMeta != null
-                    ) {
-                        Text(
-                            t("design_studio.shop.printify_preview", "Preview"),
-                            color = if (productMeta != null) Color(0xFFF97316) else Color.White.copy(0.35f),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text(
+                        text = translation("creator.shop_printify_studio_test.title", "Design Studio"),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     IconButton(onClick = onDismiss) {
                         Icon(
                             Icons.Default.Close,
@@ -519,6 +554,21 @@ internal fun ShopPrintifyDesignStudioScreen(
                             modifier = mainModifier.padding(horizontal = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
+                            StudioViewerTopBar(
+                                mockViews = mockViews,
+                                activePosition = activeMockPosition,
+                                previewEnabled = productMeta != null,
+                                onSelectPosition = { view ->
+                                    activeMockPosition = view.position
+                                    mockUrl = view.url
+                                    printAreaFrac = view.printAreaFrac
+                                },
+                                onPreview = {
+                                    livePreviewViewIndex = 0
+                                    showLivePreview = true
+                                },
+                                t = ::t
+                            )
                             StudioMockEditor(
                                 modifier = Modifier
                                     .weight(1f)
@@ -844,6 +894,11 @@ internal fun ShopPrintifyDesignStudioScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         StudioSourcesDrawer(
+                            onGenerate = {
+                                sourcesDrawerOpen = false
+                                onOpenGenerate?.invoke()
+                            },
+                            showGenerate = onOpenGenerate != null,
                             onUpload = { imagePicker.launch("image/*") },
                             onPublicDesigns = {
                                 sourcesDrawerOpen = false
@@ -868,6 +923,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                     onDismissRequest = { optionsSheetOpen = false },
                     sheetState = optionsSheetState,
                     containerColor = Color(0xFF0F172A),
+                    maxHeightFraction = 0.3f,
                     dragHandle = {
                         Box(
                             modifier = Modifier
@@ -884,11 +940,9 @@ internal fun ShopPrintifyDesignStudioScreen(
                         }
                     }
                 ) {
-                    val sheetMaxH = (configuration.screenHeightDp * 0.3f).dp
                     StudioRightPanel(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = sheetMaxH)
                             .padding(horizontal = 8.dp),
                         showTabRow = optionsSheetShowTabs,
                         optionsTab = optionsTab,
@@ -1247,6 +1301,77 @@ private fun StudioMockEditor(
                     .size(22.dp),
                 color = Color(0xFFF97316),
                 strokeWidth = 2.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun StudioViewerTopBar(
+    mockViews: List<StudioEditorMockView>,
+    activePosition: String,
+    previewEnabled: Boolean,
+    onSelectPosition: (StudioEditorMockView) -> Unit,
+    onPreview: () -> Unit,
+    t: (String, String) -> String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            val views = if (mockViews.isEmpty()) {
+                listOf(
+                    StudioEditorMockView(
+                        position = "front",
+                        label = "Front",
+                        url = "",
+                        printAreaFrac = PrintAreaFrac()
+                    )
+                )
+            } else {
+                mockViews
+            }
+            views.forEach { view ->
+                val active = view.position.equals(activePosition, ignoreCase = true)
+                OutlinedButton(
+                    onClick = { if (view.url.isNotBlank()) onSelectPosition(view) },
+                    shape = RoundedCornerShape(999.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (active) Color(0xFFF97316) else Color.White.copy(alpha = 0.25f)
+                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (active) Color(0xFFF97316) else Color.White
+                    ),
+                    modifier = Modifier.heightIn(min = 32.dp)
+                ) {
+                    Text(
+                        view.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+        }
+        TextButton(
+            onClick = onPreview,
+            enabled = previewEnabled
+        ) {
+            Text(
+                t("design_studio.shop.printify_preview", "Preview"),
+                color = if (previewEnabled) Color(0xFFF97316) else Color.White.copy(0.35f),
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelMedium
             )
         }
     }
@@ -2015,51 +2140,66 @@ private fun StudioDesignPickerDialog(
                     Icon(Icons.Default.Close, null, tint = Color.White)
                 }
             }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (!isDrafts) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = {
-                            Text(
-                                t("creator.shop_printify_studio_test.design_picker_search_placeholder", "Search designs…"),
-                                color = Color.White.copy(0.45f)
-                            )
-                        },
-                        singleLine = true,
-                        leadingIcon = {
-                            Icon(Icons.Default.Search, null, tint = Color.White.copy(0.7f))
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFFF97316),
-                            unfocusedBorderColor = Color.White.copy(0.25f),
-                            cursorColor = Color(0xFFF97316)
-                        )
-                    )
-                }
-                if (isPublic) {
-                    Text(
-                        "$totalCount Designs",
-                        color = Color.White.copy(0.55f),
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1
-                    )
-                    IconButton(
-                        onClick = { showFilterSheet = true },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .border(2.dp, Color(0xFFF97316), RoundedCornerShape(999.dp))
+            if (!isDrafts) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("☰", color = Color(0xFFF97316), style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = {
+                                Text(
+                                    t(
+                                        "creator.shop_printify_studio_test.design_picker_search_placeholder",
+                                        "Search by title, prompt, or creator…"
+                                    ),
+                                    color = Color.White.copy(0.45f)
+                                )
+                            },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = Color(0xFFF97316),
+                                unfocusedBorderColor = Color.White.copy(0.25f),
+                                cursorColor = Color(0xFFF97316),
+                                focusedContainerColor = Color(0xFF020617).copy(alpha = 0.55f),
+                                unfocusedContainerColor = Color(0xFF020617).copy(alpha = 0.55f)
+                            )
+                        )
+                        if (isPublic) {
+                            IconButton(
+                                onClick = { showFilterSheet = true },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .border(2.dp, Color(0xFFF59E0B), CircleShape)
+                                    .background(Color.Black, CircleShape)
+                            ) {
+                                Icon(
+                                    Icons.Default.FilterList,
+                                    contentDescription = t("creator.common.filter", "Filter"),
+                                    tint = Color(0xFFF59E0B)
+                                )
+                            }
+                        }
+                    }
+                    if (isPublic) {
+                        Text(
+                            t("creator.shop_printify_studio_test.design_picker_count", "{count} Designs")
+                                .replace("{count}", totalCount.toString()),
+                            color = Color.White.copy(0.55f),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1
+                        )
                     }
                 }
             }

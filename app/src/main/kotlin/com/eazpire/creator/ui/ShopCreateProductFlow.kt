@@ -692,7 +692,10 @@ fun ShopCreateProductFlow(
                 translationStore = translationStore,
                 translation = translation,
                 onDismiss = onCloseStudio,
-                onRequireLogin = onRequireLogin
+                onRequireLogin = onRequireLogin,
+                onOpenGenerate = {
+                    onPhaseChange(ShopCreateProductPhase.StudioGenerate(p, catalogProducts))
+                }
             )
         }
         is ShopCreateProductPhase.StudioUpload -> {

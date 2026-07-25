@@ -256,7 +256,7 @@ fun EazFullScreenDialog(
         }
         BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding(),
         ) {
