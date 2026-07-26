@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,8 +28,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,29 +45,24 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.core.text.HtmlCompat
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
@@ -80,10 +73,7 @@ import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.plp.PlpCardDisplay
 import com.eazpire.creator.plp.PlpCardImageResolver
 import com.eazpire.creator.ui.components.EazProductCardRotatingImages
-import com.eazpire.creator.ui.components.EazLazyProductImage
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 
 @Composable
 fun HeaderSearch(
@@ -94,14 +84,17 @@ fun HeaderSearch(
     onSubmitSearchQuery: (String) -> Unit,
     /** Product URLs from predictive list — open native PDP */
     onNavigateToUrl: (String) -> Unit,
+    onClose: (() -> Unit)? = null,
     ownerId: String = "",
     creatorApi: CreatorApi? = null,
     mockPreviewRevision: Int = 0,
     placeholder: String = "Search...",
+    /** Full-screen modal: close X beside search field, results fill remaining height */
+    fullscreen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
     val api = remember { ShopifyPredictiveSearchApi() }
     val store = LocalTranslationStore.current
     val noResultsText = store?.t("eaz.search.no_results", "No results") ?: "No results"
@@ -123,20 +116,17 @@ fun HeaderSearch(
     )
 
     var focused by remember { mutableStateOf(false) }
-    var fieldHeightPx by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ShopifyPredictiveSearchApi.PredictiveSearchState?>(null) }
 
-    fun hideResultsPanel() {
-        focused = false
-        focusManager.clearFocus()
-    }
-
-    fun clearSearch() {
-        onQueryChange("")
-        result = null
-        loading = false
-        hideResultsPanel()
+    LaunchedEffect(fullscreen) {
+        if (fullscreen) {
+            delay(40)
+            try {
+                focusRequester.requestFocus()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     LaunchedEffect(query) {
@@ -162,19 +152,28 @@ fun HeaderSearch(
         }
     }
 
-    val showPanel = focused && query.trim().length >= 2
+    val showPanel = query.trim().length >= 2 && (fullscreen || focused)
 
-    Box(modifier = modifier.fillMaxWidth()) {
-        Column {
+    Column(
+        modifier = if (fullscreen) modifier.fillMaxSize() else modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = 8.dp,
+                    end = if (fullscreen && onClose != null) 4.dp else 8.dp,
+                    top = if (fullscreen) 8.dp else 0.dp,
+                    bottom = if (fullscreen) 8.dp else 0.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .onGloballyPositioned { coords ->
-                        fieldHeightPx = coords.size.height
-                    }
+                    .weight(1f)
+                    .focusRequester(focusRequester)
                     .onFocusChanged { focused = it.isFocused },
                 textStyle = searchTextStyle,
                 placeholder = {
@@ -221,180 +220,197 @@ fun HeaderSearch(
                     }
                 }
             )
+            if (onClose != null) {
+                IconButton(
+                    onClick = {
+                        focusManager.clearFocus()
+                        onClose()
+                    },
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = closeSearchText,
+                        tint = EazColors.TextPrimary
+                    )
+                }
+            }
         }
 
-        if (showPanel && fieldHeightPx > 0) {
-            Popup(
-                alignment = Alignment.TopStart,
-                offset = IntOffset(0, fieldHeightPx),
-                onDismissRequest = { hideResultsPanel() },
-                properties = PopupProperties(
-                    focusable = false,
-                    dismissOnBackPress = true,
-                    // Text field sits outside the popup; outside clicks must not wipe the query.
-                    dismissOnClickOutside = false,
-                    clippingEnabled = false
-                )
+        if (fullscreen) {
+            HorizontalDivider(color = EazColors.TopbarBorder, thickness = 1.dp)
+        }
+
+        if (showPanel) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (fullscreen) Modifier.weight(1f) else Modifier)
+                    .background(Color.White)
             ) {
-                val maxH = with(density) { 520.dp }
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = maxH),
-                    shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp),
-                    shadowElevation = 10.dp,
-                    color = Color.White
-                ) {
-                    Box(Modifier.fillMaxWidth()) {
-                        IconButton(
-                            onClick = { clearSearch() },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 4.dp, end = 4.dp)
-                                .size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = closeSearchText,
-                                tint = EazColors.TextSecondary
+                PredictiveSearchResultsBody(
+                    loading = loading,
+                    result = result,
+                    noResultsText = noResultsText,
+                    loadingMoreText = loadingMoreText,
+                    suggestionsLabel = suggestionsLabel,
+                    productsLabel = productsLabel,
+                    sectionTitleStyle = sectionTitleStyle,
+                    onSubmitSearchQuery = onSubmitSearchQuery,
+                    onNavigateToUrl = onNavigateToUrl,
+                    ownerId = ownerId,
+                    creatorApi = creatorApi,
+                    mockPreviewRevision = mockPreviewRevision,
+                    fillHeight = fullscreen
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PredictiveSearchResultsBody(
+    loading: Boolean,
+    result: ShopifyPredictiveSearchApi.PredictiveSearchState?,
+    noResultsText: String,
+    loadingMoreText: String,
+    suggestionsLabel: String,
+    productsLabel: String,
+    sectionTitleStyle: TextStyle,
+    onSubmitSearchQuery: (String) -> Unit,
+    onNavigateToUrl: (String) -> Unit,
+    ownerId: String,
+    creatorApi: CreatorApi?,
+    mockPreviewRevision: Int,
+    fillHeight: Boolean,
+) {
+    when {
+        loading && result == null -> {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (fillHeight) Modifier.fillMaxSize() else Modifier)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    color = EazColors.Orange,
+                    strokeWidth = 2.dp
+                )
+            }
+        }
+        result != null &&
+            result.queries.isEmpty() &&
+            result.products.isEmpty() &&
+            result.sectionStillLoading -> {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (fillHeight) Modifier.fillMaxSize() else Modifier)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        color = EazColors.Orange,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = loadingMoreText,
+                        style = TextStyle(fontSize = 13.sp, color = EazColors.TextSecondary),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+        result != null &&
+            result.queries.isEmpty() &&
+            result.products.isEmpty() &&
+            !result.sectionStillLoading -> {
+            Text(
+                text = noResultsText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                style = TextStyle(fontSize = 14.sp, color = EazColors.TextSecondary),
+                textAlign = TextAlign.Center
+            )
+        }
+        result != null -> {
+            val r = result
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (fillHeight) Modifier.fillMaxSize() else Modifier),
+                contentPadding = PaddingValues(
+                    horizontal = 12.dp,
+                    vertical = 10.dp
+                ),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (r.queries.isNotEmpty()) {
+                    item(span = { GridItemSpan(2) }) {
+                        Column {
+                            Text(
+                                text = suggestionsLabel,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                                style = sectionTitleStyle
                             )
-                        }
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 40.dp)
-                        ) {
-                    when {
-                        loading && result == null -> {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                r.queries.forEach { q ->
+                                    SearchSuggestionBadge(
+                                        styledHtml = q.styledText,
+                                        onClick = { onSubmitSearchQuery(q.text.trim()) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                if (r.products.isNotEmpty() || r.sectionStillLoading) {
+                    item(span = { GridItemSpan(2) }) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                        ) {
+                            Text(text = productsLabel, style = sectionTitleStyle)
+                            if (r.sectionStillLoading) {
+                                Spacer(Modifier.width(10.dp))
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(28.dp),
+                                    modifier = Modifier.size(14.dp),
                                     color = EazColors.Orange,
                                     strokeWidth = 2.dp
                                 )
                             }
                         }
-                        result != null &&
-                            result!!.queries.isEmpty() &&
-                            result!!.products.isEmpty() &&
-                            result!!.sectionStillLoading -> {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(28.dp),
-                                        color = EazColors.Orange,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Spacer(Modifier.height(12.dp))
-                                    Text(
-                                        text = loadingMoreText,
-                                        style = TextStyle(fontSize = 13.sp, color = EazColors.TextSecondary),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-                        result != null &&
-                            result!!.queries.isEmpty() &&
-                            result!!.products.isEmpty() &&
-                            !result!!.sectionStillLoading -> {
-                            Text(
-                                text = noResultsText,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(20.dp),
-                                style = TextStyle(fontSize = 14.sp, color = EazColors.TextSecondary),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                        result != null -> {
-                            val r = result!!
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(2),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = maxH),
-                                contentPadding = PaddingValues(
-                                    horizontal = 12.dp,
-                                    vertical = 10.dp
-                                ),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                if (r.queries.isNotEmpty()) {
-                                    item(span = { GridItemSpan(2) }) {
-                                        Column {
-                                            Text(
-                                                text = suggestionsLabel,
-                                                modifier = Modifier.padding(bottom = 8.dp),
-                                                style = sectionTitleStyle
-                                            )
-                                            FlowRow(
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                r.queries.forEach { q ->
-                                                    SearchSuggestionBadge(
-                                                        styledHtml = q.styledText,
-                                                        onClick = { onSubmitSearchQuery(q.text.trim()) }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (r.products.isNotEmpty() || r.sectionStillLoading) {
-                                    item(span = { GridItemSpan(2) }) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
-                                        ) {
-                                            Text(text = productsLabel, style = sectionTitleStyle)
-                                            if (r.sectionStillLoading) {
-                                                Spacer(Modifier.width(10.dp))
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(14.dp),
-                                                    color = EazColors.Orange,
-                                                    strokeWidth = 2.dp
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                items(
-                                    items = r.products,
-                                    key = { it.handle }
-                                ) { p ->
-                                    Box(
-                                        modifier = Modifier
-                                            .aspectRatio(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(Color(0xFFF5F5F5))
-                                            .clickable { onNavigateToUrl(p.url) }
-                                    ) {
-                                        PredictiveMockImageGridCell(
-                                            handle = p.handle,
-                                            shopUrls = p.images,
-                                            ownerId = ownerId,
-                                            creatorApi = creatorApi,
-                                            mockPreviewRevision = mockPreviewRevision
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
-                        }
+                }
+                items(
+                    items = r.products,
+                    key = { it.handle }
+                ) { p ->
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF5F5F5))
+                            .clickable { onNavigateToUrl(p.url) }
+                    ) {
+                        PredictiveMockImageGridCell(
+                            handle = p.handle,
+                            shopUrls = p.images,
+                            ownerId = ownerId,
+                            creatorApi = creatorApi,
+                            mockPreviewRevision = mockPreviewRevision
+                        )
                     }
                 }
             }
