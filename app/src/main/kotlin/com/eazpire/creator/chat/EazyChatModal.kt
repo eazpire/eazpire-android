@@ -1341,7 +1341,8 @@ fun EazyChatModal(
                             EazySidebarTab.Mascot -> EazyMascotTabView(
                                 ownerId = tokenStore?.getOwnerId(),
                                 api = api,
-                                t = t
+                                t = t,
+                                eazySettingsStore = eazySettingsStore,
                             )
                         }
                     }

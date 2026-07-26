@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
@@ -35,11 +36,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.api.CreatorApi
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -85,8 +89,10 @@ fun EazyMascotTabView(
     ownerId: String?,
     api: CreatorApi,
     t: (String, String) -> String,
+    eazySettingsStore: EazySettingsStore? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }
     var mascots by remember { mutableStateOf<List<MascotData>>(emptyList()) }
@@ -100,6 +106,19 @@ fun EazyMascotTabView(
     var happyClaimAvailable by remember { mutableStateOf(false) }
     var eazDiscountPct by remember { mutableStateOf(0.0) }
     var error by remember { mutableStateOf<String?>(null) }
+    var speechBubble by remember { mutableStateOf<String?>(null) }
+    var interactBusy by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        MascotVoicePlayer.ensureTts(context)
+        onDispose { MascotVoicePlayer.stop() }
+    }
+
+    LaunchedEffect(speechBubble) {
+        val text = speechBubble ?: return@LaunchedEffect
+        delay(5200)
+        if (speechBubble == text) speechBubble = null
+    }
 
     LaunchedEffect(ownerId) {
         if (ownerId.isNullOrBlank()) {
@@ -216,12 +235,53 @@ fun EazyMascotTabView(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            fun runInteract(action: String) {
+                if (interactBusy) return
+                interactBusy = true
+                val audioOn = eazySettingsStore?.getBoolean("audio_enabled", true) ?: true
+                val volume = eazySettingsStore?.getInt("audio_volume", 75) ?: 75
+                val line = MascotVoicePlayer.playInteract(context, action, audioOn, volume)
+                if (!line.isNullOrBlank()) speechBubble = line
+                scope.launch {
+                    try {
+                        ownerId?.let { oid ->
+                            withContext(Dispatchers.IO) { api.mascotInteract(oid, action) }
+                        }
+                    } catch (_: Exception) {
+                    } finally {
+                        interactBusy = false
+                    }
+                }
+            }
+
+            speechBubble?.let { bubble ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .semantics { contentDescription = bubble }
+                ) {
+                    Text(
+                        text = bubble,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MascotText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .size(120.dp)
                     .clip(RoundedCornerShape(60.dp))
                     .background(parseColor(active.color))
-                    .clickable { /* pet */ },
+                    .clickable(enabled = !interactBusy) { runInteract("pet") }
+                    .semantics {
+                        contentDescription = t("eazy_chat.mascot_pet", "Pet mascot")
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -278,21 +338,20 @@ fun EazyMascotTabView(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(top = 4.dp)
             ) {
-                listOf("👋" to "pet", "🍬" to "feed", "🎮" to "play").forEach { (emoji, action) ->
+                listOf(
+                    "👋" to ("pet" to t("eazy_chat.mascot_pet", "Pet")),
+                    "🍬" to ("feed" to t("eazy_chat.mascot_feed", "Feed")),
+                    "🎮" to ("play" to t("eazy_chat.mascot_play", "Play")),
+                ).forEach { (emoji, actionLabel) ->
+                    val (action, label) = actionLabel
                     IconButton(
-                        onClick = {
-                            ownerId?.let { oid ->
-                                scope.launch {
-                                    kotlinx.coroutines.withContext(Dispatchers.IO) {
-                                        api.mascotInteract(oid, action)
-                                    }
-                                }
-                            }
-                        },
+                        onClick = { runInteract(action) },
+                        enabled = !interactBusy,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(48.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(MascotMuted.copy(alpha = 0.2f))
+                            .semantics { contentDescription = label }
                     ) {
                         Text(text = emoji, style = MaterialTheme.typography.titleMedium)
                     }

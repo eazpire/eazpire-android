@@ -850,6 +850,7 @@ private fun HeroHotspotsOverlay(
                 MutableInteractionSource()
             }
 
+            val hotspotLabel = hotspot.title?.takeIf { it.isNotBlank() } ?: "Product hotspot"
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -860,6 +861,7 @@ private fun HeroHotspotsOverlay(
                         )
                     }
                     .size(HERO_HOTSPOT_TOUCH_TARGET)
+                    .semantics { contentDescription = hotspotLabel }
                     .clickable(
                         interactionSource = clickInteraction,
                         indication = null,
@@ -870,10 +872,10 @@ private fun HeroHotspotsOverlay(
                 contentAlignment = Alignment.Center
             ) {
                 HeroHotspotDot(
-                    contentDescription = hotspot.title,
+                    contentDescription = hotspotLabel,
                     isJustClicked = clickedHotspot == hotspot,
                     onClickAnimationDone = { if (clickedHotspot == hotspot) clickedHotspot = null },
-                    modifier = Modifier,
+                    modifier = Modifier.semantics { contentDescription = hotspotLabel },
                 )
             }
         }

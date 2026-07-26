@@ -98,6 +98,7 @@ fun HeaderSearch(
     val api = remember { ShopifyPredictiveSearchApi() }
     val store = LocalTranslationStore.current
     val noResultsText = store?.t("eaz.search.no_results", "No results") ?: "No results"
+    val searchErrorText = store?.t("eaz.search.error", "Search failed. Please try again.") ?: "Search failed. Please try again."
     val closeSearchText = store?.t("eaz.search.close_aria", "Close search") ?: "Close search"
     val suggestionsLabel = store?.t("eaz.search.section_suggestions", "Suggestions") ?: "Suggestions"
     val productsLabel = store?.t("eaz.search.section_products", "Products") ?: "Products"
@@ -117,6 +118,7 @@ fun HeaderSearch(
 
     var focused by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ShopifyPredictiveSearchApi.PredictiveSearchState?>(null) }
 
     LaunchedEffect(fullscreen) {
@@ -134,9 +136,11 @@ fun HeaderSearch(
         if (q.length < 2) {
             result = null
             loading = false
+            searchError = false
             return@LaunchedEffect
         }
         loading = true
+        searchError = false
         result = null
         delay(300)
         if (query.trim() != q) return@LaunchedEffect
@@ -145,10 +149,15 @@ fun HeaderSearch(
                 if (query.trim() == q) {
                     result = state
                     loading = false
+                    searchError = false
                 }
             }
         } catch (_: Exception) {
-            if (query.trim() == q) loading = false
+            if (query.trim() == q) {
+                loading = false
+                result = null
+                searchError = true
+            }
         }
     }
 
@@ -250,8 +259,10 @@ fun HeaderSearch(
             ) {
                 PredictiveSearchResultsBody(
                     loading = loading,
+                    searchError = searchError,
                     result = result,
                     noResultsText = noResultsText,
+                    searchErrorText = searchErrorText,
                     loadingMoreText = loadingMoreText,
                     suggestionsLabel = suggestionsLabel,
                     productsLabel = productsLabel,
@@ -271,8 +282,10 @@ fun HeaderSearch(
 @Composable
 private fun PredictiveSearchResultsBody(
     loading: Boolean,
+    searchError: Boolean,
     result: ShopifyPredictiveSearchApi.PredictiveSearchState?,
     noResultsText: String,
+    searchErrorText: String,
     loadingMoreText: String,
     suggestionsLabel: String,
     productsLabel: String,
@@ -285,6 +298,16 @@ private fun PredictiveSearchResultsBody(
     fillHeight: Boolean,
 ) {
     when {
+        searchError && !loading -> {
+            Text(
+                text = searchErrorText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                style = TextStyle(fontSize = 14.sp, color = EazColors.TextSecondary),
+                textAlign = TextAlign.Center
+            )
+        }
         loading && result == null -> {
             Box(
                 Modifier
