@@ -15,6 +15,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,12 +36,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -49,9 +53,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -69,11 +76,13 @@ import org.json.JSONObject
 private const val TAG_PRODUCT_MODAL = "ProductModalDebug"
 /** Zwei Bilder nebeneinander: jedes quadratisch, gleich groß */
 private const val HERO_CELL_ASPECT_RATIO = 1f
-private const val HERO_PAIR_ADVANCE_MS = 3500L
+private const val HERO_PAIR_ADVANCE_MS = 5000L
 private const val HERO_SLIDE_DURATION_MS = 450
+private const val HERO_SWIPE_THRESHOLD_PX = 64f
 private val HERO_HOTSPOT_SIZE = 14.dp
 private val HERO_HOTSPOT_TOUCH_TARGET = 48.dp
 private val HERO_HOTSPOT_RING = 3.dp
+private val HERO_PAGE_DOT_SIZE = 8.dp
 private const val STORE_BASE_URL = "https://www.eazpire.com"
 
 data class HeroHotspot(
@@ -331,7 +340,7 @@ fun HeroCarousel(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     Log.d(TAG_PRODUCT_MODAL, "[0] HeroCarousel composed: productModalHandleState=${productModalHandleState != null}")
     val api = remember { CreatorApi() }
     val productsApi = remember { ShopifyProductsApi() }
@@ -349,12 +358,32 @@ fun HeroCarousel(
     if (displayImages.isEmpty()) return
 
     val pairCount = (displayImages.size + 1) / 2
-    var currentPairIndex by remember { mutableStateOf(0) }
+    var currentPairIndex by remember { mutableIntStateOf(0) }
     val slideProgress = remember { Animatable(1f) }
     var imageSizeByHeroId by remember { mutableStateOf<Map<String, Pair<Int, Int>>>(emptyMap()) }
     var carouselPaused by remember { mutableStateOf(false) }
     var hotspotLoading by remember { mutableStateOf(false) }
+    var autoRestartToken by remember { mutableIntStateOf(0) }
     val isModalOpen = productModalHandleState?.value != null
+
+    fun goToPair(targetIndex: Int, animate: Boolean = true) {
+        if (pairCount < 1) return
+        val next = ((targetIndex % pairCount) + pairCount) % pairCount
+        if (next == currentPairIndex && slideProgress.value >= 1f) return
+        currentPairIndex = next
+        autoRestartToken += 1
+        if (!animate) {
+            scope.launch { slideProgress.snapTo(1f) }
+            return
+        }
+        scope.launch {
+            slideProgress.snapTo(0f)
+            slideProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(HERO_SLIDE_DURATION_MS, easing = FastOutSlowInEasing)
+            )
+        }
+    }
 
     LaunchedEffect(isModalOpen) {
         if (!isModalOpen && carouselPaused) {
@@ -362,7 +391,7 @@ fun HeroCarousel(
         }
     }
 
-    LaunchedEffect(displayImages.size, carouselPaused, isModalOpen) {
+    LaunchedEffect(displayImages.size, carouselPaused, isModalOpen, autoRestartToken) {
         if (pairCount < 2 || carouselPaused || isModalOpen) return@LaunchedEffect
 
         while (true) {
@@ -487,7 +516,24 @@ fun HeroCarousel(
             .fillMaxWidth()
             .padding(bottom = 16.dp)
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(pairCount, currentPairIndex, carouselPaused, isModalOpen) {
+                    if (pairCount < 2 || carouselPaused || isModalOpen) return@pointerInput
+                    var totalDrag = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { totalDrag = 0f },
+                        onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                        onDragEnd = {
+                            if (abs(totalDrag) < HERO_SWIPE_THRESHOLD_PX) return@detectHorizontalDragGestures
+                            if (totalDrag < 0f) goToPair(currentPairIndex + 1)
+                            else goToPair(currentPairIndex - 1)
+                        },
+                        onDragCancel = { totalDrag = 0f }
+                    )
+                }
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(1.dp)
@@ -572,8 +618,44 @@ fun HeroCarousel(
                     )
                 }
             }
+            if (pairCount > 1) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 10.dp)
+                        .semantics { contentDescription = "Hero page ${currentPairIndex + 1} of $pairCount" },
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(pairCount) { page ->
+                        HeroPaginationDot(
+                            active = page == currentPairIndex,
+                            onClick = { goToPair(page) }
+                        )
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun HeroPaginationDot(
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .size(HERO_PAGE_DOT_SIZE)
+            .clip(CircleShape)
+            .background(if (active) Color.White else Color.White.copy(alpha = 0.5f))
+            .clickable(
+                indication = null,
+                interactionSource = interaction,
+                onClick = onClick
+            )
+    )
 }
 
 @Composable
