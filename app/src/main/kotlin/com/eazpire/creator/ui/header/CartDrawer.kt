@@ -23,16 +23,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -52,6 +61,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.painterResource
@@ -111,6 +121,12 @@ fun CartDrawer(
     var characterDiscountApplying by remember { mutableStateOf(false) }
     var appliedCharacterDiscountCode by remember { mutableStateOf<String?>(null) }
     var characterDiscountError by remember { mutableStateOf<String?>(null) }
+    var showGiftDialog by remember { mutableStateOf(false) }
+    var giftCardsLoading by remember { mutableStateOf(false) }
+    var giftCards by remember { mutableStateOf<List<CartGiftCardRow>>(emptyList()) }
+    var giftManualCode by remember { mutableStateOf("") }
+    var giftApplying by remember { mutableStateOf(false) }
+    var giftError by remember { mutableStateOf<String?>(null) }
 
     fun applyCartResult(result: ShopifyStorefrontCartApi.CartResult?) {
         cart = result
@@ -447,6 +463,75 @@ fun CartDrawer(
                                 characterDiscountError?.let { err ->
                                     Text(err, style = MaterialTheme.typography.bodySmall, color = Color(0xFFDC2626))
                                 }
+                            if (!ownerId.isNullOrBlank()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFFF5F5F5))
+                                        .clickable(enabled = !giftApplying) {
+                                            showGiftDialog = true
+                                            giftError = null
+                                            giftCardsLoading = true
+                                            scope.launch {
+                                                try {
+                                                    val res = withContext(Dispatchers.IO) {
+                                                        creatorApi.getCustomerGiftCards(
+                                                            ownerId,
+                                                            AuthConfig.SHOP_DOMAIN
+                                                        )
+                                                    }
+                                                    val arr = res.optJSONArray("gift_cards") ?: JSONArray()
+                                                    val list = mutableListOf<CartGiftCardRow>()
+                                                    for (i in 0 until arr.length()) {
+                                                        val gc = arr.optJSONObject(i) ?: continue
+                                                        if (!gc.optBoolean("enabled", true)) continue
+                                                        val balance = gc.optDouble("balance", 0.0)
+                                                        if (balance <= 0) continue
+                                                        val id = gc.opt("id")?.toString()?.trim().orEmpty()
+                                                        if (id.isEmpty()) continue
+                                                        list.add(
+                                                            CartGiftCardRow(
+                                                                id = id,
+                                                                label = gc.optString("last_characters", "")
+                                                                    .ifBlank { id.takeLast(4) },
+                                                                balance = balance,
+                                                                currency = gc.optString("currency", "CHF"),
+                                                                code = gc.optString("code", "").trim()
+                                                                    .takeIf { it.length > 8 }
+                                                            )
+                                                        )
+                                                    }
+                                                    giftCards = list
+                                                } catch (_: Exception) {
+                                                    giftCards = emptyList()
+                                                } finally {
+                                                    giftCardsLoading = false
+                                                }
+                                            }
+                                        }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Default.CardGiftcard,
+                                        contentDescription = null,
+                                        tint = EazColors.Orange,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Text(
+                                        t("eaz.cart.apply_gift_card", "Apply gift card / code"),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = EazColors.TextPrimary,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                giftError?.let { err ->
+                                    Text(err, style = MaterialTheme.typography.bodySmall, color = Color(0xFFDC2626))
+                                }
+                            }
                             val lines = cart!!.lines
                             val totalText = lines
                                 .sumOf { line ->
@@ -498,7 +583,186 @@ fun CartDrawer(
             },
         )
     }
+
+    suspend fun applyGiftCodeToCheckout(code: String) {
+        val c = cart ?: return
+        giftApplying = true
+        giftError = null
+        try {
+            val items = c.lines.mapNotNull { line ->
+                val vid = line.variantId.filter { it.isDigit() }.toLongOrNull() ?: return@mapNotNull null
+                vid to line.quantity
+            }
+            if (items.isEmpty()) {
+                giftError = t("eaz.cart.empty", "The cart is empty.")
+                return
+            }
+            val res = withContext(Dispatchers.IO) {
+                creatorApi.applyGiftCardStorefront(
+                    shop = AuthConfig.SHOP_DOMAIN,
+                    giftCardCodes = listOf(code),
+                    cartItems = items
+                )
+            }
+            val checkout = res.optString("checkout_url", "").trim()
+            if (res.optBoolean("ok", false) && checkout.isNotBlank()) {
+                showGiftDialog = false
+                onCheckout(checkout)
+            } else {
+                giftError = res.optString("message").ifBlank {
+                    t(
+                        "eaz.cart.gift_card_apply_failed",
+                        "Gift card could not be applied. Please try again or enter the code at checkout."
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            giftError = e.message ?: t(
+                "eaz.cart.gift_card_apply_failed",
+                "Gift card could not be applied. Please try again or enter the code at checkout."
+            )
+        } finally {
+            giftApplying = false
+        }
+    }
+
+    if (showGiftDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!giftApplying) showGiftDialog = false },
+            title = {
+                Text(t("eaz.cart.apply_gift_card", "Apply gift card / code"))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (giftCardsLoading) {
+                        CircularProgressIndicator(
+                            color = EazColors.Orange,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    } else if (giftCards.isEmpty()) {
+                        Text(
+                            t("eaz.cart.no_gift_cards", "No gift cards with balance found."),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EazColors.TextSecondary
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 220.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(giftCards, key = { it.id }) { gc ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFFF5F5F5))
+                                        .clickable(enabled = !giftApplying) {
+                                            scope.launch {
+                                                val code = gc.code ?: run {
+                                                    val oid = ownerId ?: return@launch
+                                                    val codeRes = withContext(Dispatchers.IO) {
+                                                        creatorApi.getGiftCardCode(
+                                                            gc.id,
+                                                            oid,
+                                                            AuthConfig.SHOP_DOMAIN
+                                                        )
+                                                    }
+                                                    if (!codeRes.optBoolean("ok", false)) {
+                                                        giftError = codeRes.optString("message").ifBlank {
+                                                            t(
+                                                                "eaz.cart.gift_card_code_error",
+                                                                "This gift card could not be applied."
+                                                            )
+                                                        }
+                                                        return@launch
+                                                    }
+                                                    codeRes.optString("code", "").trim()
+                                                }
+                                                if (code.isBlank()) {
+                                                    giftError = t(
+                                                        "eaz.cart.gift_card_code_error",
+                                                        "This gift card could not be applied."
+                                                    )
+                                                    return@launch
+                                                }
+                                                applyGiftCodeToCheckout(code)
+                                            }
+                                        }
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "•••• ${gc.label}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        "%.2f %s".format(gc.balance, gc.currency),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = EazColors.TextSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = giftManualCode,
+                        onValueChange = { giftManualCode = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        enabled = !giftApplying,
+                        label = {
+                            Text(t("eaz.cart.gift_code_placeholder", "Enter discount or gift code"))
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val code = giftManualCode.trim()
+                                if (code.isNotEmpty() && !giftApplying) {
+                                    scope.launch { applyGiftCodeToCheckout(code) }
+                                }
+                            }
+                        )
+                    )
+                    giftError?.let { err ->
+                        Text(err, style = MaterialTheme.typography.bodySmall, color = Color(0xFFDC2626))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val code = giftManualCode.trim()
+                        if (code.isEmpty() || giftApplying) return@TextButton
+                        scope.launch { applyGiftCodeToCheckout(code) }
+                    },
+                    enabled = !giftApplying && giftManualCode.isNotBlank()
+                ) {
+                    Text(
+                        if (giftApplying) t("eaz.cart.applying", "Applying…")
+                        else t("eaz.cart.apply", "Apply")
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { if (!giftApplying) showGiftDialog = false }) {
+                    Text(t("common.close", "Close"))
+                }
+            }
+        )
+    }
 }
+
+private data class CartGiftCardRow(
+    val id: String,
+    val label: String,
+    val balance: Double,
+    val currency: String,
+    val code: String?
+)
 
 private data class PromoResolveRow(
     val displayEndsAt: Long?,

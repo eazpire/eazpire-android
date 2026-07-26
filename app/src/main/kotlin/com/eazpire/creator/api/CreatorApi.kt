@@ -318,6 +318,142 @@ class CreatorApi(
             .put("printify_product_id", printifyProductId)
     )
 
+    /**
+     * POST ?op=printify-studio-test-save-draft — persist studio draft (parity with web).
+     * Body mirrors theme `eaz-shop-printify-studio-test.js` saveDraft.
+     */
+    suspend fun printifyStudioTestSaveDraft(
+        ownerId: String,
+        body: JSONObject
+    ): JSONObject = postDispatchJson(
+        op = "printify-studio-test-save-draft",
+        queryParams = mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId
+        ),
+        body = body
+            .put("op", "printify-studio-test-save-draft")
+            .put("path_prefix", "/apps/creator-dispatch")
+            .put("owner_id", ownerId)
+    )
+
+    /**
+     * POST ?op=shop-studio-enqueue-shopify — publish studio listing to Shopify (cart/favorite/save).
+     * Accepts HTTP 200 (ready) and 202 (pending); response body always parsed.
+     */
+    suspend fun shopStudioEnqueueShopify(
+        ownerId: String,
+        body: JSONObject
+    ): JSONObject = postDispatchJson(
+        op = "shop-studio-enqueue-shopify",
+        queryParams = mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId
+        ),
+        body = body
+            .put("op", "shop-studio-enqueue-shopify")
+            .put("path_prefix", "/apps/creator-dispatch")
+            .put("owner_id", ownerId)
+    )
+
+    /** GET ?op=shop-studio-listing-status — poll until Shopify variant ready */
+    suspend fun shopStudioListingStatus(
+        ownerId: String,
+        listingId: String
+    ): JSONObject = call(
+        "shop-studio-listing-status",
+        mapOf(
+            "owner_id" to ownerId,
+            "listing_id" to listingId
+        )
+    )
+
+    /** POST ?op=save-customer-design — persist completed shop_design job to product(s) */
+    suspend fun saveCustomerDesign(
+        ownerId: String,
+        jobId: String,
+        productKey: String? = null,
+        productKeys: List<String>? = null
+    ): JSONObject = postDispatchJson(
+        op = "save-customer-design",
+        queryParams = mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId
+        ),
+        body = JSONObject().apply {
+            put("op", "save-customer-design")
+            put("path_prefix", "/apps/creator-dispatch")
+            put("owner_id", ownerId)
+            put("job_id", jobId)
+            if (!productKey.isNullOrBlank()) put("product_key", productKey)
+            if (!productKeys.isNullOrEmpty()) {
+                put("product_keys", JSONArray().apply { productKeys.forEach { put(it) } })
+            }
+        }
+    )
+
+    /** POST ?op=discard-customer-design — drop completed shop_design job */
+    suspend fun discardCustomerDesign(
+        ownerId: String,
+        jobId: String
+    ): JSONObject = postDispatchJson(
+        op = "discard-customer-design",
+        queryParams = mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId
+        ),
+        body = JSONObject()
+            .put("op", "discard-customer-design")
+            .put("path_prefix", "/apps/creator-dispatch")
+            .put("owner_id", ownerId)
+            .put("job_id", jobId)
+    )
+
+    /** GET ?op=get-gift-card-code — full code for owned gift card */
+    suspend fun getGiftCardCode(
+        giftCardId: String,
+        customerId: String,
+        shop: String
+    ): JSONObject = call(
+        "get-gift-card-code",
+        mapOf(
+            "gift_card_id" to giftCardId,
+            "customer_id" to customerId,
+            "shop" to shop
+        )
+    )
+
+    /**
+     * POST ?op=apply-gift-card-storefront — create Storefront cart with gift codes → checkout_url.
+     * Body: { shop, gift_card_codes, cart: { items: [{ variant_id, quantity }] } }
+     */
+    suspend fun applyGiftCardStorefront(
+        shop: String,
+        giftCardCodes: List<String>,
+        cartItems: List<Pair<Long, Int>>
+    ): JSONObject = postDispatchJson(
+        op = "apply-gift-card-storefront",
+        body = JSONObject().apply {
+            put("shop", shop)
+            put("gift_card_codes", JSONArray().apply { giftCardCodes.forEach { put(it) } })
+            put(
+                "cart",
+                JSONObject().put(
+                    "items",
+                    JSONArray().apply {
+                        cartItems.forEach { (variantId, qty) ->
+                            put(
+                                JSONObject()
+                                    .put("variant_id", variantId)
+                                    .put("quantity", qty.coerceAtLeast(1))
+                            )
+                        }
+                    }
+                )
+            )
+        }
+    )
+
     /** GET ?op=get-shop-navigation — Storefront menus for drawer (main + optional audience). */
     suspend fun getShopNavigation(
         mainMenu: String = "main-menu",

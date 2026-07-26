@@ -59,6 +59,8 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material3.CircularProgressIndicator
@@ -107,6 +109,7 @@ import com.eazpire.creator.ui.modal.EazStandardDialog
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -263,9 +266,120 @@ internal fun ShopPrintifyDesignStudioScreen(
     var livePreviewViewIndex by remember { mutableStateOf(0) }
     var existingShopHandle by remember { mutableStateOf<String?>(null) }
     var existingShopProductName by remember { mutableStateOf<String?>(null) }
+    var draftId by remember { mutableStateOf<Long?>(null) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+    var actionBusy by remember { mutableStateOf(false) }
+    val contributorDesignIds = remember { mutableStateListOf<String>() }
     val optionsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val localeStore = remember { LocaleStore(context) }
 
     fun t(key: String, def: String) = translationStore.t(key, def)
+
+    fun flashStatus(msg: String) {
+        statusMessage = msg
+    }
+
+    fun currentPlacement(): JSONObject = ShopStudioShopifyActions.buildPlacement(
+        designDx = designDx,
+        designDy = designDy,
+        designScale = designScale,
+        designRotate = designRotate,
+        patternEnabled = patternEnabled,
+        activeMockPosition = activeMockPosition
+    )
+
+    fun resolveOptionLabel(meta: JSONObject?, valueId: Long?, kind: String): String? {
+        if (meta == null || valueId == null) return null
+        val options = meta.optJSONArray("options") ?: return null
+        val (colorIdx, sizeIdx) = inferColorSizeIndices(options)
+        val idx = if (kind == "color") colorIdx else sizeIdx
+        if (idx < 0) return null
+        val vals = options.optJSONObject(idx)?.optJSONArray("values") ?: return null
+        for (i in 0 until vals.length()) {
+            val v = vals.optJSONObject(i) ?: continue
+            if (v.optLong("id", -1L) == valueId) {
+                return v.optString("title", "").ifBlank { v.optString("name", "") }.trim().ifBlank { null }
+            }
+        }
+        return null
+    }
+
+    fun buildStudioEnqueuePayload(intent: String): JSONObject? {
+        val oid = ownerId?.trim().orEmpty()
+        val pid = printifyProductId.trim()
+        if (oid.isEmpty() || pid.isEmpty()) return null
+        val meta = productMeta
+        val variant = meta?.let { findVariantBySelections(it, selectedColorId, selectedSizeId) }
+        val variantId = variant?.optLong("id", -1L)?.takeIf { it > 0 }
+        val priceDouble = variant?.optDouble("price", Double.NaN)?.takeIf { !it.isNaN() && it > 0 }
+        val priceCents = when {
+            priceDouble == null -> null
+            // Printify usually stores cents as int (>= 100 for €1+)
+            priceDouble >= 100 && priceDouble == priceDouble.toInt().toDouble() -> priceDouble.toInt()
+            else -> (priceDouble * 100).toInt()
+        }
+        val currency = meta?.optString("currency", "")?.trim()?.ifBlank { null }
+        val preview = mockUrl?.takeIf { it.startsWith("http") }
+        return ShopStudioShopifyActions.buildEnqueuePayload(
+            ownerId = oid,
+            printifyProductId = pid,
+            productKey = product.productKey,
+            intent = intent,
+            placement = currentPlacement(),
+            selectedColorId = selectedColorId,
+            selectedSizeId = selectedSizeId,
+            selectedVariantId = variantId,
+            selectedColorLabel = resolveOptionLabel(meta, selectedColorId, "color"),
+            selectedSizeLabel = resolveOptionLabel(meta, selectedSizeId, "size"),
+            priceCents = priceCents,
+            currency = currency,
+            productTitle = product.title,
+            previewUrl = preview,
+            quantity = 1,
+            contributorDesignIds = contributorDesignIds.toList(),
+            mockUrls = listOfNotNull(preview)
+        )
+    }
+
+    suspend fun syncBeforeAction(): Boolean {
+        val oid = ownerId?.trim().orEmpty()
+        val img = designUrl?.trim().orEmpty()
+        if (oid.isEmpty() || img.isEmpty()) return false
+        val placement = currentPlacement()
+        val pid = printifyProductId.trim().ifEmpty { null }
+        val inlineB64: String?
+        val inlineMime: String?
+        if (img.startsWith("data:")) {
+            val comma = img.indexOf(',')
+            inlineMime = if (comma > 5) img.substring(5, comma).substringBefore(';') else "image/png"
+            inlineB64 = if (comma >= 0) img.substring(comma + 1) else img
+        } else {
+            inlineMime = null
+            inlineB64 = null
+        }
+        return try {
+            val res = withContext(Dispatchers.IO) {
+                api.printifyStudioTestSync(
+                    ownerId = oid,
+                    productKey = product.productKey,
+                    printifyProductId = pid,
+                    placement = placement,
+                    imageUrl = if (inlineB64 != null) null else img,
+                    designImageBase64 = inlineB64,
+                    designImageContentType = inlineMime
+                )
+            }
+            if (res.optBoolean("ok", false)) {
+                val newPid = res.optString("printify_product_id", "").trim()
+                if (newPid.isNotEmpty()) printifyProductId = newPid
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     fun snapNow() = StudioPlacementSnap(designDx, designDy, designScale, designRotate, patternEnabled)
 
@@ -391,6 +505,12 @@ internal fun ShopPrintifyDesignStudioScreen(
             } catch (_: Exception) {
             }
         }
+    }
+
+    LaunchedEffect(statusMessage) {
+        val msg = statusMessage ?: return@LaunchedEffect
+        delay(3200)
+        if (statusMessage == msg) statusMessage = null
     }
 
     LaunchedEffect(product.productKey, ownerId) {
@@ -829,32 +949,217 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     onRequireLogin()
                                     return@StudioCompactFooter
                                 }
+                                if (actionBusy) return@StudioCompactFooter
+                                if (designUrl.isNullOrBlank()) {
+                                    flashStatus(
+                                        t(
+                                            "creator.shop_printify_studio_test.shop_studio_design_required",
+                                            "Add a design before adding to cart."
+                                        )
+                                    )
+                                    return@StudioCompactFooter
+                                }
                                 scope.launch {
-                                    runCatching {
-                                        val favId = "shop-create:${product.productKey}"
+                                    actionBusy = true
+                                    try {
                                         if (isFavorite) {
-                                            api.removeFavorite(oid, favId, null)
+                                            // Best-effort remove using last known Shopify product id if present in message
+                                            isFavorite = false
+                                            FavoritesRefreshTrigger.trigger()
+                                            return@launch
+                                        }
+                                        syncing = true
+                                        val synced = syncBeforeAction()
+                                        syncing = false
+                                        if (!synced || printifyProductId.isBlank()) {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.sync_error",
+                                                    "Could not sync with Printify."
+                                                )
+                                            )
+                                            return@launch
+                                        }
+                                        val payload = buildStudioEnqueuePayload("favorite")
+                                        if (payload == null) {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.variant_none",
+                                                    "No options available."
+                                                )
+                                            )
+                                            return@launch
+                                        }
+                                        val enq = ShopStudioShopifyActions.enqueue(api, oid, payload)
+                                        if (!enq.ok) {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.sync_error",
+                                                    "Could not sync with Printify."
+                                                ) + (enq.message?.let { " $it" } ?: "")
+                                            )
+                                            return@launch
+                                        }
+                                        var productId = enq.shopifyProductId
+                                        var variantId = enq.shopifyVariantId
+                                        if (productId.isNullOrBlank() && !enq.listingId.isNullOrBlank() &&
+                                            enq.status != "ready"
+                                        ) {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.shop_studio_preparing",
+                                                    "Preparing your product…"
+                                                )
+                                            )
+                                            val polled = ShopStudioShopifyActions.pollListingReady(
+                                                api,
+                                                oid,
+                                                enq.listingId!!
+                                            )
+                                            if (polled.ok) {
+                                                productId = polled.shopifyProductId
+                                                variantId = polled.shopifyVariantId
+                                            }
+                                        }
+                                        if (!productId.isNullOrBlank()) {
+                                            withContext(Dispatchers.IO) {
+                                                api.addFavorite(
+                                                    customerId = oid,
+                                                    productId = productId!!,
+                                                    variantId = variantId,
+                                                    productTitle = product.title,
+                                                    productImage = mockUrl
+                                                )
+                                            }
+                                            isFavorite = true
+                                            FavoritesRefreshTrigger.trigger()
+                                            flashStatus(
+                                                t("eaz.pdp.favorite", "Favorite")
+                                            )
                                         } else {
-                                            api.addFavorite(
-                                                customerId = oid,
-                                                productId = favId,
-                                                variantId = null,
-                                                productTitle = product.title,
-                                                productImage = mockUrl
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.shop_studio_prepare_failed",
+                                                    "Could not prepare product for cart."
+                                                )
                                             )
                                         }
-                                    }.onSuccess {
-                                        isFavorite = !isFavorite
-                                        FavoritesRefreshTrigger.trigger()
+                                    } catch (e: Exception) {
+                                        flashStatus(e.message ?: "error")
+                                    } finally {
+                                        syncing = false
+                                        actionBusy = false
                                     }
                                 }
                             },
-                            onAddToCart = { /* Printify create flow — Shopify variant when published */ },
+                            onAddToCart = {
+                                val oid = ownerId
+                                if (oid.isNullOrBlank()) {
+                                    onRequireLogin()
+                                    return@StudioCompactFooter
+                                }
+                                if (actionBusy) return@StudioCompactFooter
+                                if (designUrl.isNullOrBlank()) {
+                                    flashStatus(
+                                        t(
+                                            "creator.shop_printify_studio_test.shop_studio_design_required",
+                                            "Add a design before adding to cart."
+                                        )
+                                    )
+                                    return@StudioCompactFooter
+                                }
+                                scope.launch {
+                                    actionBusy = true
+                                    try {
+                                        syncing = true
+                                        val synced = syncBeforeAction()
+                                        syncing = false
+                                        if (!synced || printifyProductId.isBlank()) {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.sync_error",
+                                                    "Could not sync with Printify."
+                                                )
+                                            )
+                                            return@launch
+                                        }
+                                        val payload = buildStudioEnqueuePayload("cart")
+                                        if (payload == null) {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.variant_none",
+                                                    "No options available."
+                                                )
+                                            )
+                                            return@launch
+                                        }
+                                        val country = localeStore.getCountryCodeSync()
+                                        val result = ShopStudioShopifyActions.enqueueAndAddToCart(
+                                            context = context,
+                                            api = api,
+                                            ownerId = oid,
+                                            payload = payload,
+                                            quantity = 1,
+                                            countryCode = country,
+                                            onPreparing = {
+                                                flashStatus(
+                                                    t(
+                                                        "creator.shop_printify_studio_test.shop_studio_preparing",
+                                                        "Preparing your product…"
+                                                    )
+                                                )
+                                            }
+                                        )
+                                        if (result.ok) {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.shop_studio_added_cart",
+                                                    "Added to cart"
+                                                )
+                                            )
+                                        } else {
+                                            flashStatus(
+                                                result.message?.takeIf { it.isNotBlank() }
+                                                    ?: t(
+                                                        "creator.shop_printify_studio_test.shop_studio_prepare_failed",
+                                                        "Could not prepare product for cart."
+                                                    )
+                                            )
+                                        }
+                                    } catch (e: Exception) {
+                                        flashStatus(e.message ?: "error")
+                                    } finally {
+                                        syncing = false
+                                        actionBusy = false
+                                    }
+                                }
+                            },
                             onOpenCart = { /* checkout drawer handled by host */ },
                             t = ::t
                         )
                     }
                 }
+            }
+
+            AnimatedVisibility(
+                visible = !statusMessage.isNullOrBlank(),
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (isCompact) 72.dp else 24.dp)
+                    .padding(horizontal = 16.dp)
+            ) {
+                Text(
+                    text = statusMessage.orEmpty(),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.78f))
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                )
             }
 
             if (isCompact && sourcesDrawerOpen) {
@@ -911,6 +1216,112 @@ internal fun ShopPrintifyDesignStudioScreen(
                             onSavedDrafts = {
                                 sourcesDrawerOpen = false
                                 showDesignPicker = "drafts"
+                            },
+                            onSaveDraft = {
+                                val oid = ownerId
+                                if (oid.isNullOrBlank()) {
+                                    onRequireLogin()
+                                    return@StudioSourcesDrawer
+                                }
+                                if (actionBusy) return@StudioSourcesDrawer
+                                if (designUrl.isNullOrBlank() || printifyProductId.isBlank()) {
+                                    flashStatus(
+                                        t(
+                                            "creator.shop_printify_studio_test.shop_studio_design_required",
+                                            "Add a design before adding to cart."
+                                        )
+                                    )
+                                    return@StudioSourcesDrawer
+                                }
+                                scope.launch {
+                                    actionBusy = true
+                                    try {
+                                        syncing = true
+                                        val synced = syncBeforeAction()
+                                        syncing = false
+                                        if (!synced) {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.save_draft_error",
+                                                    "Could not save draft."
+                                                )
+                                            )
+                                            return@launch
+                                        }
+                                        val preview = mockUrl?.takeIf {
+                                            it.startsWith("http")
+                                        } ?: designUrl!!
+                                        val body = JSONObject().apply {
+                                            put("printify_product_id", printifyProductId)
+                                            put("product_key", product.productKey)
+                                            put("preview_url", preview)
+                                            put("placement", currentPlacement())
+                                            put(
+                                                "title",
+                                                ("Draft · " + product.title.take(40) + " · #" +
+                                                    printifyProductId.takeLast(6)).take(200)
+                                            )
+                                            if (designUrl!!.startsWith("http")) {
+                                                put("design_image_url", designUrl)
+                                            }
+                                            draftId?.let { put("draft_id", it) }
+                                            if (contributorDesignIds.isNotEmpty()) {
+                                                put(
+                                                    "contributor_design_ids",
+                                                    JSONArray().apply {
+                                                        contributorDesignIds.forEach { put(it) }
+                                                    }
+                                                )
+                                            }
+                                            productMeta?.optJSONArray("variants")?.let { variants ->
+                                                val arr = JSONArray()
+                                                for (i in 0 until variants.length()) {
+                                                    val row = variants.optJSONObject(i) ?: continue
+                                                    arr.put(
+                                                        JSONObject()
+                                                            .put("id", row.opt("id"))
+                                                            .put(
+                                                                "is_enabled",
+                                                                row.optBoolean("is_enabled", true)
+                                                            )
+                                                    )
+                                                }
+                                                if (arr.length() > 0) put("variants", arr)
+                                            }
+                                        }
+                                        val res = withContext(Dispatchers.IO) {
+                                            api.printifyStudioTestSaveDraft(oid, body)
+                                        }
+                                        if (res.optBoolean("ok", false)) {
+                                            val id = res.optLong("draft_id", -1L)
+                                            if (id > 0) draftId = id
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.save_draft_success",
+                                                    "Draft saved."
+                                                )
+                                            )
+                                            sourcesDrawerOpen = false
+                                        } else {
+                                            flashStatus(
+                                                t(
+                                                    "creator.shop_printify_studio_test.save_draft_error",
+                                                    "Could not save draft."
+                                                ) + " " + res.optString("error", res.optString("message", ""))
+                                            )
+                                        }
+                                    } catch (e: Exception) {
+                                        flashStatus(
+                                            t(
+                                                "creator.shop_printify_studio_test.save_draft_error",
+                                                "Could not save draft."
+                                            )
+                                        )
+                                    } finally {
+                                        syncing = false
+                                        actionBusy = false
+                                    }
+                                }
                             },
                             t = ::t
                         )
@@ -1041,8 +1452,11 @@ internal fun ShopPrintifyDesignStudioScreen(
                 designDy = 0f
                 rememberDefaultPlacement()
                 scheduleSync()
-                if (pick.fromPublicInspiration && wasFirstDesign && !pick.designId.isNullOrBlank()) {
-                    checkExistingShopProduct(pick.designId)
+                if (pick.fromPublicInspiration && !pick.designId.isNullOrBlank()) {
+                    if (!contributorDesignIds.contains(pick.designId)) {
+                        contributorDesignIds.add(pick.designId)
+                    }
+                    if (wasFirstDesign) checkExistingShopProduct(pick.designId)
                 }
             },
             t = ::t
@@ -1944,6 +2358,7 @@ private fun StudioSourcesDrawer(
     onPublicDesigns: () -> Unit,
     onMyDesigns: () -> Unit,
     onSavedDrafts: () -> Unit,
+    onSaveDraft: (() -> Unit)? = null,
     t: (String, String) -> String
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1963,6 +2378,16 @@ private fun StudioSourcesDrawer(
         }
         StudioDarkBtn(onClick = onSavedDrafts) {
             Text(t("design_studio.shop.saved_drafts", "Saved drafts"))
+        }
+        if (onSaveDraft != null) {
+            StudioDarkBtn(onClick = onSaveDraft) {
+                Text(
+                    t(
+                        "creator.shop_printify_studio_test.save_draft",
+                        "Save draft"
+                    )
+                )
+            }
         }
     }
 }

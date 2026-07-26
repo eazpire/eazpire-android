@@ -196,6 +196,7 @@ internal fun ShopDesignStudioGenerateSheet(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var success by remember { mutableStateOf(false) }
+    var completedJobId by remember { mutableStateOf<String?>(null) }
     var suggestLoading by remember { mutableStateOf(false) }
 
     var selectedProductKeys by remember(product.productKey) {
@@ -620,6 +621,21 @@ internal fun ShopDesignStudioGenerateSheet(
                         ShopSheetPrimaryButton(onClick = onRequireLogin, modifier = Modifier.fillMaxWidth()) {
                             Text(translation("creator.shop_create_product.sign_in", "Sign in"))
                         }
+                    } else if (success && !completedJobId.isNullOrBlank() && !ownerId.isNullOrBlank()) {
+                        ShopPostGenerateActionsPanel(
+                            jobId = completedJobId!!,
+                            product = product,
+                            catalogProducts = catalogProducts,
+                            api = api,
+                            ownerId = ownerId,
+                            translation = translation,
+                            onDismissSheet = onDismiss,
+                            onRegenerate = {
+                                success = false
+                                completedJobId = null
+                                error = null
+                            }
+                        )
                     } else if (success) {
                         Text(
                             translation(
@@ -933,6 +949,7 @@ internal fun ShopDesignStudioGenerateSheet(
                                             return@launch
                                         }
                                         pollShopDesignJob(api, jobId)
+                                        completedJobId = jobId
                                         success = true
                                     } catch (e: Exception) {
                                         error = e.message ?: "error"

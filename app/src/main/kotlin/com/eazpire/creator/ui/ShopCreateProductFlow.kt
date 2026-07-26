@@ -708,7 +708,8 @@ fun ShopCreateProductFlow(
                 translationStore = translationStore,
                 translation = translation,
                 onDismiss = { onPhaseChange(ShopCreateProductPhase.Mode(p)) },
-                onRequireLogin = onRequireLogin
+                onRequireLogin = onRequireLogin,
+                catalogProducts = catalogProducts
             )
         }
     }

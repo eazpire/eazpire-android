@@ -104,9 +104,11 @@ import com.eazpire.creator.util.releaseForCompose
 import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.locale.LocaleStore
+import com.eazpire.creator.locale.ShopCurrency
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
+import com.eazpire.creator.favorites.GuestFavoritesStore
 import com.eazpire.creator.ui.header.FavoriteEditContext
 import com.eazpire.creator.i18n.formatCountLabel
 import com.eazpire.creator.ui.footer.GlobalFooter
@@ -498,6 +500,9 @@ fun ProductDetailScreen(
     val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
     val localeStore = remember { LocaleStore(context) }
     val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
+    val currencyCode = remember(countryCode) { ShopCurrency.currencyCodeForCountry(countryCode) }
+    val guestFavoritesStore = remember { GuestFavoritesStore(context) }
+    var favoriteToastMessage by remember { mutableStateOf("Added to favorites") }
 
     var promoOverlay by remember(productHandle) { mutableStateOf<ShopifyProductsApi.ProductItem?>(null) }
     var mockupTryOnInfo by remember(productHandle) { mutableStateOf<MockupTryOnInfo?>(null) }
@@ -1672,14 +1677,37 @@ fun ProductDetailScreen(
                                     FavoritesRefreshTrigger.trigger()
                                     showFavoritePlusOne = true
                                 }
+                                favoriteToastMessage = t("eaz.pdp.added_to_favorites", "Added to favorites")
                                 showFavoriteToast = true
-                            } catch (_: Exception) { showFavoriteToast = true }
+                            } catch (_: Exception) {
+                                favoriteToastMessage = t("eaz.pdp.added_to_favorites", "Added to favorites")
+                                showFavoriteToast = true
+                            }
                         }
                     } else {
+                        val ok = guestFavoritesStore.add(
+                            productId = p.id.toString(),
+                            variantId = selectedVariant?.id?.toString(),
+                            productTitle = p.title,
+                            productImage = images.firstOrNull()
+                        )
+                        if (ok) {
+                            FavoritesRefreshTrigger.trigger()
+                            showFavoritePlusOne = true
+                            favoriteToastMessage = t(
+                                "eaz.pdp.added_to_favorites_guest",
+                                "Saved to favorites on this device"
+                            )
+                        }
                         showFavoriteToast = true
                     }
                 }) {
-                    Icon(Icons.Default.Favorite, contentDescription = "Favorite", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
+                    Icon(
+                        Icons.Default.Favorite,
+                        contentDescription = "Favorite",
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
             IconButton(onClick = {
@@ -1708,7 +1736,9 @@ fun ProductDetailScreen(
             }
             Spacer(modifier = Modifier.weight(1f))
             Text(
-                "Total: CHF %.2f incl.".format(lineEstimate.afterDiscount),
+                t("eaz.pdp.total_incl_shipping", "Total: {{ price }} incl. shipping")
+                    .replace("{{ price }}", ShopCurrency.format(lineEstimate.afterDiscount, currencyCode))
+                    .replace("{{price}}", ShopCurrency.format(lineEstimate.afterDiscount, currencyCode)),
                 style = MaterialTheme.typography.labelSmall,
                 color = EazColors.TextSecondary,
                 maxLines = 1,
@@ -1723,15 +1753,17 @@ fun ProductDetailScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            val deliveryDate = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMAN)
-                .format(java.util.Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000))
+            val deliveryDate = java.text.SimpleDateFormat(
+                "dd.MM.yyyy",
+                java.util.Locale.getDefault()
+            ).format(java.util.Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000))
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .widthIn(min = 80.dp)
             ) {
                 Text(
-                    "CHF %.2f".format(lineEstimate.afterDiscount),
+                    ShopCurrency.format(lineEstimate.afterDiscount, currencyCode),
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
                     fontWeight = FontWeight.Bold,
                     color = EazColors.TextPrimary,
@@ -1739,7 +1771,8 @@ fun ProductDetailScreen(
                 )
                 if (quantity > 1) {
                     Text(
-                        "CHF %.2f each".format(unitPriceAfterDiscount),
+                        t("eaz.pdp.each_price", "{{amount}} each")
+                            .replace("{{amount}}", ShopCurrency.format(unitPriceAfterDiscount, currencyCode)),
                         style = MaterialTheme.typography.labelSmall,
                         color = EazColors.TextSecondary,
                         maxLines = 1,
@@ -1773,7 +1806,9 @@ fun ProductDetailScreen(
                         modifier = Modifier.size(14.dp),
                     )
                     Text(
-                        "ca. $deliveryDate",
+                        t("eaz.pdp.delivery_estimate", "Est. {{ date }}")
+                            .replace("{{ date }}", deliveryDate)
+                            .replace("{{date}}", deliveryDate),
                         style = MaterialTheme.typography.labelSmall,
                         color = EazColors.TextSecondary,
                         maxLines = 1,
@@ -1781,7 +1816,7 @@ fun ProductDetailScreen(
                 }
                 if (comparePrice != null && comparePrice > displayPrice) {
                     Text(
-                        "CHF %.2f".format(comparePrice),
+                        ShopCurrency.format(comparePrice, currencyCode),
                         style = MaterialTheme.typography.labelSmall,
                         color = EazColors.TextSecondary,
                         textDecoration = TextDecoration.LineThrough,
@@ -1981,7 +2016,7 @@ fun ProductDetailScreen(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.Favorite, contentDescription = null, tint = EazColors.Orange, modifier = Modifier.size(24.dp))
                     Text(
-                        if (tokenStore.getOwnerId()?.isNotBlank() == true) "Added to favorites" else "Login to save favorites",
+                        favoriteToastMessage,
                         style = MaterialTheme.typography.bodyLarge,
                         color = Color.White
                     )
@@ -2148,7 +2183,7 @@ fun ProductDetailScreen(
         onDismiss = { showQuantityDiscountModal = false },
         unitPrice = price,
         quantity = quantity,
-        currencyLabel = "CHF",
+        currencyLabel = currencyCode,
         t = t,
     )
 }

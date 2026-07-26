@@ -77,7 +77,8 @@ internal fun ShopUploadNativeSheet(
     translationStore: TranslationStore,
     translation: (String, String) -> String,
     onDismiss: () -> Unit,
-    onRequireLogin: () -> Unit
+    onRequireLogin: () -> Unit,
+    catalogProducts: List<CatalogProduct> = emptyList()
 ) {
     fun t(key: String, def: String) = translationStore.t(key, def)
 
@@ -88,6 +89,7 @@ internal fun ShopUploadNativeSheet(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var success by remember { mutableStateOf(false) }
+    var completedJobId by remember { mutableStateOf<String?>(null) }
     var processedBytes by remember { mutableStateOf<ByteArray?>(null) }
     var cropRect by remember { mutableStateOf(CropRect.FULL) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -197,6 +199,21 @@ internal fun ShopUploadNativeSheet(
                     ShopSheetPrimaryButton(onClick = onRequireLogin, modifier = Modifier.fillMaxWidth()) {
                         Text(translation("creator.shop_create_product.sign_in", "Sign in"))
                     }
+                } else if (success && !completedJobId.isNullOrBlank() && !ownerId.isNullOrBlank()) {
+                    ShopPostGenerateActionsPanel(
+                        jobId = completedJobId!!,
+                        product = product,
+                        catalogProducts = catalogProducts.ifEmpty { listOf(product) },
+                        api = api,
+                        ownerId = ownerId,
+                        translation = translation,
+                        onDismissSheet = onDismiss,
+                        onRegenerate = {
+                            success = false
+                            completedJobId = null
+                            error = null
+                        }
+                    )
                 } else if (success) {
                     Text(
                         translation(
@@ -427,6 +444,7 @@ internal fun ShopUploadNativeSheet(
                                             return@launch
                                         }
                                         pollShopDesignJob(api, jobId)
+                                        completedJobId = jobId
                                         success = true
                                     } catch (e: Exception) {
                                         error = e.message ?: "error"
