@@ -473,6 +473,8 @@ fun ProductDetailScreen(
     onNavigateToCreator: ((String) -> Unit)? = null,
     onPosterArOpen: ((PosterArSessionConfig) -> Unit)? = null,
     favoriteEdit: FavoriteEditContext? = null,
+    /** Deep-link / query preselect (`eaz_variant_id`) when not editing a favorite. */
+    initialVariantId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val api = remember { ShopifyProductsApi() }
@@ -685,7 +687,8 @@ fun ProductDetailScreen(
         val idx = p.options.indexOfFirst { it.name == opt.name }
         if (idx >= 0) selectedByIndex[idx].orEmpty() else ""
     }.orEmpty()
-    var initialVariantApplied by remember(productHandle, favoriteEdit?.initialVariantId) { mutableStateOf(false) }
+    val preselectVariantId = favoriteEdit?.initialVariantId ?: initialVariantId
+    var initialVariantApplied by remember(productHandle, preselectVariantId) { mutableStateOf(false) }
     var userOverrodeSize by remember(productHandle) { mutableStateOf(false) }
     var sizeAiHint by remember(productHandle) { mutableStateOf<String?>(null) }
 
@@ -695,9 +698,9 @@ fun ProductDetailScreen(
         initialVariantApplied = false
     }
 
-    LaunchedEffect(p.id, favoriteEdit?.initialVariantId, initialVariantApplied) {
-        if (favoriteEdit == null || initialVariantApplied) return@LaunchedEffect
-        val vid = favoriteEdit.initialVariantId?.trim()?.takeIf { it.isNotBlank() && !it.equals("null", true) }?.toLongOrNull()
+    LaunchedEffect(p.id, preselectVariantId, initialVariantApplied) {
+        if (initialVariantApplied) return@LaunchedEffect
+        val vid = preselectVariantId?.trim()?.takeIf { it.isNotBlank() && !it.equals("null", true) }?.toLongOrNull()
             ?: return@LaunchedEffect
         val variant = p.variants.find { it.id == vid } ?: return@LaunchedEffect
         val optionValues = listOfNotNull(variant.option1, variant.option2, variant.option3)

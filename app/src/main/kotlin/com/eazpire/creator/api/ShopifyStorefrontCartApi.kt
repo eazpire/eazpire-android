@@ -147,6 +147,45 @@ class ShopifyStorefrontCartApi(
         }
     }
 
+    /**
+     * Update line quantities. Pass quantity 0 to remove a line.
+     * Worker: `op=storefront-cart-line-update`
+     */
+    suspend fun updateLines(
+        cartId: String,
+        lines: List<Pair<String, Int>>,
+    ): AddResult = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("cartId", cartId)
+            put("lines", JSONArray().apply {
+                lines.forEach { (lineId, qty) ->
+                    put(JSONObject().apply {
+                        put("id", lineId)
+                        put("quantity", qty.coerceAtLeast(0))
+                    })
+                }
+            })
+        }
+        val request = Request.Builder()
+            .url("$workerUrl/apps/creator-dispatch?op=storefront-cart-line-update")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .addHeader("Content-Type", "application/json")
+            .build()
+        try {
+            val response = client.newCall(request).execute()
+            val respBody = response.body?.string() ?: "{}"
+            val json = JSONObject(respBody)
+            val ok = json.optBoolean("ok", false)
+            AddResult(
+                ok = ok,
+                cart = if (ok) parseCart(json) else null,
+                message = json.optString("message").takeIf { it.isNotBlank() }
+            )
+        } catch (e: Exception) {
+            AddResult(ok = false, cart = null, message = e.message)
+        }
+    }
+
     suspend fun updateBuyerIdentity(cartId: String, customerAccessToken: String): Boolean = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("cartId", cartId)

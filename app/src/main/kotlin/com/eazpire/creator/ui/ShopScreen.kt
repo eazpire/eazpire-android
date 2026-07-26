@@ -209,6 +209,8 @@ fun ShopScreen(
     var shopContentReloadNonce by remember { mutableIntStateOf(0) }
     var favoritesModalVisible by remember { mutableStateOf(false) }
     var favoriteEditContext by remember { mutableStateOf<FavoriteEditContext?>(null) }
+    /** Deep-link `eaz_variant_id` / `variant` for ProductModal preselect. */
+    var productModalInitialVariantId by remember { mutableStateOf<String?>(null) }
     var eazyChatVisible by remember { mutableStateOf(false) }
     var eazyStartTab by remember { mutableStateOf(EazySidebarTab.Chat) }
 
@@ -712,7 +714,12 @@ fun ShopScreen(
             }
             path.startsWith("/products/") -> {
                 val handle = path.removePrefix("/products/").trimEnd('/').substringBefore("?")
-                if (handle.isNotBlank()) productModalHandleState.value = handle
+                if (handle.isNotBlank()) {
+                    productModalInitialVariantId =
+                        uri.getQueryParameter("eaz_variant_id")
+                            ?: uri.getQueryParameter("variant")
+                    productModalHandleState.value = handle
+                }
             }
             path.startsWith("/collections/") -> {
                 val handle = path.removePrefix("/collections/").trimEnd('/').substringBefore("?")
@@ -1440,24 +1447,28 @@ fun ShopScreen(
                     productHandle = modalHandle,
                     onDismiss = {
                         favoriteEditContext = null
+                        productModalInitialVariantId = null
                         productModalHandleState.value = null
                     },
                     tokenStore = tokenStore,
                     onTermsClick = { termsModalVisible = true },
                     onNavigateToCreator = { name ->
                         favoriteEditContext = null
+                        productModalInitialVariantId = null
                         productModalHandleState.value = null
                         selectedCreatorName = name
                     },
                     onNavigateToProduct = { handle ->
                         if (handle.isNotBlank()) {
                             favoriteEditContext = null
+                            productModalInitialVariantId = null
                             productModalHandleState.value = handle
                         }
                     },
                     onPosterArOpen = onPosterArOpen,
                     posterArActive = posterArActive,
                     favoriteEdit = favoriteEditContext,
+                    initialVariantId = productModalInitialVariantId,
                 )
             }
         }

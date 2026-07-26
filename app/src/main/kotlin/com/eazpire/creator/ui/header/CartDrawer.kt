@@ -23,7 +23,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -45,8 +48,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -100,24 +104,61 @@ fun CartDrawer(
     var cart by remember { mutableStateOf<ShopifyStorefrontCartApi.CartResult?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var lineUpdating by remember { mutableStateOf(false) }
+    var updateError by remember { mutableStateOf<String?>(null) }
     var promoByHandle by remember { mutableStateOf<Map<String, PromoResolveRow>>(emptyMap()) }
     var characterDiscountSubtitle by remember { mutableStateOf<String?>(null) }
     var characterDiscountApplying by remember { mutableStateOf(false) }
     var appliedCharacterDiscountCode by remember { mutableStateOf<String?>(null) }
     var characterDiscountError by remember { mutableStateOf<String?>(null) }
 
+    fun applyCartResult(result: ShopifyStorefrontCartApi.CartResult?) {
+        cart = result
+        if (result == null) {
+            cartStore.clear()
+            AppCartStore.clear()
+        } else {
+            cartStore.cartId = result.cartId
+            AppCartStore.setCount(result.itemCount)
+        }
+    }
+
+    suspend fun setLineQuantity(lineId: String, quantity: Int) {
+        val cartId = cartStore.cartId ?: return
+        lineUpdating = true
+        updateError = null
+        try {
+            val res = withContext(Dispatchers.IO) {
+                api.updateLines(cartId, listOf(lineId to quantity))
+            }
+            if (res.ok) {
+                applyCartResult(res.cart)
+            } else {
+                updateError = res.message?.takeIf { it.isNotBlank() }
+                    ?: t("eaz.cart.update_error", "Could not update cart. Please try again.")
+            }
+        } catch (e: Exception) {
+            updateError = e.message ?: t("eaz.cart.update_error", "Could not update cart. Please try again.")
+        } finally {
+            lineUpdating = false
+        }
+    }
+
     LaunchedEffect(visible) {
         if (!visible) return@LaunchedEffect
         loading = true
         error = null
+        updateError = null
         val cartId = cartStore.cartId
         if (cartId != null) {
-            cart = withContext(Dispatchers.IO) { api.getCart(cartId) }
-            if (cart == null) {
+            val loaded = withContext(Dispatchers.IO) { api.getCart(cartId) }
+            if (loaded == null) {
                 cartStore.clear()
                 AppCartStore.clear()
+                cart = null
+                error = t("eaz.cart.load_error", "Could not load cart. Please try again.")
             } else {
-                AppCartStore.setCount(cart!!.itemCount)
+                applyCartResult(loaded)
             }
         } else {
             cart = null
@@ -281,6 +322,20 @@ fun CartDrawer(
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
+                                updateError?.let { msg ->
+                                    item(key = "update-error") {
+                                        Text(
+                                            text = msg,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFFB91C1C),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFFFFE4E6))
+                                                .padding(12.dp),
+                                        )
+                                    }
+                                }
                                 if (nearestDeadline != null) {
                                     item(key = "mascot") {
                                         CartPromoMascotBanner(deadlineMs = nearestDeadline, t = t)
@@ -290,6 +345,23 @@ fun CartDrawer(
                                     CartLineItem(
                                         line = line,
                                         promo = promoByHandle[line.productHandle],
+                                        updating = lineUpdating,
+                                        onDecrease = {
+                                            scope.launch {
+                                                setLineQuantity(line.id, (line.quantity - 1).coerceAtLeast(0))
+                                            }
+                                        },
+                                        onIncrease = {
+                                            scope.launch {
+                                                setLineQuantity(line.id, line.quantity + 1)
+                                            }
+                                        },
+                                        onRemove = {
+                                            scope.launch {
+                                                setLineQuantity(line.id, 0)
+                                            }
+                                        },
+                                        t = t,
                                     )
                                 }
                             }
@@ -513,7 +585,12 @@ private fun CartPromoMascotBanner(
 @Composable
 private fun CartLineItem(
     line: ShopifyStorefrontCartApi.CartLine,
-    promo: PromoResolveRow?
+    promo: PromoResolveRow?,
+    updating: Boolean,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+    onRemove: () -> Unit,
+    t: (String, String) -> String,
 ) {
     val showPromo = promo?.promoSlotApplies == true &&
         promo.beforePrice != null &&
@@ -570,18 +647,75 @@ private fun CartLineItem(
                         color = EazColors.TextSecondary,
                         textDecoration = TextDecoration.LineThrough
                     )
-                    Text(
-                        text = " × ${line.quantity}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = EazColors.TextSecondary
-                    )
                 }
             } else {
                 Text(
-                    text = "${line.priceAmount} ${line.currencyCode} × ${line.quantity}",
+                    text = "${line.priceAmount} ${line.currencyCode}",
                     style = MaterialTheme.typography.labelSmall,
                     color = EazColors.TextSecondary
                 )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                IconButton(
+                    onClick = onDecrease,
+                    enabled = !updating,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .semantics {
+                            contentDescription = t("eaz.cart.decrease_qty", "Decrease quantity")
+                        },
+                ) {
+                    Icon(
+                        Icons.Default.Remove,
+                        contentDescription = null,
+                        tint = EazColors.TextPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Text(
+                    text = "${line.quantity}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = EazColors.TextPrimary,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                IconButton(
+                    onClick = onIncrease,
+                    enabled = !updating,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .semantics {
+                            contentDescription = t("eaz.cart.increase_qty", "Increase quantity")
+                        },
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        tint = EazColors.TextPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                IconButton(
+                    onClick = onRemove,
+                    enabled = !updating,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .semantics {
+                            contentDescription = t("eaz.cart.remove_item", "Remove item")
+                        },
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }

@@ -35,6 +35,7 @@ fun ProductModal(
     /** True while Poster AR fullscreen viewer is open — sheet hides but stays mounted. */
     posterArActive: Boolean = false,
     favoriteEdit: FavoriteEditContext? = null,
+    initialVariantId: String? = null,
     modifier: Modifier = Modifier
 ) {
     // #region agent log
@@ -74,6 +75,7 @@ fun ProductModal(
                 onNavigateToProduct = onNavigateToProduct,
                 onPosterArOpen = posterArOpen,
                 favoriteEdit = favoriteEdit,
+                initialVariantId = initialVariantId,
                 modifier = Modifier.fillMaxWidth().fillMaxHeight()
             )
         }
