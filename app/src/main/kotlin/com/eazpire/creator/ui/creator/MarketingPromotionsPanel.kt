@@ -877,7 +877,7 @@ fun MarketingPromotionsPanel(
                         Text(
                             text = translationStore.t(
                                 "creator.promotions.shop_slot_hint",
-                                "In the shop, promotional prices apply only during short daily windows for each country (automatic). Outside those windows, customers see regular prices."
+                                "In the shop, promotional prices apply for the full duration of each flash sale (24/7). Auto-promotions rotate products across creator accounts continuously."
                             ),
                             fontSize = 11.sp,
                             color = Color.White.copy(alpha = 0.45f),

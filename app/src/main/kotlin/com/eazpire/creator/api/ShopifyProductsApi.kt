@@ -54,9 +54,9 @@ class ShopifyProductsApi(
         val promotionEndsAtMs: Long? = null,
         /** In-slot: higher price for strike-through. */
         val promoBeforePrice: Double? = null,
-        /** Outside slot: next daily window start (ms). */
+        /** Outside slot: next campaign window start (ms). Legacy; unused with 24/7 promos. */
         val promoNextWindowStartsAtMs: Long? = null,
-        /** True when promo campaign active but outside the 4h window (worker). */
+        /** True when promo campaign active but outside display window (legacy; unused with 24/7). */
         val promoOutsideSlot: Boolean = false,
         /** Outside slot: lower promo price when the window opens (optional). */
         val promoPreviewPrice: Double? = null,
