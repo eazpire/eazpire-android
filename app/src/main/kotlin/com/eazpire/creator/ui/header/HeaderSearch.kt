@@ -32,8 +32,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -45,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -103,6 +107,8 @@ fun HeaderSearch(
     val suggestionsLabel = store?.t("eaz.search.section_suggestions", "Suggestions") ?: "Suggestions"
     val productsLabel = store?.t("eaz.search.section_products", "Products") ?: "Products"
     val loadingMoreText = store?.t("eaz.search.loading_more", "Loading more results…") ?: "Loading more results…"
+    val refSearchAria = store?.t("eaz.reference_search.open_aria", "Reference search with image")
+        ?: "Reference search with image"
 
     val sectionTitleStyle = TextStyle(
         fontSize = 11.sp,
@@ -120,6 +126,21 @@ fun HeaderSearch(
     var loading by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ShopifyPredictiveSearchApi.PredictiveSearchState?>(null) }
+    var showRefSearch by remember { mutableStateOf(false) }
+    var refBadgeCount by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(fullscreen, ownerId, creatorApi) {
+        if (!fullscreen || ownerId.isBlank() || creatorApi == null) {
+            refBadgeCount = 0
+            return@LaunchedEffect
+        }
+        try {
+            val res = creatorApi.referenceSearchBadge(ownerId)
+            refBadgeCount = res.optInt("count", 0)
+        } catch (_: Exception) {
+            refBadgeCount = 0
+        }
+    }
 
     LaunchedEffect(fullscreen) {
         if (fullscreen) {
@@ -213,19 +234,38 @@ fun HeaderSearch(
                     }
                 }),
                 trailingIcon = {
-                    IconButton(onClick = {
-                        val q = query.trim()
-                        if (q.isNotBlank()) {
-                            onSubmitSearchQuery(q)
-                        } else {
-                            onSearch()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (fullscreen && creatorApi != null && ownerId.isNotBlank()) {
+                            IconButton(onClick = { showRefSearch = true }) {
+                                BadgedBox(
+                                    badge = {
+                                        if (refBadgeCount > 0) {
+                                            Badge { Text(refBadgeCount.coerceAtMost(9).toString()) }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AttachFile,
+                                        contentDescription = refSearchAria,
+                                        tint = EazColors.Orange
+                                    )
+                                }
+                            }
                         }
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = EazColors.Orange
-                        )
+                        IconButton(onClick = {
+                            val q = query.trim()
+                            if (q.isNotBlank()) {
+                                onSubmitSearchQuery(q)
+                            } else {
+                                onSearch()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = EazColors.Orange
+                            )
+                        }
                     }
                 }
             )
@@ -276,6 +316,16 @@ fun HeaderSearch(
                 )
             }
         }
+    }
+
+    if (showRefSearch && creatorApi != null && ownerId.isNotBlank()) {
+        ReferenceSearchModal(
+            visible = true,
+            ownerId = ownerId,
+            creatorApi = creatorApi,
+            onDismiss = { showRefSearch = false },
+            onNavigateToUrl = onNavigateToUrl,
+        )
     }
 }
 

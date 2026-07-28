@@ -4216,6 +4216,66 @@ class CreatorApi(
             ),
         ),
     )
+
+    // ——— Reference Search (IDEA-033 / PARITY-REF-SEARCH-001) ———
+
+    suspend fun referenceSearchBadge(ownerId: String): JSONObject =
+        call("reference-search-badge", mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId))
+
+    suspend fun referenceSearchDaily(ownerId: String): JSONObject =
+        call("reference-search-daily", mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId))
+
+    suspend fun referenceSearchList(ownerId: String): JSONObject =
+        call("reference-search-list", mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId))
+
+    suspend fun referenceSearchGet(ownerId: String, searchId: String): JSONObject =
+        call(
+            "reference-search-get",
+            mapOf(
+                "owner_id" to ownerId,
+                "logged_in_customer_id" to ownerId,
+                "search_id" to searchId,
+            ),
+        )
+
+    suspend fun referenceSearchOpen(ownerId: String, searchId: String): JSONObject =
+        postJsonBodyOp(
+            "reference-search-open",
+            JSONObject().put("owner_id", ownerId).put("search_id", searchId),
+            mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+        )
+
+    suspend fun referenceSearchDelete(ownerId: String, searchId: String): JSONObject =
+        postJsonBodyOp(
+            "reference-search-delete",
+            JSONObject().put("owner_id", ownerId).put("search_id", searchId),
+            mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+        )
+
+    suspend fun referenceSearchStartMultipart(
+        ownerId: String,
+        imageBytes: ByteArray,
+        fileName: String,
+        mimeType: String = "image/jpeg",
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val url =
+            "$baseUrl/apps/creator-dispatch?op=reference-search-start&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+        val mediaType = mimeType.toMediaType()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("owner_id", ownerId)
+            .addFormDataPart("logged_in_customer_id", ownerId)
+            .addFormDataPart("image", fileName, okhttp3.RequestBody.create(mediaType, imageBytes))
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        JSONObject(response.body?.string() ?: "{}")
+    }
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)
