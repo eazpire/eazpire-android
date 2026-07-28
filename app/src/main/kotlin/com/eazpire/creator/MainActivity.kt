@@ -56,11 +56,15 @@ class MainActivity : ComponentActivity() {
         /** Creator Settings → Creator Codes (invite / redeemed push). */
         const val EXTRA_OPEN_CREATOR_CODES = "eaz_open_creator_codes"
         const val EXTRA_CREATOR_CODE_PREFILL = "eaz_creator_code_prefill"
+        /** Publish Assist pending sheet (IDEA-050). */
+        const val EXTRA_OPEN_PUBLISH_ASSIST = "eaz_open_publish_assist"
+        const val EXTRA_PUBLISH_ASSIST_TAB = "eaz_publish_assist_tab"
         /** Wallet → Gift Cards → Won (app install bonus push). */
         const val EXTRA_OPEN_GIFT_CARDS_WON = "eaz_open_gift_cards_won"
     }
 
     data class PendingCreatorCodesNav(val prefillCode: String? = null)
+    data class PendingPublishAssistNav(val tab: String = "pending")
 
     val pendingDeepLink = mutableStateOf<Uri?>(null)
     /** When non-null, open Eazy chat with this tab (from push / local notification tap). */
@@ -82,6 +86,7 @@ class MainActivity : ComponentActivity() {
     val pendingCreatorInactiveDesigns = mutableStateOf(false)
     /** Creator Settings → Creator Codes (from FCM / in-app notification). */
     val pendingCreatorCodesNav = mutableStateOf<PendingCreatorCodesNav?>(null)
+    val pendingPublishAssistNav = mutableStateOf<PendingPublishAssistNav?>(null)
     val pendingOpenGiftCardsWon = mutableStateOf(false)
     /** Hoisted above ShopScreen — avoids Dialog+BottomSheet conflicts when opening Poster AR. */
     val posterArSessionConfig = mutableStateOf<PosterArSessionConfig?>(null)
@@ -166,6 +171,7 @@ class MainActivity : ComponentActivity() {
                             pendingTradeOfferId = pendingTradeOfferId,
                             pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
                             pendingCreatorCodesNav = pendingCreatorCodesNav,
+                            pendingPublishAssistNav = pendingPublishAssistNav,
                             pendingOpenGiftCardsWon = pendingOpenGiftCardsWon,
                             posterArActive = activePosterAr != null,
                             onPosterArOpen = { posterArSessionConfig.value = it },
@@ -297,6 +303,10 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_CODES, false)) {
             val prefill = intent.getStringExtra(EXTRA_CREATOR_CODE_PREFILL)?.trim()?.takeIf { it.isNotBlank() }
             pendingCreatorCodesNav.value = PendingCreatorCodesNav(prefillCode = prefill)
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_PUBLISH_ASSIST, false)) {
+            val tab = intent.getStringExtra(EXTRA_PUBLISH_ASSIST_TAB)?.trim()?.ifBlank { "pending" } ?: "pending"
+            pendingPublishAssistNav.value = PendingPublishAssistNav(tab = tab)
         }
         if (intent.getBooleanExtra(EXTRA_OPEN_GIFT_CARDS_WON, false)) {
             pendingOpenGiftCardsWon.value = true

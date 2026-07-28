@@ -4276,6 +4276,46 @@ class CreatorApi(
         val response = client.newCall(request).execute()
         JSONObject(response.body?.string() ?: "{}")
     }
+
+    suspend fun referenceSearchCreationSave(ownerId: String, searchId: String, slot: Int): JSONObject =
+        postJsonBodyOp(
+            "reference-search-creation-save",
+            JSONObject()
+                .put("owner_id", ownerId)
+                .put("search_id", searchId)
+                .put("slot", slot),
+            mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+        )
+
+    suspend fun referenceSearchCreationRemove(ownerId: String, searchId: String, slot: Int): JSONObject =
+        postJsonBodyOp(
+            "reference-search-creation-remove",
+            JSONObject()
+                .put("owner_id", ownerId)
+                .put("search_id", searchId)
+                .put("slot", slot),
+            mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+        )
+
+    suspend fun listPublishAssistPending(ownerId: String): JSONObject =
+        call(
+            "list-publish-assist-pending",
+            mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+        )
+
+    suspend fun resolvePublishAssistRequest(
+        ownerId: String,
+        requestId: String,
+        action: String,
+    ): JSONObject =
+        postJsonBodyOp(
+            "resolve-publish-assist-request",
+            JSONObject()
+                .put("owner_id", ownerId)
+                .put("request_id", requestId)
+                .put("action", action),
+            mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
+        )
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)

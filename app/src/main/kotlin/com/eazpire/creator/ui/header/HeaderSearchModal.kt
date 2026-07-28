@@ -28,6 +28,7 @@ fun HeaderSearchModal(
     ownerId: String = "",
     creatorApi: CreatorApi? = null,
     mockPreviewRevision: Int = 0,
+    onCreateProductFromRefSearch: (RefSearchCreateProductRequest) -> Unit = {},
 ) {
     if (!visible) return
 
@@ -68,6 +69,10 @@ fun HeaderSearchModal(
                 mockPreviewRevision = mockPreviewRevision,
                 placeholder = placeholder,
                 fullscreen = true,
+                onCreateProductFromRefSearch = { req ->
+                    onCreateProductFromRefSearch(req)
+                    onDismiss()
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }

@@ -94,6 +94,11 @@ object EazNotificationDisplay {
                         putExtra(MainActivity.EXTRA_CREATOR_CODE_PREFILL, it)
                     }
                 }
+                "publish_assist", "open_publish_assist", "publish-assist" -> {
+                    putExtra(MainActivity.EXTRA_OPEN_PUBLISH_ASSIST, true)
+                    val tab = (extras["open_tab"] ?: extras["tab"] ?: "pending").trim().ifBlank { "pending" }
+                    putExtra(MainActivity.EXTRA_PUBLISH_ASSIST_TAB, tab)
+                }
                 "gift_cards_won", "voucher_gift_cards_won", "gift_cards_rewards" -> {
                     putExtra(MainActivity.EXTRA_OPEN_GIFT_CARDS_WON, true)
                 }

@@ -87,6 +87,7 @@ fun MainHeader(
     creatorCodeProfileHintActive: Boolean = false,
     onSearchNavigate: (String) -> Unit = {},
     onSearchQuerySubmit: (String) -> Unit = {},
+    onCreateProductFromRefSearch: (RefSearchCreateProductRequest) -> Unit = {},
     onWalletClick: () -> Unit = {},
     onCountryChange: (String) -> Unit = {},
     onLanguageChange: (String) -> Unit = {},
@@ -370,7 +371,8 @@ fun MainHeader(
             onNavigateToUrl = onSearchNavigate,
             ownerId = ownerId,
             creatorApi = api,
-            mockPreviewRevision = mockPreviewRevision
+            mockPreviewRevision = mockPreviewRevision,
+            onCreateProductFromRefSearch = onCreateProductFromRefSearch,
         )
         CartDrawer(
             visible = cartDrawerVisible,

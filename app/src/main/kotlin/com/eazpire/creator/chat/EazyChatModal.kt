@@ -174,6 +174,7 @@ private data class EazyNotifRow(
     /** Creator Code invite: prefill redeem field when opening Creator Settings. */
     val creatorCodePrefill: String? = null,
     val opensCreatorCodes: Boolean = false,
+    val opensPublishAssist: Boolean = false,
 )
 
 private data class EazySystemJobRow(
@@ -248,6 +249,11 @@ private fun isCreatorCodeNotificationCategory(category: String?): Boolean {
     return c.startsWith("creator_code")
 }
 
+private fun isPublishAssistNotificationCategory(category: String?): Boolean {
+    val c = category?.lowercase()?.trim().orEmpty()
+    return c.startsWith("publish_assist")
+}
+
 /**
  * Reads `data` from user or system notification rows (string JSON or object).
  * Covers design/hero/video/product jobs: thumbnail_url, preview_url, result.*, product_image_url, etc.
@@ -319,6 +325,12 @@ private fun parseNotifications(
         val cat = o.optString("category", o.optString("event_type", "")).takeIf { it.isNotBlank() }
         val isCreatorCode = isCreatorCodeNotificationCategory(cat)
         val dataObj = extractNotificationDataObject(o)
+        val openTarget = dataObj?.optString("open_target", "")?.lowercase()?.trim().orEmpty()
+        val isPublishAssist =
+            isPublishAssistNotificationCategory(cat) ||
+                openTarget == "publish_assist" ||
+                openTarget == "open_publish_assist" ||
+                dataObj?.optString("action", "")?.lowercase() == "open_publish_assist"
         val prefill = if (isCreatorCode) {
             dataObj?.optString("code", "")?.trim()?.takeIf { it.isNotBlank() }
         } else {
@@ -336,6 +348,7 @@ private fun parseNotifications(
             previewImageUrl = extractNotificationPreviewUrl(o),
             creatorCodePrefill = prefill,
             opensCreatorCodes = isCreatorCode,
+            opensPublishAssist = isPublishAssist,
         )
     }
 }
@@ -551,6 +564,7 @@ fun EazyChatModal(
     pendingArtifactClaimToken: String? = null,
     onPendingArtifactClaimConsumed: () -> Unit = {},
     onOpenCreatorCodes: (prefillCode: String?) -> Unit = {},
+    onOpenPublishAssist: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -1206,6 +1220,7 @@ fun EazyChatModal(
                                     }
                                 },
                                 onOpenCreatorCodes = onOpenCreatorCodes,
+                                onOpenPublishAssist = onOpenPublishAssist,
                             )
 
                             EazySidebarTab.Jobs -> EazyJobsCombinedPanel(
@@ -1533,6 +1548,7 @@ private fun EazyNotificationsPanel(
     t: (String, String) -> String,
     onMarkRead: (EazyNotifRow) -> Unit,
     onOpenCreatorCodes: (prefillCode: String?) -> Unit = {},
+    onOpenPublishAssist: () -> Unit = {},
 ) {
     val unread = notifications.filter { !it.isRead }
     val read = notifications.filter { it.isRead }
@@ -1584,8 +1600,9 @@ private fun EazyNotificationsPanel(
                             .background(if (!n.isRead) LocalEazyModalPalette.current.accent.copy(alpha = 0.12f) else LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
                             .clickable {
                                 if (!n.isRead) onMarkRead(n)
-                                if (n.opensCreatorCodes) {
-                                    onOpenCreatorCodes(n.creatorCodePrefill)
+                                when {
+                                    n.opensPublishAssist -> onOpenPublishAssist()
+                                    n.opensCreatorCodes -> onOpenCreatorCodes(n.creatorCodePrefill)
                                 }
                             }
                             .padding(12.dp),

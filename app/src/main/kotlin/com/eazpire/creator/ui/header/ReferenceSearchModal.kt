@@ -88,9 +88,24 @@ private data class RefMatchItem(
     val handle: String,
 )
 
+private data class RefCreationItem(
+    val slot: Int,
+    val designId: String,
+    val previewUrl: String,
+    val jobId: String,
+    val status: String,
+    val saveStatus: String,
+    val saveError: String,
+)
+
+data class RefSearchCreateProductRequest(
+    val designUrl: String,
+    val designId: String? = null,
+)
+
 /**
  * Native Reference Search modal (web `#eaz-reference-search-modal`).
- * History list + image upload start + product/design/creation result tabs.
+ * History + upload + product/design/creation tabs with save / create-product handoff.
  */
 @Composable
 fun ReferenceSearchModal(
@@ -99,6 +114,7 @@ fun ReferenceSearchModal(
     creatorApi: CreatorApi,
     onDismiss: () -> Unit,
     onNavigateToUrl: (String) -> Unit = {},
+    onCreateProduct: (RefSearchCreateProductRequest) -> Unit = {},
 ) {
     if (!visible) return
 
@@ -115,12 +131,22 @@ fun ReferenceSearchModal(
     val tabProducts = t("eaz.reference_search.tab_products", "Products")
     val tabDesigns = t("eaz.reference_search.tab_designs", "Designs")
     val tabCreations = t("eaz.reference_search.tab_creations", "New Creations")
+    val subtabAvailable = t("eaz.reference_search.subtab_available", "Available")
+    val subtabSaved = t("eaz.reference_search.subtab_saved", "Saved")
     val emptyProducts = t("eaz.reference_search.empty_products", "No matching products yet.")
     val emptyDesigns = t("eaz.reference_search.empty_designs", "No matching designs yet.")
+    val emptyAvailable = t("eaz.reference_search.empty_available", "No available creations yet.")
+    val emptySaved = t("eaz.reference_search.empty_saved", "Saved creations will appear here.")
     val emptyCreations = t("eaz.reference_search.empty_creations", "New creations will appear here.")
     val loginRequired = t("eaz.reference_search.login_required", "Please log in to use Reference Search.")
     val dailyLimit = t("eaz.reference_search.daily_limit", "Daily search limit reached. Try again tomorrow.")
     val deleteLabel = t("eaz.reference_search.delete", "Delete")
+    val saveLabel = t("eaz.reference_search.save", "Save")
+    val savingLabel = t("eaz.reference_search.saving", "Saving…")
+    val saveFailedLabel = t("eaz.reference_search.save_failed", "Save failed. Try again.")
+    val removeLabel = t("eaz.reference_search.remove", "Remove")
+    val createProductLabel = t("eaz.reference_search.create_product", "Create Product")
+    val previewTitle = t("eaz.reference_search.preview_title", "Creation preview")
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -134,7 +160,10 @@ fun ReferenceSearchModal(
     var detailLoading by remember { mutableStateOf(false) }
     var uploading by remember { mutableStateOf(false) }
     var tab by remember { mutableIntStateOf(0) }
+    var creationsSubtab by remember { mutableIntStateOf(0) } // 0 available, 1 saved
     var banner by remember { mutableStateOf<String?>(null) }
+    var previewCreation by remember { mutableStateOf<RefCreationItem?>(null) }
+    var previewBusy by remember { mutableStateOf(false) }
 
     fun refreshList() {
         if (ownerId.isBlank()) {
@@ -210,11 +239,13 @@ fun ReferenceSearchModal(
         }
     }
 
-    // Poll while selected search is in progress
-    LaunchedEffect(selectedId, detailJson?.optJSONObject("search")?.optString("status")) {
+    // Poll while selected search is in progress OR any creation is saving
+    LaunchedEffect(selectedId, detailJson?.optJSONObject("search")?.optString("status"), detailJson?.optJSONArray("creations")?.toString()) {
         val id = selectedId ?: return@LaunchedEffect
         val status = detailJson?.optJSONObject("search")?.optString("status").orEmpty()
-        if (status in setOf("queued", "analyzing", "matching", "generating")) {
+        val creations = parseCreations(detailJson?.optJSONArray("creations"))
+        val anySaving = creations.any { it.saveStatus == "saving" }
+        if (status in setOf("queued", "analyzing", "matching", "generating") || anySaving) {
             delay(2500)
             try {
                 val res = creatorApi.referenceSearchGet(ownerId, id)
@@ -401,7 +432,14 @@ fun ReferenceSearchModal(
                         ?: "Search"
                     val products = parseMatches(detailJson?.optJSONArray("products"))
                     val designs = parseMatches(detailJson?.optJSONArray("designs"))
-                    val creations = parseCreations(detailJson?.optJSONArray("creations"))
+                    val allCreations = parseCreations(detailJson?.optJSONArray("creations"))
+                    val available = allCreations.filter {
+                        it.saveStatus == "available" || it.saveStatus == "save_failed"
+                    }
+                    val saved = allCreations.filter {
+                        it.saveStatus == "saving" || it.saveStatus == "saved"
+                    }
+                    val creationCount = available.size + saved.size
 
                     Column(Modifier.fillMaxSize()) {
                         Text(
@@ -433,69 +471,256 @@ fun ReferenceSearchModal(
                         ) {
                             RefTabChip("$tabProducts (${products.size})", tab == 0) { tab = 0 }
                             RefTabChip("$tabDesigns (${designs.size})", tab == 1) { tab = 1 }
-                            RefTabChip("$tabCreations (${creations.size})", tab == 2) { tab = 2 }
+                            RefTabChip("$tabCreations ($creationCount)", tab == 2) { tab = 2 }
                         }
                         HorizontalDivider(color = EazColors.TopbarBorder, modifier = Modifier.padding(top = 8.dp))
-                        val items = when (tab) {
-                            1 -> designs
-                            2 -> creations
-                            else -> products
-                        }
-                        val empty = when (tab) {
-                            1 -> emptyDesigns
-                            2 -> emptyCreations
-                            else -> emptyProducts
-                        }
-                        if (items.isEmpty()) {
-                            Text(
-                                empty,
-                                modifier = Modifier.padding(24.dp),
-                                color = EazColors.TextSecondary,
-                                fontSize = 14.sp,
-                            )
-                        } else {
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(2),
-                                contentPadding = PaddingValues(12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxSize(),
-                            ) {
-                                items(items, key = { it.designId + it.previewUrl }) { m ->
-                                    Column(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .border(1.dp, EazColors.TopbarBorder, RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                if (m.handle.isNotBlank()) {
-                                                    onNavigateToUrl("/products/${m.handle}")
-                                                }
-                                            },
+
+                        when (tab) {
+                            2 -> {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    RefTabChip("$subtabAvailable (${available.size})", creationsSubtab == 0) {
+                                        creationsSubtab = 0
+                                    }
+                                    RefTabChip("$subtabSaved (${saved.size})", creationsSubtab == 1) {
+                                        creationsSubtab = 1
+                                    }
+                                }
+                                val creationItems = if (creationsSubtab == 0) available else saved
+                                val empty = when {
+                                    allCreations.isEmpty() -> emptyCreations
+                                    creationsSubtab == 0 -> emptyAvailable
+                                    else -> emptySaved
+                                }
+                                if (creationItems.isEmpty()) {
+                                    Text(
+                                        empty,
+                                        modifier = Modifier.padding(24.dp),
+                                        color = EazColors.TextSecondary,
+                                        fontSize = 14.sp,
+                                    )
+                                } else {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Fixed(2),
+                                        contentPadding = PaddingValues(12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxSize(),
                                     ) {
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(LocalContext.current)
-                                                .data(m.previewUrl)
-                                                .crossfade(true)
-                                                .build(),
-                                            contentDescription = m.title,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .aspectRatio(1f)
-                                                .background(Color(0xFFF5F5F5)),
-                                        )
-                                        Text(
-                                            text = m.title.ifBlank { "Design" },
-                                            modifier = Modifier.padding(8.dp),
-                                            fontSize = 12.sp,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            color = EazColors.TextPrimary,
-                                        )
+                                        items(creationItems, key = { "c${it.slot}-${it.saveStatus}" }) { c ->
+                                            Column(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .border(1.dp, EazColors.TopbarBorder, RoundedCornerShape(10.dp))
+                                                    .clickable { previewCreation = c },
+                                            ) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(LocalContext.current)
+                                                        .data(c.previewUrl)
+                                                        .crossfade(true)
+                                                        .build(),
+                                                    contentDescription = "Creation ${c.slot}",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .aspectRatio(1f)
+                                                        .background(Color(0xFFF5F5F5)),
+                                                )
+                                                Text(
+                                                    text = when (c.saveStatus) {
+                                                        "saving" -> savingLabel
+                                                        "save_failed" -> saveFailedLabel
+                                                        "saved" -> subtabSaved
+                                                        else -> "Creation ${c.slot}"
+                                                    },
+                                                    modifier = Modifier.padding(8.dp),
+                                                    fontSize = 12.sp,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    color = EazColors.TextPrimary,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {
+                                val items = if (tab == 1) designs else products
+                                val empty = if (tab == 1) emptyDesigns else emptyProducts
+                                if (items.isEmpty()) {
+                                    Text(
+                                        empty,
+                                        modifier = Modifier.padding(24.dp),
+                                        color = EazColors.TextSecondary,
+                                        fontSize = 14.sp,
+                                    )
+                                } else {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Fixed(2),
+                                        contentPadding = PaddingValues(12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxSize(),
+                                    ) {
+                                        items(items, key = { it.designId + it.previewUrl }) { m ->
+                                            Column(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .border(1.dp, EazColors.TopbarBorder, RoundedCornerShape(10.dp))
+                                                    .clickable {
+                                                        if (tab == 1 && m.previewUrl.isNotBlank()) {
+                                                            onCreateProduct(
+                                                                RefSearchCreateProductRequest(
+                                                                    designUrl = m.previewUrl,
+                                                                    designId = m.designId.takeIf { it.isNotBlank() },
+                                                                ),
+                                                            )
+                                                            onDismiss()
+                                                        } else if (m.handle.isNotBlank()) {
+                                                            onNavigateToUrl("/products/${m.handle}")
+                                                        }
+                                                    },
+                                            ) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(LocalContext.current)
+                                                        .data(m.previewUrl)
+                                                        .crossfade(true)
+                                                        .build(),
+                                                    contentDescription = m.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .aspectRatio(1f)
+                                                        .background(Color(0xFFF5F5F5)),
+                                                )
+                                                Text(
+                                                    text = m.title.ifBlank { "Design" },
+                                                    modifier = Modifier.padding(8.dp),
+                                                    fontSize = 12.sp,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    color = EazColors.TextPrimary,
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        val preview = previewCreation
+        if (preview != null) {
+            Dialog(onDismissRequest = { if (!previewBusy) previewCreation = null }) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .padding(16.dp),
+                ) {
+                    Text(previewTitle, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Spacer(Modifier.height(12.dp))
+                    AsyncImage(
+                        model = preview.previewUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF5F5F5)),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    if (previewBusy) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = EazColors.Orange,
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(savingLabel, fontSize = 13.sp, color = EazColors.TextSecondary)
+                        }
+                    } else {
+                        val sid = selectedId
+                        if (preview.saveStatus == "available" || preview.saveStatus == "save_failed") {
+                            Button(
+                                onClick = {
+                                    if (sid.isNullOrBlank()) return@Button
+                                    scope.launch {
+                                        previewBusy = true
+                                        try {
+                                            val res = creatorApi.referenceSearchCreationSave(ownerId, sid, preview.slot)
+                                            if (!res.optBoolean("ok", false)) {
+                                                banner = res.optString("message").ifBlank {
+                                                    res.optString("error").ifBlank { saveFailedLabel }
+                                                }
+                                            } else {
+                                                creationsSubtab = 1
+                                                val refreshed = creatorApi.referenceSearchGet(ownerId, sid)
+                                                detailJson = refreshed
+                                            }
+                                        } catch (e: Exception) {
+                                            banner = e.message ?: saveFailedLabel
+                                        } finally {
+                                            previewBusy = false
+                                            previewCreation = null
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text(saveLabel) }
+                        }
+                        if (preview.saveStatus == "saved") {
+                            Button(
+                                onClick = {
+                                    if (preview.previewUrl.isBlank()) return@Button
+                                    onCreateProduct(
+                                        RefSearchCreateProductRequest(
+                                            designUrl = preview.previewUrl,
+                                            designId = preview.designId.takeIf { it.isNotBlank() },
+                                        ),
+                                    )
+                                    previewCreation = null
+                                    onDismiss()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text(createProductLabel) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(
+                            onClick = {
+                                if (sid.isNullOrBlank()) return@TextButton
+                                scope.launch {
+                                    previewBusy = true
+                                    try {
+                                        creatorApi.referenceSearchCreationRemove(ownerId, sid, preview.slot)
+                                        val refreshed = creatorApi.referenceSearchGet(ownerId, sid)
+                                        detailJson = refreshed
+                                    } catch (e: Exception) {
+                                        banner = e.message
+                                    } finally {
+                                        previewBusy = false
+                                        previewCreation = null
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(removeLabel, color = Color(0xFFB91C1C)) }
+                        TextButton(
+                            onClick = { previewCreation = null },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(t("eaz.reference_search.cancel", "Cancel")) }
                     }
                 }
             }
@@ -593,21 +818,25 @@ private fun parseMatches(arr: org.json.JSONArray?): List<RefMatchItem> {
     return out
 }
 
-private fun parseCreations(arr: org.json.JSONArray?): List<RefMatchItem> {
+private fun parseCreations(arr: org.json.JSONArray?): List<RefCreationItem> {
     if (arr == null) return emptyList()
-    val out = mutableListOf<RefMatchItem>()
+    val out = mutableListOf<RefCreationItem>()
     for (i in 0 until arr.length()) {
         val o = arr.optJSONObject(i) ?: continue
+        val saveStatus = o.optString("save_status").ifBlank { "available" }
+        if (saveStatus == "removed") continue
         val preview = o.optString("preview_url")
         val status = o.optString("status")
         if (preview.isBlank() && status != "done") continue
         out.add(
-            RefMatchItem(
-                designId = o.optString("design_id").ifBlank { "c${o.optInt("slot", i)}" },
-                title = "Creation ${o.optInt("slot", i + 1)}",
+            RefCreationItem(
+                slot = o.optInt("slot", i + 1),
+                designId = o.optString("design_id"),
                 previewUrl = preview,
-                score = 0.0,
-                handle = "",
+                jobId = o.optString("job_id"),
+                status = status,
+                saveStatus = saveStatus,
+                saveError = o.optString("save_error"),
             ),
         )
     }

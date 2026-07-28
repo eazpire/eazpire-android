@@ -362,6 +362,8 @@ fun ShopCreateCollectionScreen(
     region: String,
     modifier: Modifier = Modifier,
     ownerId: String? = null,
+    initialDesignUrl: String? = null,
+    initialDesignId: String? = null,
     onProductClick: (CatalogProduct, designUrl: String?) -> Unit,
     onProductsLoaded: (List<CatalogProduct>) -> Unit = {}
 ) {
@@ -370,8 +372,8 @@ fun ShopCreateCollectionScreen(
 
     var catalogTab by remember { mutableStateOf("products") }
     /** When set, show product picker sheet for this design (same UX as web Create Product modal). */
-    var pickerDesignUrl by remember { mutableStateOf<String?>(null) }
-    var pickerDesignId by remember { mutableStateOf<String?>(null) }
+    var pickerDesignUrl by remember { mutableStateOf(initialDesignUrl) }
+    var pickerDesignId by remember { mutableStateOf(initialDesignId) }
     var pickerProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
     var pickerLoading by remember { mutableStateOf(false) }
 

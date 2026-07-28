@@ -77,6 +77,7 @@ import com.eazpire.creator.ui.footer.CollapsibleShopFooter
 import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.creator.CreatorHeaderEazyStartBubble
 import com.eazpire.creator.ui.creator.CreatorMainScreen
+import com.eazpire.creator.ui.creator.PublishAssistPendingModal
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.home.CreatorsIndexScreen
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
@@ -85,6 +86,7 @@ import com.eazpire.creator.ui.header.FavoritesModal
 import com.eazpire.creator.perf.EazPerfTrace
 import com.eazpire.creator.ui.header.MainHeader
 import com.eazpire.creator.ui.header.MenuDrawer
+import com.eazpire.creator.ui.header.RefSearchCreateProductRequest
 import com.eazpire.creator.ui.header.SHOP_CREATE_CATALOG_HANDLE
 import com.eazpire.creator.ui.header.SHOP_CREATE_PAGE_HANDLE
 import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
@@ -120,6 +122,7 @@ fun ShopScreen(
     pendingArtifactClaimToken: MutableState<String?>? = null,
     pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
     pendingCreatorCodesNav: MutableState<MainActivity.PendingCreatorCodesNav?>? = null,
+    pendingPublishAssistNav: MutableState<MainActivity.PendingPublishAssistNav?>? = null,
     pendingOpenGiftCardsWon: MutableState<Boolean>? = null,
     pendingGamesSection: MutableState<String?>? = null,
     pendingTradeOfferId: MutableState<Int?>? = null,
@@ -352,6 +355,8 @@ fun ShopScreen(
     var shopSearchQuery by remember { mutableStateOf<String?>(null) }
     var shopCreateActive by remember { mutableStateOf(false) }
     var shopCreateStudioPhase by remember { mutableStateOf<ShopCreateProductPhase?>(null) }
+    var shopCreateSeedDesignUrl by remember { mutableStateOf<String?>(null) }
+    var shopCreateSeedDesignId by remember { mutableStateOf<String?>(null) }
     var shopCreateCatalogProducts by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
     var selectedCreatorName by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreatorsIndex by rememberSaveable { mutableStateOf(false) }
@@ -363,12 +368,14 @@ fun ShopScreen(
         isCreatorMode = toCreator
     }
 
-    fun openShopCreate() {
+    fun openShopCreate(seedDesignUrl: String? = null, seedDesignId: String? = null) {
         shopSearchQuery = null
         selectedCreatorName = null
         showCreatorsIndex = false
         selectedCollection = null
         shopCreateStudioPhase = null
+        shopCreateSeedDesignUrl = seedDesignUrl
+        shopCreateSeedDesignId = seedDesignId
         shopCreateActive = true
     }
 
@@ -382,6 +389,8 @@ fun ShopScreen(
             handle == SHOP_CREATE_CATALOG_HANDLE ||
             handle == SHOP_MENU_CREATE_HANDLE
         ) {
+            shopCreateSeedDesignUrl = null
+            shopCreateSeedDesignId = null
             shopCreateActive = true
             selectedCollection = null
             return
@@ -393,6 +402,8 @@ fun ShopScreen(
     fun openShopHome() {
         shopCreateActive = false
         shopCreateStudioPhase = null
+        shopCreateSeedDesignUrl = null
+        shopCreateSeedDesignId = null
         selectedCollection = null
         selectedCreatorName = null
         showCreatorsIndex = false
@@ -456,6 +467,17 @@ fun ShopScreen(
         eazyChatVisible = false
         pendingCreatorCodesSettings = nav
         pendingCreatorCodesNav.value = null
+    }
+
+    var publishAssistVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingPublishAssistNav?.value) {
+        val nav = pendingPublishAssistNav?.value ?: return@LaunchedEffect
+        eazyChatVisible = false
+        publishAssistVisible = true
+        pendingPublishAssistNav.value = null
+        // tab reserved for future Offer/Request tabs; pending is default
+        @Suppress("UNUSED_VARIABLE")
+        val tab = nav.tab
     }
 
     var creatorGenEazyLookLeft by remember { mutableStateOf(false) }
@@ -886,7 +908,13 @@ fun ShopScreen(
                             productModalHandleState.value = null
                             shopSearchQuery = t
                         }
-                    }
+                    },
+                    onCreateProductFromRefSearch = { req ->
+                        openShopCreate(
+                            seedDesignUrl = req.designUrl,
+                            seedDesignId = req.designId,
+                        )
+                    },
                 )
                 ShopMenuBar(
                     onAllClick = {
@@ -965,16 +993,20 @@ fun ShopScreen(
                 )
         ) {
             when {
-                shopCreateActive && shopCreateStudioPhase == null -> ShopCreateCollectionScreen(
+                shopCreateActive && shopCreateStudioPhase == null -> key(shopCreateSeedDesignUrl, shopCreateSeedDesignId) {
+                    ShopCreateCollectionScreen(
                     api = creatorPollApi,
                     region = catalogRegion,
                     ownerId = tokenStore.getOwnerId(),
+                    initialDesignUrl = shopCreateSeedDesignUrl,
+                    initialDesignId = shopCreateSeedDesignId,
                     modifier = Modifier.fillMaxSize(),
                     onProductsLoaded = { shopCreateCatalogProducts = it },
                     onProductClick = { p, designUrl ->
                         shopCreateStudioPhase = ShopCreateProductPhase.StudioCustomize(p, designUrl = designUrl)
                     }
                 )
+                }
                 selectedCreatorName != null -> CreatorProfileScreen(
                     creatorName = selectedCreatorName!!,
                     api = creatorPollApi,
@@ -1309,7 +1341,21 @@ fun ShopScreen(
             switchCreatorMode(toCreator = true, animate = false)
             pendingCreatorCodesSettings = MainActivity.PendingCreatorCodesNav(prefillCode = prefillCode)
         },
+        onOpenPublishAssist = {
+            eazyChatVisible = false
+            publishAssistVisible = true
+        },
     )
+
+    val publishAssistOwnerId = tokenStore.getOwnerId().orEmpty()
+    if (publishAssistVisible && publishAssistOwnerId.isNotBlank()) {
+        PublishAssistPendingModal(
+            visible = true,
+            ownerId = publishAssistOwnerId,
+            creatorApi = creatorPollApi,
+            onDismiss = { publishAssistVisible = false },
+        )
+    }
 
     EazyGuideOverlay(
         creatorApi = eazySyncApi,

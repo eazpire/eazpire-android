@@ -95,6 +95,7 @@ fun HeaderSearch(
     placeholder: String = "Search...",
     /** Full-screen modal: close X beside search field, results fill remaining height */
     fullscreen: Boolean = false,
+    onCreateProductFromRefSearch: (RefSearchCreateProductRequest) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val focusManager = LocalFocusManager.current
@@ -325,6 +326,7 @@ fun HeaderSearch(
             creatorApi = creatorApi,
             onDismiss = { showRefSearch = false },
             onNavigateToUrl = onNavigateToUrl,
+            onCreateProduct = onCreateProductFromRefSearch,
         )
     }
 }
