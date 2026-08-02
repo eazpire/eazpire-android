@@ -77,6 +77,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="eazpire" android:host="smm-oauth-callback" />
             </intent-filter>
+            <!-- Add-from-link / phone-upload bridge (chooser "App" → paste + Extract page) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="eazpire" android:host="phone-upload" />
+            </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

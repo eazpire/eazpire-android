@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.eazpire.creator.ar.poster.PosterArOverlay
 import com.eazpire.creator.ar.poster.PosterArSessionConfig
+import androidx.browser.customtabs.CustomTabsIntent
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.auth.ShopSessionCoordinator
 import com.eazpire.creator.debug.AuthDebugLog
@@ -142,6 +143,7 @@ class MainActivity : ComponentActivity() {
         }
         pendingDeepLink.value = intent?.data
         consumeWearPairDeepLink(intent)
+        consumePhoneUploadDeepLink(intent)
         consumeArtifactsClaimDeepLink(intent)
         consumeSmmOAuthDeepLink(intent)
         consumeIntentExtras(intent)
@@ -218,6 +220,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         intent.data?.let { pendingDeepLink.value = it }
         consumeWearPairDeepLink(intent)
+        consumePhoneUploadDeepLink(intent)
         consumeArtifactsClaimDeepLink(intent)
         consumeSmmOAuthDeepLink(intent)
         consumeIntentExtras(intent)
@@ -241,9 +244,44 @@ class MainActivity : ComponentActivity() {
         if (token != null) pendingWearPairToken.value = token
     }
 
+    /**
+     * Add-from-link / phone-upload QR → "App" choice.
+     * Opens the worker paste+Extract page in a Custom Tab (same UI as Browser path).
+     */
+    private fun consumePhoneUploadDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        val sessionId = data.getQueryParameter("s")?.trim().orEmpty()
+        val isPhoneUploadScheme = data.scheme == "eazpire" && data.host == "phone-upload"
+        val isLegacyPhoneQr =
+            data.scheme == "https" &&
+                data.host == "creator-engine.eazpire.workers.dev" &&
+                data.path?.startsWith("/q/") == true &&
+                sessionId.isNotBlank()
+        if (!isPhoneUploadScheme && !isLegacyPhoneQr) return
+        if (sessionId.isBlank()) return
+        val page = Uri.parse(
+            "https://creator-engine.eazpire.workers.dev/creator-phone-upload?s=" +
+                Uri.encode(sessionId),
+        )
+        try {
+            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, page)
+        } catch (e: Exception) {
+            AuthDebugLog.d("[PHONE UPLOAD] Custom Tab failed: ${e.message}")
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, page))
+            } catch (_: Exception) {
+                // ignore
+            }
+        }
+    }
+
     private fun consumeArtifactsClaimDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
         val raw = data.toString()
+
+        // Phone-upload sessions use /q/{token}?s=… — never treat those as artifact claims.
+        val phoneSession = data.getQueryParameter("s")?.trim().orEmpty()
+        if (phoneSession.isNotBlank() && raw.contains("/q/")) return
 
         data.getQueryParameter("artifact_token")?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
             pendingArtifactClaimToken.value = token

@@ -2,7 +2,11 @@
 
 package com.eazpire.creator.ui.creator
 
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Paint as AndroidPaint
 import android.net.Uri
+import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -37,6 +41,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CopyAll
@@ -55,6 +60,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -62,6 +69,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,11 +79,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.io.ByteArrayOutputStream
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -498,6 +509,8 @@ private fun VideoStudioEditorPanel(
     var redoStack by remember(project.id) { mutableStateOf<List<List<TimelineClip>>>(emptyList()) }
     var playheadMs by remember(project.id) { mutableLongStateOf(0L) }
     var toolsClip by remember { mutableStateOf<TimelineClip?>(null) }
+    var removeObjectClip by remember { mutableStateOf<TimelineClip?>(null) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
 
     fun commitClips(next: List<TimelineClip>) {
         undoStack = undoStack + listOf(clips)
@@ -732,6 +745,14 @@ private fun VideoStudioEditorPanel(
                     }
                 )
                 VideoStudioToolRow(
+                    icon = Icons.Default.AutoFixHigh,
+                    label = t("creator.video_studio.tool_remove_object", "Remove Object"),
+                    onClick = {
+                        removeObjectClip = toolsTarget
+                        toolsClip = null
+                    }
+                )
+                VideoStudioToolRow(
                     icon = Icons.Default.MusicOff,
                     label = t("creator.video_studio.remove_audio", "Remove audio"),
                     onClick = {
@@ -780,6 +801,258 @@ private fun VideoStudioEditorPanel(
             }
         }
     }
+
+    val removeTarget = removeObjectClip
+    if (removeTarget != null) {
+        VideoStudioRemoveObjectSheet(
+            asset = assets.find { it.id == removeTarget.assetId },
+            translationStore = translationStore,
+            onDismiss = { removeObjectClip = null },
+            onSubmit = { maskDataUrl, quality ->
+                scope.launch {
+                    try {
+                        statusMessage = t(
+                            "creator.video_studio.remove_object_processing",
+                            "Removing with standard quality (ProPainter)…"
+                        )
+                        val bytes = withContext(Dispatchers.IO) {
+                            api.videoStudioRemoveObject(
+                                ownerId = ownerId,
+                                assetId = removeTarget.assetId,
+                                maskPngBase64 = maskDataUrl,
+                                quality = quality,
+                            )
+                        }
+                        withContext(Dispatchers.IO) {
+                            api.videoStudioAssetUpload(
+                                ownerId = ownerId,
+                                projectId = project.id,
+                                bytes = bytes,
+                                filename = "cleaned-${removeTarget.assetId}.mp4",
+                                mime = "video/mp4",
+                            )
+                        }
+                        loadAssets()
+                        statusMessage = t(
+                            "creator.video_studio.remove_object_ready",
+                            "Preview ready — play it, then save as a new asset."
+                        )
+                        removeObjectClip = null
+                    } catch (e: Exception) {
+                        statusMessage = e.message?.takeIf { it.isNotBlank() }
+                            ?: t("creator.video_studio.remove_object_failed", "Could not remove the object. Try again or use Standard quality.")
+                    }
+                }
+            },
+        )
+    }
+
+    statusMessage?.let { msg ->
+        LaunchedEffect(msg) {
+            kotlinx.coroutines.delay(3500)
+            if (statusMessage == msg) statusMessage = null
+        }
+    }
+}
+
+@Composable
+private fun VideoStudioRemoveObjectSheet(
+    asset: VideoStudioAsset?,
+    translationStore: TranslationStore,
+    onDismiss: () -> Unit,
+    onSubmit: (maskPngBase64: String, quality: String) -> Unit,
+) {
+    fun t(key: String, fallback: String): String = translationStore.t(key, fallback)
+    var quality by remember { mutableStateOf("standard") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val strokes = remember { mutableStateListOf<List<Offset>>() }
+    var currentStroke by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    var canvasSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+
+    fun exportMaskDataUrl(): String? {
+        val w = canvasSize.width.roundToInt().coerceAtLeast(2)
+        val h = canvasSize.height.roundToInt().coerceAtLeast(2)
+        if (strokes.isEmpty() && currentStroke.isEmpty()) return null
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = AndroidCanvas(bmp)
+        c.drawColor(android.graphics.Color.BLACK)
+        val paint = AndroidPaint().apply {
+            color = android.graphics.Color.WHITE
+            style = AndroidPaint.Style.STROKE
+            strokeWidth = (w / 28f).coerceIn(8f, 48f)
+            strokeCap = AndroidPaint.Cap.ROUND
+            strokeJoin = AndroidPaint.Join.ROUND
+            isAntiAlias = true
+        }
+        val fillPaint = AndroidPaint().apply {
+            color = android.graphics.Color.WHITE
+            style = AndroidPaint.Style.FILL
+            isAntiAlias = true
+        }
+        fun drawStroke(pts: List<Offset>) {
+            if (pts.isEmpty()) return
+            if (pts.size == 1) {
+                c.drawCircle(pts[0].x, pts[0].y, paint.strokeWidth / 2f, fillPaint)
+                return
+            }
+            for (i in 1 until pts.size) {
+                c.drawLine(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, paint)
+            }
+        }
+        strokes.forEach(::drawStroke)
+        drawStroke(currentStroke)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        return "data:image/png;base64,$b64"
+    }
+
+    EazFlowBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = t("creator.video_studio.tool_remove_object", "Remove Object"),
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+            )
+            Text(
+                text = t(
+                    "creator.video_studio.remove_object_hint",
+                    "Pause the video, paint over the watermark or object to remove, then generate a cleaned preview. Standard uses ProPainter; High quality uses BRIA (clips up to 5 seconds)."
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.7f),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(
+                    selected = quality == "standard",
+                    onClick = { quality = "standard" },
+                    colors = RadioButtonDefaults.colors(selectedColor = EazColors.Orange),
+                )
+                Text(
+                    t("creator.video_studio.remove_object_quality_standard", "Standard"),
+                    color = Color.White,
+                    modifier = Modifier.clickable { quality = "standard" },
+                )
+                Spacer(Modifier.width(12.dp))
+                RadioButton(
+                    selected = quality == "high",
+                    onClick = { quality = "high" },
+                    colors = RadioButtonDefaults.colors(selectedColor = EazColors.Orange),
+                )
+                Text(
+                    t("creator.video_studio.remove_object_quality_high", "High quality (≤5s)"),
+                    color = Color.White,
+                    modifier = Modifier.clickable { quality = "high" },
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(9f / 16f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0B0B10))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+            ) {
+                if (!asset?.url.isNullOrBlank()) {
+                    AsyncImage(
+                        model = asset?.thumbnailUrl ?: asset?.url,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { offset -> currentStroke = listOf(offset) },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    currentStroke = currentStroke + change.position
+                                },
+                                onDragEnd = {
+                                    if (currentStroke.isNotEmpty()) strokes.add(currentStroke)
+                                    currentStroke = emptyList()
+                                },
+                                onDragCancel = { currentStroke = emptyList() },
+                            )
+                        },
+                ) {
+                    canvasSize = size
+                    val strokeWidth = (size.minDimension / 28f).coerceIn(8f, 48f)
+                    fun drawPts(pts: List<Offset>) {
+                        if (pts.isEmpty()) return
+                        if (pts.size == 1) {
+                            drawCircle(EazColors.Orange.copy(alpha = 0.85f), strokeWidth / 2f, pts[0])
+                            return
+                        }
+                        val path = Path().apply {
+                            moveTo(pts[0].x, pts[0].y)
+                            for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
+                        }
+                        drawPath(
+                            path,
+                            color = EazColors.Orange.copy(alpha = 0.85f),
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                        )
+                    }
+                    strokes.forEach(::drawPts)
+                    drawPts(currentStroke)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    strokes.clear()
+                    currentStroke = emptyList()
+                    error = null
+                }) {
+                    Text(t("creator.video_studio.remove_object_clear", "Clear mask"), color = Color.White)
+                }
+                Button(
+                    onClick = {
+                        val mask = exportMaskDataUrl()
+                        if (mask == null) {
+                            error = t(
+                                "creator.video_studio.remove_object_paint_first",
+                                "Paint over the object or watermark to remove, then try again."
+                            )
+                            return@Button
+                        }
+                        busy = true
+                        error = null
+                        onSubmit(mask, quality)
+                    },
+                    enabled = !busy && asset != null,
+                    colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                    } else {
+                        Text(t("creator.video_studio.remove_object_preview", "Generate cleaned preview"))
+                    }
+                }
+            }
+            error?.let {
+                Text(it, color = Color(0xFFF87171), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EazFlowBottomSheet(
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    EazBottomSheet(onDismissRequest = onDismissRequest, containerColor = Color(0xFF1F2937), content = content)
 }
 
 @Composable

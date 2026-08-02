@@ -2188,6 +2188,50 @@ class CreatorApi(
         mapOf("owner_id" to ownerId),
     )
 
+    /**
+     * POST ?op=video-studio-remove-object — paint-mask object/watermark removal.
+     * quality: "standard" (ProPainter) | "high" (BRIA, ≤5s).
+     * maskPngBase64: data:image/png;base64,... (white = remove).
+     * Returns cleaned MP4 bytes on success.
+     */
+    suspend fun videoStudioRemoveObject(
+        ownerId: String,
+        assetId: String,
+        maskPngBase64: String,
+        quality: String = "standard",
+    ): ByteArray = withContext(Dispatchers.IO) {
+        val jsonBody = JSONObject()
+            .put("asset_id", assetId)
+            .put("mask_png_base64", maskPngBase64)
+            .put("quality", quality)
+            .toString()
+        val url =
+            "$baseUrl/apps/creator-dispatch?op=video-studio-remove-object" +
+                "&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}" +
+                "&_t=${System.currentTimeMillis()}"
+        val request = Request.Builder()
+            .url(url)
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), jsonBody.toByteArray()))
+            .addHeader("Accept", "video/mp4, application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = client.newCall(request).execute()
+        val body = response.body ?: throw RuntimeException("Empty remove-object response")
+        val contentType = response.header("content-type").orEmpty()
+        if (!response.isSuccessful || contentType.contains("application/json")) {
+            val raw = body.string()
+            val err = try {
+                JSONObject(raw).optString("message").ifBlank {
+                    JSONObject(raw).optString("error", "remove_object_failed")
+                }
+            } catch (_: Exception) {
+                raw.ifBlank { "remove_object_failed" }
+            }
+            throw RuntimeException(err)
+        }
+        body.bytes()
+    }
+
     /** GET ?op=get-creator-code&owner_id=xxx → { is_creator, can_generate, active_code?, ref_url? } */
     suspend fun getCreatorCode(ownerId: String): JSONObject = call(
         "get-creator-code",
