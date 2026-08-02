@@ -114,9 +114,10 @@ private suspend fun fetchNextCollectionBatch(
             collectionHandle = collectionHandle.ifBlank { null },
             limit = PRODUCT_LIST_BATCH,
             cursor = nextCursor,
+            countryCode = countryCode,
         )
         if (r.products.isEmpty() && collectionHandle.isNotBlank() && nextCursor == null) {
-            r = api.getProducts(limit = PRODUCT_LIST_BATCH, cursor = nextCursor)
+            r = api.getProducts(limit = PRODUCT_LIST_BATCH, cursor = nextCursor, countryCode = countryCode)
         }
         val merged = api.mergeShopPromotionOverlay(r.products, countryCode, creatorApi)
         r.copy(products = merged)
@@ -291,9 +292,10 @@ fun CollectionScreen(
                     collectionHandle = collectionHandle.ifBlank { null },
                     limit = 250,
                     cursor = null,
+                    countryCode = countryCode,
                 )
                 if (r.products.isEmpty() && collectionHandle.isNotBlank()) {
-                    r = api.getProducts(limit = 250, cursor = null)
+                    r = api.getProducts(limit = 250, cursor = null, countryCode = countryCode)
                 }
                 api.mergeShopPromotionOverlay(r.products, countryCode, creatorApi)
             }

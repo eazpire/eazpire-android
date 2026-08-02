@@ -260,20 +260,24 @@ suspend fun loadHomeSectionForChip(
     maxProducts: Int,
     chipId: String = "all",
     initialOnly: Boolean = false,
+    countryCode: String? = null,
 ): List<ShopifyProductsApi.ProductItem> = withContext(Dispatchers.IO) {
     val handles = CHIP_COLLECTION_CANDIDATES[chipId] ?: listOf(null)
-    loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts, initialOnly)
+    loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts, initialOnly, countryCode)
 }
 
 suspend fun loadHomeCategoryPools(
     api: ShopifyProductsApi,
     baseCollectionHandle: String?,
     maxProducts: Int,
+    countryCode: String? = null,
 ): HomeCategoryPools = withContext(Dispatchers.IO) {
     coroutineScope {
         CHIP_COLLECTION_CANDIDATES.map { (chipId, handles) ->
             async {
-                val products = loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts)
+                val products = loadProductsForChip(
+                    api, chipId, handles, baseCollectionHandle, maxProducts, countryCode = countryCode
+                )
                 chipId to products
             }
         }.awaitAll().toMap()
@@ -286,6 +290,7 @@ suspend fun loadHomeCategoryPoolsMissingChips(
     baseCollectionHandle: String?,
     maxProducts: Int,
     existing: HomeCategoryPools,
+    countryCode: String? = null,
 ): HomeCategoryPools = withContext(Dispatchers.IO) {
     val out = existing.toMutableMap()
     val missing = CHIP_COLLECTION_CANDIDATES.keys.filter { !out.containsKey(it) }
@@ -294,7 +299,9 @@ suspend fun loadHomeCategoryPoolsMissingChips(
         missing.map { chipId ->
             async {
                 val handles = CHIP_COLLECTION_CANDIDATES[chipId] ?: listOf(null)
-                chipId to loadProductsForChip(api, chipId, handles, baseCollectionHandle, maxProducts)
+                chipId to loadProductsForChip(
+                    api, chipId, handles, baseCollectionHandle, maxProducts, countryCode = countryCode
+                )
             }
         }.awaitAll().forEach { (chipId, products) -> out[chipId] = products }
     }
@@ -308,8 +315,13 @@ private suspend fun loadProductsForChip(
     baseCollectionHandle: String?,
     maxProducts: Int,
     initialOnly: Boolean = false,
+    countryCode: String? = null,
 ): List<ShopifyProductsApi.ProductItem> =
-    loadProductsForChipUpTo(api, chipId, handles, baseCollectionHandle, maxProducts, initialOnly = initialOnly)
+    loadProductsForChipUpTo(
+        api, chipId, handles, baseCollectionHandle, maxProducts,
+        initialOnly = initialOnly,
+        countryCode = countryCode,
+    )
 
 /** Loads up to [maxProducts], optionally stopping after the first batch for fast paint. */
 suspend fun loadProductsForChipUpTo(
@@ -319,6 +331,7 @@ suspend fun loadProductsForChipUpTo(
     baseCollectionHandle: String?,
     maxProducts: Int,
     initialOnly: Boolean = false,
+    countryCode: String? = null,
 ): List<ShopifyProductsApi.ProductItem> {
     val cap = maxProducts.coerceIn(1, HOME_MAX_PRODUCTS)
     val firstBatch = if (initialOnly) HOME_INITIAL_PRODUCTS.coerceAtMost(cap) else cap
@@ -326,7 +339,7 @@ suspend fun loadProductsForChipUpTo(
     var cursor: String? = null
     while (merged.size < firstBatch) {
         val limit = HOME_LAZY_BATCH.coerceAtMost(firstBatch - merged.size)
-        val page = fetchProductsPage(api, chipId, handles, baseCollectionHandle, limit, cursor)
+        val page = fetchProductsPage(api, chipId, handles, baseCollectionHandle, limit, cursor, countryCode)
         if (page.products.isEmpty()) break
         page.products.forEach { p -> merged.putIfAbsent(p.id, p) }
         if (!page.hasNextPage || page.nextCursor.isNullOrBlank()) break
@@ -347,13 +360,24 @@ private suspend fun fetchProductsPage(
     baseCollectionHandle: String?,
     limit: Int,
     cursor: String?,
+    countryCode: String? = null,
 ): ShopifyProductsApi.ProductsResult {
     if (chipId == "all") {
-        return api.getProducts(collectionHandle = baseCollectionHandle, limit = limit, cursor = cursor)
+        return api.getProducts(
+            collectionHandle = baseCollectionHandle,
+            limit = limit,
+            cursor = cursor,
+            countryCode = countryCode,
+        )
     }
     for (handle in handles) {
         if (handle.isNullOrBlank()) continue
-        val result = api.getProducts(collectionHandle = handle, limit = limit, cursor = cursor)
+        val result = api.getProducts(
+            collectionHandle = handle,
+            limit = limit,
+            cursor = cursor,
+            countryCode = countryCode,
+        )
         if (result.products.isNotEmpty()) return result
     }
     return ShopifyProductsApi.ProductsResult(emptyList(), hasNextPage = false, nextCursor = null)

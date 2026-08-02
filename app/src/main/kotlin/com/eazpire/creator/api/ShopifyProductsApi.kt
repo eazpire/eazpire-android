@@ -98,11 +98,12 @@ class ShopifyProductsApi(
         collectionHandle: String? = null,
         searchQuery: String? = null,
         limit: Int = 24,
-        cursor: String? = null
+        cursor: String? = null,
+        countryCode: String? = null,
     ): ProductsResult = withContext(Dispatchers.IO) {
-        var result = fetchFromStorefrontApi(collectionHandle, searchQuery, limit, cursor)
+        var result = fetchFromStorefrontApi(collectionHandle, searchQuery, limit, cursor, countryCode)
         if (result.products.isEmpty() && collectionHandle != null && searchQuery.isNullOrBlank()) {
-            result = fetchFromStorefrontApi(null, null, limit, cursor)
+            result = fetchFromStorefrontApi(null, null, limit, cursor, countryCode)
         }
         if (result.products.isEmpty() && searchQuery.isNullOrBlank()) {
             result = fetchFromProductsJson(collectionHandle, limit, cursor)
@@ -199,7 +200,8 @@ class ShopifyProductsApi(
         collectionHandle: String?,
         searchQuery: String?,
         limit: Int,
-        cursor: String?
+        cursor: String?,
+        countryCode: String? = null,
     ): ProductsResult {
         val url = buildString {
             append("$workerUrl/apps/creator-dispatch?op=get-storefront-products")
@@ -212,6 +214,9 @@ class ShopifyProductsApi(
             }
             cursor?.takeIf { it.isNotBlank() }?.let {
                 append("&cursor=${java.net.URLEncoder.encode(it, "UTF-8")}")
+            }
+            countryCode?.trim()?.uppercase()?.takeIf { it.length == 2 }?.let {
+                append("&country=${java.net.URLEncoder.encode(it, "UTF-8")}")
             }
         }
         return try {

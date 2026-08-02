@@ -310,6 +310,7 @@ class HomeRepository private constructor(context: Context) {
                 maxProducts = limit,
                 chipId = chipId,
                 initialOnly = limit <= HOME_INITIAL_PRODUCTS,
+                countryCode = countryCode,
             )
         }
         memoryCache[key] = CacheEntry(products, System.currentTimeMillis())

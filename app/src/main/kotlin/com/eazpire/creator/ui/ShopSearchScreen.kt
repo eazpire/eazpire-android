@@ -42,11 +42,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.runtime.collectAsState
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.plp.PlpCardDisplay
 import com.eazpire.creator.plp.PlpCardImageResolver
@@ -76,6 +78,8 @@ fun ShopSearchScreen(
 
     val api = remember { ShopifyProductsApi() }
     val context = LocalContext.current
+    val localeStore = remember { LocaleStore(context) }
+    val countryCode by localeStore.countryCode.collectAsState(initial = localeStore.getCountryCodeSync())
     val tokenStore = remember { SecureTokenStore.get(context) }
     val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
@@ -108,7 +112,12 @@ fun ShopSearchScreen(
             loadingMore = true
             try {
                 val r = withContext(Dispatchers.IO) {
-                    api.getProducts(searchQuery = searchQuery.trim(), limit = SEARCH_INITIAL_BATCH, cursor = nextCursor)
+                    api.getProducts(
+                        searchQuery = searchQuery.trim(),
+                        limit = SEARCH_INITIAL_BATCH,
+                        cursor = nextCursor,
+                        countryCode = countryCode,
+                    )
                 }
                 if (r.products.isEmpty()) {
                     hasMore = false
@@ -129,14 +138,19 @@ fun ShopSearchScreen(
         }
     }
 
-    LaunchedEffect(searchQuery, reloadTrigger) {
+    LaunchedEffect(searchQuery, reloadTrigger, countryCode) {
         loading = true
         products = emptyList()
         nextCursor = null
         hasMore = false
         autoLoadPaused = false
         val r = withContext(Dispatchers.IO) {
-            api.getProducts(searchQuery = searchQuery.trim(), limit = SEARCH_INITIAL_BATCH, cursor = null)
+            api.getProducts(
+                searchQuery = searchQuery.trim(),
+                limit = SEARCH_INITIAL_BATCH,
+                cursor = null,
+                countryCode = countryCode,
+            )
         }
         products = r.products
         nextCursor = r.nextCursor
