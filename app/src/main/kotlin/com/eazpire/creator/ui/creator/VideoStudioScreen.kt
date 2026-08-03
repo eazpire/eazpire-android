@@ -924,7 +924,7 @@ private fun VideoStudioRemoveObjectSheet(
             Text(
                 text = t(
                     "creator.video_studio.remove_object_hint",
-                    "Pause the video, paint over the watermark or object to remove, then generate a cleaned preview. Standard uses ProPainter; High quality uses BRIA (clips up to 5 seconds)."
+                    "Pause the video and paint over logos, text, or watermarks. That area is used for the full video: we detect logo/text/watermark inside it and clean every frame (like generative fill for video). Standard works on any length; High quality is limited to 5 seconds."
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.7f),
@@ -936,7 +936,7 @@ private fun VideoStudioRemoveObjectSheet(
                     colors = RadioButtonDefaults.colors(selectedColor = EazColors.Orange),
                 )
                 Text(
-                    t("creator.video_studio.remove_object_quality_standard", "Standard"),
+                    t("creator.video_studio.remove_object_quality_standard", "Standard (full video)"),
                     color = Color.White,
                     modifier = Modifier.clickable { quality = "standard" },
                 )

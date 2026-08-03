@@ -2189,47 +2189,90 @@ class CreatorApi(
     )
 
     /**
-     * POST ?op=video-studio-remove-object — paint-mask object/watermark removal.
-     * quality: "standard" (ProPainter) | "high" (BRIA, ≤5s).
-     * maskPngBase64: data:image/png;base64,... (white = remove).
-     * Returns cleaned MP4 bytes on success.
+     * POST ?op=video-studio-remove-object — start full-video logo/text/watermark cleanup.
+     * quality: "standard" (full length) | "high" (BRIA, ≤5s).
+     * maskPngBase64 / framePngBase64: data:image/…;base64,…
+     * Returns { ok, job_id, … }.
      */
-    suspend fun videoStudioRemoveObject(
+    suspend fun videoStudioRemoveObjectStart(
         ownerId: String,
         assetId: String,
         maskPngBase64: String,
+        framePngBase64: String? = null,
         quality: String = "standard",
-    ): ByteArray = withContext(Dispatchers.IO) {
+    ): JSONObject = withContext(Dispatchers.IO) {
         val jsonBody = JSONObject()
             .put("asset_id", assetId)
             .put("mask_png_base64", maskPngBase64)
             .put("quality", quality)
-            .toString()
+        if (!framePngBase64.isNullOrBlank()) jsonBody.put("frame_png_base64", framePngBase64)
         val url =
             "$baseUrl/apps/creator-dispatch?op=video-studio-remove-object" +
                 "&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}" +
                 "&_t=${System.currentTimeMillis()}"
         val request = Request.Builder()
             .url(url)
-            .post(okhttp3.RequestBody.create("application/json".toMediaType(), jsonBody.toByteArray()))
-            .addHeader("Accept", "video/mp4, application/json")
+            .post(okhttp3.RequestBody.create("application/json".toMediaType(), jsonBody.toString().toByteArray()))
+            .addHeader("Accept", "application/json")
             .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
             .build()
-        val response = client.newCall(request).execute()
-        val body = response.body ?: throw RuntimeException("Empty remove-object response")
-        val contentType = response.header("content-type").orEmpty()
-        if (!response.isSuccessful || contentType.contains("application/json")) {
-            val raw = body.string()
-            val err = try {
-                JSONObject(raw).optString("message").ifBlank {
-                    JSONObject(raw).optString("error", "remove_object_failed")
+        parseJsonResponse(client.newCall(request).execute())
+    }
+
+    /** GET ?op=video-studio-remove-object-status&job_id=… */
+    suspend fun videoStudioRemoveObjectStatus(ownerId: String, jobId: String): JSONObject =
+        call(
+            "video-studio-remove-object-status",
+            mapOf("owner_id" to ownerId, "job_id" to jobId),
+        )
+
+    /**
+     * Full flow: start job, poll until ready, download cleaned MP4 bytes.
+     */
+    suspend fun videoStudioRemoveObject(
+        ownerId: String,
+        assetId: String,
+        maskPngBase64: String,
+        quality: String = "standard",
+        framePngBase64: String? = null,
+    ): ByteArray = withContext(Dispatchers.IO) {
+        val started = videoStudioRemoveObjectStart(ownerId, assetId, maskPngBase64, framePngBase64, quality)
+        if (!started.optBoolean("ok", false)) {
+            throw RuntimeException(
+                started.optString("message").ifBlank {
+                    started.optString("error", "remove_object_failed")
                 }
-            } catch (_: Exception) {
-                raw.ifBlank { "remove_object_failed" }
-            }
-            throw RuntimeException(err)
+            )
         }
-        body.bytes()
+        val jobId = started.optString("job_id")
+        if (jobId.isBlank()) throw RuntimeException("missing_job_id")
+
+        var attempts = 0
+        while (attempts < 120) {
+            val st = videoStudioRemoveObjectStatus(ownerId, jobId)
+            val status = st.optString("status")
+            if (status == "ready") {
+                val resultUrl = st.optString("result_url")
+                if (resultUrl.isBlank()) throw RuntimeException("missing_result_url")
+                val req = Request.Builder().url(resultUrl).get().build()
+                val resp = client.newCall(req).execute()
+                val bytes = resp.body?.bytes()
+                if (!resp.isSuccessful || bytes == null || bytes.isEmpty()) {
+                    throw RuntimeException("result_fetch_failed")
+                }
+                return@withContext bytes
+            }
+            if (status == "failed" || (!st.optBoolean("ok", true) && st.has("error"))) {
+                throw RuntimeException(
+                    st.optString("message").ifBlank {
+                        st.optString("error", "remove_object_failed")
+                    }
+                )
+            }
+            Thread.sleep(5000)
+            attempts++
+        }
+        throw RuntimeException("remove_object_timeout")
     }
 
     /** GET ?op=get-creator-code&owner_id=xxx → { is_creator, can_generate, active_code?, ref_url? } */
