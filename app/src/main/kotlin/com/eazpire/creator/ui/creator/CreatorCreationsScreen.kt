@@ -121,6 +121,9 @@ data class CreationDesign(
     val libraryStatus: String = "active",
     /** True while auto-save / save queue writes the inactive library row (show spinner overlay). */
     val savingToLibrary: Boolean = false,
+    /** True while a publish session is in flight (show spinner; block open / bulk select). */
+    val publishActive: Boolean = false,
+    val publishSessionId: String? = null,
     val reviewStatus: String? = null,
 )
 
@@ -361,6 +364,13 @@ fun CreatorCreationsScreen(
         designsRefreshTrigger++
     }
 
+    LaunchedEffect(designs.any { it.publishActive }, ownerId) {
+        if (ownerId.isBlank()) return@LaunchedEffect
+        if (!designs.any { it.publishActive }) return@LaunchedEffect
+        delay(4000)
+        designsRefreshTrigger++
+    }
+
     val activityFilteredDesigns = remember(designs, designsActivityFilter) {
         designs
             .filter { d ->
@@ -580,7 +590,9 @@ fun CreatorCreationsScreen(
                                                 }
                                             }
                                         } else null,
-                                        onClick = { designPreviewDesign = design }
+                                        onClick = {
+                                            if (!design.publishActive) designPreviewDesign = design
+                                        }
                                     )
                                 }
                             }
@@ -606,7 +618,7 @@ fun CreatorCreationsScreen(
                                             onSelectedChange = { on ->
                                                 bulkSelectedKeys = setBulkSelectedKey(design, on, bulkSelectedKeys)
                                             },
-                                            onLibraryAction = if (!design.id.isNullOrBlank()) {
+                                            onLibraryAction = if (!design.id.isNullOrBlank() && !design.publishActive) {
                                                 {
                                                     if (design.effectiveLibraryStatus() == "inactive") {
                                                         activateTargets = listOf(design)
@@ -617,7 +629,9 @@ fun CreatorCreationsScreen(
                                                     }
                                                 }
                                             } else null,
-                                            onClick = { designPreviewDesign = design },
+                                            onClick = {
+                                                if (!design.publishActive) designPreviewDesign = design
+                                            },
                                             activateLabel = translationStore.t("creator.creations.library_activate_btn", "Activate"),
                                             deactivateLabel = translationStore.t("creator.creations.library_deactivate_btn", "Deactivate"),
                                             shimmer = { GridImageShimmer(Modifier.fillMaxSize()) },
@@ -1363,62 +1377,91 @@ private fun CreationDesignListItem(
     onLibraryAction: (() -> Unit)?,
     onClick: () -> Unit,
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF1E293B))
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        if (bulkSelectable) {
-            Checkbox(
-                checked = selected,
-                onCheckedChange = onSelectedChange,
-                colors = CheckboxDefaults.colors(checkedColor = EazColors.Orange),
-            )
-        }
-        SubcomposeAsyncImage(
-            model = design.imageUrl,
-            contentDescription = design.title,
-            modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop,
-            loading = { GridImageShimmer(Modifier.fillMaxSize()) }
-        )
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(
-                design.title.ifBlank { "Design" },
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White,
-                maxLines = 2
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    design.designSource,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.6f)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (design.publishActive) Modifier else Modifier.clickable(onClick = onClick))
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (bulkSelectable) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = onSelectedChange,
+                    colors = CheckboxDefaults.colors(checkedColor = EazColors.Orange),
                 )
-                if (productBadgeText.isNotBlank()) {
+            }
+            SubcomposeAsyncImage(
+                model = design.imageUrl,
+                contentDescription = design.title,
+                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop,
+                loading = { GridImageShimmer(Modifier.fillMaxSize()) }
+            )
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(
+                    design.title.ifBlank { "Design" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White,
+                    maxLines = 2
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        productBadgeText,
+                        design.designSource,
                         style = MaterialTheme.typography.labelSmall,
-                        color = EazColors.Orange
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                    if (productBadgeText.isNotBlank() && !design.publishActive) {
+                        Text(
+                            productBadgeText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EazColors.Orange
+                        )
+                    }
+                }
+            }
+            if (onLibraryAction != null && !design.publishActive) {
+                TextButton(onClick = onLibraryAction) {
+                    Text(
+                        if (design.effectiveLibraryStatus() == "inactive") {
+                            translationStore.t("creator.creations.library_activate_btn", "Activate")
+                        } else {
+                            translationStore.t("creator.creations.library_deactivate_btn", "Deactivate")
+                        },
+                        color = EazColors.Orange,
+                        fontSize = 12.sp,
                     )
                 }
             }
         }
-        if (onLibraryAction != null) {
-            TextButton(onClick = onLibraryAction) {
-                Text(
-                    if (design.effectiveLibraryStatus() == "inactive") {
-                        translationStore.t("creator.creations.library_activate_btn", "Activate")
-                    } else {
-                        translationStore.t("creator.creations.library_deactivate_btn", "Deactivate")
-                    },
-                    color = EazColors.Orange,
-                    fontSize = 12.sp,
-                )
+        if (design.publishActive) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color(0xFF0F172A).copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = EazColors.Orange,
+                        strokeWidth = 2.dp,
+                    )
+                    Text(
+                        translationStore.t("creator.creations.publishing", "Publishing…"),
+                        color = Color.White.copy(alpha = 0.92f),
+                        fontSize = 12.sp,
+                    )
+                }
             }
         }
     }

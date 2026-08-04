@@ -85,6 +85,7 @@ fun CreationDesign.effectiveLibraryStatus(): String {
 }
 
 fun isBulkSelectableDesign(design: CreationDesign, activityFilter: String): Boolean {
+    if (design.publishActive) return false
     val act = activityFilter.trim().lowercase()
     val id = design.id?.trim().orEmpty()
     val jid = design.jobId?.trim().orEmpty()
@@ -249,6 +250,9 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
         contentType = ct,
         libraryStatus = ls,
         savingToLibrary = obj.optBoolean("saving_to_library", false),
+        publishActive = obj.optBoolean("publish_active", false) ||
+            obj.optString("publish_session_id", "").isNotBlank(),
+        publishSessionId = obj.optString("publish_session_id", "").takeIf { it.isNotBlank() },
         reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
     )
 }
@@ -1065,7 +1069,10 @@ fun CreationDesignGridCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clickable(onClick = onClick),
+                .then(
+                    if (design.publishActive) Modifier
+                    else Modifier.clickable(onClick = onClick)
+                ),
         ) {
             SubcomposeAsyncImage(
                 model = design.imageUrl,
@@ -1078,7 +1085,7 @@ fun CreationDesignGridCard(
                 loading = { shimmer() },
             )
         }
-        if (design.id?.isNotBlank() == true && productBadgeText.isNotBlank()) {
+        if (design.id?.isNotBlank() == true && productBadgeText.isNotBlank() && !design.publishActive) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -1149,7 +1156,7 @@ fun CreationDesignGridCard(
                 Text(label, color = if (rs == "rejected") Color(0xFFFCA5A5) else Color(0xFFFBBF24), fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
-        if (design.savingToLibrary) {
+        if (design.savingToLibrary || design.publishActive) {
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -1163,7 +1170,7 @@ fun CreationDesignGridCard(
                         strokeWidth = 3.dp,
                     )
                     Text(
-                        text = "Saving…",
+                        text = if (design.publishActive) "Publishing…" else "Saving…",
                         color = Color.White.copy(alpha = 0.92f),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
