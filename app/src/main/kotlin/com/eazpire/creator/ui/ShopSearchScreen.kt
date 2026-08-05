@@ -100,6 +100,10 @@ fun ShopSearchScreen(
     val scope = rememberCoroutineScope()
     val gridState = rememberLazyGridState()
     val nearEnd = rememberProductListNearEnd(gridState)
+    var expandedCardId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(gridState.isScrollInProgress) {
+        if (gridState.isScrollInProgress) expandedCardId = null
+    }
 
     fun loadMore() {
         if (loadingMore || searchQuery.isBlank()) return
@@ -231,6 +235,10 @@ fun ShopSearchScreen(
                             ownerId = ownerId,
                             creatorApi = creatorApi,
                             mockPreviewRevision = mockPreviewRevision,
+                            expanded = expandedCardId == p.id,
+                            onExpandedChange = { open ->
+                                expandedCardId = if (open) p.id else null
+                            },
                             onClick = { onProductClick(p) },
                             onCartClick = { onCartClick(p) }
                         )
@@ -250,6 +258,8 @@ private fun ShopSearchProductCard(
     ownerId: String = "",
     creatorApi: CreatorApi? = null,
     mockPreviewRevision: Int = 0,
+    expanded: Boolean = false,
+    onExpandedChange: (Boolean) -> Unit = {},
     onClick: () -> Unit,
     onCartClick: () -> Unit = onClick,
     modifier: Modifier = Modifier
@@ -306,12 +316,14 @@ private fun ShopSearchProductCard(
             contentDescription = product.title,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFF5F5F5))
-                .clickable(onClick = onClick),
+                .background(Color(0xFFF5F5F5)),
             colorNames = product.rotationColorNames,
             viewsByColor = product.plpViewsByColor,
             autoRotate = display.autoRotate,
             fullResolution = display.isPersonalizedMock,
+            expanded = expanded,
+            onExpandedChange = onExpandedChange,
+            onDetailClick = onClick,
             showTryOn = showManualTryOn,
             isTryOnActive = tryOnActive,
             onTryOnClick = {

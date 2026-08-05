@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ShoppingBag
@@ -354,7 +355,10 @@ fun EazProductCardPlpMediaStack(
     rotateIntervalMs: Long = 1800L,
     autoRotate: Boolean = true,
     fullResolution: Boolean = false,
-    showVariantChrome: Boolean = true,
+    /** Controlled expand (tap). Null = manage internally. */
+    expanded: Boolean? = null,
+    onExpandedChange: ((Boolean) -> Unit)? = null,
+    onDetailClick: () -> Unit = {},
     showFavorite: Boolean = true,
     showCart: Boolean = true,
     showTryOn: Boolean = false,
@@ -370,16 +374,23 @@ fun EazProductCardPlpMediaStack(
     }
     var paused by remember(productId) { mutableStateOf(false) }
     var overrideUrl by remember(productId) { mutableStateOf<String?>(null) }
+    var internalExpanded by remember(productId) { mutableStateOf(false) }
+    val isExpanded = expanded ?: internalExpanded
+    fun setExpanded(value: Boolean) {
+        if (expanded == null) internalExpanded = value
+        onExpandedChange?.invoke(value)
+    }
     val scrollState = rememberScrollState()
 
     val activeColor = colorNames.getOrNull(currentIndex)?.trim()?.lowercase().orEmpty()
-    val thumbUrls = remember(activeColor, viewsByColor, urls) {
+    val mainUrl = overrideUrl ?: urls.getOrNull(currentIndex).orEmpty()
+    val otherViewUrls = remember(activeColor, viewsByColor, mainUrl) {
         val fromColor = if (activeColor.isNotBlank()) viewsByColor[activeColor].orEmpty() else emptyList()
-        when {
-            fromColor.size > 1 -> fromColor.take(4)
-            urls.size > 1 && viewsByColor.isEmpty() -> urls.take(4)
-            else -> fromColor.take(4)
-        }
+        val mainBase = mainUrl.substringBefore('?')
+        fromColor
+            .filter { it.isNotBlank() && it.substringBefore('?') != mainBase }
+            .distinct()
+            .take(4)
     }
 
     fun selectIndex(index: Int, pause: Boolean = true) {
@@ -399,8 +410,8 @@ fun EazProductCardPlpMediaStack(
         }
     }
 
-    LaunchedEffect(currentIndex, urls.size, showVariantChrome) {
-        if (!showVariantChrome || urls.size <= 1) return@LaunchedEffect
+    LaunchedEffect(currentIndex, urls.size, isExpanded) {
+        if (!isExpanded || urls.size <= 1) return@LaunchedEffect
         val approxDot = 28
         val target = (currentIndex * approxDot - 40).coerceAtLeast(0)
         scrollState.scrollTo(target)
@@ -412,6 +423,9 @@ fun EazProductCardPlpMediaStack(
                 .fillMaxWidth()
                 .aspectRatio(4f / 5f)
                 .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    if (!isExpanded) setExpanded(true)
+                }
         ) {
             val displayUrls = if (overrideUrl != null && currentIndex in urls.indices) {
                 urls.toMutableList().also { it[currentIndex] = overrideUrl!! }
@@ -427,7 +441,6 @@ fun EazProductCardPlpMediaStack(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            // Match web: mock photos have large white margins.
                             scaleX = 1.22f
                             scaleY = 1.22f
                         },
@@ -438,68 +451,90 @@ fun EazProductCardPlpMediaStack(
                 )
             }
 
-            if (showVariantChrome && thumbUrls.size > 1) {
-                Column(
+            if (isExpanded && otherViewUrls.isNotEmpty()) {
+                Box(
                     modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxHeight()
-                        .padding(start = 4.dp, top = 6.dp, bottom = 6.dp)
-                        .zIndex(4f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .fillMaxSize()
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.92f))
+                        .zIndex(4f)
                 ) {
-                    thumbUrls.forEach { url ->
-                        val active = overrideUrl == url ||
-                            (overrideUrl == null && (
-                                urls.getOrNull(currentIndex) == url ||
-                                    urls.getOrNull(currentIndex)?.substringBefore('?') == url.substringBefore('?')
-                                ))
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .border(
-                                    width = if (active) 1.5.dp else 1.dp,
-                                    color = if (active) EazColors.Orange else Color(0x14000000),
-                                    shape = RoundedCornerShape(6.dp)
-                                )
-                                .background(Color.White)
-                                .clickable {
-                                    paused = true
-                                    val match = urls.indexOfFirst {
-                                        it == url || it.substringBefore('?') == url.substringBefore('?')
-                                    }
-                                    if (match >= 0) {
-                                        selectIndex(match, pause = true)
-                                    } else {
-                                        overrideUrl = url
+                    val cells = otherViewUrls
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(cells.take(2), cells.drop(2).take(2)).forEach { row ->
+                            if (row.isEmpty()) return@forEach
+                            Row(
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                row.forEach { url ->
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .border(1.dp, Color(0x14000000), RoundedCornerShape(6.dp))
+                                            .background(Color.White)
+                                            .clickable {
+                                                paused = true
+                                                overrideUrl = url
+                                            }
+                                    ) {
+                                        AsyncImage(
+                                            model = url,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
                                     }
                                 }
-                        ) {
-                            AsyncImage(
-                                model = url,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                                if (row.size == 1) {
+                                    Box(modifier = Modifier.weight(1f))
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            EazProductCardMediaOverlays(
-                showFavorite = showFavorite,
-                showCart = showCart,
-                showTryOn = showTryOn,
-                isTryOnActive = isTryOnActive,
-                tryOnLoading = tryOnLoading,
-                onFavoriteClick = onFavoriteClick,
-                onCartClick = onCartClick,
-                onTryOnClick = onTryOnClick,
-            )
+            if (isExpanded) {
+                IconButton(
+                    onClick = onDetailClick,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .zIndex(6f)
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.96f))
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = "View product details",
+                        tint = Color(0xFF1A1A1A),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            if (isExpanded) {
+                EazProductCardMediaOverlays(
+                    showFavorite = showFavorite,
+                    showCart = showCart,
+                    showTryOn = showTryOn,
+                    isTryOnActive = isTryOnActive,
+                    tryOnLoading = tryOnLoading,
+                    onFavoriteClick = onFavoriteClick,
+                    onCartClick = onCartClick,
+                    onTryOnClick = onTryOnClick,
+                )
+            }
         }
 
-        if (showVariantChrome && urls.size > 1) {
+        if (isExpanded && urls.size > 1) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

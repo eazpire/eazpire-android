@@ -192,6 +192,10 @@ fun CollectionScreen(
     val gridState = rememberLazyGridState()
     val nearEnd = rememberProductListNearEnd(gridState)
     val usesInfiniteScroll = productFilters.isEmpty() && withinSearchQuery.isBlank()
+    var expandedCardId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(gridState.isScrollInProgress) {
+        if (gridState.isScrollInProgress) expandedCardId = null
+    }
 
     fun loadMore() {
         if (isLoadingMore) return
@@ -367,6 +371,10 @@ fun CollectionScreen(
                         promoNextDiscountPrefix = t("eaz.shop.promo_next_discount_prefix", "Discount in"),
                         promoNextPriceHintPrefix = t("eaz.shop.promo_next_price_hint_prefix", "Promo from"),
                         promoStartsPrefix = t("eaz.shop.promo_starts_prefix", "Starts in"),
+                        expanded = expandedCardId == product.id,
+                        onExpandedChange = { open ->
+                            expandedCardId = if (open) product.id else null
+                        },
                         onClick = { onProductClick(product) },
                         onCartClick = { onCartClick(product) }
                     )
@@ -530,6 +538,8 @@ private fun CollectionProductCard(
     promoNextDiscountPrefix: String = "",
     promoNextPriceHintPrefix: String = "",
     promoStartsPrefix: String = "",
+    expanded: Boolean = false,
+    onExpandedChange: (Boolean) -> Unit = {},
     onClick: () -> Unit,
     onCartClick: () -> Unit = onClick,
     modifier: Modifier = Modifier
@@ -578,9 +588,7 @@ private fun CollectionProductCard(
     }
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        modifier = modifier.fillMaxWidth()
     ) {
         EazProductCardPlpMediaStack(
             imageUrls = display.urls,
@@ -591,6 +599,9 @@ private fun CollectionProductCard(
             rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
             autoRotate = display.autoRotate,
             fullResolution = display.isPersonalizedMock,
+            expanded = expanded,
+            onExpandedChange = onExpandedChange,
+            onDetailClick = onClick,
             showTryOn = showManualTryOn,
             isTryOnActive = tryOnActive,
             onTryOnClick = {
@@ -620,7 +631,11 @@ private fun CollectionProductCard(
         val (designTitle, productTypeTitle) = remember(product.title, product.productType) {
             splitProductTitleForCard(product.title, product.productType)
         }
-        Column(modifier = Modifier.padding(top = 8.dp)) {
+        Column(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .clickable(onClick = onClick)
+        ) {
             Text(
                 text = designTitle,
                 style = MaterialTheme.typography.bodySmall,
