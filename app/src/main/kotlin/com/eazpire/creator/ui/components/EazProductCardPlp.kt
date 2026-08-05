@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -70,25 +71,54 @@ private val PLP_FALLBACK_HEX = mapOf(
     "sport gray" to Color(0xFF9CA3AF),
     "grey" to Color(0xFF9CA3AF),
     "gray" to Color(0xFF9CA3AF),
+    "ash" to Color(0xFFC5C5C5),
+    "heather" to Color(0xFF9CA3AF),
+    "heather grey" to Color(0xFF9CA3AF),
+    "heather gray" to Color(0xFF9CA3AF),
     "navy" to Color(0xFF1E3A5F),
+    "navy blue" to Color(0xFF1E3A5F),
     "blue" to Color(0xFF2563EB),
+    "royal blue" to Color(0xFF1D4ED8),
+    "light blue" to Color(0xFF93C5FD),
+    "carolina blue" to Color(0xFF7DD3FC),
     "red" to Color(0xFFDC2626),
+    "cardinal" to Color(0xFF9B1C1C),
     "maroon" to Color(0xFF7F1D1D),
+    "burgundy" to Color(0xFF7F1D1D),
     "orange" to Color(0xFFF97316),
+    "safety orange" to Color(0xFFF97316),
     "yellow" to Color(0xFFFACC15),
+    "gold" to Color(0xFFEAB308),
     "green" to Color(0xFF16A34A),
+    "forest" to Color(0xFF166534),
+    "forest green" to Color(0xFF166534),
+    "kelly" to Color(0xFF22C55E),
     "pink" to Color(0xFFEC4899),
+    "hot pink" to Color(0xFFDB2777),
     "purple" to Color(0xFF7C3AED),
+    "violet" to Color(0xFF8B5CF6),
     "brown" to Color(0xFF92400E),
+    "chocolate" to Color(0xFF78350F),
     "beige" to Color(0xFFD6C3A8),
+    "sand" to Color(0xFFD6C3A8),
     "khaki" to Color(0xFFB8A077),
     "natural" to Color(0xFFE7E0D4),
+    "cream" to Color(0xFFF5F0E6),
+    "charcoal" to Color(0xFF374151),
+    "silver" to Color(0xFFD1D5DB),
+    "teal" to Color(0xFF0D9488),
+    "coral" to Color(0xFFF87171),
 )
 
 private fun plpSwatchColor(name: String?): Color? {
-    val key = name?.trim()?.lowercase().orEmpty()
+    val key = name?.trim()?.lowercase()?.replace("\\s+".toRegex(), " ").orEmpty()
     if (key.isBlank()) return null
-    return PLP_FALLBACK_HEX[key] ?: PLP_FALLBACK_HEX[key.replace("\\s+".toRegex(), "")]
+    PLP_FALLBACK_HEX[key]?.let { return it }
+    PLP_FALLBACK_HEX[key.replace(" ", "")]?.let { return it }
+    key.split(' ').asReversed().forEach { part ->
+        PLP_FALLBACK_HEX[part]?.let { return it }
+    }
+    return null
 }
 
 /** Home / carousel: downscaled Coil request + placeholder (no decode full Shopify originals). */
@@ -394,7 +424,13 @@ fun EazProductCardPlpMediaStack(
                     imageUrls = displayUrls,
                     productId = productId,
                     contentDescription = contentDescription,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            // Match web: mock photos have large white margins.
+                            scaleX = 1.22f
+                            scaleY = 1.22f
+                        },
                     rotateIntervalMs = rotateIntervalMs,
                     autoRotate = false,
                     fullResolution = fullResolution,
@@ -406,7 +442,8 @@ fun EazProductCardPlpMediaStack(
                 Column(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .padding(start = 4.dp)
+                        .fillMaxHeight()
+                        .padding(start = 4.dp, top = 6.dp, bottom = 6.dp)
                         .zIndex(4f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -418,7 +455,8 @@ fun EazProductCardPlpMediaStack(
                                 ))
                         Box(
                             modifier = Modifier
-                                .size(30.dp)
+                                .weight(1f)
+                                .aspectRatio(1f)
                                 .clip(RoundedCornerShape(6.dp))
                                 .border(
                                     width = if (active) 1.5.dp else 1.dp,
