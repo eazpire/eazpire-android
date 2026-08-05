@@ -11,12 +11,36 @@ data class PlpRotationBuild(
     val urls: List<String>,
     /** Color/group label per [urls] entry (from image alt), for personalized mock lookup. */
     val colorNames: List<String>,
+    /** Per-color view URLs for left thumbs (IDEA-065 / PARITY-PLP-CARD-001). Keys lowercase. */
+    val viewsByColor: Map<String, List<String>> = emptyMap(),
 )
 
 object PlpRotationUrls {
 
     private const val MAX_SLOTS = 24
+    private const val MAX_VIEW_COLORS = 8
+    private const val MAX_VIEWS_PER_COLOR = 4
     private val APPAREL_VIEW_HINTS = setOf("back", "right", "left", "folded", "detail")
+
+    fun viewsByColorFromImages(images: List<ShopifyProductsApi.ProductImage>): Map<String, List<String>> {
+        val map = linkedMapOf<String, MutableList<String>>()
+        for (pi in images) {
+            val alt = (pi.alt ?: "").trim()
+            if (!alt.contains("|")) continue
+            val color = alt.split("|").firstOrNull()?.trim()?.lowercase().orEmpty()
+            if (color.isBlank()) continue
+            val list = map[color]
+            if (list == null) {
+                if (map.size >= MAX_VIEW_COLORS) continue
+                map[color] = mutableListOf()
+            }
+            val bucket = map[color] ?: continue
+            if (bucket.size >= MAX_VIEWS_PER_COLOR) continue
+            val src = pi.src.trim()
+            if (src.isNotBlank() && src !in bucket) bucket.add(src)
+        }
+        return map
+    }
 
     fun fromProductJsonImages(imagesArr: JSONArray?, productKey: String? = null): PlpRotationBuild {
         if (imagesArr == null || imagesArr.length() == 0) return PlpRotationBuild(emptyList(), emptyList())
@@ -115,7 +139,7 @@ object PlpRotationUrls {
             }
         }
 
-        return PlpRotationBuild(urls, colorNames)
+        return PlpRotationBuild(urls, colorNames, viewsByColorFromImages(images))
     }
 
     fun fromProductImages(
@@ -123,10 +147,13 @@ object PlpRotationUrls {
         productKey: String? = null,
     ): PlpRotationBuild {
         if (images.isEmpty()) return PlpRotationBuild(emptyList(), emptyList())
+        val views = viewsByColorFromImages(images)
 
         if (shouldUsePhotopaperSizeRotation(images, productKey)) {
             val photopaper = buildPhotopaperRotationUrls(images)
-            if (photopaper.urls.size >= 1) return photopaper
+            if (photopaper.urls.size >= 1) {
+                return photopaper.copy(viewsByColor = views.ifEmpty { photopaper.viewsByColor })
+            }
         }
 
         var primaryView = ""
@@ -181,7 +208,7 @@ object PlpRotationUrls {
             colorNames.add(parts[0].trim())
         }
 
-        if (urls.size >= 2) return PlpRotationBuild(urls, colorNames)
+        if (urls.size >= 2) return PlpRotationBuild(urls, colorNames, views)
 
         if (!isSingleColor) {
             for (pi in images) {
@@ -204,9 +231,10 @@ object PlpRotationUrls {
             return PlpRotationBuild(
                 urls = fallback,
                 colorNames = List(fallback.size) { "" },
+                viewsByColor = views,
             )
         }
 
-        return PlpRotationBuild(urls, colorNames)
+        return PlpRotationBuild(urls, colorNames, views)
     }
 }

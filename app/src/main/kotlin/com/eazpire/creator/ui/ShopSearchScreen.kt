@@ -300,35 +300,28 @@ private fun ShopSearchProductCard(
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
-        Box(
+        com.eazpire.creator.ui.components.EazProductCardPlpMediaStack(
+            imageUrls = display.urls,
+            productId = product.id.toString(),
+            contentDescription = product.title,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(4f / 5f)
-                .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFFF5F5F5))
-                .clickable(onClick = onClick)
-        ) {
-            if (display.urls.isNotEmpty()) {
-                com.eazpire.creator.ui.components.EazProductCardRotatingImages(
-                    imageUrls = display.urls,
-                    productId = product.id.toString(),
-                    contentDescription = product.title,
-                    modifier = Modifier.fillMaxSize(),
-                    autoRotate = display.autoRotate,
-                    fullResolution = display.isPersonalizedMock,
-                )
-            }
-            com.eazpire.creator.ui.components.EazProductCardMediaOverlays(
-                showTryOn = showManualTryOn,
-                isTryOnActive = tryOnActive,
-                onTryOnClick = {
-                    val next = !tryOnActive
-                    com.eazpire.creator.ui.components.togglePlpTryOnSession(ctx, product.handle, next)
-                    tryOnActive = next
-                    imageReload++
-                },
-                onFavoriteClick = {
-                    if (ownerId.isBlank() || creatorApi == null) return@EazProductCardMediaOverlays
+                .clickable(onClick = onClick),
+            colorNames = product.rotationColorNames,
+            viewsByColor = product.plpViewsByColor,
+            autoRotate = display.autoRotate,
+            fullResolution = display.isPersonalizedMock,
+            showTryOn = showManualTryOn,
+            isTryOnActive = tryOnActive,
+            onTryOnClick = {
+                val next = !tryOnActive
+                com.eazpire.creator.ui.components.togglePlpTryOnSession(ctx, product.handle, next)
+                tryOnActive = next
+                imageReload++
+            },
+            onFavoriteClick = {
+                if (ownerId.isNotBlank() && creatorApi != null) {
                     scope.launch {
                         runCatching {
                             creatorApi.addFavorite(
@@ -341,10 +334,10 @@ private fun ShopSearchProductCard(
                             com.eazpire.creator.favorites.FavoritesRefreshTrigger.trigger()
                         }
                     }
-                },
-                onCartClick = onCartClick,
-            )
-        }
+                }
+            },
+            onCartClick = onCartClick,
+        )
         Text(
             text = product.title,
             style = MaterialTheme.typography.bodySmall,

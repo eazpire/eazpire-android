@@ -4,14 +4,26 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -50,6 +62,34 @@ fun plpRotationStartIndex(productId: String, count: Int): Int {
 
 fun plpRotationJitterMs(productId: String): Long =
     (productId.hashCode() and 0x3FF).toLong()
+
+private val PLP_FALLBACK_HEX = mapOf(
+    "black" to Color(0xFF111111),
+    "white" to Color(0xFFF5F5F5),
+    "sport grey" to Color(0xFF9CA3AF),
+    "sport gray" to Color(0xFF9CA3AF),
+    "grey" to Color(0xFF9CA3AF),
+    "gray" to Color(0xFF9CA3AF),
+    "navy" to Color(0xFF1E3A5F),
+    "blue" to Color(0xFF2563EB),
+    "red" to Color(0xFFDC2626),
+    "maroon" to Color(0xFF7F1D1D),
+    "orange" to Color(0xFFF97316),
+    "yellow" to Color(0xFFFACC15),
+    "green" to Color(0xFF16A34A),
+    "pink" to Color(0xFFEC4899),
+    "purple" to Color(0xFF7C3AED),
+    "brown" to Color(0xFF92400E),
+    "beige" to Color(0xFFD6C3A8),
+    "khaki" to Color(0xFFB8A077),
+    "natural" to Color(0xFFE7E0D4),
+)
+
+private fun plpSwatchColor(name: String?): Color? {
+    val key = name?.trim()?.lowercase().orEmpty()
+    if (key.isBlank()) return null
+    return PLP_FALLBACK_HEX[key] ?: PLP_FALLBACK_HEX[key.replace("\\s+".toRegex(), "")]
+}
 
 /** Home / carousel: downscaled Coil request + placeholder (no decode full Shopify originals). */
 @Composable
@@ -104,25 +144,34 @@ fun EazProductCardRotatingImages(
     lazyLoadImages: Boolean = false,
     targetWidthPx: Int = 320,
     fullResolution: Boolean = false,
+    /** Controlled index (IDEA-065). When null, component owns index. */
+    selectedIndex: Int? = null,
+    onIndexChange: ((Int) -> Unit)? = null,
 ) {
     val urls = remember(imageUrls) { imageUrls.filter { it.isNotBlank() }.distinct() }
-    var currentIndex by remember(productId, urls.size) {
+    var internalIndex by remember(productId, urls.size) {
         mutableIntStateOf(plpRotationStartIndex(productId, urls.size.coerceAtLeast(1)))
     }
+    // Controlled mode: parent owns index + auto-tick. Uncontrolled: rotate internally.
+    val currentIndex = when {
+        selectedIndex != null && urls.isNotEmpty() -> selectedIndex.coerceIn(0, urls.lastIndex)
+        else -> internalIndex
+    }
 
-    LaunchedEffect(productId, urls.size, autoRotate) {
-        if (!autoRotate || urls.size <= 1) return@LaunchedEffect
+    LaunchedEffect(productId, urls.size, autoRotate, selectedIndex != null) {
+        if (!autoRotate || urls.size <= 1 || selectedIndex != null) return@LaunchedEffect
         delay(plpRotationJitterMs(productId))
         while (true) {
             delay(rotateIntervalMs)
-            currentIndex = (currentIndex + 1) % urls.size
+            internalIndex = (internalIndex + 1) % urls.size
+            onIndexChange?.invoke(internalIndex)
         }
     }
 
     Box(modifier = modifier) {
         if (urls.isEmpty()) return@Box
         if (lazyLoadImages) {
-            val activeUrl = urls[currentIndex]
+            val activeUrl = urls[currentIndex.coerceIn(0, urls.lastIndex)]
             val nextIndex = (currentIndex + 1) % urls.size
             val nextUrl = if (urls.size > 1) urls[nextIndex] else null
             EazLazyProductImage(
@@ -133,7 +182,6 @@ fun EazProductCardRotatingImages(
                 fullResolution = fullResolution,
             )
             if (nextUrl != null && nextUrl != activeUrl) {
-                // Warm cache for the upcoming frame only (not the full variant list).
                 val context = LocalContext.current
                 LaunchedEffect(nextUrl) {
                     context.imageLoader.enqueue(
@@ -254,6 +302,236 @@ fun EazProductCardMediaOverlays(
                     HangerIcon(
                         modifier = Modifier.size(20.dp),
                         color = if (isTryOnActive) Color.White else Color(0xFF1A1A1A)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * IDEA-065 / PARITY-PLP-CARD-001 — mock + left thumbs + variant dots under mock.
+ * Manual thumb/dot selection pauses auto-rotation for this card.
+ */
+@Composable
+fun EazProductCardPlpMediaStack(
+    imageUrls: List<String>,
+    productId: String,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    colorNames: List<String> = emptyList(),
+    viewsByColor: Map<String, List<String>> = emptyMap(),
+    rotateIntervalMs: Long = 1800L,
+    autoRotate: Boolean = true,
+    fullResolution: Boolean = false,
+    showVariantChrome: Boolean = true,
+    showFavorite: Boolean = true,
+    showCart: Boolean = true,
+    showTryOn: Boolean = false,
+    isTryOnActive: Boolean = false,
+    tryOnLoading: Boolean = false,
+    onFavoriteClick: () -> Unit = {},
+    onCartClick: () -> Unit = {},
+    onTryOnClick: () -> Unit = {},
+) {
+    val urls = remember(imageUrls) { imageUrls.filter { it.isNotBlank() }.distinct() }
+    var currentIndex by remember(productId, urls.size) {
+        mutableIntStateOf(plpRotationStartIndex(productId, urls.size.coerceAtLeast(1)))
+    }
+    var paused by remember(productId) { mutableStateOf(false) }
+    var overrideUrl by remember(productId) { mutableStateOf<String?>(null) }
+    val scrollState = rememberScrollState()
+
+    val activeColor = colorNames.getOrNull(currentIndex)?.trim()?.lowercase().orEmpty()
+    val thumbUrls = remember(activeColor, viewsByColor, urls) {
+        val fromColor = if (activeColor.isNotBlank()) viewsByColor[activeColor].orEmpty() else emptyList()
+        when {
+            fromColor.size > 1 -> fromColor.take(4)
+            urls.size > 1 && viewsByColor.isEmpty() -> urls.take(4)
+            else -> fromColor.take(4)
+        }
+    }
+
+    fun selectIndex(index: Int, pause: Boolean = true) {
+        if (urls.isEmpty()) return
+        val idx = ((index % urls.size) + urls.size) % urls.size
+        currentIndex = idx
+        overrideUrl = null
+        if (pause) paused = true
+    }
+
+    LaunchedEffect(productId, urls.size, autoRotate, paused, overrideUrl) {
+        if (!autoRotate || paused || overrideUrl != null || urls.size <= 1) return@LaunchedEffect
+        delay(plpRotationJitterMs(productId))
+        while (true) {
+            delay(rotateIntervalMs)
+            currentIndex = (currentIndex + 1) % urls.size
+        }
+    }
+
+    LaunchedEffect(currentIndex, urls.size, showVariantChrome) {
+        if (!showVariantChrome || urls.size <= 1) return@LaunchedEffect
+        val approxDot = 28
+        val target = (currentIndex * approxDot - 40).coerceAtLeast(0)
+        scrollState.scrollTo(target)
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(4f / 5f)
+                .clip(RoundedCornerShape(8.dp))
+        ) {
+            val displayUrls = if (overrideUrl != null && currentIndex in urls.indices) {
+                urls.toMutableList().also { it[currentIndex] = overrideUrl!! }
+            } else {
+                urls
+            }
+
+            if (displayUrls.isNotEmpty()) {
+                EazProductCardRotatingImages(
+                    imageUrls = displayUrls,
+                    productId = productId,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    rotateIntervalMs = rotateIntervalMs,
+                    autoRotate = false,
+                    fullResolution = fullResolution,
+                    selectedIndex = currentIndex,
+                )
+            }
+
+            if (showVariantChrome && thumbUrls.size > 1) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 4.dp)
+                        .zIndex(4f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    thumbUrls.forEach { url ->
+                        val active = overrideUrl == url ||
+                            (overrideUrl == null && (
+                                urls.getOrNull(currentIndex) == url ||
+                                    urls.getOrNull(currentIndex)?.substringBefore('?') == url.substringBefore('?')
+                                ))
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .border(
+                                    width = if (active) 1.5.dp else 1.dp,
+                                    color = if (active) EazColors.Orange else Color(0x14000000),
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .background(Color.White)
+                                .clickable {
+                                    paused = true
+                                    val match = urls.indexOfFirst {
+                                        it == url || it.substringBefore('?') == url.substringBefore('?')
+                                    }
+                                    if (match >= 0) {
+                                        selectIndex(match, pause = true)
+                                    } else {
+                                        overrideUrl = url
+                                    }
+                                }
+                        ) {
+                            AsyncImage(
+                                model = url,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                }
+            }
+
+            EazProductCardMediaOverlays(
+                showFavorite = showFavorite,
+                showCart = showCart,
+                showTryOn = showTryOn,
+                isTryOnActive = isTryOnActive,
+                tryOnLoading = tryOnLoading,
+                onFavoriteClick = onFavoriteClick,
+                onCartClick = onCartClick,
+                onTryOnClick = onTryOnClick,
+            )
+        }
+
+        if (showVariantChrome && urls.size > 1) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .padding(horizontal = 2.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { selectIndex(currentIndex - 1, pause = true) },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowLeft,
+                        contentDescription = "Previous variant",
+                        tint = Color(0xFF6B7280),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(scrollState),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    urls.forEachIndexed { index, url ->
+                        val colorName = colorNames.getOrNull(index)
+                        val swatch = plpSwatchColor(colorName)
+                        val active = index == currentIndex
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clip(CircleShape)
+                                .background(swatch ?: Color(0xFFD1D5DB))
+                                .then(
+                                    if (swatch == null) {
+                                        Modifier.border(1.dp, Color(0x33000000), CircleShape)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .border(
+                                    width = if (active) 2.dp else 0.dp,
+                                    color = if (active) EazColors.Orange else Color.Transparent,
+                                    shape = CircleShape
+                                )
+                                .clickable { selectIndex(index, pause = true) }
+                        ) {
+                            if (swatch == null) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = colorName ?: "Variant ${index + 1}",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                )
+                            }
+                        }
+                    }
+                }
+                IconButton(
+                    onClick = { selectIndex(currentIndex + 1, pause = true) },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Next variant",
+                        tint = Color(0xFF6B7280),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }

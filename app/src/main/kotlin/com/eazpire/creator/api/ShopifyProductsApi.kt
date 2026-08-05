@@ -30,6 +30,8 @@ class ShopifyProductsApi(
         val variantImages: List<String> = emptyList(),
         /** Color name per [variantImages] slot (from image alt), for mock lookup. */
         val rotationColorNames: List<String> = emptyList(),
+        /** Per-color view URLs for left thumbs (IDEA-065). Keys = lowercase color. */
+        val plpViewsByColor: Map<String, List<String>> = emptyMap(),
         val url: String,
         val price: Double = 0.0,
         val compareAtPrice: Double? = null,
@@ -346,6 +348,7 @@ class ShopifyProductsApi(
         }
         val variantImages = rotation.urls.ifEmpty { listOfNotNull(images.firstOrNull()) }
         val rotationColorNames = rotation.colorNames
+        val plpViewsByColor = rotation.viewsByColor
         var price = 0.0
         val variants = obj.optJSONArray("variants")
         if (variants != null && variants.length() > 0) {
@@ -364,6 +367,7 @@ class ShopifyProductsApi(
             images = images,
             variantImages = variantImages.ifEmpty { images.take(1) },
             rotationColorNames = rotationColorNames,
+            plpViewsByColor = plpViewsByColor,
             url = "$storeUrl/products/$handle",
             price = price,
             compareAtPrice = null,

@@ -77,8 +77,7 @@ import com.eazpire.creator.favorites.FavoritesRefreshTrigger
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.plp.PlpCardDisplay
 import com.eazpire.creator.plp.PlpCardImageResolver
-import com.eazpire.creator.ui.components.EazProductCardMediaOverlays
-import com.eazpire.creator.ui.components.EazProductCardRotatingImages
+import com.eazpire.creator.ui.components.EazProductCardPlpMediaStack
 import com.eazpire.creator.ui.components.togglePlpTryOnSession
 import kotlinx.coroutines.launch
 import com.eazpire.creator.api.hasPromoPricingUi
@@ -583,34 +582,25 @@ private fun CollectionProductCard(
             .fillMaxWidth()
             .clickable(onClick = onClick)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(4f / 5f)
-                .clip(RoundedCornerShape(8.dp))
-        ) {
-            if (display.urls.isNotEmpty()) {
-                EazProductCardRotatingImages(
-                    imageUrls = display.urls,
-                    productId = product.id.toString(),
-                    contentDescription = product.title,
-                    modifier = Modifier.fillMaxSize(),
-                    rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
-                    autoRotate = display.autoRotate,
-                    fullResolution = display.isPersonalizedMock,
-                )
-            }
-            EazProductCardMediaOverlays(
-                showTryOn = showManualTryOn,
-                isTryOnActive = tryOnActive,
-                onTryOnClick = {
-                    val next = !tryOnActive
-                    togglePlpTryOnSession(ctx, product.handle, next)
-                    tryOnActive = next
-                    imageReload++
-                },
-                onFavoriteClick = {
-                    if (ownerId.isBlank() || creatorApi == null) return@EazProductCardMediaOverlays
+        EazProductCardPlpMediaStack(
+            imageUrls = display.urls,
+            productId = product.id.toString(),
+            contentDescription = product.title,
+            colorNames = product.rotationColorNames,
+            viewsByColor = product.plpViewsByColor,
+            rotateIntervalMs = IMAGE_ROTATE_INTERVAL_MS,
+            autoRotate = display.autoRotate,
+            fullResolution = display.isPersonalizedMock,
+            showTryOn = showManualTryOn,
+            isTryOnActive = tryOnActive,
+            onTryOnClick = {
+                val next = !tryOnActive
+                togglePlpTryOnSession(ctx, product.handle, next)
+                tryOnActive = next
+                imageReload++
+            },
+            onFavoriteClick = {
+                if (ownerId.isNotBlank() && creatorApi != null) {
                     scope.launch {
                         runCatching {
                             creatorApi.addFavorite(
@@ -623,10 +613,10 @@ private fun CollectionProductCard(
                             FavoritesRefreshTrigger.trigger()
                         }
                     }
-                },
-                onCartClick = onCartClick,
-            )
-        }
+                }
+            },
+            onCartClick = onCartClick,
+        )
         val (designTitle, productTypeTitle) = remember(product.title, product.productType) {
             splitProductTitleForCard(product.title, product.productType)
         }
