@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CopyAll
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MusicOff
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Upload
@@ -153,6 +154,7 @@ fun VideoStudioScreen(
     var currentProject by remember { mutableStateOf<VideoStudioProject?>(null) }
     var exporting by remember { mutableStateOf(false) }
     var exportStatus by remember { mutableStateOf<String?>(null) }
+    var showRenderInfo by remember { mutableStateOf(false) }
 
     fun loadProjects() {
         if (ownerId.isBlank()) {
@@ -249,6 +251,22 @@ fun VideoStudioScreen(
                     }
                 }
                 if (currentProject != null) {
+                    TextButton(
+                        onClick = { showRenderInfo = true },
+                        enabled = !exporting
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = t("creator.video_studio.render", "Render"),
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            t("creator.video_studio.render", "Render"),
+                            color = Color.White
+                        )
+                    }
                     Button(
                         onClick = {
                             val project = currentProject ?: return@Button
@@ -282,6 +300,25 @@ fun VideoStudioScreen(
                         Text(t("creator.video_studio.export", "Export"))
                     }
                 }
+            }
+            if (showRenderInfo) {
+                AlertDialog(
+                    onDismissRequest = { showRenderInfo = false },
+                    title = { Text(t("creator.video_studio.render", "Render")) },
+                    text = {
+                        Text(
+                            t(
+                                "creator.video_studio.render_android_pending",
+                                "Fullscreen timeline render is available in the web Video Studio. Native compose preview is coming next."
+                            )
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showRenderInfo = false }) {
+                            Text(t("creator.common.close", "Close"))
+                        }
+                    }
+                )
             }
             exportStatus?.let { msg ->
                 Text(
