@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import com.eazpire.creator.admin.cursoragent.AdminCursorAgentHost
 import com.eazpire.creator.ar.poster.PosterArOverlay
 import com.eazpire.creator.ar.poster.PosterArSessionConfig
 import androidx.browser.customtabs.CustomTabsIntent
@@ -184,6 +185,11 @@ class MainActivity : ComponentActivity() {
                                 onDismiss = { posterArSessionConfig.value = null },
                             )
                         }
+                        // Admin-only Cursor Agent FAB (sub-panel window above Dialog modals).
+                        AdminCursorAgentHost(
+                            activity = this@MainActivity,
+                            tokenStore = tokenStore,
+                        )
                     }
                 }
             }
