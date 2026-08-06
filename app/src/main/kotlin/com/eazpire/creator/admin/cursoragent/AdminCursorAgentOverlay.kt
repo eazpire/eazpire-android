@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -52,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -71,13 +75,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.EazpireCreatorTheme
 import com.eazpire.creator.auth.SecureTokenStore
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+
+private const val TAG = "AdminCursorAgent"
 
 private val PanelBg = Color(0xE6121418)
 private val PanelBorder = Color(0x66FFFFFF)
@@ -106,9 +117,20 @@ private class PassThroughOverlayHost(context: Context) : FrameLayout(context) {
     }
 }
 
+private fun bindComposeOwners(host: PassThroughOverlayHost, activity: ComponentActivity) {
+    // WindowManager-attached ComposeView is outside the Activity hierarchy — without these,
+    // composition never starts and the FAB stays invisible.
+    host.setViewTreeLifecycleOwner(activity)
+    host.setViewTreeViewModelStoreOwner(activity)
+    host.setViewTreeSavedStateRegistryOwner(activity)
+    host.composeView.setViewTreeLifecycleOwner(activity)
+    host.composeView.setViewTreeViewModelStoreOwner(activity)
+    host.composeView.setViewTreeSavedStateRegistryOwner(activity)
+}
+
 /**
  * Admin-only Cursor Agent FAB + translucent panel.
- * Uses a sub-panel window so the icon sits above Compose Dialog modals.
+ * Prefers a sub-panel window (above Compose Dialogs); falls back to in-tree Compose if attach fails.
  */
 @Composable
 fun AdminCursorAgentHost(
@@ -132,12 +154,32 @@ fun AdminCursorAgentHost(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    DisposableEffect(activity, vm.isAdmin, vm.hideForScreenshot, vm.panelOpen) {
+    // Re-check when JWT appears after login (token store has no Flow).
+    LaunchedEffect(tokenStore) {
+        var lastJwt: String? = null
+        while (true) {
+            val jwt = tokenStore.getJwt()
+            if (jwt != lastJwt) {
+                lastJwt = jwt
+                Log.i(TAG, "jwt changed present=${!jwt.isNullOrBlank()} — refresh admin gate")
+                vm.refreshAdminGate()
+            }
+            delay(2_000)
+        }
+    }
+
+    var overlayAttached by remember { mutableStateOf(false) }
+    var attachAttempt by remember { mutableIntStateOf(0) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+
+    DisposableEffect(activity, vm.isAdmin, vm.hideForScreenshot, vm.panelOpen, attachAttempt) {
         if (!vm.isAdmin || vm.hideForScreenshot) {
+            overlayAttached = false
             return@DisposableEffect onDispose { }
         }
 
         val host = PassThroughOverlayHost(activity)
+        bindComposeOwners(host, activity)
         host.composeView.apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
@@ -159,6 +201,21 @@ fun AdminCursorAgentHost(
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
 
+        val decor = activity.window.decorView
+        val windowToken = decor.windowToken
+        if (windowToken == null) {
+            Log.w(TAG, "windowToken null (attempt=$attachAttempt) — retry shortly")
+            overlayAttached = false
+            val retry =
+                Runnable {
+                    if (attachAttempt < 12) attachAttempt += 1
+                }
+            decor.post(retry)
+            return@DisposableEffect onDispose {
+                decor.removeCallbacks(retry)
+            }
+        }
+
         val params =
             WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -167,7 +224,7 @@ fun AdminCursorAgentHost(
                 flags,
                 PixelFormat.TRANSLUCENT,
             ).apply {
-                token = activity.window.decorView.windowToken
+                token = windowToken
                 gravity = Gravity.TOP or Gravity.START
                 title = "eazpire-admin-cursor-agent"
                 softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
@@ -176,11 +233,23 @@ fun AdminCursorAgentHost(
         val wm = activity.windowManager
         try {
             wm.addView(host, params)
-        } catch (_: Exception) {
-            return@DisposableEffect onDispose { }
+            overlayAttached = true
+            Log.i(TAG, "sub-panel overlay attached (panelOpen=${vm.panelOpen})")
+        } catch (e: Exception) {
+            Log.e(TAG, "addView failed (attempt=$attachAttempt) — using in-tree fallback", e)
+            overlayAttached = false
+            val retry =
+                Runnable {
+                    if (attachAttempt < 12) attachAttempt += 1
+                }
+            mainHandler.postDelayed(retry, 300L)
+            return@DisposableEffect onDispose {
+                mainHandler.removeCallbacks(retry)
+            }
         }
 
         onDispose {
+            overlayAttached = false
             try {
                 wm.removeViewImmediate(host)
             } catch (_: Exception) {
@@ -190,6 +259,18 @@ fun AdminCursorAgentHost(
                     /* ignore */
                 }
             }
+        }
+    }
+
+    // In-tree fallback: always show FAB for admins when the WindowManager overlay is not up.
+    // (Missing ViewTree owners / BadToken used to leave admins with no icon at all.)
+    if (vm.isAdmin && !vm.hideForScreenshot && !overlayAttached) {
+        Box(modifier = Modifier.fillMaxSize().zIndex(1000f)) {
+            AdminCursorAgentOverlayContent(
+                activity = activity,
+                vm = vm,
+                onHitRects = { /* in-tree: no pass-through host */ },
+            )
         }
     }
 }

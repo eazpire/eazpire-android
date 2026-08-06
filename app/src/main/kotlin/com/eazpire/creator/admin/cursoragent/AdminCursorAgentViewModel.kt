@@ -1,8 +1,8 @@
 package com.eazpire.creator.admin.cursoragent
 
 import android.app.Activity
+import android.util.Log
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -13,6 +13,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+
+private const val TAG = "AdminCursorAgent"
 
 class AdminCursorAgentViewModel(
     private val tokenStore: SecureTokenStore,
@@ -64,20 +66,32 @@ class AdminCursorAgentViewModel(
     fun refreshAdminGate() {
         viewModelScope.launch {
             val jwt = tokenStore.getJwt()
+            val ownerId = tokenStore.getOwnerId()
             if (jwt.isNullOrBlank()) {
+                Log.i(TAG, "admin gate: no JWT — FAB hidden")
                 isAdmin = false
                 gateChecked = true
                 return@launch
             }
             try {
                 val me = api().me()
-                isAdmin = me.optBoolean("ok") && me.optBoolean("admin")
+                val ok = me.optBoolean("ok")
+                val admin = me.optBoolean("admin")
+                isAdmin = ok && admin
                 cursorConfigured = me.optBoolean("cursor_configured")
+                // Security: never log tokens. ownerId + flags help diagnose invisible FAB.
+                Log.i(
+                    TAG,
+                    "admin gate: ok=$ok admin=$admin isAdmin=$isAdmin " +
+                        "cursorConfigured=$cursorConfigured ownerIdPresent=${!ownerId.isNullOrBlank()} " +
+                        "via=${me.optString("via", "")} err=${me.optString("error", "")}",
+                )
                 if (isAdmin) {
                     loadFabPrefs()
                     loadModels()
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w(TAG, "admin gate failed — FAB hidden (non-admin or network)", e)
                 isAdmin = false
             } finally {
                 gateChecked = true
