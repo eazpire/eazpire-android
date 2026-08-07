@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.eazpire.creator.admin.cursoragent.AdminCursorAgentHost
@@ -185,11 +186,13 @@ class MainActivity : ComponentActivity() {
                                 onDismiss = { posterArSessionConfig.value = null },
                             )
                         }
-                        // Admin-only Cursor Agent FAB (sub-panel window above Dialog modals).
-                        AdminCursorAgentHost(
-                            activity = this@MainActivity,
-                            tokenStore = tokenStore,
-                        )
+                        // Admin-only Cursor Agent FAB (Compose Popup/Dialog — lifecycle-safe).
+                        Box(modifier = Modifier.fillMaxSize().zIndex(100_000f)) {
+                            AdminCursorAgentHost(
+                                activity = this@MainActivity,
+                                tokenStore = tokenStore,
+                            )
+                        }
                     }
                 }
             }

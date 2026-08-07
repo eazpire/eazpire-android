@@ -79,20 +79,26 @@ class AdminCursorAgentViewModel(
                 val admin = me.optBoolean("admin")
                 isAdmin = ok && admin
                 cursorConfigured = me.optBoolean("cursor_configured")
-                // Security: never log tokens. ownerId + flags help diagnose invisible FAB.
+                // Security: never log tokens. Truncated owner id helps diagnose gate misses.
+                val ownerTail =
+                    ownerId?.trim()?.takeIf { it.length >= 4 }?.takeLast(4) ?: "none"
                 Log.i(
                     TAG,
                     "admin gate: ok=$ok admin=$admin isAdmin=$isAdmin " +
-                        "cursorConfigured=$cursorConfigured ownerIdPresent=${!ownerId.isNullOrBlank()} " +
-                        "via=${me.optString("via", "")} err=${me.optString("error", "")}",
+                        "cursorConfigured=$cursorConfigured ownerTail=…$ownerTail " +
+                        "via=${me.optString("via", "")} err=${me.optString("error", "")} " +
+                        "actor=${me.optString("actor_id", "").takeLast(4)}",
                 )
                 if (isAdmin) {
                     loadFabPrefs()
                     loadModels()
+                } else {
+                    panelOpen = false
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "admin gate failed — FAB hidden (non-admin or network)", e)
+                Log.w(TAG, "admin gate failed — FAB hidden (non-admin or network): ${e.message}", e)
                 isAdmin = false
+                panelOpen = false
             } finally {
                 gateChecked = true
             }

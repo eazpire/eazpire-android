@@ -1,16 +1,7 @@
 package com.eazpire.creator.admin.cursoragent
 
 import android.app.Activity
-import android.content.Context
-import android.graphics.PixelFormat
-import android.graphics.Rect
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.view.Gravity
-import android.view.MotionEvent
-import android.view.WindowManager
-import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,7 +10,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,7 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,24 +55,23 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.eazpire.creator.EazColors
-import com.eazpire.creator.EazpireCreatorTheme
 import com.eazpire.creator.auth.SecureTokenStore
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -97,40 +85,12 @@ private val BubbleUser = Color(0xFF2A3340)
 private val BubbleAssistant = Color(0xCC1E2430)
 
 /**
- * Full-screen host that only claims touches inside [hitRects] so the rest of the
- * TYPE_APPLICATION_SUB_PANEL window passes through to dialogs below.
- * (ComposeView is final — wrap it in a FrameLayout.)
- */
-private class PassThroughOverlayHost(context: Context) : FrameLayout(context) {
-    var hitRects: List<Rect> = emptyList()
-    val composeView: ComposeView =
-        ComposeView(context).also {
-            addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        }
-
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        val lx = ev.x.roundToInt()
-        val ly = ev.y.roundToInt()
-        val hit = hitRects.any { it.contains(lx, ly) }
-        if (!hit) return false
-        return super.dispatchTouchEvent(ev)
-    }
-}
-
-private fun bindComposeOwners(host: PassThroughOverlayHost, activity: ComponentActivity) {
-    // WindowManager-attached ComposeView is outside the Activity hierarchy — without these,
-    // composition never starts and the FAB stays invisible.
-    host.setViewTreeLifecycleOwner(activity)
-    host.setViewTreeViewModelStoreOwner(activity)
-    host.setViewTreeSavedStateRegistryOwner(activity)
-    host.composeView.setViewTreeLifecycleOwner(activity)
-    host.composeView.setViewTreeViewModelStoreOwner(activity)
-    host.composeView.setViewTreeSavedStateRegistryOwner(activity)
-}
-
-/**
  * Admin-only Cursor Agent FAB + translucent panel.
- * Prefers a sub-panel window (above Compose Dialogs); falls back to in-tree Compose if attach fails.
+ *
+ * Uses Compose [Popup] / [Dialog] (lifecycle-safe windows) instead of a raw
+ * WindowManager [ComposeView]. The previous TYPE_APPLICATION_SUB_PANEL path could
+ * report attach success while composition never painted — and then disabled the
+ * in-tree fallback, leaving admins with no icon.
  */
 @Composable
 fun AdminCursorAgentHost(
@@ -164,253 +124,170 @@ fun AdminCursorAgentHost(
                 Log.i(TAG, "jwt changed present=${!jwt.isNullOrBlank()} — refresh admin gate")
                 vm.refreshAdminGate()
             }
-            delay(2_000)
+            delay(1_500)
         }
     }
 
-    var overlayAttached by remember { mutableStateOf(false) }
-    var attachAttempt by remember { mutableIntStateOf(0) }
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    LaunchedEffect(vm.isAdmin, vm.gateChecked, vm.hideForScreenshot) {
+        Log.i(
+            TAG,
+            "FAB visibility: isAdmin=${vm.isAdmin} gateChecked=${vm.gateChecked} " +
+                "hideForScreenshot=${vm.hideForScreenshot}",
+        )
+    }
 
-    DisposableEffect(activity, vm.isAdmin, vm.hideForScreenshot, vm.panelOpen, attachAttempt) {
-        if (!vm.isAdmin || vm.hideForScreenshot) {
-            overlayAttached = false
-            return@DisposableEffect onDispose { }
+    if (!vm.isAdmin || vm.hideForScreenshot) {
+        return
+    }
+
+    val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val containerW = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val containerH = with(density) { configuration.screenHeightDp.dp.toPx() }
+    val fabSizePx = with(density) { 56.dp.toPx() }
+    val insetPx = with(density) { 20.dp.toPx() }
+
+    val effectivePos =
+        vm.fabPos
+            ?: AdminCursorFabGeometry.defaultBottomRightPct(containerW, containerH, fabSizePx, insetPx)
+    val (baseLeft, baseTop) =
+        AdminCursorFabGeometry.offsetFromPct(
+            effectivePos.xPct,
+            effectivePos.yPct,
+            containerW,
+            containerH,
+            fabSizePx,
+        )
+
+    var dragLeft by remember { mutableFloatStateOf(baseLeft) }
+    var dragTop by remember { mutableFloatStateOf(baseTop) }
+    LaunchedEffect(baseLeft, baseTop, vm.fabDragging) {
+        if (!vm.fabDragging) {
+            dragLeft = baseLeft
+            dragTop = baseTop
+        }
+    }
+
+    // High-z in-tree layer: guarantees visibility above ShopScreen (not a touch sink —
+    // only the Popup window is hit-tested for the FAB).
+    Box(modifier = Modifier.fillMaxSize().zIndex(100_000f)) {
+        // Popup creates a small lifecycle-bound window (FAB-sized), above normal UI.
+        Popup(
+            alignment = Alignment.TopStart,
+            offset = IntOffset(dragLeft.roundToInt(), dragTop.roundToInt()),
+            properties =
+                PopupProperties(
+                    focusable = false,
+                    dismissOnBackPress = false,
+                    dismissOnClickOutside = false,
+                    clippingEnabled = false,
+                ),
+        ) {
+            AdminCursorFab(
+                onTap = { vm.togglePanel() },
+                onDoubleTap = { vm.resetFabPos() },
+                onDragStart = { vm.fabDragging = true },
+                onDragEnd = {
+                    vm.fabDragging = false
+                    val pos =
+                        AdminCursorFabGeometry.pctFromOffset(
+                            dragLeft,
+                            dragTop,
+                            containerW,
+                            containerH,
+                            fabSizePx,
+                        )
+                    vm.onFabPosChanged(pos, persist = true)
+                },
+                onDragCancel = { vm.fabDragging = false },
+                onDrag = { dx, dy ->
+                    val maxX = (containerW - fabSizePx).coerceAtLeast(0f)
+                    val maxY = (containerH - fabSizePx).coerceAtLeast(0f)
+                    dragLeft = (dragLeft + dx).coerceIn(0f, maxX)
+                    dragTop = (dragTop + dy).coerceIn(0f, maxY)
+                },
+            )
         }
 
-        val host = PassThroughOverlayHost(activity)
-        bindComposeOwners(host, activity)
-        host.composeView.apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setContent {
-                EazpireCreatorTheme {
-                    AdminCursorAgentOverlayContent(
-                        activity = activity,
+        if (vm.panelOpen) {
+            Dialog(
+                onDismissRequest = { vm.closePanel() },
+                properties =
+                    DialogProperties(
+                        dismissOnBackPress = true,
+                        dismissOnClickOutside = true,
+                        usePlatformDefaultWidth = false,
+                        decorFitsSystemWindows = true,
+                    ),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.28f))
+                            .clickable { vm.closePanel() },
+                ) {
+                    AdminCursorAgentPanel(
                         vm = vm,
-                        onHitRects = { rects -> host.hitRects = rects },
+                        activity = activity,
+                        modifier =
+                            Modifier
+                                .align(Alignment.Center)
+                                .fillMaxWidth(0.96f)
+                                .fillMaxHeight(0.88f)
+                                .clickable(enabled = false) { },
                     )
                 }
             }
-        }
-
-        var flags =
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        if (!vm.panelOpen) {
-            flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        }
-
-        val decor = activity.window.decorView
-        val windowToken = decor.windowToken
-        if (windowToken == null) {
-            Log.w(TAG, "windowToken null (attempt=$attachAttempt) — retry shortly")
-            overlayAttached = false
-            val retry =
-                Runnable {
-                    if (attachAttempt < 12) attachAttempt += 1
-                }
-            decor.post(retry)
-            return@DisposableEffect onDispose {
-                decor.removeCallbacks(retry)
-            }
-        }
-
-        val params =
-            WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_SUB_PANEL,
-                flags,
-                PixelFormat.TRANSLUCENT,
-            ).apply {
-                token = windowToken
-                gravity = Gravity.TOP or Gravity.START
-                title = "eazpire-admin-cursor-agent"
-                softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-            }
-
-        val wm = activity.windowManager
-        try {
-            wm.addView(host, params)
-            overlayAttached = true
-            Log.i(TAG, "sub-panel overlay attached (panelOpen=${vm.panelOpen})")
-        } catch (e: Exception) {
-            Log.e(TAG, "addView failed (attempt=$attachAttempt) — using in-tree fallback", e)
-            overlayAttached = false
-            val retry =
-                Runnable {
-                    if (attachAttempt < 12) attachAttempt += 1
-                }
-            mainHandler.postDelayed(retry, 300L)
-            return@DisposableEffect onDispose {
-                mainHandler.removeCallbacks(retry)
-            }
-        }
-
-        onDispose {
-            overlayAttached = false
-            try {
-                wm.removeViewImmediate(host)
-            } catch (_: Exception) {
-                try {
-                    wm.removeView(host)
-                } catch (_: Exception) {
-                    /* ignore */
-                }
-            }
-        }
-    }
-
-    // In-tree fallback: always show FAB for admins when the WindowManager overlay is not up.
-    // (Missing ViewTree owners / BadToken used to leave admins with no icon at all.)
-    if (vm.isAdmin && !vm.hideForScreenshot && !overlayAttached) {
-        Box(modifier = Modifier.fillMaxSize().zIndex(1000f)) {
-            AdminCursorAgentOverlayContent(
-                activity = activity,
-                vm = vm,
-                onHitRects = { /* in-tree: no pass-through host */ },
-            )
         }
     }
 }
 
 @Composable
-private fun AdminCursorAgentOverlayContent(
-    activity: Activity,
-    vm: AdminCursorAgentViewModel,
-    onHitRects: (List<Rect>) -> Unit,
+private fun AdminCursorFab(
+    onTap: () -> Unit,
+    onDoubleTap: () -> Unit,
+    onDragStart: () -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    onDrag: (dx: Float, dy: Float) -> Unit,
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val density = LocalDensity.current
-        val containerW = with(density) { maxWidth.toPx() }
-        val containerH = with(density) { maxHeight.toPx() }
-        val fabSizePx = with(density) { 56.dp.toPx() }
-        val insetPx = with(density) { 20.dp.toPx() }
-
-        val effectivePos =
-            vm.fabPos
-                ?: AdminCursorFabGeometry.defaultBottomRightPct(containerW, containerH, fabSizePx, insetPx)
-        val (leftPx, topPx) =
-            AdminCursorFabGeometry.offsetFromPct(
-                effectivePos.xPct,
-                effectivePos.yPct,
-                containerW,
-                containerH,
-                fabSizePx,
-            )
-
-        var dragLeft by remember(leftPx) { mutableStateOf(leftPx) }
-        var dragTop by remember(topPx) { mutableStateOf(topPx) }
-        LaunchedEffect(leftPx, topPx, vm.fabDragging) {
-            if (!vm.fabDragging) {
-                dragLeft = leftPx
-                dragTop = topPx
-            }
-        }
-
-        val fabRect =
-            Rect(
-                dragLeft.roundToInt(),
-                dragTop.roundToInt(),
-                (dragLeft + fabSizePx).roundToInt(),
-                (dragTop + fabSizePx).roundToInt(),
-            )
-
-        if (vm.panelOpen) {
-            val panelPad = with(density) { 8.dp.roundToPx() }
-            val panelRect =
-                Rect(
-                    panelPad,
-                    (containerH * 0.06f).roundToInt(),
-                    (containerW - panelPad).roundToInt(),
-                    (containerH * 0.94f).roundToInt(),
-                )
-            LaunchedEffect(fabRect, panelRect) {
-                onHitRects(listOf(panelRect, fabRect))
-            }
-
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.28f))
-                        .clickable { vm.closePanel() },
-            )
-            AdminCursorAgentPanel(
-                vm = vm,
-                activity = activity,
-                modifier =
-                    Modifier
-                        .align(Alignment.Center)
-                        .fillMaxWidth(0.96f)
-                        .fillMaxHeight(0.88f),
-            )
-        } else {
-            LaunchedEffect(fabRect) {
-                onHitRects(listOf(fabRect))
-            }
-        }
-
-        Box(
-            modifier =
-                Modifier
-                    .offset { IntOffset(dragLeft.roundToInt(), dragTop.roundToInt()) }
-                    .size(56.dp)
-                    .shadow(10.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(FabBg)
-                    .border(1.5.dp, EazColors.Orange.copy(alpha = 0.85f), CircleShape)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onDoubleTap = { vm.resetFabPos() },
-                            onTap = { vm.togglePanel() },
-                        )
-                    }
-                    .pointerInput(containerW, containerH, fabSizePx) {
-                        detectDragGestures(
-                            onDragStart = { vm.fabDragging = true },
-                            onDragEnd = {
-                                vm.fabDragging = false
-                                val pos =
-                                    AdminCursorFabGeometry.pctFromOffset(
-                                        dragLeft,
-                                        dragTop,
-                                        containerW,
-                                        containerH,
-                                        fabSizePx,
-                                    )
-                                vm.onFabPosChanged(pos, persist = true)
-                            },
-                            onDragCancel = { vm.fabDragging = false },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                val maxX = (containerW - fabSizePx).coerceAtLeast(0f)
-                                val maxY = (containerH - fabSizePx).coerceAtLeast(0f)
-                                dragLeft = (dragLeft + dragAmount.x).coerceIn(0f, maxX)
-                                dragTop = (dragTop + dragAmount.y).coerceIn(0f, maxY)
-                                onHitRects(
-                                    listOf(
-                                        Rect(
-                                            dragLeft.roundToInt(),
-                                            dragTop.roundToInt(),
-                                            (dragLeft + fabSizePx).roundToInt(),
-                                            (dragTop + fabSizePx).roundToInt(),
-                                        ),
-                                    ),
-                                )
-                            },
-                        )
-                    },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.SmartToy,
-                contentDescription = "Admin Cursor Agent",
-                tint = EazColors.Orange,
-                modifier = Modifier.size(28.dp),
-            )
-        }
+    LaunchedEffect(Unit) {
+        Log.i(TAG, "FAB composable entered composition")
+    }
+    Box(
+        modifier =
+            Modifier
+                .size(56.dp)
+                .shadow(10.dp, CircleShape)
+                .clip(CircleShape)
+                .background(FabBg)
+                .border(1.5.dp, EazColors.Orange.copy(alpha = 0.85f), CircleShape)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = { onDoubleTap() },
+                        onTap = { onTap() },
+                    )
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { onDragStart() },
+                        onDragEnd = { onDragEnd() },
+                        onDragCancel = { onDragCancel() },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            onDrag(dragAmount.x, dragAmount.y)
+                        },
+                    )
+                },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.SmartToy,
+            contentDescription = "Admin Cursor Agent",
+            tint = EazColors.Orange,
+            modifier = Modifier.size(28.dp),
+        )
     }
 }
 
@@ -484,7 +361,7 @@ private fun AdminCursorAgentPanel(
                     modifier = Modifier.weight(1f),
                 )
                 ModeChip(mode = vm.mode, onChange = { vm.mode = it })
-                Spacer(Modifier.width(6.dp))
+                Spacer(modifier.width(6.dp))
                 ModelChip(models = vm.models, selected = vm.modelId, onSelect = { vm.modelId = it })
                 IconButton(onClick = { vm.closePanel() }) {
                     Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
@@ -540,7 +417,7 @@ private fun AdminCursorAgentPanel(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(modifier.height(4.dp))
                         Text(msg.content, color = Color.White, fontSize = 13.sp)
                         if (msg.imageUrls.isNotEmpty()) {
                             Text(
@@ -554,7 +431,7 @@ private fun AdminCursorAgentPanel(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(modifier.height(8.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
@@ -562,7 +439,7 @@ private fun AdminCursorAgentPanel(
                     onCheckedChange = { vm.includeScreenshot = it },
                 )
                 Text("Screenshot", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
-                Spacer(Modifier.weight(1f))
+                Spacer(modifier.weight(1f))
                 if (vm.running) {
                     TextButton(onClick = { vm.cancelRun() }) {
                         Text("Cancel", color = Color(0xFFFF8A80), fontSize = 12.sp)
