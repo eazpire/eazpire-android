@@ -80,13 +80,15 @@ class AdminCursorAgentViewModel(
                 isAdmin = ok && admin
                 cursorConfigured = me.optBoolean("cursor_configured")
                 // Security: never log tokens. Truncated owner id helps diagnose gate misses.
+                // reason: no_auth | not_admin | forbidden — from admin-cursor-me soft deny.
                 val ownerTail =
                     ownerId?.trim()?.takeIf { it.length >= 4 }?.takeLast(4) ?: "none"
                 Log.i(
                     TAG,
                     "admin gate: ok=$ok admin=$admin isAdmin=$isAdmin " +
                         "cursorConfigured=$cursorConfigured ownerTail=…$ownerTail " +
-                        "via=${me.optString("via", "")} err=${me.optString("error", "")} " +
+                        "via=${me.optString("via", "")} reason=${me.optString("reason", "")} " +
+                        "err=${me.optString("error", "")} " +
                         "actor=${me.optString("actor_id", "").takeLast(4)}",
                 )
                 if (isAdmin) {
