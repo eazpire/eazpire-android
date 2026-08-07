@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -55,7 +56,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
@@ -77,6 +77,15 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 private const val TAG = "AdminCursorAgent"
+
+/** Comfortable margin from content edges (matches web ~18px FAB inset). */
+private val FabEdgeMargin = 16.dp
+
+/**
+ * Shop [CollapsibleShopFooter] / [GlobalFooter] sits in Scaffold bottomBar.
+ * Keep the FAB above that chrome (similar to web mascot clearance).
+ */
+private val FabFooterClearance = 40.dp
 
 private val PanelBg = Color(0xE6121418)
 private val PanelBorder = Color(0x66FFFFFF)
@@ -141,36 +150,54 @@ fun AdminCursorAgentHost(
     }
 
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val containerW = with(density) { configuration.screenWidthDp.dp.toPx() }
-    val containerH = with(density) { configuration.screenHeightDp.dp.toPx() }
-    val fabSizePx = with(density) { 56.dp.toPx() }
-    val insetPx = with(density) { 20.dp.toPx() }
+    // Host lives inside MainActivity's systemBarsPadding Surface. Measure that
+    // content box — do NOT use screenWidth/HeightDp (those include system bars and
+    // pushed the FAB into the nav/gesture area with clippingEnabled=false).
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().zIndex(100_000f)) {
+        val containerW = constraints.maxWidth.toFloat().coerceAtLeast(0f)
+        val containerH = constraints.maxHeight.toFloat().coerceAtLeast(0f)
+        val fabSizePx = with(density) { 56.dp.toPx() }
+        val marginPx = with(density) { FabEdgeMargin.toPx() }
+        val footerClearancePx = with(density) { FabFooterClearance.toPx() }
 
-    val effectivePos =
-        vm.fabPos
-            ?: AdminCursorFabGeometry.defaultBottomRightPct(containerW, containerH, fabSizePx, insetPx)
-    val (baseLeft, baseTop) =
-        AdminCursorFabGeometry.offsetFromPct(
-            effectivePos.xPct,
-            effectivePos.yPct,
-            containerW,
-            containerH,
-            fabSizePx,
-        )
+        // Content-safe paddings inside the already systemBars-padded host:
+        // margin on all sides + extra bottom clearance for Scaffold bottomBar footer.
+        val padLeft = marginPx
+        val padTop = marginPx
+        val padRight = marginPx
+        val padBottom = marginPx + footerClearancePx
 
-    var dragLeft by remember { mutableFloatStateOf(baseLeft) }
-    var dragTop by remember { mutableFloatStateOf(baseTop) }
-    LaunchedEffect(baseLeft, baseTop, vm.fabDragging) {
-        if (!vm.fabDragging) {
-            dragLeft = baseLeft
-            dragTop = baseTop
+        val effectivePos =
+            vm.fabPos
+                ?: AdminCursorFabGeometry.defaultBottomRightPct(
+                    containerW,
+                    containerH,
+                    fabSizePx,
+                    insetPx = marginPx,
+                    paddingBottomExtraPx = footerClearancePx,
+                )
+        val (baseLeft, baseTop) =
+            AdminCursorFabGeometry.offsetFromPct(
+                effectivePos.xPct,
+                effectivePos.yPct,
+                containerW,
+                containerH,
+                fabSizePx,
+                paddingLeft = padLeft,
+                paddingTop = padTop,
+                paddingRight = padRight,
+                paddingBottom = padBottom,
+            )
+
+        var dragLeft by remember { mutableFloatStateOf(baseLeft) }
+        var dragTop by remember { mutableFloatStateOf(baseTop) }
+        LaunchedEffect(baseLeft, baseTop, vm.fabDragging) {
+            if (!vm.fabDragging) {
+                dragLeft = baseLeft
+                dragTop = baseTop
+            }
         }
-    }
 
-    // High-z in-tree layer: guarantees visibility above ShopScreen (not a touch sink —
-    // only the Popup window is hit-tested for the FAB).
-    Box(modifier = Modifier.fillMaxSize().zIndex(100_000f)) {
         // Popup creates a small lifecycle-bound window (FAB-sized), above normal UI.
         Popup(
             alignment = Alignment.TopStart,
@@ -196,15 +223,29 @@ fun AdminCursorAgentHost(
                             containerW,
                             containerH,
                             fabSizePx,
+                            paddingLeft = padLeft,
+                            paddingTop = padTop,
+                            paddingRight = padRight,
+                            paddingBottom = padBottom,
                         )
                     vm.onFabPosChanged(pos, persist = true)
                 },
                 onDragCancel = { vm.fabDragging = false },
                 onDrag = { dx, dy ->
-                    val maxX = (containerW - fabSizePx).coerceAtLeast(0f)
-                    val maxY = (containerH - fabSizePx).coerceAtLeast(0f)
-                    dragLeft = (dragLeft + dx).coerceIn(0f, maxX)
-                    dragTop = (dragTop + dy).coerceIn(0f, maxY)
+                    val clamped =
+                        AdminCursorFabGeometry.clampOffset(
+                            dragLeft + dx,
+                            dragTop + dy,
+                            containerW,
+                            containerH,
+                            fabSizePx,
+                            paddingLeft = padLeft,
+                            paddingTop = padTop,
+                            paddingRight = padRight,
+                            paddingBottom = padBottom,
+                        )
+                    dragLeft = clamped.first
+                    dragTop = clamped.second
                 },
             )
         }
