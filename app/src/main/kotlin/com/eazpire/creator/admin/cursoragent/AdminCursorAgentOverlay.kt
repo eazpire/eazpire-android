@@ -1,8 +1,11 @@
 package com.eazpire.creator.admin.cursoragent
 
 import android.app.Activity
+import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,14 +17,18 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,16 +38,21 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +68,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
@@ -74,6 +89,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.auth.SecureTokenStore
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private const val TAG = "AdminCursorAgent"
@@ -87,11 +103,12 @@ private val FabEdgeMargin = 16.dp
  */
 private val FabFooterClearance = 40.dp
 
-private val PanelBg = Color(0xE6121418)
+private val PanelBg = Color(0xF0121418)
 private val PanelBorder = Color(0x66FFFFFF)
 private val FabBg = Color(0xF01A1D24)
 private val BubbleUser = Color(0xFF2A3340)
 private val BubbleAssistant = Color(0xCC1E2430)
+private val DrawerBg = Color(0xFF161A20)
 
 /**
  * Admin-only Cursor Agent FAB + translucent panel.
@@ -255,30 +272,24 @@ fun AdminCursorAgentHost(
                 onDismissRequest = { vm.closePanel() },
                 properties =
                     DialogProperties(
-                        dismissOnBackPress = true,
-                        dismissOnClickOutside = true,
+                        // Back is handled inside the panel (drawer closes first).
+                        dismissOnBackPress = false,
+                        dismissOnClickOutside = false,
                         usePlatformDefaultWidth = false,
-                        decorFitsSystemWindows = true,
+                        // Apply safeDrawing insets ourselves so content clears status + nav bars.
+                        decorFitsSystemWindows = false,
                     ),
             ) {
-                Box(
+                AdminCursorAgentPanel(
+                    vm = vm,
+                    activity = activity,
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.28f))
-                            .clickable { vm.closePanel() },
-                ) {
-                    AdminCursorAgentPanel(
-                        vm = vm,
-                        activity = activity,
-                        modifier =
-                            Modifier
-                                .align(Alignment.Center)
-                                .fillMaxWidth(0.96f)
-                                .fillMaxHeight(0.88f)
-                                .clickable(enabled = false) { },
-                    )
-                }
+                            .background(PanelBg)
+                            .windowInsetsPadding(WindowInsets.safeDrawing)
+                            .imePadding(),
+                )
             }
         }
     }
@@ -339,72 +350,70 @@ private fun AdminCursorAgentPanel(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
     LaunchedEffect(vm.messages.size) {
         if (vm.messages.isNotEmpty()) {
             listState.animateScrollToItem(vm.messages.lastIndex)
         }
     }
 
-    Row(
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(PanelBg)
-                .border(1.dp, PanelBorder, RoundedCornerShape(16.dp))
-                .clickable(enabled = false) { }
-                .padding(10.dp),
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .width(120.dp)
-                    .fillMaxHeight()
-                    .padding(end = 8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Chats",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = { vm.newChat() }, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Add, contentDescription = "New chat", tint = EazColors.Orange, modifier = Modifier.size(18.dp))
-                }
-            }
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(vm.chats, key = { it.id }) { chat ->
-                    val selected = chat.id == vm.chatId
-                    Text(
-                        text = chat.title.ifBlank { "Chat" }.take(40),
-                        color = if (selected) EazColors.Orange else Color.White.copy(alpha = 0.85f),
-                        fontSize = 11.sp,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (selected) Color.White.copy(alpha = 0.08f) else Color.Transparent)
-                                .clickable { vm.selectChat(chat.id) }
-                                .padding(horizontal = 6.dp, vertical = 8.dp),
-                    )
-                }
-            }
+    BackHandler {
+        if (drawerState.isOpen) {
+            scope.launch { drawerState.close() }
+        } else {
+            vm.closePanel()
         }
+    }
 
-        Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = true,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = DrawerBg,
+                modifier = Modifier.width(280.dp).fillMaxHeight(),
+            ) {
+                ChatDrawerContent(
+                    chats = vm.chats,
+                    selectedId = vm.chatId,
+                    onNewChat = {
+                        vm.newChat()
+                        scope.launch { drawerState.close() }
+                    },
+                    onSelect = { id ->
+                        vm.selectChat(id)
+                        scope.launch { drawerState.close() }
+                    },
+                )
+            }
+        },
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            // Header: menu | title | Ask/Agent | model | close
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                IconButton(
+                    onClick = { scope.launch { drawerState.open() } },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(Icons.Default.Menu, contentDescription = "Chats", tint = Color.White)
+                }
                 Text(
                     "Admin Agent",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    modifier = Modifier.weight(1f),
+                    fontSize = 16.sp,
+                    modifier = Modifier.weight(1f).padding(start = 4.dp),
                 )
-                ModeChip(mode = vm.mode, onChange = { vm.mode = it })
-                Spacer(modifier.width(6.dp))
+                ModeToggle(mode = vm.mode, onChange = { vm.mode = it })
+                Spacer(modifier = Modifier.width(4.dp))
                 ModelChip(models = vm.models, selected = vm.modelId, onSelect = { vm.modelId = it })
-                IconButton(onClick = { vm.closePanel() }) {
+                IconButton(onClick = { vm.closePanel() }, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                 }
             }
@@ -414,19 +423,20 @@ private fun AdminCursorAgentPanel(
                     vm.statusText,
                     color = Color.White.copy(alpha = 0.65f),
                     fontSize = 11.sp,
-                    modifier = Modifier.padding(bottom = 4.dp),
+                    modifier = Modifier.padding(bottom = 4.dp, start = 4.dp),
                 )
             }
 
+            // Transcript — full width
             LazyColumn(
                 state = listState,
                 modifier =
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.Black.copy(alpha = 0.25f))
-                        .padding(8.dp),
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.28f))
+                        .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (vm.messages.isEmpty()) {
@@ -458,7 +468,7 @@ private fun AdminCursorAgentPanel(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        Spacer(modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(msg.content, color = Color.White, fontSize = 13.sp)
                         if (msg.imageUrls.isNotEmpty()) {
                             Text(
@@ -472,59 +482,214 @@ private fun AdminCursorAgentPanel(
                 }
             }
 
-            Spacer(modifier.height(8.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = vm.includeScreenshot,
-                    onCheckedChange = { vm.includeScreenshot = it },
-                )
-                Text("Screenshot", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
-                Spacer(modifier.weight(1f))
-                if (vm.running) {
+            if (vm.running) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     TextButton(onClick = { vm.cancelRun() }) {
                         Text("Cancel", color = Color(0xFFFF8A80), fontSize = 12.sp)
                     }
                 }
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Footer composer: [camera] [thumb chip] [text] [send]
+            ComposerBar(
+                promptText = vm.promptText,
+                onPromptChange = { vm.promptText = it },
+                mode = vm.mode,
+                pendingScreenshotPng = vm.pendingScreenshotPng,
+                capturingScreenshot = vm.capturingScreenshot,
+                busy = vm.sending || vm.running,
+                onCaptureScreenshot = { vm.captureScreenshot(activity) },
+                onClearScreenshot = { vm.clearPendingScreenshot() },
+                onSend = { vm.send() },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatDrawerContent(
+    chats: List<AdminCursorChatSummary>,
+    selectedId: String?,
+    onNewChat: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Chats",
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onNewChat, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Add, contentDescription = "New chat", tint = EazColors.Orange)
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(chats, key = { it.id }) { chat ->
+                val selected = chat.id == selectedId
+                Text(
+                    text = chat.title.ifBlank { "Chat" }.take(48),
+                    color = if (selected) EazColors.Orange else Color.White.copy(alpha = 0.85f),
+                    fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) Color.White.copy(alpha = 0.1f) else Color.Transparent)
+                            .clickable { onSelect(chat.id) }
+                            .padding(horizontal = 10.dp, vertical = 12.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerBar(
+    promptText: String,
+    onPromptChange: (String) -> Unit,
+    mode: AdminCursorMode,
+    pendingScreenshotPng: ByteArray?,
+    capturingScreenshot: Boolean,
+    busy: Boolean,
+    onCaptureScreenshot: () -> Unit,
+    onClearScreenshot: () -> Unit,
+    onSend: () -> Unit,
+) {
+    val previewBitmap =
+        remember(pendingScreenshotPng) {
+            pendingScreenshotPng?.let { bytes ->
+                runCatching {
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                }.getOrNull()
+            }
+        }
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+                .border(1.dp, PanelBorder.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        if (previewBitmap != null) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.padding(bottom = 6.dp, start = 4.dp),
             ) {
-                BasicTextField(
-                    value = vm.promptText,
-                    onValueChange = { vm.promptText = it },
-                    modifier = Modifier.weight(1f).padding(vertical = 6.dp),
-                    textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
-                    cursorBrush = SolidColor(EazColors.Orange),
-                    decorationBox = { inner ->
-                        if (vm.promptText.isEmpty()) {
-                            Text(
-                                if (vm.mode == AdminCursorMode.ASK) "Ask (read-only)…" else "Agent prompt…",
-                                color = Color.White.copy(alpha = 0.4f),
-                                fontSize = 14.sp,
-                            )
-                        }
-                        inner()
-                    },
+                Box {
+                    Image(
+                        bitmap = previewBitmap,
+                        contentDescription = "Screenshot preview",
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, EazColors.Orange.copy(alpha = 0.7f), RoundedCornerShape(8.dp)),
+                    )
+                    Box(
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.75f))
+                                .clickable(enabled = !busy) { onClearScreenshot() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove screenshot",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Screenshot attached",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
                 )
-                if (vm.sending || vm.running) {
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+        ) {
+            IconButton(
+                onClick = onCaptureScreenshot,
+                enabled = !busy && !capturingScreenshot,
+                modifier = Modifier.size(40.dp),
+            ) {
+                if (capturingScreenshot) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                         color = EazColors.Orange,
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    IconButton(onClick = { vm.send(activity) }) {
-                        Icon(Icons.Default.Send, contentDescription = "Send", tint = EazColors.Orange)
+                    Icon(
+                        Icons.Default.PhotoCamera,
+                        contentDescription = "Take screenshot",
+                        tint =
+                            if (previewBitmap != null) {
+                                EazColors.Orange
+                            } else {
+                                Color.White.copy(alpha = 0.85f)
+                            },
+                    )
+                }
+            }
+            BasicTextField(
+                value = promptText,
+                onValueChange = onPromptChange,
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp, horizontal = 4.dp),
+                textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                cursorBrush = SolidColor(EazColors.Orange),
+                maxLines = 5,
+                decorationBox = { inner ->
+                    if (promptText.isEmpty()) {
+                        Text(
+                            if (mode == AdminCursorMode.ASK) "Ask (read-only)…" else "Agent prompt…",
+                            color = Color.White.copy(alpha = 0.4f),
+                            fontSize = 14.sp,
+                        )
                     }
+                    inner()
+                },
+            )
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp).padding(end = 8.dp),
+                    color = EazColors.Orange,
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                IconButton(onClick = onSend, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Send, contentDescription = "Send", tint = EazColors.Orange)
                 }
             }
         }
@@ -532,22 +697,30 @@ private fun AdminCursorAgentPanel(
 }
 
 @Composable
-private fun ModeChip(mode: AdminCursorMode, onChange: (AdminCursorMode) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        TextButton(onClick = { expanded = true }) {
-            Text(mode.label, color = EazColors.Orange, fontSize = 12.sp)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            AdminCursorMode.entries.forEach { m ->
-                DropdownMenuItem(
-                    text = { Text(m.label) },
-                    onClick = {
-                        onChange(m)
-                        expanded = false
-                    },
-                )
-            }
+private fun ModeToggle(mode: AdminCursorMode, onChange: (AdminCursorMode) -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+                .border(1.dp, PanelBorder.copy(alpha = 0.55f), RoundedCornerShape(8.dp)),
+    ) {
+        AdminCursorMode.entries.forEach { m ->
+            val selected = m == mode
+            Text(
+                text = m.label,
+                color = if (selected) EazColors.Orange else Color.White.copy(alpha = 0.65f),
+                fontSize = 12.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(
+                            if (selected) EazColors.Orange.copy(alpha = 0.22f) else Color.Transparent,
+                        )
+                        .clickable { onChange(m) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
         }
     }
 }
@@ -557,7 +730,7 @@ private fun ModelChip(models: List<String>, selected: String, onSelect: (String)
     var expanded by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { expanded = true }) {
-            Text(selected.take(18), color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
+            Text(selected.take(14), color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             models.forEach { m ->

@@ -42,7 +42,11 @@ class AdminCursorAgentViewModel(
         private set
 
     var promptText by mutableStateOf("")
-    var includeScreenshot by mutableStateOf(false)
+    /** PNG bytes for composer attachment (captured before send). */
+    var pendingScreenshotPng by mutableStateOf<ByteArray?>(null)
+        private set
+    var capturingScreenshot by mutableStateOf(false)
+        private set
     var statusText by mutableStateOf("")
         private set
     var sending by mutableStateOf(false)
@@ -55,6 +59,7 @@ class AdminCursorAgentViewModel(
         private set
     var fabDragging by mutableStateOf(false)
 
+    /** Temporarily unmount FAB + dialog so PixelCopy captures the app under the shell. */
     var hideForScreenshot by mutableStateOf(false)
         private set
 
@@ -179,6 +184,39 @@ class AdminCursorAgentViewModel(
         statusText = "New chat"
     }
 
+    fun clearPendingScreenshot() {
+        pendingScreenshotPng = null
+    }
+
+    /**
+     * Capture the activity under the agent shell and attach a preview in the composer.
+     * Hides FAB + dialog briefly so the screenshot does not include the agent UI.
+     */
+    fun captureScreenshot(activity: Activity) {
+        if (capturingScreenshot || sending) return
+        viewModelScope.launch {
+            capturingScreenshot = true
+            statusText = "Capturing screenshot…"
+            try {
+                hideForScreenshot = true
+                delay(160)
+                val png = AdminCursorScreenshot.capturePng(activity)
+                hideForScreenshot = false
+                if (png != null && png.isNotEmpty()) {
+                    pendingScreenshotPng = png
+                    statusText = "Screenshot attached"
+                } else {
+                    statusText = "Screenshot capture failed"
+                }
+            } catch (e: Exception) {
+                hideForScreenshot = false
+                statusText = e.message ?: "Screenshot capture failed"
+            } finally {
+                capturingScreenshot = false
+            }
+        }
+    }
+
     private suspend fun loadChatMessages(id: String) {
         try {
             val res = api().getChat(id)
@@ -216,11 +254,12 @@ class AdminCursorAgentViewModel(
             .put("started_at", java.time.Instant.now().toString())
             .put("client", "android_native")
 
-    fun send(activity: Activity) {
-        if (sending || running) return
+    fun send() {
+        if (sending || running || capturingScreenshot) return
         val text = promptText.trim()
-        if (text.isEmpty() && !includeScreenshot) {
-            statusText = "Enter a prompt or enable screenshot"
+        val screenshotBytes = pendingScreenshotPng
+        if (text.isEmpty() && screenshotBytes == null) {
+            statusText = "Enter a prompt or attach a screenshot"
             return
         }
         viewModelScope.launch {
@@ -228,26 +267,22 @@ class AdminCursorAgentViewModel(
             statusText = "Sending…"
             try {
                 val images = mutableListOf<AdminCursorImageRef>()
-                if (includeScreenshot) {
-                    statusText = "Capturing screenshot…"
-                    hideForScreenshot = true
-                    delay(120)
-                    val png = AdminCursorScreenshot.capturePng(activity)
-                    hideForScreenshot = false
-                    if (png != null) {
-                        val up = api().uploadImage(png, "image/png")
-                        if (up.optBoolean("ok")) {
-                            val url = up.optString("url")
-                            if (url.isNotBlank()) {
-                                images.add(AdminCursorImageRef(url = url, mimeType = "image/png"))
-                            } else {
-                                statusText = "Screenshot upload missing url"
-                            }
+                if (screenshotBytes != null) {
+                    statusText = "Uploading screenshot…"
+                    val up = api().uploadImage(screenshotBytes, "image/png")
+                    if (up.optBoolean("ok")) {
+                        val url = up.optString("url")
+                        if (url.isNotBlank()) {
+                            images.add(AdminCursorImageRef(url = url, mimeType = "image/png"))
                         } else {
-                            statusText = up.optString("error", "Screenshot upload failed")
+                            statusText = "Screenshot upload missing url"
+                            sending = false
+                            return@launch
                         }
                     } else {
-                        statusText = "Screenshot capture failed"
+                        statusText = up.optString("error", "Screenshot upload failed")
+                        sending = false
+                        return@launch
                     }
                 }
 
@@ -292,6 +327,7 @@ class AdminCursorAgentViewModel(
                     loadChatMessages(newChatId)
                 }
                 promptText = ""
+                pendingScreenshotPng = null
                 if (runId != null && newChatId != null) {
                     running = true
                     statusText = "Agent running…"
