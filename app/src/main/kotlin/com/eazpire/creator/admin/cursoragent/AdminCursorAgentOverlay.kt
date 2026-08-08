@@ -17,18 +17,17 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -56,6 +55,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -73,6 +73,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -80,9 +81,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -276,10 +280,21 @@ fun AdminCursorAgentHost(
                         dismissOnBackPress = false,
                         dismissOnClickOutside = false,
                         usePlatformDefaultWidth = false,
-                        // Apply safeDrawing insets ourselves so content clears status + nav bars.
+                        // Edge-to-edge dialog; we pad status/nav/IME ourselves (see SideEffect below).
                         decorFitsSystemWindows = false,
                     ),
             ) {
+                // Dialog creates its own Window — DialogProperties alone is not enough.
+                // Mirror EazFullScreenDialog / MenuDrawer: force edge-to-edge on that window
+                // and re-request insets so statusBars/navigationBars/ime are non-zero.
+                val dialogView = LocalView.current
+                SideEffect {
+                    val window = (dialogView.parent as? DialogWindowProvider)?.window
+                    if (window != null) {
+                        WindowCompat.setDecorFitsSystemWindows(window, false)
+                    }
+                    ViewCompat.requestApplyInsets(dialogView)
+                }
                 AdminCursorAgentPanel(
                     vm = vm,
                     activity = activity,
@@ -287,7 +302,9 @@ fun AdminCursorAgentHost(
                         Modifier
                             .fillMaxSize()
                             .background(PanelBg)
-                            .windowInsetsPadding(WindowInsets.safeDrawing)
+                            // Background stays full-bleed; content clears system bars + IME.
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
                             .imePadding(),
                 )
             }
