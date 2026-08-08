@@ -3,6 +3,7 @@ package com.eazpire.creator.admin.cursoragent
 import android.app.Activity
 import android.graphics.BitmapFactory
 import android.util.Log
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -17,17 +18,24 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -76,6 +84,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,6 +96,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -107,12 +117,96 @@ private val FabEdgeMargin = 16.dp
  */
 private val FabFooterClearance = 40.dp
 
+/**
+ * When Dialog-window Compose/View insets report 0 (common on OEM / gesture-nav
+ * Dialogs), still keep the prompt row above the 3-button / gesture bar.
+ */
+private val NavBarFallbackBottom = 48.dp
+
 private val PanelBg = Color(0xF0121418)
 private val PanelBorder = Color(0x66FFFFFF)
 private val FabBg = Color(0xF01A1D24)
 private val BubbleUser = Color(0xFF2A3340)
 private val BubbleAssistant = Color(0xCC1E2430)
 private val DrawerBg = Color(0xFF161A20)
+
+/**
+ * Bottom clearance for the prompt footer that cannot collapse to 0.
+ *
+ * Dialog windows often report Compose [WindowInsets.navigationBars] = 0 even after
+ * [WindowCompat.setDecorFitsSystemWindows](false). Activity root insets usually still
+ * have the real nav-bar height — use that, then a hard 48.dp floor.
+ */
+@Composable
+private fun rememberAdminAgentFooterBottomInset(activity: Activity): Dp {
+    val density = LocalDensity.current
+    val dialogView = LocalView.current
+
+    val composeNav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val composeIme = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val composeSystem = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+    val composeSafe = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
+    val composeCutout = WindowInsets.displayCutout.asPaddingValues().calculateBottomPadding()
+
+    val dialogRoot = ViewCompat.getRootWindowInsets(dialogView)
+    val dialogNavPx = dialogRoot?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+    val dialogImePx = dialogRoot?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+    val dialogSystemPx = dialogRoot?.getInsets(WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
+
+    val activityRoot =
+        activity.window?.decorView?.let { ViewCompat.getRootWindowInsets(it) }
+    val activityNavPx =
+        activityRoot?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+    val activitySystemPx =
+        activityRoot?.getInsets(WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
+
+    val dialogNav = with(density) { dialogNavPx.toDp() }
+    val dialogIme = with(density) { dialogImePx.toDp() }
+    val dialogSystem = with(density) { dialogSystemPx.toDp() }
+    val activityNav = with(density) { activityNavPx.toDp() }
+    val activitySystem = with(density) { activitySystemPx.toDp() }
+
+    val navCandidate =
+        maxOf(
+            composeNav,
+            composeSystem,
+            composeSafe,
+            composeCutout,
+            dialogNav,
+            dialogSystem,
+            activityNav,
+            activitySystem,
+        )
+    val navWithFloor = if (navCandidate < 1.dp) NavBarFallbackBottom else navCandidate
+    val imeCandidate = maxOf(composeIme, dialogIme)
+    // IME and nav overlap on most devices — take the larger, never sum.
+    val bottom = maxOf(navWithFloor, imeCandidate)
+
+    LaunchedEffect(
+        composeNav,
+        composeIme,
+        composeSystem,
+        composeSafe,
+        composeCutout,
+        dialogNavPx,
+        dialogImePx,
+        dialogSystemPx,
+        activityNavPx,
+        activitySystemPx,
+        bottom,
+    ) {
+        Log.i(
+            TAG,
+            "footerInsets composeNav=$composeNav composeIme=$composeIme " +
+                "composeSystem=$composeSystem composeSafe=$composeSafe composeCutout=$composeCutout " +
+                "dialogNavPx=$dialogNavPx dialogImePx=$dialogImePx dialogSystemPx=$dialogSystemPx " +
+                "activityNavPx=$activityNavPx activitySystemPx=$activitySystemPx " +
+                "navCandidate=$navCandidate navWithFloor=$navWithFloor -> bottom=$bottom",
+        )
+    }
+
+    return bottom
+}
 
 /**
  * Admin-only Cursor Agent FAB + translucent panel.
@@ -280,32 +374,30 @@ fun AdminCursorAgentHost(
                         dismissOnBackPress = false,
                         dismissOnClickOutside = false,
                         usePlatformDefaultWidth = false,
-                        // Edge-to-edge dialog; we pad status/nav/IME ourselves (see SideEffect below).
+                        // Edge-to-edge dialog; insets applied on Column + footer (not only shell).
                         decorFitsSystemWindows = false,
                     ),
             ) {
                 // Dialog creates its own Window — DialogProperties alone is not enough.
-                // Mirror EazFullScreenDialog / MenuDrawer: force edge-to-edge on that window
-                // and re-request insets so statusBars/navigationBars/ime are non-zero.
+                // Mirror EazFullScreenDialog / MenuDrawer, plus ADJUST_RESIZE for IME.
                 val dialogView = LocalView.current
                 SideEffect {
                     val window = (dialogView.parent as? DialogWindowProvider)?.window
                     if (window != null) {
                         WindowCompat.setDecorFitsSystemWindows(window, false)
+                        @Suppress("DEPRECATION")
+                        window.setSoftInputMode(
+                            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+                        )
                     }
                     ViewCompat.requestApplyInsets(dialogView)
                 }
+                // Full-bleed background only — system-bar clearance lives on the
+                // Column (safeDrawing) and on ComposerBar (explicit bottom inset + floor).
                 AdminCursorAgentPanel(
                     vm = vm,
                     activity = activity,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .background(PanelBg)
-                            // Background stays full-bleed; content clears system bars + IME.
-                            .statusBarsPadding()
-                            .navigationBarsPadding()
-                            .imePadding(),
+                    modifier = Modifier.fillMaxSize().background(PanelBg),
                 )
             }
         }
@@ -384,6 +476,10 @@ private fun AdminCursorAgentPanel(
         }
     }
 
+    // Footer inset is computed once and applied ON the composer — never only on an
+    // outer shell the footer could sit outside of (previous a4b537ad9 failure mode).
+    val footerBottomInset = rememberAdminAgentFooterBottomInset(activity)
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = true,
@@ -408,7 +504,17 @@ private fun AdminCursorAgentPanel(
         },
         modifier = modifier,
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    // statusBars + displayCutout (sides/top). Bottom intentionally omitted —
+                    // ComposerBar owns bottom clearance with activity-inset + 48.dp floor.
+                    .windowInsetsPadding(
+                        WindowInsets.statusBars.union(WindowInsets.displayCutout),
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
             // Header: menu | title | Ask/Agent | model | close
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -514,6 +620,7 @@ private fun AdminCursorAgentPanel(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Footer composer: [camera] [thumb chip] [text] [send]
+            // Bottom padding is ON the footer — structural guarantee above system nav.
             ComposerBar(
                 promptText = vm.promptText,
                 onPromptChange = { vm.promptText = it },
@@ -524,6 +631,7 @@ private fun AdminCursorAgentPanel(
                 onCaptureScreenshot = { vm.captureScreenshot(activity) },
                 onClearScreenshot = { vm.clearPendingScreenshot() },
                 onSend = { vm.send() },
+                modifier = Modifier.padding(bottom = footerBottomInset),
             )
         }
     }
@@ -587,6 +695,7 @@ private fun ComposerBar(
     onCaptureScreenshot: () -> Unit,
     onClearScreenshot: () -> Unit,
     onSend: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val previewBitmap =
         remember(pendingScreenshotPng) {
@@ -597,9 +706,11 @@ private fun ComposerBar(
             }
         }
 
+    // Caller passes bottom inset via [modifier]; keep it outermost so chrome never
+    // paints into the nav/gesture bar even when Dialog WindowInsets are 0.
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color.White.copy(alpha = 0.08f))
