@@ -91,6 +91,7 @@ fun MarketingScreen(
     var selectedChild by remember { mutableStateOf("") }
     var showHeroCreateModal by remember { mutableStateOf(false) }
     var showVideoGenerator by remember { mutableStateOf(false) }
+    var showVideoTransition by remember { mutableStateOf(false) }
     var showVideoStudio by remember { mutableStateOf(false) }
     var showSocialMediaManager by remember { mutableStateOf(false) }
     val geometry = remember { MarketingTreeGeometry() }
@@ -272,6 +273,7 @@ fun MarketingScreen(
                                     when (spec.id) {
                                         MKT_FN_STUDIO -> showVideoStudio = true
                                         MKT_FN_GENERATOR -> showVideoGenerator = true
+                                        MKT_FN_TRANSITION -> showVideoTransition = true
                                     }
                                 },
                                 onPositioned = {
@@ -402,6 +404,12 @@ fun MarketingScreen(
             tokenStore = tokenStore,
             translationStore = translationStore,
             onVideoJobStarted = onVideoJobStarted,
+        )
+
+        VideoTransitionScreen(
+            visible = showVideoTransition,
+            onDismiss = { showVideoTransition = false },
+            translationStore = translationStore,
         )
 
         VideoStudioScreen(
