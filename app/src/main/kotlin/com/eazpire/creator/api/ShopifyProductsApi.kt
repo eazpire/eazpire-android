@@ -489,6 +489,41 @@ class ShopifyProductsApi(
             val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             if (!json.optBoolean("ok", false)) return@withContext null
             val p = json.optJSONObject("product") ?: return@withContext null
+            val handle = p.optString("handle", "").ifBlank { sampleHandle(publishedId) }
+            val title = p.optString("title", "").ifBlank { p.optString("design_title", "Sample") }
+            val creator = p.optString("creator_name", "")
+            val pdp = json.optJSONObject("pdp")
+            val shopify = pdp?.optJSONObject("shopifyProduct")
+            if (shopify != null) {
+                val optionMeta = pdp.optJSONArray("optionMeta")
+                if (optionMeta != null && optionMeta.length() > 0 && optionMeta.optJSONObject(0) != null) {
+                    shopify.put("options", optionMeta)
+                }
+                val variantsArr = shopify.optJSONArray("variants")
+                if (variantsArr != null) {
+                    for (i in 0 until variantsArr.length()) {
+                        val v = variantsArr.optJSONObject(i) ?: continue
+                        if (v.optString("option1").isNotBlank()) continue
+                        val opts = v.optJSONArray("options") ?: continue
+                        if (opts.length() > 0) v.put("option1", opts.optString(0))
+                        if (opts.length() > 1) v.put("option2", opts.optString(1))
+                        if (opts.length() > 2) v.put("option3", opts.optString(2))
+                    }
+                }
+                parseProductDetail(shopify, handle)?.let { parsed ->
+                    return@withContext parsed.copy(
+                        id = publishedId,
+                        title = parsed.title.ifBlank { title },
+                        handle = handle,
+                        vendor = parsed.vendor.ifBlank { creator },
+                        productType = parsed.productType.ifBlank { p.optString("product_type_label", "") },
+                        url = "$storeUrl/?eaz_open_pdp=$handle",
+                        productKey = p.optString("product_key", "").takeIf { it.isNotBlank() } ?: parsed.productKey,
+                        creatorDisplay = creator.ifBlank { parsed.creatorDisplay },
+                        isSample = true
+                    )
+                }
+            }
             val gallery = mutableListOf<ProductImage>()
             val arr = p.optJSONArray("gallery")
             if (arr != null) {
@@ -504,9 +539,6 @@ class ShopifyProductsApi(
                 }
             }
             if (gallery.isEmpty()) return@withContext null
-            val handle = p.optString("handle", "").ifBlank { sampleHandle(publishedId) }
-            val title = p.optString("title", "").ifBlank { p.optString("design_title", "Sample") }
-            val creator = p.optString("creator_name", "")
             ProductDetail(
                 id = publishedId,
                 title = title,

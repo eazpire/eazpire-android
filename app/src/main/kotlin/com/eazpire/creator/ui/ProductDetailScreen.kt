@@ -653,7 +653,7 @@ fun ProductDetailScreen(
         return
     }
 
-    val showTryOnButton = !p.isSample && CustomerMockPreviewStore.shouldShowTryOnButton(
+    val showTryOnButton = CustomerMockPreviewStore.shouldShowTryOnButton(
         mockPreviewMap,
         context,
         productHandle,
@@ -1629,7 +1629,7 @@ fun ProductDetailScreen(
                 .background(Color.White)
                 .padding(horizontal = 12.dp)
         ) {
-        // Row 1: Qty, Favorite, Share, Delivery, Total (samples: favorite + share only)
+        // Row 1: Qty, Favorite, Share, Delivery, Total (samples: same chrome, no cart/buy)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1638,7 +1638,6 @@ fun ProductDetailScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (!p.isSample) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -1665,7 +1664,6 @@ fun ProductDetailScreen(
                 }
             }
             Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color(0xFFE8E8E8)))
-            }
             Box(
                 modifier = Modifier.size(48.dp),
                 contentAlignment = Alignment.Center
@@ -1750,7 +1748,6 @@ fun ProductDetailScreen(
                 Icon(Icons.Default.Share, contentDescription = "Share", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
             Spacer(modifier = Modifier.weight(1f))
-            if (!p.isSample) {
             Text(
                 t("eaz.pdp.total_incl_shipping", "Total: {{ price }} incl. shipping")
                     .replace("{{ price }}", ShopCurrency.format(lineEstimate.afterDiscount, currencyCode))
@@ -1759,10 +1756,8 @@ fun ProductDetailScreen(
                 color = EazColors.TextSecondary,
                 maxLines = 1,
             )
-            }
         }
-        // Row 2: Price + delivery, Cart, Buy now
-        if (!p.isSample) {
+        // Row 2: Price + delivery, Cart, Buy now (samples: price + shipping only)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1841,6 +1836,7 @@ fun ProductDetailScreen(
                     )
                 }
             }
+            if (!p.isSample) {
             Box(
                 contentAlignment = Alignment.Center
             ) {
@@ -1972,7 +1968,7 @@ fun ProductDetailScreen(
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
             }
-        }
+            }
         }
         }
         }
