@@ -177,6 +177,8 @@ fun CreatorCreationsScreen(
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier,
     onRequestGeneratorPrefill: (GeneratorPrefillRequest) -> Unit = {},
+    onGlowUpJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onOpenEazyJobs: () -> Unit = {},
     initialDesignsActivityFilter: String? = null,
     onInitialDesignsActivityConsumed: () -> Unit = {},
     initialCreationsTab: String? = null,
@@ -1117,7 +1119,9 @@ fun CreatorCreationsScreen(
             onDismiss = { designPreviewDesign = null },
             translationStore = translationStore,
             tokenStore = tokenStore,
-            onRequestGeneratorPrefill = onRequestGeneratorPrefill
+            onRequestGeneratorPrefill = onRequestGeneratorPrefill,
+            onGlowUpJobStarted = onGlowUpJobStarted,
+            onOpenEazyJobs = onOpenEazyJobs
         )
     }
 }

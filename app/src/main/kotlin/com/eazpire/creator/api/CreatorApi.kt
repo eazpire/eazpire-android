@@ -2547,6 +2547,9 @@ class CreatorApi(
     /** GET ?op=suggest-prompt → { ok, suggestedPrompt } – AI prompt suggestion */
     suspend fun suggestPrompt(): JSONObject = call("suggest-prompt")
 
+    /** GET ?op=glow-up-styles → { ok, items: [{ id, name }] } */
+    suspend fun listGlowUpStyles(): JSONObject = call("glow-up-styles")
+
     /**
      * POST ?op=accept – Submit design generation job.
      * Payload: prompt, image_url?, design_type, target_product, ratio, content_type, styles, design_colors,

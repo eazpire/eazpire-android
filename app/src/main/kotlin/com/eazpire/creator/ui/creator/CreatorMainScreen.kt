@@ -466,7 +466,9 @@ fun CreatorMainScreen(
                             onRequestGeneratorPrefill = { req ->
                                 generatorPrefillRequest = req
                                 currentScreen = 1
-                            }
+                            },
+                            onGlowUpJobStarted = onGeneratorJobStarted,
+                            onOpenEazyJobs = { onEazyChatOpen(EazySidebarTab.Jobs) }
                         )
                         3 -> {
                             val activity = LocalContext.current as? MainActivity

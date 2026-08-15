@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -81,6 +82,7 @@ import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.billing.EazCostCatalog
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -322,7 +324,9 @@ fun DesignDetailSheet(
     translationStore: TranslationStore,
     tokenStore: SecureTokenStore,
     storeBaseUrl: String = "https://www.eazpire.com",
-    onRequestGeneratorPrefill: (GeneratorPrefillRequest) -> Unit = {}
+    onRequestGeneratorPrefill: (GeneratorPrefillRequest) -> Unit = {},
+    onGlowUpJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onOpenEazyJobs: () -> Unit = {}
 ) {
     val t = { key: String, def: String -> translationStore.t(key, def) }
     val scope = rememberCoroutineScope()
@@ -352,6 +356,15 @@ fun DesignDetailSheet(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
     var moveName by remember { mutableStateOf("") }
+    var showGlowUpStyles by remember { mutableStateOf(false) }
+    var showGlowUpConfirm by remember { mutableStateOf(false) }
+    var glowUpStyles by remember { mutableStateOf(listOf("eazy_amplified" to "eazy Amplified")) }
+    var selectedGlowUpStyleId by remember { mutableStateOf("eazy_amplified") }
+    var selectedGlowUpStyleName by remember { mutableStateOf("eazy Amplified") }
+    var glowUpStarting by remember { mutableStateOf(false) }
+    var glowUpBalance by remember { mutableStateOf<Double?>(null) }
+    var glowUpCost by remember { mutableStateOf(15.0) }
+    var glowUpError by remember { mutableStateOf<String?>(null) }
 
     var newTopicLine by remember { mutableStateOf("") }
     var newSubtopicLine by remember { mutableStateOf("") }
@@ -562,6 +575,35 @@ fun DesignDetailSheet(
                                     }
                                     IconButton(
                                         onClick = {
+                                            showGlowUpStyles = true
+                                            glowUpError = null
+                                            scope.launch {
+                                                try {
+                                                    val res = withContext(Dispatchers.IO) { api.listGlowUpStyles() }
+                                                    val arr = res.optJSONArray("items")
+                                                    if (arr != null && arr.length() > 0) {
+                                                        val next = mutableListOf<Pair<String, String>>()
+                                                        for (i in 0 until arr.length()) {
+                                                            val o = arr.optJSONObject(i) ?: continue
+                                                            val id = o.optString("id", "").trim()
+                                                            val name = o.optString("name", id).trim()
+                                                            if (id.isNotBlank()) next.add(id to name)
+                                                        }
+                                                        if (next.isNotEmpty()) glowUpStyles = next
+                                                    }
+                                                } catch (_: Exception) {
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Star,
+                                            contentDescription = t("creator.preview_modal.glow_up", "Glow Up"),
+                                            tint = CAccent
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
                                             if (designId.isNotBlank()) {
                                                 onRequestGeneratorPrefill(GeneratorPrefillRequest(designId, "regenerate"))
                                                 onDismiss()
@@ -718,6 +760,25 @@ fun DesignDetailSheet(
                                     ) {
                                         when (tab) {
                                             DesignDetailTab.Overview -> {
+                                                val glowLabel = draftMeta.optString("glow_up_style_name", "").trim()
+                                                if (draftMeta.optBoolean("glow_up", false) ||
+                                                    draftMeta.optString("design_source", "").equals("Glow Up", ignoreCase = true)
+                                                ) {
+                                                    Text(
+                                                        text = if (glowLabel.isNotBlank()) {
+                                                            t("creator.preview_modal.glow_up_badge", "Glow Up") + " · " + glowLabel
+                                                        } else {
+                                                            t("creator.preview_modal.glow_up_badge", "Glow Up")
+                                                        },
+                                                        color = Color(0xFF111827),
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier
+                                                            .padding(bottom = 10.dp)
+                                                            .background(Color(0xFFF59E0B), RoundedCornerShape(999.dp))
+                                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                                    )
+                                                }
                                                 Surface(
                                                     color = Color(0xFF334155),
                                                     shape = RoundedCornerShape(14.dp),
@@ -845,6 +906,143 @@ fun DesignDetailSheet(
                             }
                         }
                     }
+                }
+            }
+        )
+    }
+
+    if (showGlowUpStyles) {
+        AlertDialog(
+            onDismissRequest = { if (!glowUpStarting) showGlowUpStyles = false },
+            containerColor = Color(0xFF1F2937),
+            titleContentColor = Color.White,
+            textContentColor = Color.White.copy(alpha = 0.88f),
+            title = { Text(t("creator.preview_modal.glow_up_styles", "Glow Up Styles")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    glowUpStyles.forEach { (id, name) ->
+                        Button(
+                            onClick = {
+                                selectedGlowUpStyleId = id
+                                selectedGlowUpStyleName = name
+                                showGlowUpStyles = false
+                                showGlowUpConfirm = true
+                                glowUpBalance = null
+                                glowUpCost = 15.0
+                                scope.launch {
+                                    try {
+                                        val b = withContext(Dispatchers.IO) { api.getBalance(ownerId) }
+                                        glowUpBalance = b.optDouble("balance_total", b.optDouble("balance_eaz", Double.NaN))
+                                            .takeIf { !it.isNaN() }
+                                        glowUpCost = EazCostCatalog.resolveCost(b, "design_generate")
+                                    } catch (_: Exception) {
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = CAccent, contentColor = Color(0xFF111827)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(name, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showGlowUpStyles = false }) {
+                    Text(t("creator.common.cancel", "Cancel"), color = Color.White)
+                }
+            }
+        )
+    }
+
+    if (showGlowUpConfirm) {
+        val lowBalance = glowUpBalance != null && glowUpBalance!! + 1e-9 < glowUpCost
+        AlertDialog(
+            onDismissRequest = { if (!glowUpStarting) showGlowUpConfirm = false },
+            containerColor = Color(0xFF1F2937),
+            titleContentColor = Color.White,
+            textContentColor = Color.White.copy(alpha = 0.88f),
+            title = { Text(t("creator.preview_modal.glow_up", "Glow Up")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        t(
+                            "creator.preview_modal.confirm_glow_up_android",
+                            "Create a Glow Up of this design? This creates a new design. Your original stays."
+                        )
+                    )
+                    Text(
+                        t("creator.hero_eazy.confirm_cost_label", "Cost") + ": " +
+                            EazCostCatalog.fmtEaz(glowUpCost) + " EAZ"
+                    )
+                    glowUpBalance?.let {
+                        Text(t("creator.hero_eazy.balance_label", "Balance") + ": " + EazCostCatalog.fmtEaz(it) + " EAZ")
+                    }
+                    if (lowBalance) {
+                        Text(
+                            t("creator.generator_eazy.low_balance", "Not enough EAZ."),
+                            color = Color(0xFFF87171)
+                        )
+                    }
+                    glowUpError?.let { Text(it, color = Color(0xFFF87171)) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !glowUpStarting && !lowBalance,
+                    onClick = {
+                        if (glowUpStarting || designId.isBlank() || ownerId.isBlank()) return@TextButton
+                        glowUpStarting = true
+                        glowUpError = null
+                        scope.launch {
+                            try {
+                                val body = JSONObject()
+                                    .put("owner_id", ownerId)
+                                    .put("prompt", draftPrompt)
+                                    .put("image_url", design.originalUrl.ifBlank { design.previewUrl.ifBlank { design.imageUrl } })
+                                    .put("parent_design_id", designId)
+                                    .put("glow_up", true)
+                                    .put("glow_up_style_id", selectedGlowUpStyleId)
+                                    .put("design_type", design.designType ?: "classic")
+                                    .put("target_product", "tshirt")
+                                    .put("ratio", "portrait")
+                                    .put("content_type", "design-text")
+                                    .put("background", JSONObject().put("mode", "transparent"))
+                                val resp = withContext(Dispatchers.IO) { api.submitGenerateJob(ownerId, body) }
+                                val jobId = resp.optString("jobId", "").ifBlank { resp.optString("job_id", "") }
+                                if (jobId.isBlank()) {
+                                    glowUpError = resp.optString("message", "")
+                                        .ifBlank { resp.optString("error", "") }
+                                        .ifBlank { t("creator.preview_modal.glow_up_failed", "Glow Up could not be started.") }
+                                } else {
+                                    onGlowUpJobStarted(
+                                        jobId,
+                                        t("creator.preview_modal.glow_up", "Glow Up") + " · " + selectedGlowUpStyleName
+                                    )
+                                    showGlowUpConfirm = false
+                                    onOpenEazyJobs()
+                                    onDismiss()
+                                }
+                            } catch (e: Exception) {
+                                glowUpError = e.message?.take(200)
+                                    ?: t("creator.preview_modal.glow_up_failed", "Glow Up could not be started.")
+                            } finally {
+                                glowUpStarting = false
+                            }
+                        }
+                    }
+                ) {
+                    Text(
+                        if (glowUpStarting) t("creator.common.loading", "Loading")
+                        else t("creator.generator.confirm_generate_yes", "Yes, generate"),
+                        color = CAccent
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { if (!glowUpStarting) showGlowUpConfirm = false }) {
+                    Text(t("creator.common.cancel", "Cancel"), color = Color.White)
                 }
             }
         )

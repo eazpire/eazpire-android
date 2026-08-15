@@ -210,7 +210,11 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
     val userImg = meta.optString("user_image_url", "").ifBlank { obj.optString("user_image_url", "") }
     val designPrompt = meta.optString("design_prompt", "").ifBlank { obj.optString("design_prompt", "") }
     val isUploaded = userImg.isNotBlank() && designPrompt.isBlank()
+    val glowUp = meta.optBoolean("glow_up", false) ||
+        meta.optString("design_source", "").equals("Glow Up", ignoreCase = true)
+    val glowUpStyleName = meta.optString("glow_up_style_name", "").trim().takeIf { it.isNotBlank() }
     val src = when {
+        glowUp -> "glow_up"
         isUploaded -> "uploaded"
         else -> (obj.optString("design_source", obj.optString("source", "saved"))).lowercase()
     }
@@ -237,9 +241,10 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
         designPrompt = obj.optString("design_prompt").takeIf { it.isNotBlank() },
         createdAt = (obj.opt("updated_at") as? Number)?.toLong() ?: (obj.opt("created_at") as? Number)?.toLong() ?: 0L,
         source = src,
-        designSource = when (src) {
-            "generated" -> "Generated"
-            "uploaded" -> "Uploaded"
+        designSource = when {
+            glowUp -> if (glowUpStyleName != null) "Glow Up · $glowUpStyleName" else "Glow Up"
+            src == "generated" -> "Generated"
+            src == "uploaded" -> "Uploaded"
             else -> "Saved"
         },
         creatorName = meta.optString("creator_name", "").takeIf { it.isNotBlank() }
@@ -1095,6 +1100,20 @@ fun CreationDesignGridCard(
                 contentScale = ContentScale.Fit,
                 alignment = Alignment.Center,
                 loading = { shimmer() },
+            )
+        }
+        if (design.designSource.startsWith("Glow Up", ignoreCase = true)) {
+            Text(
+                text = design.designSource,
+                color = Color(0xFF111827),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .background(Color(0xFFF59E0B), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
             )
         }
         if (design.id?.isNotBlank() == true && productBadgeText.isNotBlank() && !design.publishActive) {
