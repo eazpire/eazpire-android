@@ -335,6 +335,7 @@ data class ActivateCatalogBundle(
     val checked: Map<String, Boolean> = emptyMap(),
     val metaExcludedSnapshot: List<String> = emptyList(),
     val publishedKeys: Set<String> = emptySet(),
+    val publishedByKey: Map<String, PublishedListingRow> = emptyMap(),
     val loadError: Boolean = false,
 )
 
@@ -430,11 +431,19 @@ suspend fun loadActivateCatalogBundle(
         val checked = eligibleKeys.associateWith { pk -> !metaSnap.contains(pk) }
         val pubResp = api.getDesignPublishedRows(ownerId, designId, shop)
         val pubRows = pubResp.optJSONArray("rows") ?: JSONArray()
-        val publishedKeys = buildSet {
+        val publishedByKey = buildMap {
             for (i in 0 until pubRows.length()) {
-                pubRows.optJSONObject(i)?.optString("product_key", "")?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { add(it) }
+                val o = pubRows.optJSONObject(i) ?: continue
+                val pk = o.optString("product_key", "").trim()
+                if (pk.isBlank() || containsKey(pk)) continue
+                put(
+                    pk,
+                    PublishedListingRow(
+                        productKey = pk,
+                        publishIntent = o.optString("publish_intent", "").trim(),
+                        completionStatus = o.optString("shopify_completion_status", "").trim(),
+                    ),
+                )
             }
         }
         ActivateCatalogBundle(
@@ -443,7 +452,8 @@ suspend fun loadActivateCatalogBundle(
             lockedKeys = lockedKeys,
             checked = checked,
             metaExcludedSnapshot = metaSnap,
-            publishedKeys = publishedKeys,
+            publishedKeys = publishedByKey.keys,
+            publishedByKey = publishedByKey,
             loadError = false,
         )
     } catch (_: Exception) {
@@ -669,7 +679,7 @@ private fun BulkDockActionBtn(
 private fun ActivateCatalogProductCard(
     product: ActivateCatalogProduct,
     checked: Boolean,
-    published: Boolean,
+    publishedRow: PublishedListingRow?,
     translationStore: TranslationStore,
     onCheckedChange: (Boolean) -> Unit,
 ) {
@@ -706,28 +716,53 @@ private fun ActivateCatalogProductCard(
                     .size(28.dp),
                 colors = CheckboxDefaults.colors(checkedColor = EazColors.Orange),
             )
-            if (published) {
-                Text(
-                    translationStore.t("creator.design_products.badge_online", "Online"),
-                    color = Color.White,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .background(Color(0xFF166534), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                )
-            } else if (checked) {
-                Text(
-                    translationStore.t("creator.design_products.badge_queue", "Queue"),
-                    color = Color.White,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .background(Color(0xFF92400E), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                )
+            val status = listingCardStatus(checked = checked, row = publishedRow)
+            if (status != ListingCardStatus.Hidden) {
+                val kind = listingKind(publishedRow)
+                Column(
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        translationStore.t(
+                            if (kind == ListingCardKind.Sample) {
+                                "creator.creations.design_products_badge_sample"
+                            } else {
+                                "creator.creations.design_products_badge_product"
+                            },
+                            if (kind == ListingCardKind.Sample) "Sample" else "Product",
+                        ),
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .background(
+                                if (kind == ListingCardKind.Sample) Color(0xFF0369A1) else Color(0xFF334155),
+                                RoundedCornerShape(4.dp),
+                            )
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                    Text(
+                        translationStore.t(
+                            if (status == ListingCardStatus.Active) {
+                                "creator.creations.design_products_badge_online"
+                            } else {
+                                "creator.creations.design_products_badge_queue"
+                            },
+                            if (status == ListingCardStatus.Active) "Active" else "Queue",
+                        ),
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .background(
+                                if (status == ListingCardStatus.Active) Color(0xFF166534) else Color(0xFF92400E),
+                                RoundedCornerShape(4.dp),
+                            )
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
             }
         }
         Text(
@@ -937,7 +972,7 @@ fun CreationsActivateDesignDialog(
                                     ActivateCatalogProductCard(
                                         product = product,
                                         checked = checkedMap[product.productKey] == true,
-                                        published = bundle?.publishedKeys?.contains(product.productKey) == true,
+                                        publishedRow = bundle?.publishedByKey?.get(product.productKey),
                                         translationStore = translationStore,
                                         onCheckedChange = { on ->
                                             checkedMap[product.productKey] = on
