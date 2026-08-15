@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -67,6 +68,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
+import com.eazpire.creator.util.isSampleProductId
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -106,7 +108,8 @@ data class FavoriteItem(
     val variantId: String?,
     val productTitle: String,
     val productImage: String?,
-    val variantTitle: String?
+    val variantTitle: String?,
+    val isSample: Boolean = false
 )
 
 data class FavoriteListInfo(val id: Long, val name: String, val description: String, val itemsCount: Int)
@@ -169,7 +172,8 @@ fun FavoritesModal(
         val productId = jsonOptString(obj, "product_id") ?: ""
         val variantId = jsonOptString(obj, "variant_id")
         val handleFromApi = jsonOptString(obj, "product_handle")
-        val handle = handleFromApi ?: handleByProductId[productId]
+        val sample = isSampleProductId(productId) || isSampleProductId(handleFromApi)
+        val handle = if (sample) productId.ifBlank { handleFromApi } else (handleFromApi ?: handleByProductId[productId])
         return FavoriteItem(
             id = if (isPool) {
                 "pool|${productId.ifBlank { "0" }}|${variantId.orEmpty()}"
@@ -183,7 +187,8 @@ fun FavoritesModal(
             variantId = variantId,
             productTitle = jsonOptString(obj, "product_title") ?: "Product",
             productImage = normalizeImageUrl(img),
-            variantTitle = displayVariantTitle(jsonOptString(obj, "variant_title"))
+            variantTitle = displayVariantTitle(jsonOptString(obj, "variant_title")),
+            isSample = sample
         )
     }
 
@@ -470,7 +475,9 @@ fun FavoritesModal(
                                         item = item,
                                         onClick = {
                                             val handle = item.productHandle?.trim().orEmpty()
-                                            if (handle.isNotBlank() && tokenStore != null && !customerId.isNullOrBlank() && onEditFavorite != null) {
+                                            if (item.isSample && handle.isNotBlank()) {
+                                                onProductClick?.invoke(handle)
+                                            } else if (handle.isNotBlank() && tokenStore != null && !customerId.isNullOrBlank() && onEditFavorite != null) {
                                                 onEditFavorite(
                                                     FavoriteEditContext(
                                                         productHandle = handle,
@@ -839,6 +846,19 @@ private fun FavoriteGridCard(
                     .padding(8.dp)
                     .clickable(onClick = onClick)
             ) {
+                if (item.isSample) {
+                    Text(
+                        "Sample",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = EazColors.Orange,
+                        modifier = Modifier
+                            .padding(bottom = 4.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(EazColors.Orange.copy(alpha = 0.14f))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
                 Text(
                     item.productTitle,
                     style = MaterialTheme.typography.bodySmall,

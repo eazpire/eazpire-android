@@ -653,14 +653,14 @@ fun ProductDetailScreen(
         return
     }
 
-    val showTryOnButton = CustomerMockPreviewStore.shouldShowTryOnButton(
+    val showTryOnButton = !p.isSample && CustomerMockPreviewStore.shouldShowTryOnButton(
         mockPreviewMap,
         context,
         productHandle,
         p.productKey,
         p.designIdMeta
     )
-    val showPosterArButton = PlpRotationUrls.isPosterArEligible(
+    val showPosterArButton = !p.isSample && PlpRotationUrls.isPosterArEligible(
         productKey = p.productKey,
         images = p.images,
         productType = p.productType,
@@ -980,6 +980,19 @@ fun ProductDetailScreen(
                     splitProductTitle(p.title, p.productType, p.productKey)
                 }
                 val detailsLabel = t("product.details", "Product Details")
+                if (p.isSample) {
+                    Text(
+                        t("eaz.sample.kind", "Sample"),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = EazColors.Orange,
+                        modifier = Modifier
+                            .padding(bottom = 6.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(EazColors.Orange.copy(alpha = 0.14f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
                 Text(
                     designTitle,
                     modifier = Modifier.fillMaxWidth(),
@@ -1616,7 +1629,7 @@ fun ProductDetailScreen(
                 .background(Color.White)
                 .padding(horizontal = 12.dp)
         ) {
-        // Row 1: Qty, Favorite, Share, Delivery, Total
+        // Row 1: Qty, Favorite, Share, Delivery, Total (samples: favorite + share only)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1625,6 +1638,7 @@ fun ProductDetailScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (!p.isSample) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -1651,6 +1665,7 @@ fun ProductDetailScreen(
                 }
             }
             Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color(0xFFE8E8E8)))
+            }
             Box(
                 modifier = Modifier.size(48.dp),
                 contentAlignment = Alignment.Center
@@ -1668,8 +1683,8 @@ fun ProductDetailScreen(
                             try {
                                 val resp = creatorApi.addFavorite(
                                     customerId = ownerId!!,
-                                    productId = p.id.toString(),
-                                    variantId = selectedVariant?.id?.toString(),
+                                    productId = if (p.isSample) p.handle else p.id.toString(),
+                                    variantId = if (p.isSample) null else selectedVariant?.id?.toString(),
                                     productTitle = p.title,
                                     productImage = images.firstOrNull()
                                 )
@@ -1686,8 +1701,8 @@ fun ProductDetailScreen(
                         }
                     } else {
                         val ok = guestFavoritesStore.add(
-                            productId = p.id.toString(),
-                            variantId = selectedVariant?.id?.toString(),
+                            productId = if (p.isSample) p.handle else p.id.toString(),
+                            variantId = if (p.isSample) null else selectedVariant?.id?.toString(),
                             productTitle = p.title,
                             productImage = images.firstOrNull()
                         )
@@ -1712,7 +1727,7 @@ fun ProductDetailScreen(
             }
             IconButton(onClick = {
                 scope.launch {
-                    val productPath = "/products/${p.handle}"
+                    val productPath = if (p.isSample) "/?eaz_open_pdp=${p.handle}" else "/products/${p.handle}"
                     val ownerId = tokenStore.getOwnerId()?.takeIf { it.isNotBlank() }
                     if (ownerId != null) {
                         try {
@@ -1735,6 +1750,7 @@ fun ProductDetailScreen(
                 Icon(Icons.Default.Share, contentDescription = "Share", tint = EazColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
             Spacer(modifier = Modifier.weight(1f))
+            if (!p.isSample) {
             Text(
                 t("eaz.pdp.total_incl_shipping", "Total: {{ price }} incl. shipping")
                     .replace("{{ price }}", ShopCurrency.format(lineEstimate.afterDiscount, currencyCode))
@@ -1743,8 +1759,10 @@ fun ProductDetailScreen(
                 color = EazColors.TextSecondary,
                 maxLines = 1,
             )
+            }
         }
         // Row 2: Price + delivery, Cart, Buy now
+        if (!p.isSample) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1954,6 +1972,7 @@ fun ProductDetailScreen(
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
             }
+        }
         }
         }
         }

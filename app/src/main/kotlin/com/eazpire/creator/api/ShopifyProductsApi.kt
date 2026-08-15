@@ -1,6 +1,8 @@
 package com.eazpire.creator.api
 
 import com.eazpire.creator.plp.PlpRotationUrls
+import com.eazpire.creator.util.parseSamplePublishedId
+import com.eazpire.creator.util.sampleHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -407,7 +409,8 @@ class ShopifyProductsApi(
         val creatorDisplay: String = "",
         val designIdMeta: String? = null,
         val ratingAvg: Double? = null,
-        val ratingCount: Int? = null
+        val ratingCount: Int? = null,
+        val isSample: Boolean = false
     ) {
         data class ProductVariant(
             val id: Long,
@@ -451,6 +454,7 @@ class ShopifyProductsApi(
      */
     suspend fun getProductByHandle(handle: String): ProductDetail? = withContext(Dispatchers.IO) {
         if (handle.isBlank()) return@withContext null
+        parseSamplePublishedId(handle)?.let { return@withContext getSampleShopProduct(it) }
         val url = "$workerUrl/apps/creator-dispatch?op=product-json&handle=${java.net.URLEncoder.encode(handle, "UTF-8")}"
         try {
             val request = Request.Builder().url(url).build()
@@ -468,6 +472,55 @@ class ShopifyProductsApi(
                 designIdMeta = mf.designId.takeIf { it.isNotBlank() } ?: base.designIdMeta,
                 ratingAvg = mf.ratingAvg.takeIf { it > 0.0 } ?: base.ratingAvg,
                 ratingCount = mf.ratingCount.takeIf { it > 0 } ?: base.ratingCount
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** D1 sample listing — no Shopify/Printify. Worker: op=get-sample-shop-product */
+    suspend fun getSampleShopProduct(publishedId: Long): ProductDetail? = withContext(Dispatchers.IO) {
+        if (publishedId <= 0L) return@withContext null
+        val url = "$workerUrl/apps/creator-dispatch?op=get-sample-shop-product&published_design_id=$publishedId"
+        try {
+            val request = Request.Builder().url(url).build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: "{}"
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+            if (!json.optBoolean("ok", false)) return@withContext null
+            val p = json.optJSONObject("product") ?: return@withContext null
+            val gallery = mutableListOf<ProductImage>()
+            val arr = p.optJSONArray("gallery")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val src = arr.optString(i, "").trim()
+                    if (src.isNotBlank()) gallery.add(ProductImage(src = src, variantIds = emptyList(), alt = null))
+                }
+            }
+            if (gallery.isEmpty()) {
+                val fallback = p.optString("preview_image", "").ifBlank { p.optString("design_image_url", "") }.trim()
+                if (fallback.isNotBlank()) {
+                    gallery.add(ProductImage(src = fallback, variantIds = emptyList(), alt = null))
+                }
+            }
+            if (gallery.isEmpty()) return@withContext null
+            val handle = p.optString("handle", "").ifBlank { sampleHandle(publishedId) }
+            val title = p.optString("title", "").ifBlank { p.optString("design_title", "Sample") }
+            val creator = p.optString("creator_name", "")
+            ProductDetail(
+                id = publishedId,
+                title = title,
+                handle = handle,
+                bodyHtml = "",
+                images = gallery,
+                variants = emptyList(),
+                options = emptyList(),
+                vendor = creator,
+                productType = p.optString("product_type_label", ""),
+                url = "$storeUrl/?eaz_open_pdp=$handle",
+                productKey = p.optString("product_key", "").takeIf { it.isNotBlank() },
+                creatorDisplay = creator,
+                isSample = true
             )
         } catch (_: Exception) {
             null
