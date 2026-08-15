@@ -136,7 +136,10 @@ data class CreationProduct(
     val storefrontUrl: String?,
     val shopifyHandle: String?,
     val publishedAt: Long?,
-    val publishedCount: Int = 0
+    val publishedCount: Int = 0,
+    val isSample: Boolean = false,
+    val publishedDesignId: String? = null,
+    val designIds: List<String> = emptyList(),
 )
 
 private val VIEW_MODES = listOf("grid2", "grid3", "grid4", "list")
@@ -1228,14 +1231,26 @@ private suspend fun fetchPublishedCreationsProducts(
             val title = obj.optString("product_name", "")
                 .ifBlank { obj.optString("title", "") }
                 .ifBlank { productKey.ifBlank { "Product" } }
+            val isSample = obj.optBoolean("is_sample", false) ||
+                obj.optString("publish_intent") == "sample_publish"
+            val sampleUrl = obj.optString("sample_url", "").takeIf { it.isNotBlank() }
+            val designIds = buildList {
+                val arr = obj.optJSONArray("design_ids")
+                if (arr != null) {
+                    for (j in 0 until arr.length()) {
+                        arr.opt(j)?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+                    }
+                }
+            }
             CreationProduct(
                 id = obj.optString("shopify_product_id", "")
+                    .ifBlank { obj.optString("published_design_id", "") }
                     .ifBlank { obj.optString("product_key", "") + "-product" },
                 title = title,
                 productName = title,
                 productKey = productKey,
                 imageUrl = img,
-                storefrontUrl = storefront,
+                storefrontUrl = sampleUrl ?: storefront,
                 shopifyHandle = obj.optString("shopify_handle").takeIf { it.isNotBlank() },
                 publishedAt = (obj.opt("last_published_at") as? Number)?.toLong()
                     ?: (obj.optString("last_published_at").takeIf { it.isNotBlank() }?.let {
@@ -1245,7 +1260,10 @@ private suspend fun fetchPublishedCreationsProducts(
                             null
                         }
                     }),
-                publishedCount = obj.optInt("published_count", 0)
+                publishedCount = obj.optInt("published_count", 0),
+                isSample = isSample,
+                publishedDesignId = obj.optString("published_design_id", "").takeIf { it.isNotBlank() },
+                designIds = designIds,
             )
         }.sortedByDescending { it.publishedAt ?: 0L }
     }
@@ -1512,6 +1530,19 @@ private fun CreationProductCard(
                     ) {
                         Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
                     }
+                }
+                if (product.isSample) {
+                    Text(
+                        "Sample",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .background(Color(0xFF0369A1), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
                 }
             }
             Text(
