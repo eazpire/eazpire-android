@@ -204,7 +204,10 @@ class CreatorApi(
     /** POST ?op=printify-studio-test-open — duplicate Printify template for editing session */
     suspend fun printifyStudioTestOpen(
         ownerId: String,
-        productKey: String
+        productKey: String,
+        publishedDesignId: String? = null,
+        designId: String? = null,
+        creatorId: String? = null,
     ): JSONObject = postDispatchJson(
         op = "printify-studio-test-open",
         queryParams = mapOf(
@@ -216,6 +219,11 @@ class CreatorApi(
             .put("path_prefix", "/apps/creator-dispatch")
             .put("owner_id", ownerId)
             .put("product_key", productKey)
+            .apply {
+                if (!publishedDesignId.isNullOrBlank()) put("published_design_id", publishedDesignId)
+                if (!designId.isNullOrBlank()) put("design_id", designId)
+                if (!creatorId.isNullOrBlank()) put("creator_id", creatorId)
+            }
     )
 
     /** POST ?op=printify-studio-test-sync — placement + preview sync (creates product when printify_product_id omitted) */
@@ -252,14 +260,22 @@ class CreatorApi(
     /** GET ?op=printify-studio-test-product-meta — Printify options/variants for studio footer */
     suspend fun printifyStudioTestProductMeta(
         ownerId: String,
-        printifyProductId: String
+        printifyProductId: String,
+        publishedDesignId: String? = null,
+        designId: String? = null,
+        creatorId: String? = null,
+        productKey: String? = null,
     ): JSONObject = call(
         "printify-studio-test-product-meta",
-        mapOf(
-            "owner_id" to ownerId,
-            "logged_in_customer_id" to ownerId,
-            "printify_product_id" to printifyProductId
-        )
+        buildMap {
+            put("owner_id", ownerId)
+            put("logged_in_customer_id", ownerId)
+            put("printify_product_id", printifyProductId)
+            publishedDesignId?.takeIf { it.isNotBlank() }?.let { put("published_design_id", it) }
+            designId?.takeIf { it.isNotBlank() }?.let { put("design_id", it) }
+            creatorId?.takeIf { it.isNotBlank() }?.let { put("creator_id", it) }
+            productKey?.takeIf { it.isNotBlank() }?.let { put("product_key", it) }
+        }
     )
 
     /** GET ?op=printify-studio-test-list-drafts — saved drafts for product_key */
@@ -3975,10 +3991,12 @@ class CreatorApi(
         region: String,
         designType: String? = null,
         designId: String? = null,
+        ownerId: String? = null,
     ): JSONObject {
         val params = mutableMapOf("region" to region)
         designType?.let { params["design_type"] = it }
         designId?.takeIf { it.isNotBlank() }?.let { params["design_id"] = it }
+        ownerId?.takeIf { it.isNotBlank() }?.let { params["owner_id"] = it }
         return call("get-catalog-products", params)
     }
 

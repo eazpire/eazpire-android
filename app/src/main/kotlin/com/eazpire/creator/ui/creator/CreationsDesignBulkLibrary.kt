@@ -320,11 +320,13 @@ data class ActivateCatalogProduct(
     val title: String,
     val previewImageUrl: String?,
     val mockUrls: List<String>,
+    val unlocked: Boolean = true,
 )
 
 data class ActivateCatalogBundle(
     val products: List<ActivateCatalogProduct> = emptyList(),
     val eligibleKeys: List<String> = emptyList(),
+    val lockedKeys: List<String> = emptyList(),
     val checked: Map<String, Boolean> = emptyMap(),
     val metaExcludedSnapshot: List<String> = emptyList(),
     val publishedKeys: Set<String> = emptySet(),
@@ -363,6 +365,7 @@ fun computeActivateExcludedKeys(
     eligibleKeys: List<String>,
     checked: Map<String, Boolean>,
     metaExcludedSnapshot: List<String>,
+    lockedKeys: List<String> = emptyList(),
 ): List<String> {
     val eligible = eligibleKeys.toSet()
     val out = linkedSetOf<String>()
@@ -372,6 +375,10 @@ fun computeActivateExcludedKeys(
     }
     eligibleKeys.forEach { key ->
         if (checked[key] != true) out.add(key)
+    }
+    lockedKeys.forEach { pk ->
+        val key = pk.trim()
+        if (key.isNotBlank()) out.add(key)
     }
     return out.sorted()
 }
@@ -385,9 +392,9 @@ suspend fun loadActivateCatalogBundle(
     region: String = "EU",
 ): ActivateCatalogBundle = withContext(Dispatchers.IO) {
     try {
-        val catResp = api.getCatalogProducts(region = region, designId = designId)
+        val catResp = api.getCatalogProducts(region = region, designId = designId, ownerId = ownerId)
         val productsArr = catResp.optJSONArray("products") ?: JSONArray()
-        val products = buildList {
+        val allProducts = buildList {
             for (i in 0 until productsArr.length()) {
                 val o = productsArr.optJSONObject(i) ?: continue
                 val pk = o.optString("product_key", "").trim()
@@ -406,10 +413,13 @@ suspend fun loadActivateCatalogBundle(
                         title = o.optString("title", pk).ifBlank { pk },
                         previewImageUrl = o.optString("preview_image_url", "").trim().takeIf { it.isNotBlank() },
                         mockUrls = mockUrls,
+                        unlocked = o.optBoolean("unlocked", true),
                     )
                 )
             }
         }
+        val products = allProducts.filter { it.unlocked }
+        val lockedKeys = allProducts.filter { !it.unlocked }.map { it.productKey }
         val eligibleKeys = products.map { it.productKey }
         val metaSnap = metadataExcluded.distinct()
         val checked = eligibleKeys.associateWith { pk -> !metaSnap.contains(pk) }
@@ -425,6 +435,7 @@ suspend fun loadActivateCatalogBundle(
         ActivateCatalogBundle(
             products = products,
             eligibleKeys = eligibleKeys,
+            lockedKeys = lockedKeys,
             checked = checked,
             metaExcludedSnapshot = metaSnap,
             publishedKeys = publishedKeys,
@@ -977,6 +988,7 @@ fun CreationsActivateDesignDialog(
                                     b.eligibleKeys,
                                     checkedMap.toMap(),
                                     b.metaExcludedSnapshot,
+                                    b.lockedKeys,
                                 )
                             }
                             onConfirm(
