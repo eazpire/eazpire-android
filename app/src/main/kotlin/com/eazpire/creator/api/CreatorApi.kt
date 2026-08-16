@@ -3076,6 +3076,17 @@ class CreatorApi(
     /** PUT ?op=update-design — body must include design_id; optional metadata, prompt, visibility, title, description */
     suspend fun updateDesign(body: JSONObject): JSONObject = putJsonBodyOp("update-design", body)
 
+    /** POST ?op=rate-design — owner rates own design (no_go | good | awesome). */
+    suspend fun rateDesign(ownerId: String, designId: String?, jobId: String?, rating: String): JSONObject {
+        val body = JSONObject().apply {
+            put("rating", rating)
+            designId?.takeIf { it.isNotBlank() }?.let { put("design_id", it) }
+            jobId?.takeIf { it.isNotBlank() }?.let { put("job_id", it) }
+            if (ownerId.isNotBlank()) put("owner_id", ownerId)
+        }
+        return postJsonBodyOp("rate-design", body, mapOf("owner_id" to ownerId))
+    }
+
     /** POST ?op=save-design — save generated job to library (bulk / inactive tab). */
     suspend fun saveDesign(body: JSONObject): JSONObject = postJsonBodyOp("save-design", body)
 

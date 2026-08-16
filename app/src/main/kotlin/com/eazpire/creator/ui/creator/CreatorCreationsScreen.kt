@@ -41,7 +41,13 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -125,6 +131,7 @@ data class CreationDesign(
     val publishActive: Boolean = false,
     val publishSessionId: String? = null,
     val reviewStatus: String? = null,
+    val qualityRating: String? = null,
 )
 
 data class CreationProduct(
@@ -172,7 +179,7 @@ private fun creationProductDisplayUrls(
     return listOfNotNull(normalizeImageUrl(product.imageUrl)).filter { it.isNotBlank() }.distinct()
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun CreatorCreationsScreen(
     tokenStore: SecureTokenStore,
@@ -224,6 +231,8 @@ fun CreatorCreationsScreen(
     var showSaveDialog by remember { mutableStateOf(false) }
     var libraryActionBusy by remember { mutableStateOf(false) }
     var creatorNamesCache by remember { mutableStateOf<List<String>>(emptyList()) }
+    var ratingTarget by remember { mutableStateOf<CreationDesign?>(null) }
+    val ratingSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(designsActivityFilter, currentTab) {
         bulkSelectedKeys = emptySet()
@@ -595,6 +604,9 @@ fun CreatorCreationsScreen(
                                                 }
                                             }
                                         } else null,
+                                        onRateClick = if (design.canRate()) {
+                                            { ratingTarget = design }
+                                        } else null,
                                         onClick = {
                                             if (!design.publishActive) designPreviewDesign = design
                                         }
@@ -633,6 +645,9 @@ fun CreatorCreationsScreen(
                                                         showDeactivateDialog = true
                                                     }
                                                 }
+                                            } else null,
+                                            onRateClick = if (design.canRate()) {
+                                                { ratingTarget = design }
                                             } else null,
                                             onClick = {
                                                 if (!design.publishActive) designPreviewDesign = design
@@ -1127,6 +1142,75 @@ fun CreatorCreationsScreen(
             onOpenEazyJobs = onOpenEazyJobs
         )
     }
+
+    ratingTarget?.let { target ->
+        ModalBottomSheet(
+            onDismissRequest = { ratingTarget = null },
+            sheetState = ratingSheetState,
+            containerColor = Color(0xFF1E293B),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    translationStore.t("creator.creations.rating_aria", "Rate design"),
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                )
+                listOf(
+                    Triple("no_go", translationStore.t("creator.creations.rating_no_go", "No go"), Icons.Default.Close),
+                    Triple("good", translationStore.t("creator.creations.rating_good", "Good"), Icons.Default.ThumbUp),
+                    Triple("awesome", translationStore.t("creator.creations.rating_awesome", "Awesome"), Icons.Default.Star),
+                ).forEach { (key, label, icon) ->
+                    val selected = target.qualityRating == key
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (selected) Color.White.copy(alpha = 0.08f) else Color.Transparent
+                            )
+                            .clickable {
+                                val prev = target.qualityRating
+                                designs = designs.map { d ->
+                                    if (d.id == target.id && d.jobId == target.jobId) d.copy(qualityRating = key) else d
+                                }
+                                ratingTarget = null
+                                scope.launch {
+                                    try {
+                                        val resp = api.rateDesign(ownerId, target.id, target.jobId, key)
+                                        if (!resp.optBoolean("ok", false)) {
+                                            designs = designs.map { d ->
+                                                if (d.id == target.id && d.jobId == target.jobId) {
+                                                    d.copy(qualityRating = prev)
+                                                } else d
+                                            }
+                                        }
+                                    } catch (_: Exception) {
+                                        designs = designs.map { d ->
+                                            if (d.id == target.id && d.jobId == target.jobId) {
+                                                d.copy(qualityRating = prev)
+                                            } else d
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(icon, contentDescription = null, tint = qualityRatingTint(key))
+                        Text(label, color = qualityRatingTint(key), fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** Parallel API fetch + merge (active + inactive); matches web creator-creations-screen.js. */
@@ -1397,6 +1481,7 @@ private fun CreationDesignListItem(
     selected: Boolean,
     onSelectedChange: (Boolean) -> Unit,
     onLibraryAction: (() -> Unit)?,
+    onRateClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Box(
@@ -1446,6 +1531,15 @@ private fun CreationDesignListItem(
                             color = EazColors.Orange
                         )
                     }
+                }
+            }
+            if (onRateClick != null && design.canRate()) {
+                IconButton(onClick = onRateClick, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = translationStore.t("creator.creations.rating_aria", "Rate design"),
+                        tint = qualityRatingTint(design.qualityRating),
+                    )
                 }
             }
             if (onLibraryAction != null && !design.publishActive) {

@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -118,6 +119,26 @@ data class CreationProductBadge(
     val eligible: Int = 0,
     val published: Int = 0,
 )
+
+fun normalizeQualityRating(raw: String?): String? {
+    val s = raw?.trim()?.lowercase()?.replace(Regex("[\\s-]+"), "_").orEmpty()
+    return when (s) {
+        "no_go", "nogo", "no" -> "no_go"
+        "good" -> "good"
+        "awesome", "perfect" -> "awesome"
+        else -> null
+    }
+}
+
+fun qualityRatingTint(rating: String?): Color = when (rating) {
+    "no_go" -> Color(0xFFFCA5A5)
+    "good" -> Color(0xFF93C5FD)
+    "awesome" -> Color(0xFFFBBF24)
+    else -> Color.White.copy(alpha = 0.72f)
+}
+
+fun CreationDesign.canRate(): Boolean =
+    (!id.isNullOrBlank() || !jobId.isNullOrBlank()) && !savingToLibrary && !publishActive
 
 fun parseCreationProductBadges(resp: org.json.JSONObject): Map<String, CreationProductBadge> {
     if (!resp.optBoolean("ok", false)) return emptyMap()
@@ -259,6 +280,7 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
             obj.optString("publish_session_id", "").isNotBlank(),
         publishSessionId = obj.optString("publish_session_id", "").takeIf { it.isNotBlank() },
         reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
+        qualityRating = normalizeQualityRating(obj.optString("quality_rating", "")),
     )
 }
 
@@ -287,6 +309,7 @@ fun parseKvSavingCreationDesign(obj: JSONObject): CreationDesign? {
         libraryStatus = "inactive",
         savingToLibrary = true,
         reviewStatus = null,
+        qualityRating = normalizeQualityRating(obj.optString("quality_rating", "")),
     )
 }
 
@@ -317,6 +340,7 @@ fun parseGeneratedCreationDesign(obj: JSONObject, savingToLibrary: Boolean = fal
         libraryStatus = "inactive",
         savingToLibrary = savingToLibrary,
         reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
+        qualityRating = normalizeQualityRating(obj.optString("quality_rating", "")),
     )
 }
 
@@ -1106,6 +1130,7 @@ fun CreationDesignGridCard(
     selected: Boolean,
     onSelectedChange: (Boolean) -> Unit,
     onLibraryAction: (() -> Unit)?,
+    onRateClick: (() -> Unit)? = null,
     onClick: () -> Unit,
     activateLabel: String,
     deactivateLabel: String,
@@ -1185,6 +1210,25 @@ fun CreationDesignGridCard(
                         uncheckedColor = Color.White.copy(alpha = 0.7f),
                         checkmarkColor = Color.White,
                     ),
+                )
+            }
+        }
+        if (onRateClick != null && design.canRate()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0xFF0C0C0E).copy(alpha = 0.72f))
+                    .clickable { onRateClick() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = "Rate design",
+                    tint = qualityRatingTint(design.qualityRating),
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }
