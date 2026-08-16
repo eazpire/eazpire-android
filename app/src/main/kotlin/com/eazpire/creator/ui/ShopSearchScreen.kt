@@ -319,6 +319,7 @@ private fun ShopSearchProductCard(
                 .background(Color(0xFFF5F5F5)),
             colorNames = product.rotationColorNames,
             viewsByColor = product.plpViewsByColor,
+            rotateIntervalMs = 5400L,
             autoRotate = display.autoRotate,
             fullResolution = display.isPersonalizedMock,
             expanded = expanded,

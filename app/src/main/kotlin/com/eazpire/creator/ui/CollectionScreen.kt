@@ -91,7 +91,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.mutableIntStateOf
 
-private const val IMAGE_ROTATE_INTERVAL_MS = 1800L
+private const val IMAGE_ROTATE_INTERVAL_MS = 5400L
 
 /** Special [collectionHandle] — load products from worker `list-active-shop-promotion-products`, not a Shopify collection. */
 const val EAZ_PROMOTIONS_COLLECTION_HANDLE = "eaz-promotions"

@@ -231,7 +231,7 @@ fun CreatorCreationsScreen(
     var showSaveDialog by remember { mutableStateOf(false) }
     var libraryActionBusy by remember { mutableStateOf(false) }
     var creatorNamesCache by remember { mutableStateOf<List<String>>(emptyList()) }
-    var ratingTarget by remember { mutableStateOf<CreationDesign?>(null) }
+    var ratingTargets by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
     val ratingSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(designsActivityFilter, currentTab) {
@@ -605,7 +605,7 @@ fun CreatorCreationsScreen(
                                             }
                                         } else null,
                                         onRateClick = if (design.canRate()) {
-                                            { ratingTarget = design }
+                                            { ratingTargets = listOf(design) }
                                         } else null,
                                         onClick = {
                                             if (!design.publishActive) designPreviewDesign = design
@@ -647,7 +647,7 @@ fun CreatorCreationsScreen(
                                                 }
                                             } else null,
                                             onRateClick = if (design.canRate()) {
-                                                { ratingTarget = design }
+                                                { ratingTargets = listOf(design) }
                                             } else null,
                                             onClick = {
                                                 if (!design.publishActive) designPreviewDesign = design
@@ -678,6 +678,9 @@ fun CreatorCreationsScreen(
                         onDeactivate = {
                             deactivateTargets = selectedDesignObjects
                             showDeactivateDialog = true
+                        },
+                        onRate = {
+                            ratingTargets = selectedDesignObjects.filter { it.canRate() }
                         },
                         onDelete = {
                             deleteTargets = selectedDesignObjects
@@ -1143,9 +1146,11 @@ fun CreatorCreationsScreen(
         )
     }
 
-    ratingTarget?.let { target ->
+    ratingTargets.takeIf { it.isNotEmpty() }?.let { targets ->
+        val isBulk = targets.size > 1
+        val targetKeys = targets.map { it.bulkSelectionKey() }.filter { it.isNotBlank() }.toSet()
         ModalBottomSheet(
-            onDismissRequest = { ratingTarget = null },
+            onDismissRequest = { ratingTargets = emptyList() },
             sheetState = ratingSheetState,
             containerColor = Color(0xFF1E293B),
         ) {
@@ -1157,17 +1162,29 @@ fun CreatorCreationsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    translationStore.t("creator.creations.rating_aria", "Rate design"),
+                    if (isBulk) {
+                        translationStore.t("creator.creations.bulk_rate_title", "Rate selected designs")
+                    } else {
+                        translationStore.t("creator.creations.rating_aria", "Rate design")
+                    },
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 16.sp,
                 )
+                if (isBulk) {
+                    val countTpl = translationStore.t("creator.creations.bulk_selected_count_tpl", "%n% selected")
+                    Text(
+                        countTpl.replace("%n%", targets.size.toString()),
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 13.sp,
+                    )
+                }
                 listOf(
                     Triple("no_go", translationStore.t("creator.creations.rating_no_go", "No go"), Icons.Default.Close),
                     Triple("good", translationStore.t("creator.creations.rating_good", "Good"), Icons.Default.ThumbUp),
                     Triple("awesome", translationStore.t("creator.creations.rating_awesome", "Awesome"), Icons.Default.Star),
                 ).forEach { (key, label, icon) ->
-                    val selected = target.qualityRating == key
+                    val selected = !isBulk && targets.first().qualityRating == key
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1176,26 +1193,33 @@ fun CreatorCreationsScreen(
                                 if (selected) Color.White.copy(alpha = 0.08f) else Color.Transparent
                             )
                             .clickable {
-                                val prev = target.qualityRating
+                                val prevByKey = targets.associate { it.bulkSelectionKey() to it.qualityRating }
                                 designs = designs.map { d ->
-                                    if (d.id == target.id && d.jobId == target.jobId) d.copy(qualityRating = key) else d
+                                    if (d.bulkSelectionKey() in targetKeys) d.copy(qualityRating = key) else d
                                 }
-                                ratingTarget = null
+                                ratingTargets = emptyList()
                                 scope.launch {
                                     try {
-                                        val resp = api.rateDesign(ownerId, target.id, target.jobId, key)
+                                        val resp = if (targets.size == 1) {
+                                            val one = targets.first()
+                                            api.rateDesign(ownerId, one.id, one.jobId, key)
+                                        } else {
+                                            api.rateDesigns(
+                                                ownerId,
+                                                targets.map { it.id to it.jobId },
+                                                key,
+                                            )
+                                        }
                                         if (!resp.optBoolean("ok", false)) {
                                             designs = designs.map { d ->
-                                                if (d.id == target.id && d.jobId == target.jobId) {
-                                                    d.copy(qualityRating = prev)
-                                                } else d
+                                                val k = d.bulkSelectionKey()
+                                                if (k in prevByKey) d.copy(qualityRating = prevByKey[k]) else d
                                             }
                                         }
                                     } catch (_: Exception) {
                                         designs = designs.map { d ->
-                                            if (d.id == target.id && d.jobId == target.jobId) {
-                                                d.copy(qualityRating = prev)
-                                            } else d
+                                            val k = d.bulkSelectionKey()
+                                            if (k in prevByKey) d.copy(qualityRating = prevByKey[k]) else d
                                         }
                                     }
                                 }

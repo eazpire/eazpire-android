@@ -596,6 +596,7 @@ fun CreationsDesignBulkDock(
     onDeselectAll: () -> Unit,
     onActivate: () -> Unit,
     onDeactivate: () -> Unit,
+    onRate: () -> Unit,
     onDelete: () -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
@@ -666,6 +667,11 @@ fun CreationsDesignBulkDock(
                     )
                 }
                 if (cohort != CreationsBulkCohort.Empty) {
+                    BulkDockActionBtn(
+                        label = translationStore.t("creator.creations.bulk_rate", "Rate"),
+                        onClick = onRate,
+                        modifier = Modifier.weight(1f),
+                    )
                     BulkDockActionBtn(
                         label = translationStore.t("creator.creations.bulk_delete", "Delete"),
                         onClick = onDelete,

@@ -3087,6 +3087,32 @@ class CreatorApi(
         return postJsonBodyOp("rate-design", body, mapOf("owner_id" to ownerId))
     }
 
+    /** POST ?op=rate-designs — same rating on many owned designs. */
+    suspend fun rateDesigns(
+        ownerId: String,
+        items: List<Pair<String?, String?>>,
+        rating: String,
+    ): JSONObject {
+        val body = JSONObject().apply {
+            put("rating", rating)
+            put(
+                "items",
+                JSONArray().apply {
+                    items.forEach { (designId, jobId) ->
+                        put(
+                            JSONObject().apply {
+                                designId?.takeIf { it.isNotBlank() }?.let { put("design_id", it) }
+                                jobId?.takeIf { it.isNotBlank() }?.let { put("job_id", it) }
+                            },
+                        )
+                    }
+                },
+            )
+            if (ownerId.isNotBlank()) put("owner_id", ownerId)
+        }
+        return postJsonBodyOp("rate-designs", body, mapOf("owner_id" to ownerId))
+    }
+
     /** POST ?op=save-design — save generated job to library (bulk / inactive tab). */
     suspend fun saveDesign(body: JSONObject): JSONObject = postJsonBodyOp("save-design", body)
 

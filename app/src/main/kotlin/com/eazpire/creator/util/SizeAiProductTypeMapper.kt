@@ -61,10 +61,6 @@ fun matchShopifySizeOption(availableSizes: List<String>, recommended: String): S
     availableSizes.firstOrNull { it.equals(r, ignoreCase = true) }?.let { return it }
     val rNorm = normalizeSizeToken(r)
     availableSizes.firstOrNull { normalizeSizeToken(it) == rNorm }?.let { return it }
-    availableSizes.firstOrNull { av ->
-        val a = normalizeSizeToken(av)
-        a.contains(rNorm) || rNorm.contains(a)
-    }?.let { return it }
     return null
 }
 

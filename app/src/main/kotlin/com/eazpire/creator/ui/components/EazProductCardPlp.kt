@@ -169,7 +169,7 @@ fun EazProductCardRotatingImages(
     productId: String,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    rotateIntervalMs: Long = 1800L,
+    rotateIntervalMs: Long = 5400L,
     autoRotate: Boolean = true,
     /** Home carousels: load only the visible frame (+ optional next), not every variant URL. */
     lazyLoadImages: Boolean = false,
@@ -352,7 +352,7 @@ fun EazProductCardPlpMediaStack(
     modifier: Modifier = Modifier,
     colorNames: List<String> = emptyList(),
     viewsByColor: Map<String, List<String>> = emptyMap(),
-    rotateIntervalMs: Long = 1800L,
+    rotateIntervalMs: Long = 5400L,
     autoRotate: Boolean = true,
     fullResolution: Boolean = false,
     /** Controlled expand (tap). Null = manage internally. */
@@ -401,8 +401,8 @@ fun EazProductCardPlpMediaStack(
         if (pause) paused = true
     }
 
-    LaunchedEffect(productId, urls.size, autoRotate, paused, overrideUrl) {
-        if (!autoRotate || paused || overrideUrl != null || urls.size <= 1) return@LaunchedEffect
+    LaunchedEffect(productId, urls.size, autoRotate, paused, overrideUrl, isExpanded) {
+        if (!autoRotate || paused || overrideUrl != null || urls.size <= 1 || isExpanded) return@LaunchedEffect
         delay(plpRotationJitterMs(productId))
         while (true) {
             delay(rotateIntervalMs)
@@ -451,51 +451,54 @@ fun EazProductCardPlpMediaStack(
                 )
             }
 
-            if (isExpanded && otherViewUrls.isNotEmpty()) {
+            if (isExpanded) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(8.dp)
+                        .padding(6.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.White.copy(alpha = 0.92f))
                         .zIndex(4f)
                 ) {
                     val cells = otherViewUrls
+                    val topRow = cells.take(2)
+                    val bottomRow = cells.drop(2).take(2)
                     Column(
                         modifier = Modifier.fillMaxSize().padding(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        listOf(cells.take(2), cells.drop(2).take(2)).forEach { row ->
-                            if (row.isEmpty()) return@forEach
-                            Row(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                row.forEach { url ->
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .border(1.dp, Color(0x14000000), RoundedCornerShape(6.dp))
-                                            .background(Color.White)
-                                            .clickable {
-                                                paused = true
-                                                overrideUrl = url
-                                            }
-                                    ) {
-                                        AsyncImage(
-                                            model = url,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Fit,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                }
-                                if (row.size == 1) {
-                                    Box(modifier = Modifier.weight(1f))
-                                }
-                            }
+                        if (topRow.isNotEmpty()) {
+                            PlpOverviewImageRow(
+                                urls = topRow,
+                                modifier = Modifier.weight(1f),
+                                onPick = { url ->
+                                    paused = true
+                                    overrideUrl = url
+                                },
+                            )
+                        } else {
+                            Box(modifier = Modifier.weight(1f))
+                        }
+                        if (urls.size > 1) {
+                            PlpVariantColorRail(
+                                urls = urls,
+                                colorNames = colorNames,
+                                currentIndex = currentIndex,
+                                scrollState = scrollState,
+                                onSelect = { selectIndex(it, pause = true) },
+                            )
+                        }
+                        if (bottomRow.isNotEmpty()) {
+                            PlpOverviewImageRow(
+                                urls = bottomRow,
+                                modifier = Modifier.weight(1f),
+                                onPick = { url ->
+                                    paused = true
+                                    overrideUrl = url
+                                },
+                            )
+                        } else {
+                            Box(modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -505,9 +508,10 @@ fun EazProductCardPlpMediaStack(
                 IconButton(
                     onClick = onDetailClick,
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .zIndex(6f)
-                        .size(40.dp)
+                        .align(Alignment.TopStart)
+                        .padding(10.dp)
+                        .zIndex(8f)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.96f))
                 ) {
@@ -515,7 +519,7 @@ fun EazProductCardPlpMediaStack(
                         Icons.Default.Info,
                         contentDescription = "View product details",
                         tint = Color(0xFF1A1A1A),
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -533,81 +537,127 @@ fun EazProductCardPlpMediaStack(
                 )
             }
         }
+    }
+}
 
-        if (isExpanded && urls.size > 1) {
-            Row(
+@Composable
+private fun PlpOverviewImageRow(
+    urls: List<String>,
+    modifier: Modifier = Modifier,
+    onPick: (String) -> Unit,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        urls.forEach { url ->
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp)
-                    .padding(horizontal = 2.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(1.dp, Color(0x14000000), RoundedCornerShape(6.dp))
+                    .background(Color.White)
+                    .clickable { onPick(url) },
+                contentAlignment = Alignment.Center
             ) {
-                IconButton(
-                    onClick = { selectIndex(currentIndex - 1, pause = true) },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        Icons.Default.KeyboardArrowLeft,
-                        contentDescription = "Previous variant",
-                        tint = Color(0xFF6B7280),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Row(
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(scrollState),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    urls.forEachIndexed { index, url ->
-                        val colorName = colorNames.getOrNull(index)
-                        val swatch = plpSwatchColor(colorName)
-                        val active = index == currentIndex
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(CircleShape)
-                                .background(swatch ?: Color(0xFFD1D5DB))
-                                .then(
-                                    if (swatch == null) {
-                                        Modifier.border(1.dp, Color(0x33000000), CircleShape)
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                                .border(
-                                    width = if (active) 2.dp else 0.dp,
-                                    color = if (active) EazColors.Orange else Color.Transparent,
-                                    shape = CircleShape
-                                )
-                                .clickable { selectIndex(index, pause = true) }
-                        ) {
+                        .fillMaxSize()
+                        .padding(3.dp)
+                )
+            }
+        }
+        if (urls.size == 1) {
+            Box(modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun PlpVariantColorRail(
+    urls: List<String>,
+    colorNames: List<String>,
+    currentIndex: Int,
+    scrollState: androidx.compose.foundation.ScrollState,
+    onSelect: (Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(32.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.White.copy(alpha = 0.94f))
+            .padding(horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            onClick = { onSelect(currentIndex - 1) },
+            modifier = Modifier.size(26.dp)
+        ) {
+            Icon(
+                Icons.Default.KeyboardArrowLeft,
+                contentDescription = "Previous variant",
+                tint = Color(0xFF6B7280),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(scrollState),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            urls.forEachIndexed { index, url ->
+                val colorName = colorNames.getOrNull(index)
+                val swatch = plpSwatchColor(colorName)
+                val active = index == currentIndex
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(swatch ?: Color(0xFFD1D5DB))
+                        .then(
                             if (swatch == null) {
-                                AsyncImage(
-                                    model = url,
-                                    contentDescription = colorName ?: "Variant ${index + 1}",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(CircleShape)
-                                )
+                                Modifier.border(1.dp, Color(0x33000000), CircleShape)
+                            } else {
+                                Modifier
                             }
-                        }
+                        )
+                        .border(
+                            width = if (active) 2.dp else 0.dp,
+                            color = if (active) EazColors.Orange else Color.Transparent,
+                            shape = CircleShape
+                        )
+                        .clickable { onSelect(index) }
+                ) {
+                    if (swatch == null) {
+                        AsyncImage(
+                            model = url,
+                            contentDescription = colorName ?: "Variant ${index + 1}",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                        )
                     }
                 }
-                IconButton(
-                    onClick = { selectIndex(currentIndex + 1, pause = true) },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        Icons.Default.KeyboardArrowRight,
-                        contentDescription = "Next variant",
-                        tint = Color(0xFF6B7280),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
             }
+        }
+        IconButton(
+            onClick = { onSelect(currentIndex + 1) },
+            modifier = Modifier.size(26.dp)
+        ) {
+            Icon(
+                Icons.Default.KeyboardArrowRight,
+                contentDescription = "Next variant",
+                tint = Color(0xFF6B7280),
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
