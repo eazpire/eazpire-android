@@ -641,6 +641,13 @@ fun CreationsDesignBulkDock(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (cohort != CreationsBulkCohort.Empty) {
+                    BulkDockActionBtn(
+                        label = translationStore.t("creator.creations.bulk_rate", "Rate"),
+                        onClick = onRate,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 if (cohort == CreationsBulkCohort.InactiveSaved) {
                     BulkDockActionBtn(
                         label = translationStore.t("creator.creations.bulk_activate", "Activate"),
@@ -667,11 +674,6 @@ fun CreationsDesignBulkDock(
                     )
                 }
                 if (cohort != CreationsBulkCohort.Empty) {
-                    BulkDockActionBtn(
-                        label = translationStore.t("creator.creations.bulk_rate", "Rate"),
-                        onClick = onRate,
-                        modifier = Modifier.weight(1f),
-                    )
                     BulkDockActionBtn(
                         label = translationStore.t("creator.creations.bulk_delete", "Delete"),
                         onClick = onDelete,
