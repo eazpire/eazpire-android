@@ -56,6 +56,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_TRADE_OFFER_ID = "eaz_trade_offer_id"
         /** Creator → My Creations → Designs → Inactive (Wear upload complete). */
         const val EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS = "eaz_open_creator_inactive_designs"
+        /** Creator → My Creations → Designs → Active (admin activate push). */
+        const val EXTRA_OPEN_CREATOR_ACTIVE_DESIGNS = "eaz_open_creator_active_designs"
         /** Creator Settings → Creator Codes (invite / redeemed push). */
         const val EXTRA_OPEN_CREATOR_CODES = "eaz_open_creator_codes"
         const val EXTRA_CREATOR_CODE_PREFILL = "eaz_creator_code_prefill"
@@ -87,6 +89,8 @@ class MainActivity : ComponentActivity() {
     val pendingTradeOfferId = mutableStateOf<Int?>(null)
     /** Wear upload finished — open Creator creations, inactive designs tab. */
     val pendingCreatorInactiveDesigns = mutableStateOf(false)
+    /** Admin activate push — open Creator creations, active designs tab. */
+    val pendingCreatorActiveDesigns = mutableStateOf(false)
     /** Creator Settings → Creator Codes (from FCM / in-app notification). */
     val pendingCreatorCodesNav = mutableStateOf<PendingCreatorCodesNav?>(null)
     val pendingPublishAssistNav = mutableStateOf<PendingPublishAssistNav?>(null)
@@ -174,6 +178,7 @@ class MainActivity : ComponentActivity() {
                             pendingGamesSection = pendingGamesSection,
                             pendingTradeOfferId = pendingTradeOfferId,
                             pendingCreatorInactiveDesigns = pendingCreatorInactiveDesigns,
+                            pendingCreatorActiveDesigns = pendingCreatorActiveDesigns,
                             pendingCreatorCodesNav = pendingCreatorCodesNav,
                             pendingPublishAssistNav = pendingPublishAssistNav,
                             pendingOpenGiftCardsWon = pendingOpenGiftCardsWon,
@@ -346,6 +351,9 @@ class MainActivity : ComponentActivity() {
         }
         if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS, false)) {
             pendingCreatorInactiveDesigns.value = true
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_ACTIVE_DESIGNS, false)) {
+            pendingCreatorActiveDesigns.value = true
         }
         if (intent.getBooleanExtra(EXTRA_OPEN_CREATOR_CODES, false)) {
             val prefill = intent.getStringExtra(EXTRA_CREATOR_CODE_PREFILL)?.trim()?.takeIf { it.isNotBlank() }

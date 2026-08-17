@@ -121,6 +121,7 @@ fun ShopScreen(
     pendingWearPairToken: MutableState<String?>? = null,
     pendingArtifactClaimToken: MutableState<String?>? = null,
     pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
+    pendingCreatorActiveDesigns: MutableState<Boolean>? = null,
     pendingCreatorCodesNav: MutableState<MainActivity.PendingCreatorCodesNav?>? = null,
     pendingPublishAssistNav: MutableState<MainActivity.PendingPublishAssistNav?>? = null,
     pendingOpenGiftCardsWon: MutableState<Boolean>? = null,
@@ -457,6 +458,17 @@ fun ShopScreen(
             eazyChatVisible = false
             pendingCreationsScreen = 2
             pendingDesignsActivityFilter = "inactive"
+            pin.value = false
+        }
+    }
+
+    LaunchedEffect(pendingCreatorActiveDesigns?.value) {
+        val pin = pendingCreatorActiveDesigns
+        if (pin?.value == true) {
+            switchCreatorMode(toCreator = true, animate = false)
+            eazyChatVisible = false
+            pendingCreationsScreen = 2
+            pendingDesignsActivityFilter = "active"
             pin.value = false
         }
     }

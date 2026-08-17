@@ -51,7 +51,7 @@ object EazNotificationDisplay {
 
     /**
      * Maps FCM `data` (e.g. [open_target]) to MainActivity extras.
-     * [open_target]: cart | eazy_jobs | eazy_notifications | eazy_chat | creator_designs_inactive
+     * [open_target]: cart | eazy_jobs | eazy_notifications | eazy_chat | creator_designs_inactive | creator_designs_active
      */
     fun buildMainIntentFromPushExtras(context: Context, extras: Map<String, String?>): Intent {
         return Intent(context, MainActivity::class.java).apply {
@@ -71,6 +71,9 @@ object EazNotificationDisplay {
                 "shop" -> putExtra(MainActivity.EXTRA_OPEN_SHOP, true)
                 "creator_designs_inactive", "creator_inactive_designs", "designs_inactive" -> {
                     putExtra(MainActivity.EXTRA_OPEN_CREATOR_INACTIVE_DESIGNS, true)
+                }
+                "creator_designs_active", "creator_active_designs", "designs_active" -> {
+                    putExtra(MainActivity.EXTRA_OPEN_CREATOR_ACTIVE_DESIGNS, true)
                 }
                 "eazy_jobs", "jobs" -> {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
