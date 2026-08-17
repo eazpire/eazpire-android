@@ -350,6 +350,7 @@ fun DesignDetailSheet(
     var baselineSerialized by remember { mutableStateOf("") }
 
     var saving by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
     var historyItems by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
     var historyLoading by remember { mutableStateOf(false) }
     var showHistoryDialog by remember { mutableStateOf(false) }
@@ -670,6 +671,7 @@ fun DesignDetailSheet(
                                         onClick = {
                                             scope.launch {
                                                 saving = true
+                                                saveError = null
                                                 try {
                                                     val body = JSONObject()
                                                         .put("design_id", designId)
@@ -679,8 +681,17 @@ fun DesignDetailSheet(
                                                     val res = withContext(Dispatchers.IO) { api.updateDesign(body) }
                                                     if (res.optBoolean("ok", false)) {
                                                         recomputeBaseline()
+                                                    } else if (res.optString("error") == "blocked_phrase") {
+                                                        val phrase = res.optJSONArray("phrases")?.optString(0).orEmpty()
+                                                        saveError = t(
+                                                            "creator.preview_modal.meta_blocked_phrase",
+                                                            "This text contains a blocked phrase ({{phrase}}) and cannot be saved."
+                                                        ).replace("{{phrase}}", phrase.ifBlank { "blocked phrase" })
+                                                    } else {
+                                                        saveError = res.optString("message", res.optString("error", "Save failed"))
                                                     }
                                                 } catch (_: Exception) {
+                                                    saveError = t("creator.preview_modal.meta_save_failed", "Could not save metadata.")
                                                 } finally {
                                                     saving = false
                                                 }
@@ -856,6 +867,7 @@ fun DesignDetailSheet(
                                                         onClick = {
                                                             scope.launch {
                                                                 saving = true
+                                                                saveError = null
                                                                 try {
                                                                     val body = JSONObject()
                                                                         .put("design_id", designId)
@@ -867,8 +879,17 @@ fun DesignDetailSheet(
                                                                     val res = withContext(Dispatchers.IO) { api.updateDesign(body) }
                                                                     if (res.optBoolean("ok", false)) {
                                                                         recomputeBaseline()
+                                                                    } else if (res.optString("error") == "blocked_phrase") {
+                                                                        val phrase = res.optJSONArray("phrases")?.optString(0).orEmpty()
+                                                                        saveError = t(
+                                                                            "creator.preview_modal.meta_blocked_phrase",
+                                                                            "This text contains a blocked phrase ({{phrase}}) and cannot be saved."
+                                                                        ).replace("{{phrase}}", phrase.ifBlank { "blocked phrase" })
+                                                                    } else {
+                                                                        saveError = res.optString("message", res.optString("error", "Save failed"))
                                                                     }
                                                                 } catch (_: Exception) {
+                                                                    saveError = t("creator.preview_modal.meta_save_failed", "Could not save metadata.")
                                                                 } finally {
                                                                     saving = false
                                                                 }
@@ -881,6 +902,10 @@ fun DesignDetailSheet(
                                                         Text(t("creator.design_detail.save", "Save"), color = Color.White)
                                                     }
                                                 }
+                                                if (!saveError.isNullOrBlank()) {
+                                                    Spacer(Modifier.height(10.dp))
+                                                    Text(saveError ?: "", color = Color(0xFFF87171), fontSize = 13.sp)
+                                                }
                                             }
                                             DesignDetailTab.Reference -> {
                                                 GenerationReferenceBlock(
@@ -890,6 +915,10 @@ fun DesignDetailSheet(
                                                 )
                                             }
                                             DesignDetailTab.Details -> {
+                                                if (!saveError.isNullOrBlank()) {
+                                                    Text(saveError ?: "", color = Color(0xFFF87171), fontSize = 13.sp)
+                                                    Spacer(Modifier.height(10.dp))
+                                                }
                                                 DesignDetailsEditor(
                                                     draftMeta = draftMeta,
                                                     onDraftMetaChange = { draftMeta = it },

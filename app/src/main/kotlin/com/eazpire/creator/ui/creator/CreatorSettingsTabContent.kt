@@ -1061,6 +1061,10 @@ private fun creatorNameErrorMessage(error: String, translationStore: Translation
             "creator.settings_names.already_added",
             "You already added this name."
         )
+        "blocked_phrase" -> translationStore.t(
+            "creator.settings_names.blocked_phrase",
+            "This name contains a blocked phrase and cannot be used."
+        )
         else -> translationStore.t("creator.settings_names.add_error", "Could not add name.")
     }
 
