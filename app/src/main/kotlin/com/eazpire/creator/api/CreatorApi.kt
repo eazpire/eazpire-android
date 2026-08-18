@@ -4501,6 +4501,85 @@ class CreatorApi(
 
     suspend fun askTeamPublicSubmit(body: JSONObject): JSONObject =
         postJsonBodyOp("ask-team-public-submit", body)
+
+    suspend fun fontGeneratorLimits(ownerId: String): JSONObject =
+        call("font-generator-limits", mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId))
+
+    suspend fun fontGeneratorListMine(ownerId: String): JSONObject =
+        call("font-generator-list-mine", mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId))
+
+    suspend fun fontGeneratorListPublic(ownerId: String): JSONObject =
+        call("font-generator-list-public", mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId))
+
+    suspend fun fontGeneratorStart(ownerId: String, prompt: String, name: String = ""): JSONObject =
+        postJsonBodyOp(
+            "font-generator-start",
+            JSONObject().put("owner_id", ownerId).put("prompt", prompt).put("name", name),
+            mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId)
+        )
+
+    suspend fun fontGeneratorRegenerateGlyph(
+        ownerId: String,
+        fontId: String,
+        glyph: String,
+        miniPrompt: String
+    ): JSONObject =
+        postJsonBodyOp(
+            "font-generator-regenerate-glyph",
+            JSONObject()
+                .put("owner_id", ownerId)
+                .put("font_id", fontId)
+                .put("glyph", glyph)
+                .put("mini_prompt", miniPrompt),
+            mapOf("owner_id" to ownerId)
+        )
+
+    suspend fun fontGeneratorPatch(ownerId: String, fontId: String, name: String): JSONObject =
+        postJsonBodyOp(
+            "font-generator-patch",
+            JSONObject().put("owner_id", ownerId).put("font_id", fontId).put("name", name),
+            mapOf("owner_id" to ownerId)
+        )
+
+    suspend fun fontGeneratorDelete(ownerId: String, fontId: String): JSONObject =
+        postJsonBodyOp(
+            "font-generator-delete",
+            JSONObject().put("owner_id", ownerId).put("font_id", fontId).put("confirm", true),
+            mapOf("owner_id" to ownerId)
+        )
+
+    suspend fun fontGeneratorDownload(ownerId: String, fontId: String, kind: String = "font"): JSONObject =
+        call(
+            "font-generator-download",
+            mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId, "font_id" to fontId, "kind" to kind)
+        )
+
+    suspend fun fontGeneratorUpload(
+        ownerId: String,
+        bytes: ByteArray,
+        filename: String,
+        contentType: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val mime = contentType.ifBlank { "application/octet-stream" }
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("owner_id", ownerId)
+            .addFormDataPart(
+                "file",
+                filename.ifBlank { "font.ttf" },
+                bytes.toRequestBody(mime.toMediaType())
+            )
+            .build()
+        val url =
+            "$baseUrl/apps/creator-dispatch?op=font-generator-upload&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}&_t=${System.currentTimeMillis()}"
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        parseJsonResponse(client.newCall(request).execute())
+    }
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)

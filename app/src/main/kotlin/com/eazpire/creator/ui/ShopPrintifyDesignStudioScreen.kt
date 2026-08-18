@@ -235,6 +235,12 @@ internal fun ShopPrintifyDesignStudioScreen(
     onRequireLogin: () -> Unit,
     onOpenGenerate: (() -> Unit)? = null
 ) {
+    var showFontGenerator by remember { mutableStateOf(false) }
+    var appliedStudioFont by remember { mutableStateOf<StudioUserFont?>(null) }
+    var studioText by remember { mutableStateOf("Your Text") }
+    var fontCat by remember { mutableStateOf("all") }
+    var myFonts by remember { mutableStateOf<List<StudioUserFont>>(emptyList()) }
+    var userFonts by remember { mutableStateOf<List<StudioUserFont>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -1027,7 +1033,21 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     pushUndo()
                                     applyAlign(kind, zw, zh)
                                 },
-                                t = ::t
+                                t = ::t,
+                                designExtra = {
+                                    StudioFontSettings(
+                                        t = ::t,
+                                        fontCat = fontCat,
+                                        onFontCat = { fontCat = it },
+                                        studioText = studioText,
+                                        onStudioText = { studioText = it },
+                                        applied = appliedStudioFont,
+                                        myFonts = myFonts,
+                                        userFonts = userFonts,
+                                        onPick = { appliedStudioFont = it },
+                                        onOpenGenerator = { showFontGenerator = true }
+                                    )
+                                }
                             )
                         }
                     }
@@ -1296,6 +1316,10 @@ internal fun ShopPrintifyDesignStudioScreen(
                                 onOpenGenerate?.invoke()
                             },
                             showGenerate = onOpenGenerate != null,
+                            onFontGenerator = {
+                                sourcesDrawerOpen = false
+                                showFontGenerator = true
+                            },
                             onUpload = { imagePicker.launch("image/*") },
                             onPublicDesigns = {
                                 sourcesDrawerOpen = false
@@ -1495,7 +1519,21 @@ internal fun ShopPrintifyDesignStudioScreen(
                             pushUndo()
                             applyAlign(kind, zw, zh)
                         },
-                        t = ::t
+                        t = ::t,
+                        designExtra = {
+                            StudioFontSettings(
+                                t = ::t,
+                                fontCat = fontCat,
+                                onFontCat = { fontCat = it },
+                                studioText = studioText,
+                                onStudioText = { studioText = it },
+                                applied = appliedStudioFont,
+                                myFonts = myFonts,
+                                userFonts = userFonts,
+                                onPick = { appliedStudioFont = it },
+                                onOpenGenerator = { showFontGenerator = true }
+                            )
+                        }
                     )
                 }
             }
@@ -1526,6 +1564,36 @@ internal fun ShopPrintifyDesignStudioScreen(
             } catch (_: Exception) {
             }
         }
+    }
+
+    LaunchedEffect(ownerId) {
+        val oid = ownerId?.trim().orEmpty()
+        if (oid.isEmpty()) return@LaunchedEffect
+        try {
+            val mine = withContext(Dispatchers.IO) { api.fontGeneratorListMine(oid) }
+            val pub = withContext(Dispatchers.IO) { api.fontGeneratorListPublic(oid) }
+            myFonts = parseFontList(mine)
+            userFonts = parseFontList(pub)
+        } catch (_: Exception) {
+        }
+    }
+
+    if (showFontGenerator) {
+        ShopFontGeneratorSheet(
+            api = api,
+            ownerId = ownerId,
+            translationStore = translationStore,
+            translation = translation,
+            onDismiss = { showFontGenerator = false },
+            onRequireLogin = onRequireLogin,
+            onApplyFont = { font ->
+                appliedStudioFont = font
+                if (font.source != "upload") {
+                    userFonts = listOf(font) + userFonts.filter { it.id != font.id }
+                }
+                myFonts = listOf(font) + myFonts.filter { it.id != font.id }
+            }
+        )
     }
 
     showDesignPicker?.let { mode ->
@@ -2100,7 +2168,8 @@ private fun StudioRightPanel(
     onRotateFinished: () -> Unit,
     onPatternToggle: (Boolean) -> Unit,
     onAlign: (String, Float, Float) -> Unit,
-    t: (String, String) -> String
+    t: (String, String) -> String,
+    designExtra: @Composable () -> Unit = {}
 ) {
     val zoneW = 200f * printAreaFrac.w
     val zoneH = 200f * printAreaFrac.h
@@ -2183,6 +2252,7 @@ private fun StudioRightPanel(
                         onValueChangeFinished = onRotateFinished,
                         valueRange = -180f..180f
                     )
+                    designExtra()
                 }
                 else -> {
                     Text(t("design_studio.shop.product_options", "Product options"), color = Color.White, fontWeight = FontWeight.Bold)
@@ -2723,6 +2793,7 @@ private fun StudioPlacedDesignImage(
 private fun StudioSourcesDrawer(
     onGenerate: () -> Unit = {},
     showGenerate: Boolean = false,
+    onFontGenerator: () -> Unit = {},
     onUpload: () -> Unit,
     onPublicDesigns: () -> Unit,
     onMyDesigns: () -> Unit,
@@ -2735,6 +2806,16 @@ private fun StudioSourcesDrawer(
             StudioDarkBtn(onClick = onGenerate) {
                 Text(t("design_studio.shop.design_generator", "Design Generator"))
             }
+        }
+        Button(
+            onClick = onFontGenerator,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF0D9488),
+                contentColor = Color.White
+            ),
+            shape = RoundedCornerShape(999.dp)
+        ) {
+            Text(t("design_studio.shop.font_generator", "Font Generator"))
         }
         StudioDarkBtn(onClick = onUpload) {
             Text(t("design_studio.shop.upload", "Upload"))
@@ -3436,6 +3517,102 @@ private fun StudioDarkBtn(
             androidx.compose.material3.LocalContentColor provides Color.White
         ) {
             content()
+        }
+    }
+}
+
+@Composable
+private fun StudioFontSettings(
+    t: (String, String) -> String,
+    fontCat: String,
+    onFontCat: (String) -> Unit,
+    studioText: String,
+    onStudioText: (String) -> Unit,
+    applied: StudioUserFont?,
+    myFonts: List<StudioUserFont>,
+    userFonts: List<StudioUserFont>,
+    onPick: (StudioUserFont) -> Unit,
+    onOpenGenerator: () -> Unit
+) {
+    val cats = listOf(
+        "all" to t("design_studio.shop.style_font_cat_all", "All"),
+        "my-fonts" to t("design_studio.shop.style_font_cat_my_fonts", "my fonts"),
+        "user-fonts" to t("design_studio.shop.style_font_cat_user_fonts", "user Fonts")
+    )
+    Spacer(Modifier.height(12.dp))
+    Text(t("design_studio.shop.add_text", "Add Text"), color = Color.White.copy(0.85f))
+    OutlinedTextField(
+        value = studioText,
+        onValueChange = onStudioText,
+        modifier = Modifier.fillMaxWidth(),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedBorderColor = Color(0xFF2DD4BF),
+            unfocusedBorderColor = Color.White.copy(0.2f)
+        )
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        cats.forEach { (id, label) ->
+            val on = fontCat == id
+            Text(
+                label,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(if (on) Color(0xFF2DD4BF) else Color(0xFF0B1220))
+                    .clickable { onFontCat(id) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                color = if (on) Color(0xFF042F2E) else Color.White,
+                fontSize = 12.sp
+            )
+        }
+    }
+    val list = when (fontCat) {
+        "my-fonts" -> myFonts
+        "user-fonts" -> userFonts
+        else -> (myFonts + userFonts).distinctBy { it.id }
+    }
+    var selected by remember(applied?.id, fontCat) { mutableStateOf(applied) }
+    if (list.isEmpty()) {
+        Text(
+            t("design_studio.shop.font_my_empty", "No fonts yet. Generate or upload one."),
+            color = Color.White.copy(0.5f),
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 8.dp).clickable(onClick = onOpenGenerator)
+        )
+    } else {
+        Column(modifier = Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            list.take(12).forEach { font ->
+                val on = selected?.id == font.id
+                Text(
+                    font.name,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (on) Color(0xFF134E4A) else Color(0xFF0B1220))
+                        .clickable { selected = font }
+                        .padding(8.dp),
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Button(
+                onClick = { selected?.let(onPick) },
+                enabled = selected != null,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF0D9488),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(t("design_studio.shop.font_apply", "Apply"))
+            }
         }
     }
 }
