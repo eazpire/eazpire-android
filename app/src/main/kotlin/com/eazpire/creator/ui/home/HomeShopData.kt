@@ -384,6 +384,8 @@ private suspend fun fetchProductsPage(
 }
 
 fun catalogPreviewUrlsFromJson(o: JSONObject): List<String> {
+    val clean = o.optString("clean_mock_url", "").trim()
+    if (clean.isNotEmpty()) return listOf(clean)
     val imagesArr = o.optJSONArray("images")
     if (imagesArr != null && imagesArr.length() > 0) {
         val first = imagesArr.optString(0, "").trim()

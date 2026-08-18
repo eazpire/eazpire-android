@@ -111,6 +111,8 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -192,8 +194,8 @@ private fun resolveMockViewsFromConfig(cfg: JSONObject): List<StudioEditorMockVi
         val pos = item.optString("position", "").ifBlank { if (i == 0) "front" else "view_$i" }
         val key = pos.lowercase()
         if (!seen.add(key)) continue
-        val url = item.optString("editor_mock_url", "")
-            .ifBlank { item.optString("clean_mock_url", "") }
+        val url = item.optString("clean_mock_url", "")
+            .ifBlank { item.optString("editor_mock_url", "") }
             .ifBlank { item.optString("mock_url", "") }
             .trim()
         if (url.isEmpty()) continue
@@ -234,9 +236,18 @@ internal fun ShopPrintifyDesignStudioScreen(
     val isCompact = configuration.screenWidthDp < 1100
     var isFavorite by remember { mutableStateOf(false) }
 
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember {
+        mutableStateOf(
+            product.studioCardSlide?.mockUrl.isNullOrBlank() && product.mockUrls.firstOrNull().isNullOrBlank()
+        )
+    }
     var error by remember { mutableStateOf<String?>(null) }
-    var mockUrl by remember { mutableStateOf<String?>(product.mockUrls.firstOrNull()) }
+    var mockUrl by remember {
+        mutableStateOf(
+            product.studioCardSlide?.mockUrl?.takeIf { it.isNotBlank() }
+                ?: product.mockUrls.firstOrNull()
+        )
+    }
     var printAreaFrac by remember { mutableStateOf(PrintAreaFrac()) }
     var mockViews by remember { mutableStateOf<List<StudioEditorMockView>>(emptyList()) }
     var activeMockPosition by remember { mutableStateOf("front") }
@@ -520,46 +531,50 @@ internal fun ShopPrintifyDesignStudioScreen(
             onRequireLogin()
             return@LaunchedEffect
         }
-        loading = true
+        if (mockUrl.isNullOrBlank()) loading = true
         error = null
         try {
-            val cfg =
-                withContext(Dispatchers.IO) {
+            coroutineScope {
+                val cfgDeferred = async(Dispatchers.IO) {
                     withTimeoutOrNull(25_000) {
                         api.getDesignStudioShopConfig(oid, product.productKey)
                     }
                 }
-            if (cfg != null && cfg.optBoolean("ok", false)) {
-                val views = resolveMockViewsFromConfig(cfg)
-                mockViews = views
-                val preferred = views.firstOrNull { it.position.lowercase().contains("front") } ?: views.firstOrNull()
-                if (preferred != null) {
-                    mockUrl = preferred.url
-                    printAreaFrac = preferred.printAreaFrac
-                    activeMockPosition = preferred.position
-                } else {
-                    val (url, frac) = resolveMockFromConfig(cfg)
-                    if (!url.isNullOrEmpty()) mockUrl = url
-                    printAreaFrac = frac
+                val openDeferred = async(Dispatchers.IO) {
+                    withTimeoutOrNull(45_000) {
+                        api.printifyStudioTestOpen(oid, product.productKey)
+                    }
                 }
-            } else if (mockUrl.isNullOrBlank()) {
-                mockUrl = product.mockUrls.firstOrNull()
-            }
-            val openRes = withContext(Dispatchers.IO) {
-                withTimeoutOrNull(45_000) {
-                    api.printifyStudioTestOpen(oid, product.productKey)
+                val cfg = cfgDeferred.await()
+                if (cfg != null && cfg.optBoolean("ok", false)) {
+                    val views = resolveMockViewsFromConfig(cfg)
+                    mockViews = views
+                    val preferred = views.firstOrNull { it.position.lowercase().contains("front") } ?: views.firstOrNull()
+                    if (preferred != null) {
+                        mockUrl = preferred.url
+                        printAreaFrac = preferred.printAreaFrac
+                        activeMockPosition = preferred.position
+                    } else {
+                        val (url, frac) = resolveMockFromConfig(cfg)
+                        if (!url.isNullOrEmpty()) mockUrl = url
+                        printAreaFrac = frac
+                    }
+                } else if (mockUrl.isNullOrBlank()) {
+                    mockUrl = product.studioCardSlide?.mockUrl?.takeIf { it.isNotBlank() }
+                        ?: product.mockUrls.firstOrNull()
                 }
-            }
-            if (openRes != null && openRes.optBoolean("ok", false)) {
-                val pid = openRes.optString("printify_product_id", "").trim()
-                if (pid.isNotEmpty()) printifyProductId = pid
-            }
-            if (cfg == null) {
-                error =
-                    translation(
-                        "creator.studio.config_timeout",
-                        "Studio config timed out — using catalog preview.",
-                    )
+                val openRes = openDeferred.await()
+                if (openRes != null && openRes.optBoolean("ok", false)) {
+                    val pid = openRes.optString("printify_product_id", "").trim()
+                    if (pid.isNotEmpty()) printifyProductId = pid
+                }
+                if (cfg == null && mockUrl.isNullOrBlank()) {
+                    error =
+                        translation(
+                            "creator.studio.config_timeout",
+                            "Studio config timed out — using catalog preview.",
+                        )
+                }
             }
         } catch (e: Exception) {
             error = e.message ?: "error"
