@@ -664,14 +664,12 @@ internal fun ShopPrintifyDesignStudioScreen(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (isCompact) {
-                        IconButton(onClick = { sourcesDrawerOpen = true }) {
-                            Icon(
-                                Icons.Default.Menu,
-                                contentDescription = translation("design_studio.shop.design_source", "Design source"),
-                                tint = Color.White
-                            )
-                        }
+                    IconButton(onClick = { sourcesDrawerOpen = true }) {
+                        Icon(
+                            Icons.Default.Menu,
+                            contentDescription = translation("design_studio.shop.design_source", "Design source"),
+                            tint = Color.White
+                        )
                     }
                     Text(
                         text = translation("creator.shop_printify_studio_test.title", "Design Studio"),
@@ -1052,22 +1050,6 @@ internal fun ShopPrintifyDesignStudioScreen(
                                         onPick = { appliedStudioFont = it },
                                         onOpenGenerator = { showFontGenerator = true }
                                     )
-                                    StudioTeamSettingsBlock(
-                                        enabled = teamSettingsOn,
-                                        onEnabled = { teamSettingsOn = it },
-                                        nameOn = teamNameOn,
-                                        numberOn = teamNumberOn,
-                                        onAddName = {
-                                            teamNameOn = true
-                                            studioText = "Name"
-                                        },
-                                        onAddNumber = {
-                                            teamNumberOn = true
-                                            studioText = "00"
-                                        },
-                                        onSetTeam = { teamSheetOpen = true },
-                                        t = ::t,
-                                    )
                                 }
                             )
                         }
@@ -1295,7 +1277,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                 )
             }
 
-            if (isCompact && sourcesDrawerOpen) {
+            if (sourcesDrawerOpen) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1331,6 +1313,13 @@ internal fun ShopPrintifyDesignStudioScreen(
                             }
                         }
                         Spacer(Modifier.height(8.dp))
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                         StudioSourcesDrawer(
                             onGenerate = {
                                 sourcesDrawerOpen = false
@@ -1462,6 +1451,23 @@ internal fun ShopPrintifyDesignStudioScreen(
                             },
                             t = ::t
                         )
+                        StudioTeamSettingsBlock(
+                            enabled = teamSettingsOn,
+                            onEnabled = { teamSettingsOn = it },
+                            nameOn = teamNameOn,
+                            numberOn = teamNumberOn,
+                            onAddName = {
+                                teamNameOn = true
+                                studioText = "Name"
+                            },
+                            onAddNumber = {
+                                teamNumberOn = true
+                                studioText = "00"
+                            },
+                            onSetTeam = { teamSheetOpen = true },
+                            t = ::t,
+                        )
+                        }
                     }
                 }
             }
@@ -1553,22 +1559,6 @@ internal fun ShopPrintifyDesignStudioScreen(
                                 userFonts = userFonts,
                                 onPick = { appliedStudioFont = it },
                                 onOpenGenerator = { showFontGenerator = true }
-                            )
-                            StudioTeamSettingsBlock(
-                                enabled = teamSettingsOn,
-                                onEnabled = { teamSettingsOn = it },
-                                nameOn = teamNameOn,
-                                numberOn = teamNumberOn,
-                                onAddName = {
-                                    teamNameOn = true
-                                    studioText = "Name"
-                                },
-                                onAddNumber = {
-                                    teamNumberOn = true
-                                    studioText = "00"
-                                },
-                                onSetTeam = { teamSheetOpen = true },
-                                t = ::t,
                             )
                         }
                     )
@@ -3682,41 +3672,49 @@ private fun StudioTeamSettingsBlock(
     onSetTeam: () -> Unit,
     t: (String, String) -> String,
 ) {
-    Spacer(Modifier.height(16.dp))
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(
-            t("design_studio.shop.team_settings", "Team Settings"),
-            color = Color.White,
-            modifier = Modifier.weight(1f),
-            fontWeight = FontWeight.Bold,
-        )
-        Switch(checked = enabled, onCheckedChange = onEnabled)
-    }
-    if (enabled) {
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            StudioDarkBtn(onClick = onAddName) {
-                Text(
-                    t("design_studio.shop.team_settings_name", "Name") + if (nameOn) " ✓" else "",
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            StudioDarkBtn(onClick = onAddNumber) {
-                Text(
-                    t("design_studio.shop.team_settings_number", "Number") + if (numberOn) " ✓" else "",
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+            .background(Color(0xFF0B1220).copy(alpha = 0.45f))
+            .padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                t("design_studio.shop.team_settings", "Team Settings"),
+                color = Color.White,
+                modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.Bold,
+            )
+            Switch(checked = enabled, onCheckedChange = onEnabled)
         }
-        Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = onSetTeam,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF97316), contentColor = Color.White),
-        ) {
-            Text(t("design_studio.shop.team_settings_set_team", "Set Team"))
+        if (enabled) {
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                StudioDarkBtn(onClick = onAddName) {
+                    Text(
+                        t("design_studio.shop.team_settings_name", "Name") + if (nameOn) " ✓" else "",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                StudioDarkBtn(onClick = onAddNumber) {
+                    Text(
+                        t("design_studio.shop.team_settings_number", "Number") + if (numberOn) " ✓" else "",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = onSetTeam,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF97316), contentColor = Color.White),
+            ) {
+                Text(t("design_studio.shop.team_settings_set_team", "Set Team"))
+            }
         }
     }
 }
