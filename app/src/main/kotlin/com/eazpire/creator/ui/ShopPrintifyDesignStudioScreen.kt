@@ -107,9 +107,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.statusBarsPadding
 import com.eazpire.creator.ui.modal.EazStandardDialog
 import coil.compose.AsyncImage
+import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.abs
+import kotlin.math.atan2
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -763,6 +767,14 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     designDy += dy
                                 },
                                 onDesignDragEnd = { scheduleSync() },
+                                onDesignScale = { next ->
+                                    if (undoStack.isEmpty()) pushUndo()
+                                    designScale = next.coerceIn(0.08f, 2.5f)
+                                },
+                                onDesignRotate = { next ->
+                                    if (undoStack.isEmpty()) pushUndo()
+                                    designRotate = next.coerceIn(-180f, 180f)
+                                },
                                 onSelectDesign = { designSelected = true },
                                 onDeselectDesign = { designSelected = false },
                                 showSettingsInViewer = isCompact && designSelected && !designUrl.isNullOrBlank(),
@@ -852,6 +864,14 @@ internal fun ShopPrintifyDesignStudioScreen(
                                         designDy += dy
                                     },
                                     onDesignDragEnd = { scheduleSync() },
+                                    onDesignScale = { next ->
+                                        if (undoStack.isEmpty()) pushUndo()
+                                        designScale = next.coerceIn(0.08f, 2.5f)
+                                    },
+                                    onDesignRotate = { next ->
+                                        if (undoStack.isEmpty()) pushUndo()
+                                        designRotate = next.coerceIn(-180f, 180f)
+                                    },
                                     onSelectDesign = { designSelected = true },
                                     onDeselectDesign = { designSelected = false },
                                     showSettingsInViewer = isCompact && designSelected && !designUrl.isNullOrBlank(),
@@ -1550,6 +1570,8 @@ private fun StudioMockEditor(
     onDesignDragStart: () -> Unit,
     onDesignDrag: (Float, Float) -> Unit,
     onDesignDragEnd: () -> Unit,
+    onDesignScale: (Float) -> Unit = {},
+    onDesignRotate: (Float) -> Unit = {},
     onSelectDesign: () -> Unit,
     onDeselectDesign: () -> Unit = {},
     showSettingsInViewer: Boolean = false,
