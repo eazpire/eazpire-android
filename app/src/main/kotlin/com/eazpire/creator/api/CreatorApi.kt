@@ -4472,6 +4472,9 @@ class CreatorApi(
     suspend fun askTeamCreate(body: JSONObject): JSONObject =
         postJsonBodyOp("ask-team-create", body)
 
+    suspend fun askTeamRosterSave(body: JSONObject): JSONObject =
+        postJsonBodyOp("ask-team-roster-save", body)
+
     suspend fun askTeamInvite(campaignId: String): JSONObject =
         postJsonBodyOp("ask-team-invite", JSONObject().put("campaign_id", campaignId))
 

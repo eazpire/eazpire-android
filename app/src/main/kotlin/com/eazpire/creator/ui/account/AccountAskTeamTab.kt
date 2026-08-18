@@ -29,6 +29,11 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
+import com.eazpire.creator.ui.askteam.AskTeamRosterEditor
+import com.eazpire.creator.ui.askteam.AskTeamRosterState
+import com.eazpire.creator.ui.askteam.parseAskTeamProducts
+import com.eazpire.creator.ui.askteam.rosterStateFromCampaign
+import com.eazpire.creator.ui.askteam.toPayload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,6 +54,7 @@ fun AccountAskTeamTab(
     var loading by remember { mutableStateOf(true) }
     var campaigns by remember { mutableStateOf(listOf<JSONObject>()) }
     var detail by remember { mutableStateOf<JSONObject?>(null) }
+    var roster by remember { mutableStateOf(AskTeamRosterState()) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun reload() {
@@ -88,7 +94,9 @@ fun AccountAskTeamTab(
                         scope.launch {
                             val id = c.optString("id")
                             val res = withContext(Dispatchers.IO) { api.askTeamGet(id) }
-                            detail = res.optJSONObject("campaign")
+                            val camp = res.optJSONObject("campaign")
+                            detail = camp
+                            if (camp != null) roster = rosterStateFromCampaign(camp)
                         }
                     }
                     .padding(vertical = 8.dp),
@@ -116,6 +124,27 @@ fun AccountAskTeamTab(
                 val s = sizes.getJSONObject(i)
                 Text("${s.optString("size")} = ${s.optInt("count")}x")
             }
+            AskTeamRosterEditor(
+                products = parseAskTeamProducts(camp.optJSONArray("products")),
+                state = roster,
+                onState = { roster = it },
+                t = ::t,
+                showSave = true,
+                onSave = {
+                    scope.launch {
+                        val payload = roster.toPayload().put("campaign_id", camp.optString("id"))
+                        val res = withContext(Dispatchers.IO) { api.askTeamRosterSave(payload) }
+                        if (res.optBoolean("ok")) {
+                            val next = res.optJSONObject("campaign")
+                            detail = next
+                            if (next != null) roster = rosterStateFromCampaign(next)
+                            error = null
+                        } else {
+                            error = res.optString("error").ifBlank { t("eaz.ask_team.roster_error", "Please fill the individual fields for each person.") }
+                        }
+                    }
+                },
+            )
             val responses = camp.optJSONArray("responses") ?: JSONArray()
             (0 until responses.length()).forEach { i ->
                 AskTeamResponseEditor(

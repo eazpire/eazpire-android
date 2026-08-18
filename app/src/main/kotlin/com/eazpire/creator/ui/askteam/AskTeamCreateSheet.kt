@@ -70,8 +70,24 @@ fun AskTeamCreateSheet(
     var askNumber by remember { mutableStateOf(false) }
     var askQty by remember { mutableStateOf(false) }
     var askPhoto by remember { mutableStateOf(false) }
+    var roster by remember {
+        mutableStateOf(
+            AskTeamRosterState(
+                globalProductId = "p1",
+                globalSize = seed.sizes.firstOrNull().orEmpty(),
+            )
+        )
+    }
     var shareUrl by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    val seedProducts = listOf(
+        AskTeamProductOption(
+            id = "p1",
+            label = listOf(seed.title, seed.versionLabel).filter { it.isNotBlank() }.joinToString(" · "),
+            variantId = seed.variantId,
+            sizes = seed.sizes,
+        )
+    )
 
     LaunchedEffect(jwt) {
         val defaults = withContext(Dispatchers.IO) { api.askTeamDefaults() }
@@ -98,6 +114,12 @@ fun AskTeamCreateSheet(
                 CheckRow(t("eaz.ask_team.ask_number", "Number"), askNumber) { askNumber = it }
                 CheckRow(t("eaz.ask_team.ask_quantity", "Quantity"), askQty) { askQty = it }
                 CheckRow(t("eaz.ask_team.ask_photo", "Ask Photo"), askPhoto) { askPhoto = it }
+                AskTeamRosterEditor(
+                    products = seedProducts,
+                    state = roster,
+                    onState = { roster = it },
+                    t = ::t,
+                )
                 Text(t("eaz.ask_team.split_pay", "Split payment") + " · " + t("eaz.ask_team.coming_soon", "Coming soon"), color = EazColors.TextSecondary)
                 OutlinedTextField(emails, { emails = it }, label = { Text(t("eaz.ask_team.emails", "Email list (optional)")) }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(subject, { subject = it }, label = { Text(t("eaz.ask_team.subject", "Email subject")) }, modifier = Modifier.fillMaxWidth())
@@ -120,6 +142,7 @@ fun AskTeamCreateSheet(
                             .put("views", JSONArray(seed.views.map { (view, url) ->
                                 JSONObject().put("view", view).put("url", url)
                             }))
+                        val rosterJson = roster.toPayload()
                         val payload = JSONObject()
                             .put("title", title)
                             .put("description", description)
@@ -134,6 +157,10 @@ fun AskTeamCreateSheet(
                             .put("ask_photo", askPhoto)
                             .put("payment_mode", "captain")
                             .put("products", JSONArray().put(product))
+                            .put("member_count", rosterJson.optInt("member_count"))
+                            .put("individual", rosterJson.optJSONObject("individual"))
+                            .put("global", rosterJson.optJSONObject("global"))
+                            .put("rows", rosterJson.optJSONArray("rows"))
                         val res = withContext(Dispatchers.IO) { api.askTeamCreate(payload) }
                         if (res.optBoolean("ok")) {
                             shareUrl = res.optString("share_url")
