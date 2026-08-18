@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -11,6 +12,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +22,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -47,8 +52,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.ui.platform.LocalContext
@@ -105,7 +117,7 @@ internal fun parseFontList(data: JSONObject): List<StudioUserFont> {
     return out
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun ShopFontGeneratorSheet(
     api: CreatorApi,
@@ -280,11 +292,13 @@ internal fun ShopFontGeneratorSheet(
                             modifier = Modifier.padding(top = 12.dp)
                         )
                     } else {
+                        val mineScroll = rememberScrollState()
                         Column(
                             modifier = Modifier
                                 .padding(top = 8.dp)
                                 .heightIn(max = 420.dp)
-                                .verticalScroll(rememberScrollState()),
+                                .eazTealScrollbar(mineScroll)
+                                .verticalScroll(mineScroll),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             mine.forEach { font ->
@@ -333,19 +347,23 @@ internal fun ShopFontGeneratorSheet(
                         unfocusedTextColor = Color.White,
                         focusedBorderColor = TealHi,
                         unfocusedBorderColor = Color.White.copy(0.2f),
-                        cursorColor = TealHi
+                        cursorColor = TealHi,
+                        focusedLabelColor = TealHi,
+                        unfocusedLabelColor = Color.White,
+                        focusedPlaceholderColor = Color(0xFF94A3B8),
+                        unfocusedPlaceholderColor = Color(0xFF94A3B8)
                     )
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text(t("design_studio.shop.font_name", "Font name")) },
+                        label = { Text(t("design_studio.shop.font_name", "Font name"), color = Color.White) },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         colors = fieldColors
                     )
                     OutlinedTextField(
                         value = prompt,
                         onValueChange = { prompt = it },
-                        label = { Text(t("design_studio.shop.font_prompt", "Describe the font")) },
+                        label = { Text(t("design_studio.shop.font_prompt", "Describe the font"), color = Color.White) },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         minLines = 3,
                         colors = fieldColors
@@ -386,11 +404,31 @@ internal fun ShopFontGeneratorSheet(
                     OutlinedTextField(
                         value = viewer,
                         onValueChange = { viewer = it },
-                        label = { Text(t("design_studio.shop.font_live_viewer", "Live text")) },
+                        label = { Text(t("design_studio.shop.font_live_viewer", "Live text"), color = Color.White) },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         colors = fieldColors
                     )
-                    Text(viewer, color = Color.White, fontSize = 28.sp, modifier = Modifier.padding(top = 8.dp))
+                    val glyphFill = remember(active) { fontFillColor(active) }
+                    val glyphAccent = remember(active) { fontAccentColor(active) }
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        viewer.forEach { ch ->
+                            if (ch == ' ') {
+                                Spacer(Modifier.width(10.dp))
+                            } else {
+                                FontGlyphPreview(
+                                    entry = glyphEntry(active, ch.toString()),
+                                    ch = ch.toString(),
+                                    fill = glyphFill,
+                                    accent = glyphAccent,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                    }
                     val glyphs = remember(active) { glyphChars(active) }
                     if (glyphs.isNotEmpty()) {
                         LazyVerticalGrid(
@@ -413,7 +451,13 @@ internal fun ShopFontGeneratorSheet(
                                         .padding(8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(ch, color = Color.White)
+                                    FontGlyphPreview(
+                                        entry = glyphEntry(active, ch),
+                                        ch = ch,
+                                        fill = glyphFill,
+                                        accent = glyphAccent,
+                                        modifier = Modifier.size(28.dp)
+                                    )
                                 }
                             }
                         }
@@ -544,4 +588,150 @@ private fun FontSheetBtn(
         colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Color.White),
         shape = RoundedCornerShape(12.dp)
     ) { content() }
+}
+
+private data class GlyphCell(val x: Float, val y: Float, val w: Float, val h: Float)
+private data class GlyphMotif(val type: String, val cx: Float, val cy: Float, val s: Float)
+
+private fun glyphEntry(font: JSONObject?, ch: String): JSONObject? {
+    val map = font?.optJSONObject("glyph_map") ?: return null
+    return map.optJSONObject(ch)
+}
+
+private fun parseHexColor(raw: String?): Color? {
+    val hex = raw?.trim().orEmpty()
+    if (!hex.startsWith("#") || hex.length != 7) return null
+    return runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
+}
+
+private fun fontFillColor(font: JSONObject?): Color {
+    val lock = font?.optJSONObject("style_lock")
+    return parseHexColor(lock?.optString("fill")) ?: Color(0xFFF8FAFC)
+}
+
+private fun fontAccentColor(font: JSONObject?): Color {
+    val lock = font?.optJSONObject("style_lock")
+    return parseHexColor(lock?.optString("accent")) ?: Color(0xFFFB7185)
+}
+
+private fun parseCells(entry: JSONObject?): List<GlyphCell> {
+    val arr = entry?.optJSONArray("cells") ?: return emptyList()
+    val out = mutableListOf<GlyphCell>()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        out.add(
+            GlyphCell(
+                x = o.optDouble("x").toFloat(),
+                y = o.optDouble("y").toFloat(),
+                w = o.optDouble("w").toFloat(),
+                h = o.optDouble("h").toFloat()
+            )
+        )
+    }
+    return out
+}
+
+private fun parseMotifs(entry: JSONObject?): List<GlyphMotif> {
+    val arr = entry?.optJSONArray("motifs") ?: return emptyList()
+    val out = mutableListOf<GlyphMotif>()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        out.add(
+            GlyphMotif(
+                type = o.optString("type"),
+                cx = o.optDouble("cx").toFloat(),
+                cy = o.optDouble("cy").toFloat(),
+                s = o.optDouble("s").toFloat()
+            )
+        )
+    }
+    return out
+}
+
+private fun heartPath(cx: Float, cy: Float, s: Float): Path {
+    val path = Path()
+    val n = 16
+    for (i in 0 until n) {
+        val t = (i.toFloat() / n) * (Math.PI * 2).toFloat()
+        val x = 16f * kotlin.math.sin(t).let { it * it * it }
+        val yUp = 13f * kotlin.math.cos(t) -
+            5f * kotlin.math.cos(2f * t) -
+            2f * kotlin.math.cos(3f * t) -
+            kotlin.math.cos(4f * t)
+        val px = cx + (x / 17f) * s
+        val py = cy - (yUp / 17f) * s
+        if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+    }
+    path.close()
+    return path
+}
+
+private fun Modifier.eazTealScrollbar(state: ScrollState): Modifier = this.drawWithContent {
+    drawContent()
+    val max = state.maxValue.toFloat()
+    if (max <= 0f || size.height <= 0f) return@drawWithContent
+    val viewport = size.height
+    val content = viewport + max
+    val thumbH = (viewport * viewport / content).coerceAtLeast(28f)
+    val travel = (viewport - thumbH).coerceAtLeast(0f)
+    val y = (state.value / max) * travel
+    drawRoundRect(
+        color = Color(0xFF0B1220),
+        topLeft = Offset(size.width - 8f, 0f),
+        size = Size(6f, viewport),
+        cornerRadius = CornerRadius(3f, 3f)
+    )
+    drawRoundRect(
+        color = Color(0xFF2DD4BF),
+        topLeft = Offset(size.width - 8f, y),
+        size = Size(6f, thumbH),
+        cornerRadius = CornerRadius(3f, 3f)
+    )
+}
+
+@Composable
+private fun FontGlyphPreview(
+    entry: JSONObject?,
+    ch: String,
+    fill: Color,
+    accent: Color,
+    modifier: Modifier = Modifier
+) {
+    val cells = remember(entry) { parseCells(entry) }
+    val motifs = remember(entry) { parseMotifs(entry) }
+    if (cells.isEmpty()) {
+        Text(ch, color = Color.White, fontSize = 14.sp, modifier = modifier)
+        return
+    }
+    Canvas(modifier) {
+        val sx = size.width / 1000f
+        val sy = size.height / 1000f
+        cells.forEach { c ->
+            drawRoundRect(
+                color = fill,
+                topLeft = Offset(c.x * sx, c.y * sy),
+                size = Size(c.w * sx, c.h * sy),
+                cornerRadius = CornerRadius(8f * sx, 8f * sy)
+            )
+        }
+        motifs.forEach { m ->
+            when (m.type) {
+                "heart-hole" -> drawPath(
+                    heartPath(m.cx * sx, m.cy * sy, m.s * sx),
+                    Color(0xFF0B1220),
+                    style = Fill
+                )
+                "dot" -> drawCircle(
+                    color = accent,
+                    radius = m.s * sx,
+                    center = Offset(m.cx * sx, m.cy * sy)
+                )
+                else -> drawPath(
+                    heartPath(m.cx * sx, m.cy * sy, m.s * sx),
+                    accent,
+                    style = Fill
+                )
+            }
+        }
+    }
 }
