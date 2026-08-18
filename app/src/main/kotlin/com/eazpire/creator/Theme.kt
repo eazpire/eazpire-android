@@ -14,6 +14,8 @@ object EazColors {
     val OrangeBg = Color(0x0FF97316) // 6% opacity
     /** Shop Design Studio selection tabs — matches web print-area red */
     val StudioSelection = Color(0xFFEF4444)
+    /** Shop Design Studio rotate handle — matches web yellow icon */
+    val StudioRotate = Color(0xFFFACC15)
 
     /** Shop nav “Create” pill — charcoal + orange label (matches web `eaz-shop-create-product.css`) */
     val ShopCreateNavPillTop = Color(0xFF454545)

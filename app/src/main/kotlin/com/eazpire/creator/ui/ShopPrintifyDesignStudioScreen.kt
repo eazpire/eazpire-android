@@ -770,6 +770,12 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     if (undoStack.isEmpty()) pushUndo()
                                     designScale = next.coerceIn(0.08f, 2.5f)
                                 },
+                                onDesignCornerScale = { next, dx, dy ->
+                                    if (undoStack.isEmpty()) pushUndo()
+                                    designScale = next.coerceIn(0.08f, 2.5f)
+                                    designDx = dx
+                                    designDy = dy
+                                },
                                 onDesignRotate = { next ->
                                     if (undoStack.isEmpty()) pushUndo()
                                     designRotate = next.coerceIn(-180f, 180f)
@@ -866,6 +872,12 @@ internal fun ShopPrintifyDesignStudioScreen(
                                     onDesignScale = { next ->
                                         if (undoStack.isEmpty()) pushUndo()
                                         designScale = next.coerceIn(0.08f, 2.5f)
+                                    },
+                                    onDesignCornerScale = { next, dx, dy ->
+                                        if (undoStack.isEmpty()) pushUndo()
+                                        designScale = next.coerceIn(0.08f, 2.5f)
+                                        designDx = dx
+                                        designDy = dy
                                     },
                                     onDesignRotate = { next ->
                                         if (undoStack.isEmpty()) pushUndo()
@@ -1570,6 +1582,7 @@ private fun StudioMockEditor(
     onDesignDrag: (Float, Float) -> Unit,
     onDesignDragEnd: () -> Unit,
     onDesignScale: (Float) -> Unit = {},
+    onDesignCornerScale: (Float, Float, Float) -> Unit = { _, _, _ -> },
     onDesignRotate: (Float) -> Unit = {},
     onSelectDesign: () -> Unit,
     onDeselectDesign: () -> Unit = {},
@@ -1710,7 +1723,6 @@ private fun StudioMockEditor(
                 val dUrl = designUrl!!
                 val visualW = zoneW * designScale
                 val visualH = zoneH * designScale
-                val zonePx = with(density) { zoneW.toPx() }
                 val zoneModifier = Modifier
                     .offset(x = zoneLeft, y = zoneTop)
                     .size(zoneW, zoneH)
@@ -1763,11 +1775,13 @@ private fun StudioMockEditor(
                             StudioDesignSelectionChrome(
                                 scaleLabel = t("creator.shop_printify_studio_test.tool_scale", "Scale"),
                                 rotateLabel = t("creator.shop_printify_studio_test.tool_rotate", "Rotate"),
-                                onScaleDrag = { corner, dragX, dragY ->
-                                    var delta = maxOf(dragX, dragY) / max(40f, zonePx)
-                                    if (corner == "nw" || corner == "sw") delta = -delta
-                                    onDesignScale((designScale + delta).coerceIn(0.08f, 2.5f))
-                                },
+                                designScale = designScale,
+                                designDx = designDx,
+                                designDy = designDy,
+                                designRotate = designRotate,
+                                startW = with(density) { visualW.toPx() },
+                                startH = with(density) { visualH.toPx() },
+                                onCornerScale = onDesignCornerScale,
                                 onRotateDrag = { dragX ->
                                     onDesignRotate((designRotate + dragX * 0.35f).coerceIn(-180f, 180f))
                                 },
@@ -2383,16 +2397,19 @@ private fun livePreviewMetaLine(meta: JSONObject?, colorId: Long?, sizeId: Long?
 private fun StudioDesignSelectionChrome(
     scaleLabel: String,
     rotateLabel: String,
-    onScaleDrag: (corner: String, dragX: Float, dragY: Float) -> Unit,
-    onRotateDrag: (dragX: Float) -> Unit,
+    designScale: Float,
+    designDx: Float,
+    designDy: Float,
+    designRotate: Float,
+    startW: Float,
+    startH: Float,
+    onCornerScale: (Float, Float, Float) -> Unit,
+    onRotateDrag: (Float) -> Unit,
     onInteractStart: () -> Unit,
     onInteractEnd: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .border(1.5.dp, Color.White.copy(alpha = 0.92f), RoundedCornerShape(2.dp))
-    ) {
+    var scaleStart by remember { mutableStateOf(CornerScaleStart()) }
+    Box(modifier = Modifier.fillMaxSize()) {
         listOf("nw", "ne", "sw", "se").forEach { corner ->
             val align = when (corner) {
                 "nw" -> Alignment.TopStart
@@ -2409,12 +2426,47 @@ private fun StudioDesignSelectionChrome(
                     )
                     .size(28.dp)
                     .semantics { contentDescription = scaleLabel }
-                    .pointerInput(corner) {
+                    .pointerInput(corner, designScale, designDx, designDy, designRotate, startW, startH) {
                         detectDragGestures(
-                            onDragStart = { onInteractStart() },
+                            onDragStart = {
+                                onInteractStart()
+                                scaleStart = CornerScaleStart(
+                                    scale = designScale,
+                                    dx = designDx,
+                                    dy = designDy,
+                                    rot = designRotate,
+                                    w = startW,
+                                    h = startH,
+                                    pointerX = 0f,
+                                    pointerY = 0f
+                                )
+                            },
                             onDrag = { change, drag ->
                                 change.consume()
-                                onScaleDrag(corner, drag.x, drag.y)
+                                val start = scaleStart
+                                scaleStart = start.copy(accX = start.accX + drag.x, accY = start.accY + drag.y)
+                                val signed = when (corner) {
+                                    "nw", "sw" -> -maxOf(start.accX, start.accY)
+                                    else -> maxOf(start.accX, start.accY)
+                                }
+                                val ns = (start.scale * (1f + signed / max(40f, start.w))).coerceIn(0.08f, 2.5f)
+                                val ratio = ns / max(0.01f, start.scale)
+                                val dW = start.w * ratio - start.w
+                                val dH = start.h * ratio - start.h
+                                var ox = dW / 2f
+                                var oy = dH / 2f
+                                when (corner) {
+                                    "nw" -> {
+                                        ox = -ox
+                                        oy = -oy
+                                    }
+                                    "ne" -> oy = -oy
+                                    "sw" -> ox = -ox
+                                }
+                                val rad = Math.toRadians(start.rot.toDouble())
+                                val c = kotlin.math.cos(rad).toFloat()
+                                val s = kotlin.math.sin(rad).toFloat()
+                                onCornerScale(ns, start.dx + ox * c - oy * s, start.dy + ox * s + oy * c)
                             },
                             onDragEnd = onInteractEnd
                         )
@@ -2433,9 +2485,7 @@ private fun StudioDesignSelectionChrome(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(y = 26.dp)
-                .size(22.dp)
-                .background(Color(0xFF0F172A).copy(alpha = 0.52f), CircleShape)
-                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                .size(28.dp)
                 .semantics { contentDescription = rotateLabel }
                 .pointerInput(Unit) {
                     detectDragGestures(
@@ -2449,10 +2499,23 @@ private fun StudioDesignSelectionChrome(
                 },
             contentAlignment = Alignment.Center
         ) {
-            Text("↻", color = Color.White.copy(0.92f), fontSize = 12.sp)
+            Text("↻", color = EazColors.StudioRotate, fontSize = 16.sp)
         }
     }
 }
+
+private data class CornerScaleStart(
+    val scale: Float = 0.95f,
+    val dx: Float = 0f,
+    val dy: Float = 0f,
+    val rot: Float = 0f,
+    val w: Float = 1f,
+    val h: Float = 1f,
+    val accX: Float = 0f,
+    val accY: Float = 0f,
+    val pointerX: Float = 0f,
+    val pointerY: Float = 0f
+)
 
 @Composable
 private fun StudioCornerTab(corner: String) {
