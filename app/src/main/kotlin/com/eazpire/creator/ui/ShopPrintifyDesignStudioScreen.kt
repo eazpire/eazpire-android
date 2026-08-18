@@ -106,6 +106,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.layout.statusBarsPadding
 import com.eazpire.creator.ui.modal.EazStandardDialog
 import coil.compose.AsyncImage
@@ -754,6 +756,26 @@ internal fun ShopPrintifyDesignStudioScreen(
                                         }
                                     scheduleSync()
                                 },
+                                onResetToOrigin = {
+                                    pushUndo()
+                                    designDx = 0f
+                                    designDy = 0f
+                                    designScale = 0.95f
+                                    designRotate = 0f
+                                    patternEnabled = false
+                                    scheduleSync()
+                                },
+                                onRemoveDesign = {
+                                    pushUndo()
+                                    designUrl = null
+                                    designSelected = false
+                                    designDx = 0f
+                                    designDy = 0f
+                                    designScale = 0.95f
+                                    designRotate = 0f
+                                    patternEnabled = false
+                                    scheduleSync()
+                                },
                                 onOpenSettings = {
                                     optionsTab = "product"
                                     designSub = "transform"
@@ -855,6 +877,26 @@ internal fun ShopPrintifyDesignStudioScreen(
                                                 designRotate = 0f
                                                 patternEnabled = false
                                             }
+                                        scheduleSync()
+                                    },
+                                    onResetToOrigin = {
+                                        pushUndo()
+                                        designDx = 0f
+                                        designDy = 0f
+                                        designScale = 0.95f
+                                        designRotate = 0f
+                                        patternEnabled = false
+                                        scheduleSync()
+                                    },
+                                    onRemoveDesign = {
+                                        pushUndo()
+                                        designUrl = null
+                                        designSelected = false
+                                        designDx = 0f
+                                        designDy = 0f
+                                        designScale = 0.95f
+                                        designRotate = 0f
+                                        patternEnabled = false
                                         scheduleSync()
                                     },
                                     onOpenSettings = {
@@ -1577,6 +1619,8 @@ private fun StudioMockEditor(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onReset: () -> Unit,
+    onResetToOrigin: () -> Unit = {},
+    onRemoveDesign: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onDesignDragStart: () -> Unit,
     onDesignDrag: (Float, Float) -> Unit,
@@ -1594,6 +1638,7 @@ private fun StudioMockEditor(
     orbitBottom: @Composable () -> Unit = {}
 ) {
     val density = LocalDensity.current
+    var quickMenuOffset by remember { mutableStateOf<IntOffset?>(null) }
     val stageSizeModifier = if (useFlexHeight) {
         Modifier.fillMaxWidth().fillMaxHeight().heightIn(min = 240.dp)
     } else {
@@ -1755,7 +1800,16 @@ private fun StudioMockEditor(
                                 rotationZ = designRotate
                             }
                             .pointerInput(dUrl, designSelected) {
-                                detectTapGestures { onSelectDesign() }
+                                detectTapGestures(
+                                    onLongPress = { offset ->
+                                        onSelectDesign()
+                                        quickMenuOffset = IntOffset(
+                                            offset.x.roundToInt(),
+                                            offset.y.roundToInt()
+                                        )
+                                    },
+                                    onTap = { onSelectDesign() }
+                                )
                             }
                             .pointerInput(dUrl) {
                                 detectDragGestures(
@@ -1771,6 +1825,26 @@ private fun StudioMockEditor(
                                 )
                             }
                     ) {
+                        quickMenuOffset?.let { menuOff ->
+                            Popup(
+                                alignment = Alignment.TopStart,
+                                offset = menuOff,
+                                onDismissRequest = { quickMenuOffset = null },
+                                properties = PopupProperties(focusable = true, clippingEnabled = false)
+                            ) {
+                                StudioAssetQuickMenu(
+                                    t = t,
+                                    onRemove = {
+                                        quickMenuOffset = null
+                                        onRemoveDesign()
+                                    },
+                                    onReset = {
+                                        quickMenuOffset = null
+                                        onResetToOrigin()
+                                    }
+                                )
+                            }
+                        }
                         if (designSelected) {
                             StudioDesignSelectionChrome(
                                 scaleLabel = t("creator.shop_printify_studio_test.tool_scale", "Scale"),
@@ -2391,6 +2465,57 @@ private fun livePreviewMetaLine(meta: JSONObject?, colorId: Long?, sizeId: Long?
         }
     }
     return listOf(colorTitle, sizeTitle).filter { it.isNotEmpty() }.joinToString(" / ")
+}
+
+@Composable
+private fun StudioAssetQuickMenu(
+    t: (String, String) -> String,
+    onRemove: () -> Unit,
+    onReset: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .widthIn(min = 168.dp, max = 240.dp)
+            .background(Color(0xF50F172A), RoundedCornerShape(12.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(12.dp))
+            .padding(6.dp)
+            .semantics {
+                contentDescription = t(
+                    "design_studio.shop.asset_quick_options_aria",
+                    "Asset options"
+                )
+            },
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        StudioAssetQuickBtn(
+            label = t("design_studio.shop.asset_action_remove", "Remove"),
+            danger = true,
+            onClick = onRemove
+        )
+        StudioAssetQuickBtn(
+            label = t("design_studio.shop.asset_action_reset_to_origin", "Reset to origin"),
+            onClick = onReset
+        )
+    }
+}
+
+@Composable
+private fun StudioAssetQuickBtn(
+    label: String,
+    danger: Boolean = false,
+    onClick: () -> Unit
+) {
+    Text(
+        text = label,
+        color = if (danger) Color(0xFFFECACA) else Color(0xFFF8FAFC),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    )
 }
 
 @Composable
