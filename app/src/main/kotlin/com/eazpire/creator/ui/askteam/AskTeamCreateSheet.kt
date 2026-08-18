@@ -36,6 +36,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class AskTeamSeedProduct(
+    val id: String = "p1",
     val title: String,
     val variantId: String,
     val handle: String,
@@ -44,50 +45,70 @@ data class AskTeamSeedProduct(
     val sizes: List<String>,
     val views: List<Pair<String, String>>,
     val productKey: String = "",
+    val shopifyProductId: String = "",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AskTeamCreateSheet(
     tokenStore: SecureTokenStore,
-    seed: AskTeamSeedProduct,
+    seeds: List<AskTeamSeedProduct>,
     onDismiss: () -> Unit,
+    lockAskProduct: Boolean = false,
+    initialAskProduct: Boolean = true,
+    initialCollectTeamData: Boolean = true,
 ) {
+    val resolvedSeeds = seeds.ifEmpty {
+        listOf(
+            AskTeamSeedProduct(
+                title = "Ask Team",
+                variantId = "",
+                handle = "",
+                imageUrl = "",
+                versionLabel = "Version A",
+                sizes = emptyList(),
+                views = emptyList(),
+            )
+        )
+    }
+    val primary = resolvedSeeds.first()
     val jwt = tokenStore.getJwt()
     val api = remember(jwt) { CreatorApi(jwt = jwt) }
     val tStore = LocalTranslationStore.current
     fun t(key: String, fallback: String) = tStore?.t(key, fallback) ?: fallback
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var title by remember { mutableStateOf(seed.title) }
+    var title by remember { mutableStateOf(primary.title) }
     var description by remember { mutableStateOf("") }
     var emails by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
-    var askProduct by remember { mutableStateOf(true) }
-    var askSize by remember { mutableStateOf(true) }
-    var askName by remember { mutableStateOf(true) }
+    var askProduct by remember(lockAskProduct, initialAskProduct) {
+        mutableStateOf(if (lockAskProduct) initialAskProduct else initialAskProduct)
+    }
+    var askSize by remember(initialCollectTeamData) { mutableStateOf(initialCollectTeamData) }
+    var askName by remember(initialCollectTeamData) { mutableStateOf(initialCollectTeamData) }
     var askNumber by remember { mutableStateOf(false) }
     var askQty by remember { mutableStateOf(false) }
     var askPhoto by remember { mutableStateOf(false) }
-    var roster by remember {
+    var roster by remember(resolvedSeeds) {
         mutableStateOf(
             AskTeamRosterState(
-                globalProductId = "p1",
-                globalSize = seed.sizes.firstOrNull().orEmpty(),
+                globalProductId = resolvedSeeds.first().id,
+                globalSize = resolvedSeeds.first().sizes.firstOrNull().orEmpty(),
             )
         )
     }
     var shareUrl by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    val seedProducts = listOf(
+    val seedProducts = resolvedSeeds.map { seed ->
         AskTeamProductOption(
-            id = "p1",
+            id = seed.id,
             label = listOf(seed.title, seed.versionLabel).filter { it.isNotBlank() }.joinToString(" · "),
             variantId = seed.variantId,
             sizes = seed.sizes,
         )
-    )
+    }
 
     LaunchedEffect(jwt) {
         val defaults = withContext(Dispatchers.IO) { api.askTeamDefaults() }
@@ -108,7 +129,9 @@ fun AskTeamCreateSheet(
             if (shareUrl == null) {
                 OutlinedTextField(title, { title = it }, label = { Text(t("eaz.ask_team.campaign_title", "Title")) }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(description, { description = it }, label = { Text(t("eaz.ask_team.description", "Description")) }, modifier = Modifier.fillMaxWidth())
-                CheckRow(t("eaz.ask_team.ask_product", "Product / design"), askProduct) { askProduct = it }
+                if (!lockAskProduct) {
+                    CheckRow(t("eaz.ask_team.ask_product", "Product / design"), askProduct) { askProduct = it }
+                }
                 CheckRow(t("eaz.ask_team.ask_size", "Size"), askSize) { askSize = it }
                 CheckRow(t("eaz.ask_team.ask_name", "Name"), askName) { askName = it }
                 CheckRow(t("eaz.ask_team.ask_number", "Number"), askNumber) { askNumber = it }
@@ -131,17 +154,29 @@ fun AskTeamCreateSheet(
                         return@Button
                     }
                     scope.launch {
-                        val product = JSONObject()
-                            .put("title", seed.title)
-                            .put("shopify_variant_id", seed.variantId)
-                            .put("handle", seed.handle)
-                            .put("image_url", seed.imageUrl)
-                            .put("version_label", seed.versionLabel)
-                            .put("product_key", seed.productKey)
-                            .put("sizes", JSONArray(seed.sizes))
-                            .put("views", JSONArray(seed.views.map { (view, url) ->
-                                JSONObject().put("view", view).put("url", url)
-                            }))
+                        val products = JSONArray()
+                        resolvedSeeds.forEach { seed ->
+                            products.put(
+                                JSONObject()
+                                    .put("id", seed.id)
+                                    .put("title", seed.title)
+                                    .put("shopify_product_id", seed.shopifyProductId)
+                                    .put("shopify_variant_id", seed.variantId)
+                                    .put("handle", seed.handle)
+                                    .put("image_url", seed.imageUrl)
+                                    .put("version_label", seed.versionLabel)
+                                    .put("product_key", seed.productKey)
+                                    .put("sizes", JSONArray(seed.sizes))
+                                    .put(
+                                        "views",
+                                        JSONArray(
+                                            seed.views.map { (view, url) ->
+                                                JSONObject().put("view", view).put("url", url)
+                                            }
+                                        )
+                                    )
+                            )
+                        }
                         val rosterJson = roster.toPayload()
                         val payload = JSONObject()
                             .put("title", title)
@@ -156,7 +191,7 @@ fun AskTeamCreateSheet(
                             .put("ask_quantity", askQty)
                             .put("ask_photo", askPhoto)
                             .put("payment_mode", "captain")
-                            .put("products", JSONArray().put(product))
+                            .put("products", products)
                             .put("member_count", rosterJson.optInt("member_count"))
                             .put("individual", rosterJson.optJSONObject("individual"))
                             .put("global", rosterJson.optJSONObject("global"))

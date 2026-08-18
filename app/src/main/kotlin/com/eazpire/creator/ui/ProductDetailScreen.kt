@@ -2055,15 +2055,17 @@ fun ProductDetailScreen(
     if (showAskTeam) {
         com.eazpire.creator.ui.askteam.AskTeamCreateSheet(
             tokenStore = tokenStore,
-            seed = com.eazpire.creator.ui.askteam.AskTeamSeedProduct(
-                title = p.title,
-                variantId = variantIdForCart?.toString().orEmpty(),
-                handle = p.handle,
-                imageUrl = p.images.firstOrNull()?.src.orEmpty(),
-                versionLabel = selectedVariant?.option1 ?: "Version A",
-                sizes = sizeOption?.values ?: emptyList(),
-                views = p.images.map { (it.alt ?: "view") to it.src },
-                productKey = p.productKey.orEmpty(),
+            seeds = listOf(
+                com.eazpire.creator.ui.askteam.AskTeamSeedProduct(
+                    title = p.title,
+                    variantId = variantIdForCart?.toString().orEmpty(),
+                    handle = p.handle,
+                    imageUrl = p.images.firstOrNull()?.src.orEmpty(),
+                    versionLabel = selectedVariant?.option1 ?: "Version A",
+                    sizes = sizeOption?.values ?: emptyList(),
+                    views = p.images.map { (it.alt ?: "view") to it.src },
+                    productKey = p.productKey.orEmpty(),
+                )
             ),
             onDismiss = { showAskTeam = false },
         )
