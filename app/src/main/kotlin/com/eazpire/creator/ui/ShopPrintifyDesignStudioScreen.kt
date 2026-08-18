@@ -597,7 +597,11 @@ internal fun ShopPrintifyDesignStudioScreen(
         metaLoading = true
         try {
             val meta = withContext(Dispatchers.IO) {
-                api.printifyStudioTestProductMeta(oid, pid)
+                api.printifyStudioTestProductMeta(
+                    oid,
+                    pid,
+                    productKey = product.productKey,
+                )
             }
             if (meta.optBoolean("ok", false)) {
                 productMeta = meta
