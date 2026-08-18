@@ -207,6 +207,8 @@ fun ShopScreen(
     }
     // #endregion
     var accountModalVisible by remember { mutableStateOf(false) }
+    var askTeamFormToken by remember { mutableStateOf<String?>(null) }
+    var askTeamFormInvite by remember { mutableStateOf("") }
     var authSessionTick by remember { mutableIntStateOf(0) }
     var menuDrawerVisible by remember { mutableStateOf(false) }
     var cartDrawerVisible by remember { mutableStateOf(false) }
@@ -765,6 +767,10 @@ fun ShopScreen(
             path.startsWith("/pages/creator-dashboard") ||
                 path.startsWith("/pages/design-generator") ->
                 switchCreatorMode(toCreator = true, animate = false)
+            path.startsWith("/pages/ask-team") -> {
+                askTeamFormToken = uri.getQueryParameter("t").orEmpty().ifBlank { null }
+                askTeamFormInvite = uri.getQueryParameter("m").orEmpty()
+            }
             path.startsWith("/search") -> {
                 val q = uri.getQueryParameter("q")?.trim().orEmpty()
                 if (q.isNotEmpty()) {
@@ -1450,6 +1456,17 @@ fun ShopScreen(
             tokenStore = tokenStore,
             onDismiss = { accountModalVisible = false },
             onLogout = { handleUserLogout() }
+        )
+    }
+
+    askTeamFormToken?.let { token ->
+        com.eazpire.creator.ui.askteam.AskTeamFormSheet(
+            token = token,
+            invite = askTeamFormInvite,
+            onDismiss = {
+                askTeamFormToken = null
+                askTeamFormInvite = ""
+            },
         )
     }
 

@@ -4461,6 +4461,43 @@ class CreatorApi(
                 .put("action", action),
             mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId),
         )
+
+    suspend fun askTeamDefaults(): JSONObject = call("ask-team-defaults")
+
+    suspend fun askTeamList(): JSONObject = call("ask-team-list")
+
+    suspend fun askTeamGet(campaignId: String): JSONObject =
+        call("ask-team-get", mapOf("campaign_id" to campaignId))
+
+    suspend fun askTeamCreate(body: JSONObject): JSONObject =
+        postJsonBodyOp("ask-team-create", body)
+
+    suspend fun askTeamInvite(campaignId: String): JSONObject =
+        postJsonBodyOp("ask-team-invite", JSONObject().put("campaign_id", campaignId))
+
+    suspend fun askTeamRemind(campaignId: String): JSONObject =
+        postJsonBodyOp("ask-team-remind", JSONObject().put("campaign_id", campaignId))
+
+    suspend fun askTeamClose(campaignId: String): JSONObject =
+        postJsonBodyOp("ask-team-close", JSONObject().put("campaign_id", campaignId))
+
+    suspend fun askTeamGenerateMocks(campaignId: String): JSONObject =
+        postJsonBodyOp("ask-team-generate-mocks", JSONObject().put("campaign_id", campaignId))
+
+    suspend fun askTeamAddToCart(campaignId: String): JSONObject =
+        call("ask-team-add-to-cart", mapOf("campaign_id" to campaignId))
+
+    suspend fun askTeamUpdateResponse(body: JSONObject): JSONObject =
+        postJsonBodyOp("ask-team-update-response", body)
+
+    suspend fun askTeamPublicGet(token: String, invite: String = ""): JSONObject =
+        call("ask-team-public-get", buildMap {
+            put("t", token)
+            if (invite.isNotBlank()) put("m", invite)
+        })
+
+    suspend fun askTeamPublicSubmit(body: JSONObject): JSONObject =
+        postJsonBodyOp("ask-team-public-submit", body)
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)

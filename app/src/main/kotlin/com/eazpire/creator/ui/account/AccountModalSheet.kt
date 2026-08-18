@@ -60,6 +60,7 @@ enum class AccountTab(
     Notifications("creator.notifications.notifications_tab", "Notifications", "notifications"),
     SizeAI("content.account_size_ai", "Size AI", "size-ai"),
     Wardrobe("content.account_wardrobe", "Wardrobe", "wardrobe"),
+    AskTeam("content.account_ask_team", "Ask Team", "ask-team"),
     Mockups("content.account_mockups", "My Mockups", "mockups"),
     Creations("content.account_my_creations", "My Creations", "my-creations"),
     Community("content.account_community", "Community", "community"),
@@ -283,6 +284,10 @@ fun AccountModalSheet(
                             },
                             onSavingStateChange = { footerSaveInProgress = it },
                             modifier = tabModifier
+                        )
+                        AccountTab.AskTeam -> AccountAskTeamTab(
+                            tokenStore = tokenStore,
+                            modifier = tabModifier,
                         )
                         AccountTab.Wardrobe -> AccountWardrobeTab(
                             tokenStore = tokenStore,

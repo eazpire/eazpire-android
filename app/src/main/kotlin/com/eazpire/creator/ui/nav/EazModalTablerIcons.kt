@@ -84,6 +84,7 @@ object EazModalTablerIcons {
         "size-ai" -> "ruler-measure"
         "product-catalogue" -> "catalog"
         "wardrobe" -> "hanger"
+        "ask-team" -> "users"
         "mockups" -> "photo"
         "my-creations" -> "brush"
         "community", "network" -> "users"

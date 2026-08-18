@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Button
@@ -496,6 +497,7 @@ fun ProductDetailScreen(
     var showCartPlusOne by remember { mutableStateOf(false) }
     var showFavoritePlusOne by remember { mutableStateOf(false) }
     var checkoutUrl by remember { mutableStateOf<String?>(null) }
+    var showAskTeam by remember { mutableStateOf(false) }
     val storefrontCartStore = remember { StorefrontCartStore(context) }
     val storefrontCartApi = remember { ShopifyStorefrontCartApi() }
     val localeStore = remember { LocaleStore(context) }
@@ -1837,6 +1839,16 @@ fun ProductDetailScreen(
                 }
             }
             if (!p.isSample) {
+            IconButton(
+                onClick = { showAskTeam = true },
+                modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+            ) {
+                Icon(
+                    Icons.Default.Group,
+                    contentDescription = t("eaz.ask_team.title", "Ask Team"),
+                    tint = EazColors.TextPrimary,
+                )
+            }
             Box(
                 contentAlignment = Alignment.Center
             ) {
@@ -2038,6 +2050,23 @@ fun ProductDetailScreen(
                 }
             }
         }
+    }
+
+    if (showAskTeam) {
+        com.eazpire.creator.ui.askteam.AskTeamCreateSheet(
+            tokenStore = tokenStore,
+            seed = com.eazpire.creator.ui.askteam.AskTeamSeedProduct(
+                title = p.title,
+                variantId = variantIdForCart?.toString().orEmpty(),
+                handle = p.handle,
+                imageUrl = p.images.firstOrNull()?.src.orEmpty(),
+                versionLabel = selectedVariant?.option1 ?: "Version A",
+                sizes = sizeOption?.values ?: emptyList(),
+                views = p.images.map { (it.alt ?: "view") to it.src },
+                productKey = p.productKey.orEmpty(),
+            ),
+            onDismiss = { showAskTeam = false },
+        )
     }
 
     // Product Details Modal – von unten nach oben, Header + X, Tabs
