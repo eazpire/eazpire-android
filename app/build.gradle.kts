@@ -27,10 +27,11 @@ android {
         // Google Play (from 2026-08-31): app updates must target Android 16 / API 36+.
         targetSdk = 36
         // Increment for every Play upload (must be > previous release).
-        val appVersionCode = (System.getenv("VERSION_CODE") ?: "4").toIntOrNull() ?: 4
+        // Local default 5 = Play API-36 compliance release (CI still uses BASE + run_number).
+        val appVersionCode = (System.getenv("VERSION_CODE") ?: "5").toIntOrNull() ?: 5
         versionCode = appVersionCode
         // Play Console: same versionName for every build is confusing — include versionCode (or set VERSION_NAME in CI).
-        versionName = System.getenv("VERSION_NAME") ?: "1.0.4 ($appVersionCode)"
+        versionName = System.getenv("VERSION_NAME") ?: "1.0.5 ($appVersionCode)"
     }
 
     signingConfigs {
