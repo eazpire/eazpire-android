@@ -614,6 +614,23 @@ private fun fontAccentColor(font: JSONObject?): Color {
     return parseHexColor(lock?.optString("accent")) ?: Color(0xFFFB7185)
 }
 
+private data class GlyphPoint(val x: Float, val y: Float)
+
+private fun parseContours(entry: JSONObject?): List<List<GlyphPoint>> {
+    val arr = entry?.optJSONArray("contours") ?: return emptyList()
+    val out = mutableListOf<List<GlyphPoint>>()
+    for (i in 0 until arr.length()) {
+        val ring = arr.optJSONArray(i) ?: continue
+        val pts = mutableListOf<GlyphPoint>()
+        for (j in 0 until ring.length()) {
+            val o = ring.optJSONObject(j) ?: continue
+            pts.add(GlyphPoint(o.optDouble("x").toFloat(), o.optDouble("y").toFloat()))
+        }
+        if (pts.size >= 3) out.add(pts)
+    }
+    return out
+}
+
 private fun parseCells(entry: JSONObject?): List<GlyphCell> {
     val arr = entry?.optJSONArray("cells") ?: return emptyList()
     val out = mutableListOf<GlyphCell>()
@@ -697,22 +714,36 @@ private fun FontGlyphPreview(
     accent: Color,
     modifier: Modifier = Modifier
 ) {
+    val contours = remember(entry) { parseContours(entry) }
     val cells = remember(entry) { parseCells(entry) }
     val motifs = remember(entry) { parseMotifs(entry) }
-    if (cells.isEmpty()) {
-        Text(ch, color = Color.White, fontSize = 14.sp, modifier = modifier)
+    if (contours.isEmpty() && cells.isEmpty()) {
+        Text(ch, color = fill, fontSize = 14.sp, modifier = modifier)
         return
     }
     Canvas(modifier) {
         val sx = size.width / 1000f
         val sy = size.height / 1000f
-        cells.forEach { c ->
-            drawRoundRect(
-                color = fill,
-                topLeft = Offset(c.x * sx, c.y * sy),
-                size = Size(c.w * sx, c.h * sy),
-                cornerRadius = CornerRadius(8f * sx, 8f * sy)
-            )
+        if (contours.isNotEmpty()) {
+            contours.forEach { ring ->
+                val path = Path()
+                ring.forEachIndexed { idx, p ->
+                    val x = p.x * sx
+                    val y = p.y * sy
+                    if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                path.close()
+                drawPath(path, fill, style = Fill)
+            }
+        } else {
+            cells.forEach { c ->
+                drawRoundRect(
+                    color = fill,
+                    topLeft = Offset(c.x * sx, c.y * sy),
+                    size = Size(c.w * sx, c.h * sy),
+                    cornerRadius = CornerRadius(8f * sx, 8f * sy)
+                )
+            }
         }
         motifs.forEach { m ->
             when (m.type) {

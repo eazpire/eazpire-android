@@ -3632,18 +3632,29 @@ private fun StudioFontSettings(
         Column(modifier = Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             list.take(12).forEach { font ->
                 val on = selected?.id == font.id
-                Text(
-                    font.name,
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (on) Color(0xFF134E4A) else Color(0xFF0B1220))
                         .clickable { selected = font }
-                        .padding(8.dp),
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        studioText.ifBlank { "Your Text" },
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        font.name,
+                        color = Color.White.copy(0.7f),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             Button(
                 onClick = { selected?.let(onPick) },
