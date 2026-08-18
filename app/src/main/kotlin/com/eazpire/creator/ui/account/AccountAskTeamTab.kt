@@ -56,6 +56,7 @@ fun AccountAskTeamTab(
     var detail by remember { mutableStateOf<JSONObject?>(null) }
     var roster by remember { mutableStateOf(AskTeamRosterState()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var drawerOpen by remember { mutableStateOf(false) }
 
     fun reload() {
         scope.launch {
@@ -63,6 +64,12 @@ fun AccountAskTeamTab(
             val res = withContext(Dispatchers.IO) { api.askTeamList() }
             val arr = res.optJSONArray("campaigns") ?: JSONArray()
             campaigns = (0 until arr.length()).map { arr.getJSONObject(it) }
+            if (detail == null && arr.length() > 0) {
+                val first = withContext(Dispatchers.IO) { api.askTeamGet(arr.getJSONObject(0).optString("id")) }
+                val camp = first.optJSONObject("campaign")
+                detail = camp
+                if (camp != null) roster = rosterStateFromCampaign(camp)
+            }
             loading = false
         }
     }
@@ -85,27 +92,42 @@ fun AccountAskTeamTab(
         if (!loading && campaigns.isEmpty() && detail == null) {
             Text(t("eaz.ask_team.empty", "No Ask Team campaigns yet. Start one from a product page."))
         }
-        campaigns.forEach { c ->
-            val stats = c.optJSONObject("stats")
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        scope.launch {
-                            val id = c.optString("id")
-                            val res = withContext(Dispatchers.IO) { api.askTeamGet(id) }
-                            val camp = res.optJSONObject("campaign")
-                            detail = camp
-                            if (camp != null) roster = rosterStateFromCampaign(camp)
+        if (campaigns.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    t("eaz.ask_team.campaigns", "Campaigns"),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { drawerOpen = !drawerOpen }
+                        .padding(vertical = 8.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (drawerOpen || detail == null) {
+                    campaigns.forEach { c ->
+                        val stats = c.optJSONObject("stats")
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        val id = c.optString("id")
+                                        val res = withContext(Dispatchers.IO) { api.askTeamGet(id) }
+                                        val camp = res.optJSONObject("campaign")
+                                        detail = camp
+                                        if (camp != null) roster = rosterStateFromCampaign(camp)
+                                        drawerOpen = false
+                                    }
+                                }
+                                .padding(vertical = 6.dp),
+                        ) {
+                            Text(c.optString("title"), style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "${stats?.optString("team_members").orEmpty()} · ${c.optString("status")}",
+                                color = EazColors.TextSecondary,
+                            )
                         }
                     }
-                    .padding(vertical = 8.dp),
-            ) {
-                Text(c.optString("title"), style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "${stats?.optString("team_members").orEmpty()} · ${c.optString("status")}",
-                    color = EazColors.TextSecondary,
-                )
+                }
             }
         }
         detail?.let { camp ->
@@ -145,6 +167,41 @@ fun AccountAskTeamTab(
                     }
                 },
             )
+            val members = camp.optJSONArray("members") ?: JSONArray()
+            Text(t("eaz.ask_team.members", "Members"), style = MaterialTheme.typography.titleSmall)
+            (0 until members.length()).forEach { i ->
+                val m = members.getJSONObject(i)
+                val sent = if (m.optLong("last_invited_at", 0L) > 0L) {
+                    java.text.DateFormat.getDateInstance().format(java.util.Date(m.optLong("last_invited_at") * 1000))
+                } else "—"
+                val reacted = if (m.optBoolean("responded") || m.optString("status") == "submitted") {
+                    t("eaz.ask_team.responded", "Responded")
+                } else t("eaz.ask_team.waiting", "Waiting")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "${m.optString("display_name").ifBlank { m.optString("email") }} · $reacted · ${t("eaz.ask_team.last_sent", "Last sent")} $sent",
+                        modifier = Modifier.weight(1f),
+                        color = EazColors.TextSecondary,
+                    )
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { api.askTeamRemind(camp.optString("id"), m.optString("id")) }
+                        }
+                    }) { Text(t("eaz.ask_team.remind_one", "Remind")) }
+                }
+            }
+            Text(t("eaz.ask_team.my_team_products", "My Team Products"), style = MaterialTheme.typography.titleSmall)
+            val rosterRows = camp.optJSONArray("roster_rows") ?: JSONArray()
+            (0 until rosterRows.length()).forEach { i ->
+                val r = rosterRows.getJSONObject(i)
+                Text(
+                    listOf(r.optString("jersey_name").ifBlank { r.optString("display_name") }, r.optString("jersey_number"), r.optString("size"), if (r.optInt("quantity", 1) > 0) "${r.optInt("quantity")}×" else "").filter { it.isNotBlank() }.joinToString(" · "),
+                    color = EazColors.TextSecondary,
+                )
+            }
             val responses = camp.optJSONArray("responses") ?: JSONArray()
             (0 until responses.length()).forEach { i ->
                 AskTeamResponseEditor(

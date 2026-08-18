@@ -4475,11 +4475,26 @@ class CreatorApi(
     suspend fun askTeamRosterSave(body: JSONObject): JSONObject =
         postJsonBodyOp("ask-team-roster-save", body)
 
-    suspend fun askTeamInvite(campaignId: String): JSONObject =
-        postJsonBodyOp("ask-team-invite", JSONObject().put("campaign_id", campaignId))
+    suspend fun askTeamUpdate(body: JSONObject): JSONObject =
+        postJsonBodyOp("ask-team-update", body)
 
-    suspend fun askTeamRemind(campaignId: String): JSONObject =
-        postJsonBodyOp("ask-team-remind", JSONObject().put("campaign_id", campaignId))
+    suspend fun askTeamInvite(campaignId: String, emails: String = "", subject: String = "", body: String = ""): JSONObject =
+        postJsonBodyOp(
+            "ask-team-invite",
+            JSONObject()
+                .put("campaign_id", campaignId)
+                .put("emails", emails)
+                .put("email_subject", subject)
+                .put("email_body", body),
+        )
+
+    suspend fun askTeamRemind(campaignId: String, memberId: String = ""): JSONObject =
+        postJsonBodyOp(
+            "ask-team-remind",
+            JSONObject().put("campaign_id", campaignId).apply {
+                if (memberId.isNotBlank()) put("member_id", memberId)
+            },
+        )
 
     suspend fun askTeamClose(campaignId: String): JSONObject =
         postJsonBodyOp("ask-team-close", JSONObject().put("campaign_id", campaignId))
@@ -4493,10 +4508,11 @@ class CreatorApi(
     suspend fun askTeamUpdateResponse(body: JSONObject): JSONObject =
         postJsonBodyOp("ask-team-update-response", body)
 
-    suspend fun askTeamPublicGet(token: String, invite: String = ""): JSONObject =
+    suspend fun askTeamPublicGet(token: String, invite: String = "", password: String = ""): JSONObject =
         call("ask-team-public-get", buildMap {
             put("t", token)
             if (invite.isNotBlank()) put("m", invite)
+            if (password.isNotBlank()) put("password", password)
         })
 
     suspend fun askTeamPublicSubmit(body: JSONObject): JSONObject =

@@ -96,7 +96,7 @@ fun rosterStateFromCampaign(camp: JSONObject): AskTeamRosterState {
 }
 
 fun AskTeamRosterState.resized(): AskTeamRosterState {
-    val count = memberCount.toIntOrNull()?.coerceIn(0, 80) ?: 0
+    val count = memberCount.toIntOrNull()?.coerceIn(0, 50) ?: 0
     val next = rows.toMutableList()
     while (next.size < count) next.add(AskTeamRosterRow())
     return copy(rows = next.take(count))

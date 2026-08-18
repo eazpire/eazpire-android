@@ -59,21 +59,35 @@ fun AskTeamFormSheet(
     var done by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var open by remember { mutableStateOf(true) }
+    var needsPassword by remember { mutableStateOf(false) }
+    var password by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var emailBound by remember { mutableStateOf(false) }
+    var unlockedPassword by remember { mutableStateOf("") }
 
-    LaunchedEffect(token, invite) {
-        val res = withContext(Dispatchers.IO) { api.askTeamPublicGet(token, invite) }
-        loading = false
-        open = res.optBoolean("open", true)
-        campaign = res.optJSONObject("campaign")
-        val existing = res.optJSONObject("response")
-        val member = res.optJSONObject("member")
-        name = existing?.optString("jersey_name").orEmpty()
-            .ifBlank { member?.optString("display_name").orEmpty() }
-        number = existing?.optString("jersey_number").orEmpty()
-        size = existing?.optString("size").orEmpty()
-        val products = campaign?.optJSONArray("products") ?: JSONArray()
-        if (products.length() > 0) selectedId = products.getJSONObject(0).optString("id")
+    fun load(pass: String) {
+        scope.launch {
+            loading = true
+            val res = withContext(Dispatchers.IO) { api.askTeamPublicGet(token, invite, pass) }
+            loading = false
+            open = res.optBoolean("open", true)
+            needsPassword = res.optBoolean("needs_password", false)
+            campaign = res.optJSONObject("campaign")
+            if (needsPassword) return@launch
+            unlockedPassword = pass
+            val existing = res.optJSONObject("response")
+            val member = res.optJSONObject("member")
+            emailBound = member?.optBoolean("email_bound") == true
+            name = existing?.optString("jersey_name").orEmpty()
+                .ifBlank { member?.optString("display_name").orEmpty() }
+            number = existing?.optString("jersey_number").orEmpty()
+            size = existing?.optString("size").orEmpty()
+            val products = campaign?.optJSONArray("products") ?: JSONArray()
+            if (products.length() > 0) selectedId = products.getJSONObject(0).optString("id")
+        }
     }
+
+    LaunchedEffect(token, invite) { load("") }
 
     EazBottomSheet(onDismissRequest = onDismiss, fullscreen = true) {
         Column(
@@ -84,6 +98,17 @@ fun AskTeamFormSheet(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (loading) CircularProgressIndicator()
+            else if (needsPassword) {
+                Text(t("eaz.ask_team.password_required", "This form is password protected."))
+                OutlinedTextField(password, { password = it }, label = { Text(t("eaz.ask_team.share_password", "Optional password")) }, modifier = Modifier.fillMaxWidth())
+                error?.let { Text(it, color = EazColors.Orange) }
+                Button(onClick = {
+                    if (password.isBlank()) error = t("eaz.ask_team.password_wrong", "Wrong password.")
+                    else load(password)
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text(t("eaz.ask_team.unlock", "Unlock"))
+                }
+            }
             else if (!open) Text(t("eaz.ask_team.closed", "This Ask Team form is closed."))
             else if (done) Text(t("eaz.ask_team.thanks", "Thanks — you’re on the list."), style = MaterialTheme.typography.titleLarge)
             else {
@@ -118,6 +143,9 @@ fun AskTeamFormSheet(
                         }
                     }
                 }
+                if (emailBound) {
+                    OutlinedTextField(email, { email = it }, label = { Text(t("eaz.ask_team.email", "Email")) }, modifier = Modifier.fillMaxWidth())
+                }
                 if (c?.optBoolean("ask_name", true) == true) {
                     OutlinedTextField(name, { name = it }, label = { Text(t("eaz.ask_team.name", "Name")) }, modifier = Modifier.fillMaxWidth())
                 }
@@ -141,6 +169,9 @@ fun AskTeamFormSheet(
                                 JSONObject()
                                     .put("t", token)
                                     .put("m", invite)
+                                    .put("password", unlockedPassword)
+                                    .put("email", email)
+                                    .put("respondent_email", email)
                                     .put("name", name)
                                     .put("jersey_name", name)
                                     .put("jersey_number", number)
@@ -151,7 +182,13 @@ fun AskTeamFormSheet(
                             )
                         }
                         if (res.optBoolean("ok")) done = true
-                        else error = t("eaz.ask_team.submit_error", "Please check the required fields.")
+                        else {
+                            error = when (res.optString("error")) {
+                                "email_mismatch" -> t("eaz.ask_team.email_mismatch", "Use the email address this invite was sent to.")
+                                "password_required" -> t("eaz.ask_team.password_wrong", "Wrong password.")
+                                else -> t("eaz.ask_team.submit_error", "Please check the required fields.")
+                            }
+                        }
                     }
                 }, modifier = Modifier.fillMaxWidth()) {
                     Text(t("eaz.ask_team.submit", "Submit"))
