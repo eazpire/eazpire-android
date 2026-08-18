@@ -101,6 +101,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -111,9 +113,6 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
-import androidx.compose.ui.geometry.Offset
-import kotlin.math.abs
-import kotlin.math.atan2
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -1709,23 +1708,43 @@ private fun StudioMockEditor(
 
             if (!designUrl.isNullOrBlank()) {
                 val dUrl = designUrl!!
+                val visualW = zoneW * designScale
+                val visualH = zoneH * designScale
+                val zonePx = with(density) { zoneW.toPx() }
                 val zoneModifier = Modifier
                     .offset(x = zoneLeft, y = zoneTop)
                     .size(zoneW, zoneH)
-                    .clip(RoundedCornerShape(4.dp))
-                    .clipToBounds()
                     .then(
                         if (designSelected) {
-                            Modifier.border(3.dp, Color(0xFFEF4444), RoundedCornerShape(4.dp))
+                            Modifier.border(3.dp, EazColors.StudioSelection, RoundedCornerShape(4.dp))
                         } else {
-                            Modifier
+                            Modifier.clip(RoundedCornerShape(4.dp)).clipToBounds()
                         }
                     )
+                    .pointerInput(dUrl) {
+                        detectTapGestures { onDeselectDesign() }
+                    }
                 Box(modifier = zoneModifier) {
                     StudioPlacedDesignImage(
                         url = dUrl,
+                        modifier = Modifier.fillMaxSize(),
+                        designDx = designDx,
+                        designDy = designDy,
+                        designScale = designScale,
+                        designRotate = designRotate
+                    )
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .align(Alignment.Center)
+                            .size(visualW, visualH)
+                            .graphicsLayer {
+                                translationX = designDx
+                                translationY = designDy
+                                rotationZ = designRotate
+                            }
+                            .pointerInput(dUrl, designSelected) {
+                                detectTapGestures { onSelectDesign() }
+                            }
                             .pointerInput(dUrl) {
                                 detectDragGestures(
                                     onDragStart = {
@@ -1738,12 +1757,28 @@ private fun StudioMockEditor(
                                     },
                                     onDragEnd = { onDesignDragEnd() }
                                 )
-                            },
-                        designDx = designDx,
-                        designDy = designDy,
-                        designScale = designScale,
-                        designRotate = designRotate
-                    )
+                            }
+                    ) {
+                        if (designSelected) {
+                            StudioDesignSelectionChrome(
+                                scaleLabel = t("creator.shop_printify_studio_test.tool_scale", "Scale"),
+                                rotateLabel = t("creator.shop_printify_studio_test.tool_rotate", "Rotate"),
+                                onScaleDrag = { corner, dragX, dragY ->
+                                    var delta = maxOf(dragX, dragY) / max(40f, zonePx)
+                                    if (corner == "nw" || corner == "sw") delta = -delta
+                                    onDesignScale((designScale + delta).coerceIn(0.08f, 2.5f))
+                                },
+                                onRotateDrag = { dragX ->
+                                    onDesignRotate((designRotate + dragX * 0.35f).coerceIn(-180f, 180f))
+                                },
+                                onInteractStart = {
+                                    onSelectDesign()
+                                    onDesignDragStart()
+                                },
+                                onInteractEnd = onDesignDragEnd
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2342,6 +2377,111 @@ private fun livePreviewMetaLine(meta: JSONObject?, colorId: Long?, sizeId: Long?
         }
     }
     return listOf(colorTitle, sizeTitle).filter { it.isNotEmpty() }.joinToString(" / ")
+}
+
+@Composable
+private fun StudioDesignSelectionChrome(
+    scaleLabel: String,
+    rotateLabel: String,
+    onScaleDrag: (corner: String, dragX: Float, dragY: Float) -> Unit,
+    onRotateDrag: (dragX: Float) -> Unit,
+    onInteractStart: () -> Unit,
+    onInteractEnd: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .border(1.5.dp, Color.White.copy(alpha = 0.92f), RoundedCornerShape(2.dp))
+    ) {
+        listOf("nw", "ne", "sw", "se").forEach { corner ->
+            val align = when (corner) {
+                "nw" -> Alignment.TopStart
+                "ne" -> Alignment.TopEnd
+                "sw" -> Alignment.BottomStart
+                else -> Alignment.BottomEnd
+            }
+            Box(
+                modifier = Modifier
+                    .align(align)
+                    .offset(
+                        x = if (corner.endsWith("e")) 10.dp else (-10).dp,
+                        y = if (corner.startsWith("n")) (-10).dp else 10.dp
+                    )
+                    .size(28.dp)
+                    .semantics { contentDescription = scaleLabel }
+                    .pointerInput(corner) {
+                        detectDragGestures(
+                            onDragStart = { onInteractStart() },
+                            onDrag = { change, drag ->
+                                change.consume()
+                                onScaleDrag(corner, drag.x, drag.y)
+                            },
+                            onDragEnd = onInteractEnd
+                        )
+                    },
+                contentAlignment = when (corner) {
+                    "nw" -> Alignment.BottomEnd
+                    "ne" -> Alignment.BottomStart
+                    "sw" -> Alignment.TopEnd
+                    else -> Alignment.TopStart
+                }
+            ) {
+                StudioCornerTab(corner = corner)
+            }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = 26.dp)
+                .size(22.dp)
+                .background(Color(0xFF0F172A).copy(alpha = 0.52f), CircleShape)
+                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                .semantics { contentDescription = rotateLabel }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { onInteractStart() },
+                        onDrag = { change, drag ->
+                            change.consume()
+                            onRotateDrag(drag.x)
+                        },
+                        onDragEnd = onInteractEnd
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("↻", color = Color.White.copy(0.92f), fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun StudioCornerTab(corner: String) {
+    val rotation = when (corner) {
+        "nw" -> 0f
+        "ne" -> 90f
+        "se" -> 180f
+        else -> 270f
+    }
+    Box(
+        modifier = Modifier
+            .size(14.dp)
+            .graphicsLayer { rotationZ = rotation }
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .height(4.dp)
+                .background(EazColors.StudioSelection, RoundedCornerShape(2.dp))
+        )
+        Box(
+            Modifier
+                .align(Alignment.TopStart)
+                .width(4.dp)
+                .fillMaxHeight()
+                .background(EazColors.StudioSelection, RoundedCornerShape(2.dp))
+        )
+    }
 }
 
 @Composable
