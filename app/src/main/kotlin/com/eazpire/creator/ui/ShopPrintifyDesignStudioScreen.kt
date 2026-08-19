@@ -115,7 +115,9 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -293,6 +295,7 @@ internal fun ShopPrintifyDesignStudioScreen(
     var existingShopHandle by remember { mutableStateOf<String?>(null) }
     var existingShopProductName by remember { mutableStateOf<String?>(null) }
     var draftId by remember { mutableStateOf<Long?>(null) }
+    var keepPrintifyOnClose by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var actionBusy by remember { mutableStateOf(false) }
     val contributorDesignIds = remember { mutableStateListOf<String>() }
@@ -300,6 +303,21 @@ internal fun ShopPrintifyDesignStudioScreen(
     val localeStore = remember { LocaleStore(context) }
 
     fun t(key: String, def: String) = translationStore.t(key, def)
+
+    fun dismissStudio() {
+        val oid = ownerId?.trim().orEmpty()
+        val pid = printifyProductId.trim()
+        val keep = keepPrintifyOnClose || (draftId != null && draftId!! > 0)
+        if (!keep && oid.isNotEmpty() && pid.isNotEmpty()) {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                try {
+                    api.printifyStudioTestAbandon(oid, pid)
+                } catch (_: Exception) {
+                }
+            }
+        }
+        onDismiss()
+    }
 
     fun flashStatus(msg: String) {
         statusMessage = msg
@@ -642,11 +660,11 @@ internal fun ShopPrintifyDesignStudioScreen(
             sourcesDrawerOpen -> sourcesDrawerOpen = false
         }
     }
-    BackHandler(enabled = !showLivePreview && !sourcesDrawerOpen && !optionsSheetOpen && showDesignPicker == null && !teamSheetOpen, onBack = onDismiss)
+    BackHandler(enabled = !showLivePreview && !sourcesDrawerOpen && !optionsSheetOpen && showDesignPicker == null && !teamSheetOpen, onBack = { dismissStudio() })
 
     // Manual insets: status on shell, navigation on compact footer — matches web mobile
     // safe-area handling and avoids burying the footer under the Android nav bar.
-    EazInsetDialog(onDismissRequest = onDismiss, applySystemBarInsets = false) {
+    EazInsetDialog(onDismissRequest = { dismissStudio() }, applySystemBarInsets = false) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -680,7 +698,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    IconButton(onClick = onDismiss) {
+                    IconButton(onClick = { dismissStudio() }) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = translation("creator.common.close", "Close"),
@@ -1106,6 +1124,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                                             return@launch
                                         }
                                         val enq = ShopStudioShopifyActions.enqueue(api, oid, payload)
+                                        if (enq.ok) keepPrintifyOnClose = true
                                         if (!enq.ok) {
                                             flashStatus(
                                                 t(
@@ -1226,6 +1245,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                                             }
                                         )
                                         if (result.ok) {
+                                            keepPrintifyOnClose = true
                                             flashStatus(
                                                 t(
                                                     "creator.shop_printify_studio_test.shop_studio_added_cart",
@@ -1421,6 +1441,7 @@ internal fun ShopPrintifyDesignStudioScreen(
                                         if (res.optBoolean("ok", false)) {
                                             val id = res.optLong("draft_id", -1L)
                                             if (id > 0) draftId = id
+                                            keepPrintifyOnClose = true
                                             flashStatus(
                                                 t(
                                                     "creator.shop_printify_studio_test.save_draft_success",

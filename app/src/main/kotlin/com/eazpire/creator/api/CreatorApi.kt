@@ -2583,6 +2583,31 @@ class CreatorApi(
         mapOf("owner_id" to ownerId, "limit" to limit.toString())
     )
 
+    /** GET ?op=list-quick-inspirations — same contract as the web QI modal / Eazy page. */
+    suspend fun listQuickInspirations(
+        ownerId: String? = null,
+        mine: Boolean = false,
+        excludeMine: Boolean = false,
+        search: String? = null,
+        origin: String? = null,
+        limit: Int = 36,
+        offset: Int = 0,
+    ): JSONObject {
+        val params = mutableMapOf(
+            "limit" to limit.coerceIn(1, 100).toString(),
+            "offset" to offset.coerceAtLeast(0).toString(),
+        )
+        ownerId?.takeIf { it.isNotBlank() }?.let {
+            params["owner_id"] = it
+            params["logged_in_customer_id"] = it
+        }
+        if (mine) params["mine"] = "1"
+        if (excludeMine) params["exclude_mine"] = "1"
+        search?.takeIf { it.isNotBlank() }?.let { params["search"] = it }
+        origin?.takeIf { it.isNotBlank() }?.let { params["origin"] = it }
+        return call("list-quick-inspirations", params)
+    }
+
     /** GET ?op=get-system-notifications&owner_id=&audience=creator|shop */
     suspend fun getSystemNotifications(ownerId: String, audience: String): JSONObject = call(
         "get-system-notifications",
