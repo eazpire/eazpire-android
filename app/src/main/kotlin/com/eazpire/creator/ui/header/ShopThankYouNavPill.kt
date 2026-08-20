@@ -2,6 +2,7 @@ package com.eazpire.creator.ui.header
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -13,6 +14,7 @@ import com.eazpire.creator.EazColors
 
 /**
  * Ice-blue Thank You nav tile (matches web `#eazThankyouNavBtn`).
+ * Flush against Create — no orange header strip between the tiles.
  */
 @Composable
 fun ShopThankYouNavPill(
@@ -21,9 +23,10 @@ fun ShopThankYouNavPill(
 ) {
     Box(
         modifier = modifier
+            .fillMaxHeight()
             .clip(RectangleShape)
             .background(EazColors.ShopThankYouNavBg)
-            .padding(horizontal = 14.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         content()

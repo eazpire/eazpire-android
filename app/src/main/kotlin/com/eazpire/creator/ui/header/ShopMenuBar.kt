@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.LocalTranslationStore
 
@@ -152,8 +153,9 @@ fun ShopMenuBar(
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .fillMaxHeight()
                         .padding(start = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     items(MENU_ITEMS) { item ->
@@ -192,10 +194,12 @@ fun ShopMenuBar(
                                     }
                                 }
                                 .then(
-                                    if (isCreate || isThankYou) {
-                                        Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                    } else {
-                                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    when {
+                                        isThankYou -> Modifier.fillMaxHeight()
+                                        isCreate -> Modifier
+                                            .fillMaxHeight()
+                                            .padding(end = 4.dp)
+                                        else -> Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                     }
                                 ),
                             contentAlignment = Alignment.Center
@@ -221,10 +225,12 @@ fun ShopMenuBar(
                                             iconSize = 14.dp,
                                         )
                                         Text(
-                                            text = label,
+                                            text = label.replaceFirst(" ", "\n"),
                                             color = EazColors.ShopThankYouNavText,
                                             fontWeight = FontWeight.Bold,
-                                            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                                            fontSize = 11.sp,
+                                            lineHeight = 12.sp,
+                                            maxLines = 2,
                                         )
                                         if (thankYouGiftCount > 0) {
                                             Box(
