@@ -12,9 +12,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import com.eazpire.creator.ui.nav.EazNavTablerIcon
@@ -39,6 +40,11 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 /** Synthetic handle: opens shop “Create product” flow (not a Shopify collection). */
 const val SHOP_MENU_CREATE_HANDLE = "eaz_shop_create"
 
+/** Home / menu link to the Thank-you Gift Hub (Shopify page handle thankyou). */
+const val SHOP_MENU_THANKYOU_HANDLE = "thankyou"
+
+const val SHOP_THANKYOU_PAGE_URL = "https://www.eazpire.com/pages/thankyou"
+
 /** Home / menu link to the create-from-scratch catalog overview (Shopify page handle shop-create). */
 const val SHOP_CREATE_PAGE_HANDLE = "shop-create"
 
@@ -60,6 +66,7 @@ private data class ComingSoonMenuItem(
 )
 
 private val MENU_ITEMS = listOf(
+    MenuItem("Thank You", SHOP_MENU_THANKYOU_HANDLE, SHOP_THANKYOU_PAGE_URL),
     MenuItem("Create", SHOP_MENU_CREATE_HANDLE, ""),
     MenuItem("Promotions", "eaz-promotions", "https://www.eazpire.com/collections/eaz-promotions"),
     MenuItem("Women", "women", "https://www.eazpire.com/collections/women", megaAudienceHandle = "women"),
@@ -75,6 +82,7 @@ private val COMING_SOON_MENU_ITEMS = listOf(
 )
 
 private val MENU_ITEM_ICON_HANDLES = mapOf(
+    "Thank You" to "gift",
     "Create" to "create",
     "Promotions" to "eaz-promotions",
     "Women" to "women",
@@ -85,6 +93,7 @@ private val MENU_ITEM_ICON_HANDLES = mapOf(
 )
 
 private val MENU_ITEM_KEYS = mapOf(
+    "Thank You" to "thankyou.nav_label",
     "Create" to "creator.shop_create_product.entry",
     "Promotions" to "eaz.shop.promotions_title",
     "Women" to "sidebar.women", "Men" to "sidebar.men", "Kids" to "sidebar.kids",
@@ -96,6 +105,7 @@ fun ShopMenuBar(
     onAllClick: () -> Unit,
     onCategoryClick: ((title: String, handle: String, productType: String?) -> Unit)? = null,
     selectedHandle: String? = null,
+    thankYouGiftCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -199,6 +209,7 @@ fun ShopMenuBar(
                                     )
                                 }
                             } else {
+                                val isThankYou = item.collectionHandle == SHOP_MENU_THANKYOU_HANDLE
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -217,6 +228,22 @@ fun ShopMenuBar(
                                         fontWeight = if (isMegaExpanded) FontWeight.Bold else FontWeight.Normal,
                                         style = androidx.compose.material3.MaterialTheme.typography.labelLarge
                                     )
+                                    if (isThankYou && thankYouGiftCount > 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .heightIn(min = 18.dp)
+                                                .background(Color.White, CircleShape)
+                                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = thankYouGiftCount.toString(),
+                                                color = EazColors.Orange,
+                                                fontWeight = FontWeight.Bold,
+                                                style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

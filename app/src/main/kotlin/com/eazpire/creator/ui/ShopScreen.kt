@@ -90,7 +90,10 @@ import com.eazpire.creator.ui.header.RefSearchCreateProductRequest
 import com.eazpire.creator.ui.header.SHOP_CREATE_CATALOG_HANDLE
 import com.eazpire.creator.ui.header.SHOP_CREATE_PAGE_HANDLE
 import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
+import com.eazpire.creator.ui.header.SHOP_MENU_THANKYOU_HANDLE
+import com.eazpire.creator.ui.header.SHOP_THANKYOU_PAGE_URL
 import com.eazpire.creator.ui.header.ShopMenuBar
+import androidx.browser.customtabs.CustomTabsIntent
 import com.eazpire.creator.ui.vouchers.VoucherGiftSubTab
 import com.eazpire.creator.ui.vouchers.VoucherModal
 import com.eazpire.creator.ui.vouchers.VoucherModalTab
@@ -387,6 +390,18 @@ fun ShopScreen(
         selectedCreatorName = null
         showCreatorsIndex = false
         shopCreateStudioPhase = null
+        if (handle == SHOP_MENU_THANKYOU_HANDLE) {
+            try {
+                CustomTabsIntent.Builder().setShowTitle(true).build()
+                    .launchUrl(context, Uri.parse(SHOP_THANKYOU_PAGE_URL))
+            } catch (_: Exception) {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SHOP_THANKYOU_PAGE_URL)))
+                } catch (_: Exception) {
+                }
+            }
+            return
+        }
         if (
             handle == SHOP_CREATE_PAGE_HANDLE ||
             handle == SHOP_CREATE_CATALOG_HANDLE ||
@@ -524,6 +539,32 @@ fun ShopScreen(
     val ownerId = tokenStore.getOwnerId().orEmpty()
     val eazySyncApi = remember(jwtForApi, ownerId) { CreatorApi(jwt = jwtForApi) }
     val creatorCodeHintActive by CreatorCodeAvailableHintStore.active.collectAsState()
+    var thankYouGiftCount by remember { mutableIntStateOf(0) }
+
+    fun openThankYouPage() {
+        try {
+            CustomTabsIntent.Builder().setShowTitle(true).build()
+                .launchUrl(context, Uri.parse(SHOP_THANKYOU_PAGE_URL))
+        } catch (_: Exception) {
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SHOP_THANKYOU_PAGE_URL)))
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    LaunchedEffect(ownerId, jwtForApi) {
+        if (ownerId.isBlank()) {
+            thankYouGiftCount = 0
+            return@LaunchedEffect
+        }
+        try {
+            val res = withContext(Dispatchers.IO) { eazySyncApi.getThankyouNavCount(ownerId) }
+            thankYouGiftCount = res.optInt("count", 0).coerceAtLeast(0)
+        } catch (_: Exception) {
+            thankYouGiftCount = 0
+        }
+    }
 
     LaunchedEffect(ownerId, jwtForApi) {
         while (true) {
@@ -771,6 +812,8 @@ fun ShopScreen(
                 askTeamFormToken = uri.getQueryParameter("t").orEmpty().ifBlank { null }
                 askTeamFormInvite = uri.getQueryParameter("m").orEmpty()
             }
+            path.startsWith("/pages/thankyou") || path.startsWith("/q/thankyou") ->
+                openThankYouPage()
             path.startsWith("/search") -> {
                 val q = uri.getQueryParameter("q")?.trim().orEmpty()
                 if (q.isNotEmpty()) {
@@ -956,13 +999,14 @@ fun ShopScreen(
                         }
                     },
                     onCategoryClick = { title, handle, productType ->
-                        if (handle == SHOP_MENU_CREATE_HANDLE) {
-                            openShopCreate()
-                        } else {
-                            openShopCollection(title, handle, productType)
+                        when (handle) {
+                            SHOP_MENU_CREATE_HANDLE -> openShopCreate()
+                            SHOP_MENU_THANKYOU_HANDLE -> openThankYouPage()
+                            else -> openShopCollection(title, handle, productType)
                         }
                     },
-                    selectedHandle = if (shopCreateActive) SHOP_MENU_CREATE_HANDLE else selectedCollection?.second
+                    selectedHandle = if (shopCreateActive) SHOP_MENU_CREATE_HANDLE else selectedCollection?.second,
+                    thankYouGiftCount = thankYouGiftCount
                 )
                 if (shopCreateActive || selectedCollection != null || selectedCreatorName != null || showCreatorsIndex) {
                     val creatorsLabel = translationStore.t("eaz.home.creators", "Creators")

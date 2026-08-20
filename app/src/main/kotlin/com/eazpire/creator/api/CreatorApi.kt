@@ -1434,6 +1434,15 @@ class CreatorApi(
     )
 
     /**
+     * GET ?op=thankyou-nav-count&owner_id=xxx
+     * Returns { ok: true, count } — gift packs (1 per Shopify order).
+     */
+    suspend fun getThankyouNavCount(ownerId: String): JSONObject = call(
+        "thankyou-nav-count",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /**
      * POST ?op=save-customer-account-profile&owner_id=xxx
      */
     suspend fun saveCustomerProfile(ownerId: String, profile: Map<String, String>): JSONObject =

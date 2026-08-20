@@ -199,7 +199,7 @@ object EazNavTablerIcons {
             "pants", "joggers", "jeans", "leggings" -> "pants"
             "skirt", "skirts" -> "skirt"
             "eaz-promotions", "promotions", "deals" -> "tag"
-            "gift-card", "gift-cards", "gutscheine", "coupons" -> "gift"
+            "gift-card", "gift-cards", "gutscheine", "coupons", "thankyou", "thank-you" -> "gift"
             "3d-print", "print-3d" -> "print-3d"
             "blank-products", "blank_products" -> "blank-products"
             "eaz_shop_create", "shop-create", "create" -> "create"
