@@ -355,6 +355,8 @@ fun DesignDetailSheet(
     var historyLoading by remember { mutableStateOf(false) }
     var showHistoryDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showRegenConfirm by remember { mutableStateOf(false) }
+    var regenBusy by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
     var moveName by remember { mutableStateOf("") }
     var showGlowUpStyles by remember { mutableStateOf(false) }
@@ -645,21 +647,8 @@ fun DesignDetailSheet(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     IconButton(
-                                        onClick = {
-                                            scope.launch {
-                                                try {
-                                                    val res = withContext(Dispatchers.IO) {
-                                                        api.regenerateDesignMetadata(ownerId, designId)
-                                                    }
-                                                    if (res.optBoolean("ok", false)) {
-                                                        val m = res.optJSONObject("metadata") ?: JSONObject()
-                                                        draftMeta = JSONObject(m.toString())
-                                                        recomputeBaseline()
-                                                    }
-                                                } catch (_: Exception) {
-                                                }
-                                            }
-                                        }
+                                        onClick = { if (!regenBusy) showRegenConfirm = true },
+                                        enabled = !regenBusy
                                     ) {
                                         Icon(
                                             Icons.Default.AutoAwesome,
@@ -1073,6 +1062,56 @@ fun DesignDetailSheet(
                 TextButton(onClick = { if (!glowUpStarting) showGlowUpConfirm = false }) {
                     Text(t("creator.common.cancel", "Cancel"), color = Color.White)
                 }
+            }
+        )
+    }
+
+    if (showRegenConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!regenBusy) showRegenConfirm = false },
+            confirmButton = {
+                TextButton(
+                    enabled = !regenBusy,
+                    onClick = {
+                        scope.launch {
+                            regenBusy = true
+                            try {
+                                val res = withContext(Dispatchers.IO) {
+                                    api.regenerateDesignMetadata(ownerId, designId)
+                                }
+                                if (res.optBoolean("ok", false)) {
+                                    val m = res.optJSONObject("metadata") ?: JSONObject()
+                                    draftMeta = JSONObject(m.toString())
+                                    recomputeBaseline()
+                                }
+                            } catch (_: Exception) {
+                            } finally {
+                                regenBusy = false
+                                showRegenConfirm = false
+                            }
+                        }
+                    }
+                ) {
+                    Text(
+                        if (regenBusy) t("creator.preview_modal.meta_regenerate_working", "Analyzing the design image…")
+                        else t("creator.preview_modal.meta_regenerate", "Regenerate metadata")
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !regenBusy,
+                    onClick = { showRegenConfirm = false }
+                ) { Text(t("creator.common.cancel", "Cancel")) }
+            },
+            title = { Text(t("creator.preview_modal.meta_regenerate_confirm", "Regenerate metadata?")) },
+            text = {
+                Text(
+                    t(
+                        "creator.preview_modal.meta_regenerate_confirm_body",
+                        "This analyzes the design image and replaces title, description, tags, and topics. You still need to Save to keep the new draft."
+                    )
+                )
             }
         )
     }
