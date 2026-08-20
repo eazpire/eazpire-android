@@ -23,6 +23,10 @@ object EazColors {
     val ShopCreateNavGradient = Brush.verticalGradient(
         colors = listOf(ShopCreateNavPillTop, ShopCreateNavPillBottom)
     )
+    /** Shop nav “Thank You” tile — ice blue + deep blue type (matches web `--thankyou-nav-*`) */
+    val ShopThankYouNavBg = Color(0xFFDBEAFE)
+    val ShopThankYouNavBgHover = Color(0xFFBFDBFE)
+    val ShopThankYouNavText = Color(0xFF1D4ED8)
     val TopbarBorder = Color(0x0A000000)
     val TextPrimary = Color(0xCF000000)
     val TextSecondary = Color(0x66000000)

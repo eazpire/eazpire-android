@@ -160,6 +160,7 @@ fun ShopMenuBar(
                         val megaKey = item.megaAudienceHandle ?: if (item.megaHomeLiving) "home-living" else null
                         val hasMega = megaKey != null
                         val isCreate = item.collectionHandle == SHOP_MENU_CREATE_HANDLE
+                        val isThankYou = item.collectionHandle == SHOP_MENU_THANKYOU_HANDLE
                         val isSelected = item.collectionHandle != null && item.collectionHandle == selectedHandle
                         val isMegaExpanded = megaKey != null && expandedMegaKey == megaKey
                         val label = t(MENU_ITEM_KEYS[item.label] ?: item.label, item.label)
@@ -191,7 +192,7 @@ fun ShopMenuBar(
                                     }
                                 }
                                 .then(
-                                    if (isCreate) {
+                                    if (isCreate || isThankYou) {
                                         Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                     } else {
                                         Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
@@ -208,8 +209,42 @@ fun ShopMenuBar(
                                         style = androidx.compose.material3.MaterialTheme.typography.labelLarge
                                     )
                                 }
+                            } else if (isThankYou) {
+                                ShopThankYouNavPill {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        EazNavTablerIcon(
+                                            handle = MENU_ITEM_ICON_HANDLES[item.label] ?: "gift",
+                                            tint = EazColors.ShopThankYouNavText,
+                                            iconSize = 14.dp,
+                                        )
+                                        Text(
+                                            text = label,
+                                            color = EazColors.ShopThankYouNavText,
+                                            fontWeight = FontWeight.Bold,
+                                            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                                        )
+                                        if (thankYouGiftCount > 0) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .heightIn(min = 18.dp)
+                                                    .background(EazColors.ShopThankYouNavText, CircleShape)
+                                                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = thankYouGiftCount.toString(),
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             } else {
-                                val isThankYou = item.collectionHandle == SHOP_MENU_THANKYOU_HANDLE
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -228,22 +263,6 @@ fun ShopMenuBar(
                                         fontWeight = if (isMegaExpanded) FontWeight.Bold else FontWeight.Normal,
                                         style = androidx.compose.material3.MaterialTheme.typography.labelLarge
                                     )
-                                    if (isThankYou && thankYouGiftCount > 0) {
-                                        Box(
-                                            modifier = Modifier
-                                                .heightIn(min = 18.dp)
-                                                .background(Color.White, CircleShape)
-                                                .padding(horizontal = 5.dp, vertical = 1.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = thankYouGiftCount.toString(),
-                                                color = EazColors.Orange,
-                                                fontWeight = FontWeight.Bold,
-                                                style = androidx.compose.material3.MaterialTheme.typography.labelSmall
-                                            )
-                                        }
-                                    }
                                 }
                             }
                         }
