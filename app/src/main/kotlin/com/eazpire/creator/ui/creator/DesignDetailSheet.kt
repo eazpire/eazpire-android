@@ -1075,6 +1075,7 @@ fun DesignDetailSheet(
                     onClick = {
                         scope.launch {
                             regenBusy = true
+                            saveError = null
                             try {
                                 val res = withContext(Dispatchers.IO) {
                                     api.regenerateDesignMetadata(ownerId, designId)
@@ -1083,8 +1084,16 @@ fun DesignDetailSheet(
                                     val m = res.optJSONObject("metadata") ?: JSONObject()
                                     draftMeta = JSONObject(m.toString())
                                     recomputeBaseline()
+                                } else {
+                                    saveError = res.optString("message").ifBlank {
+                                        res.optString("error").ifBlank {
+                                            t("creator.preview_modal.meta_regenerate_failed", "Could not regenerate metadata.")
+                                        }
+                                    }
                                 }
-                            } catch (_: Exception) {
+                            } catch (e: Exception) {
+                                saveError = e.message?.takeIf { it.isNotBlank() }
+                                    ?: t("creator.preview_modal.meta_regenerate_failed", "Could not regenerate metadata.")
                             } finally {
                                 regenBusy = false
                                 showRegenConfirm = false
