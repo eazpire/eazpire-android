@@ -62,6 +62,7 @@ const val MKT_CHILD_IMAGES = "images"
 const val MKT_FN_STUDIO = "video-studio"
 const val MKT_FN_GENERATOR = "video-generator"
 const val MKT_FN_TRANSITION = "video-transition"
+const val MKT_FN_CLIPPER = "video-clipper"
 const val MKT_FN_HERO_GENERATOR = "hero-generator"
 const val MKT_FN_CHARACTER_GENERATOR = "character-generator"
 const val MKT_FN_SMM = "social-media-manager"
@@ -311,6 +312,17 @@ fun rememberMarketingVideoFunctions(translationStore: TranslationStore): List<Ma
         description = translationStore.t(
             "creator.video_transition.card_desc",
             "Chain clips with cinematic transitions.",
+        ),
+        isFunction = true,
+    ),
+    MarketingCardSpec(
+        id = MKT_FN_CLIPPER,
+        title = translationStore.t("creator.video_clipper.title", "Video Clipper"),
+        icon = "✂️",
+        bgRes = R.drawable.cmkt_bg_videos,
+        description = translationStore.t(
+            "creator.video_clipper.card_desc",
+            "Clip long talking videos into Shorts.",
         ),
         isFunction = true,
     ),

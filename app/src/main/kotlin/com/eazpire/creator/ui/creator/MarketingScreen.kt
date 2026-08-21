@@ -92,6 +92,7 @@ fun MarketingScreen(
     var showHeroCreateModal by remember { mutableStateOf(false) }
     var showVideoGenerator by remember { mutableStateOf(false) }
     var showVideoTransition by remember { mutableStateOf(false) }
+    var showVideoClipper by remember { mutableStateOf(false) }
     var showVideoStudio by remember { mutableStateOf(false) }
     var showSocialMediaManager by remember { mutableStateOf(false) }
     val geometry = remember { MarketingTreeGeometry() }
@@ -111,6 +112,8 @@ fun MarketingScreen(
                 translationStore.t("creator.video_studio.title", "Video Studio")
             showVideoGenerator ->
                 translationStore.t("creator.video_generator.title", "Video Generator")
+            showVideoClipper ->
+                translationStore.t("creator.video_clipper.title", "Video Clipper")
             showHeroCreateModal ->
                 translationStore.t("creator.marketing.hero_generator", "Hero Generator")
             expandedParent == MKT_PARENT_PROMOTIONS ->
@@ -145,6 +148,7 @@ fun MarketingScreen(
         selectedChild = ""
         showHeroCreateModal = false
         showVideoGenerator = false
+        showVideoClipper = false
         showVideoStudio = false
         showSocialMediaManager = false
         updateHeaderTitle()
@@ -155,12 +159,13 @@ fun MarketingScreen(
         selectedChild,
         showHeroCreateModal,
         showVideoGenerator,
+        showVideoClipper,
         showVideoStudio,
         showSocialMediaManager,
     ) {
         updateHeaderTitle()
         val heroVisible = showHeroCreateModal
-        val videoVisible = showVideoGenerator || showVideoStudio
+        val videoVisible = showVideoGenerator || showVideoStudio || showVideoClipper
         if (!heroVisible) onHeroEazyReadyChange(false)
         if (!videoVisible) onVideoEazyReadyChange(false)
         onMarketingTabVisibility(heroVisible, videoVisible)
@@ -274,6 +279,7 @@ fun MarketingScreen(
                                         MKT_FN_STUDIO -> showVideoStudio = true
                                         MKT_FN_GENERATOR -> showVideoGenerator = true
                                         MKT_FN_TRANSITION -> showVideoTransition = true
+                                        MKT_FN_CLIPPER -> showVideoClipper = true
                                     }
                                 },
                                 onPositioned = {
@@ -409,6 +415,13 @@ fun MarketingScreen(
         VideoTransitionScreen(
             visible = showVideoTransition,
             onDismiss = { showVideoTransition = false },
+            translationStore = translationStore,
+        )
+
+        VideoClipperScreen(
+            visible = showVideoClipper,
+            onDismiss = { showVideoClipper = false },
+            tokenStore = tokenStore,
             translationStore = translationStore,
         )
 

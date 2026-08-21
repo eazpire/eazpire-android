@@ -2171,6 +2171,87 @@ class CreatorApi(
             mapOf("owner_id" to ownerId),
         )
 
+    /** POST multipart ?op=video-clipper-transcribe */
+    suspend fun videoClipperTranscribe(
+        ownerId: String,
+        audioBytes: ByteArray,
+        filename: String,
+        offsetS: Double,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "file",
+                filename.ifBlank { "chunk.m4a" },
+                audioBytes.toRequestBody("audio/mp4".toMediaType()),
+            )
+            .addFormDataPart("offset_s", offsetS.toString())
+            .build()
+        val url =
+            "$baseUrl/apps/creator-dispatch?op=video-clipper-transcribe" +
+                "&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}" +
+                "&_t=${System.currentTimeMillis()}"
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        parseJsonResponse(client.newCall(request).execute())
+    }
+
+    /** POST JSON ?op=video-clipper-plan */
+    suspend fun videoClipperPlan(ownerId: String, payload: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            val endpoint = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=video-clipper-plan")
+                append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+                append("&_t=${System.currentTimeMillis()}")
+            }
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            parseJsonResponse(client.newCall(request).execute())
+        }
+
+    /** POST multipart ?op=video-studio-export — save a clipped short. */
+    suspend fun videoClipperExport(
+        ownerId: String,
+        videoBytes: ByteArray,
+        filename: String,
+        title: String,
+        durationS: Double,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "file",
+                filename.ifBlank { "short.mp4" },
+                videoBytes.toRequestBody("video/mp4".toMediaType()),
+            )
+            .addFormDataPart("title", title)
+            .addFormDataPart("aspect_preset", "shorts_9_16")
+            .addFormDataPart("width", "1080")
+            .addFormDataPart("height", "1920")
+            .addFormDataPart("duration_s", durationS.toString())
+            .build()
+        val url =
+            "$baseUrl/apps/creator-dispatch?op=video-studio-export" +
+                "&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}" +
+                "&_t=${System.currentTimeMillis()}"
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .addHeader("Accept", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        parseJsonResponse(client.newCall(request).execute())
+    }
+
     suspend fun videoStudioAssetCut(
         ownerId: String,
         projectId: String,
