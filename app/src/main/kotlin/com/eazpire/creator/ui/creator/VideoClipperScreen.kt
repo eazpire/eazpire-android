@@ -128,8 +128,24 @@ fun VideoClipperScreen(
                 var asset = ingest.optJSONObject("asset")
                 val assetId = ingest.optString("asset_id", "")
                 val ingestStatus = ingest.optString("status", "")
+                val ingestError = ingest.optString("error", ingest.optString("error_code", ""))
                 if (!ingest.optBoolean("ok") && assetId.isBlank()) {
-                    throw IllegalStateException(ingest.optString("error", "youtube_failed"))
+                    if (ingestError == "youtube_bot" || ingestError == "youtube_failed") {
+                        status = t("creator.video_clipper.link_processing", "Downloading from YouTube…")
+                        val dest = File(context.cacheDir, "cvcl-youtube.mp4")
+                        val ok = withContext(Dispatchers.IO) {
+                            YouTubeOnDeviceResolver.downloadProgressiveMp4(url.trim(), dest)
+                        }
+                        if (!ok) {
+                            throw IllegalStateException(ingestError.ifBlank { "youtube_failed" })
+                        }
+                        videoUri = Uri.fromFile(dest)
+                        clips = emptyList()
+                        durationS = VideoClipperMedia.durationSeconds(context, videoUri!!)
+                        status = t("creator.video_clipper.link_ready", "YouTube video loaded.")
+                        return@launch
+                    }
+                    throw IllegalStateException(ingestError.ifBlank { "youtube_failed" })
                 }
                 if (asset == null && assetId.isNotBlank() && ingestStatus != "ready") {
                     status = t("creator.video_clipper.link_queued", "Import queued — preparing YouTube video…")
@@ -160,8 +176,16 @@ fun VideoClipperScreen(
                 durationS = VideoClipperMedia.durationSeconds(context, videoUri!!)
                 status = t("creator.video_clipper.link_ready", "YouTube video loaded.")
             } catch (e: Exception) {
-                status = t("creator.video_clipper.link_error_youtube_failed", "Could not load that YouTube video.") +
-                    " " + (e.message ?: "")
+                val code = e.message.orEmpty()
+                status = if (code == "youtube_bot") {
+                    t(
+                        "creator.video_clipper.link_error_youtube_bot",
+                        "YouTube blocked the download from our servers. Save the video on your device and use Device instead.",
+                    )
+                } else {
+                    t("creator.video_clipper.link_error_youtube_failed", "Could not load that YouTube video.") +
+                        " " + code
+                }
             }
             busy = false
         }
