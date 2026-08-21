@@ -19,6 +19,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -31,6 +34,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -95,12 +103,68 @@ fun VideoClipperScreen(
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var clips by remember { mutableStateOf(listOf<VideoClipperClip>()) }
+    var showSourcePicker by remember { mutableStateOf(false) }
+    var showLinkDialog by remember { mutableStateOf(false) }
+    var linkValue by remember { mutableStateOf("") }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         videoUri = uri
         clips = emptyList()
         durationS = if (uri != null) VideoClipperMedia.durationSeconds(context, uri) else 0.0
-        status = if (uri == null) "" else t("creator.video_clipper.pick_hint", "30–60 minutes with speech works best. Max 500 MB.")
+        status = if (uri == null) "" else t("creator.video_clipper.pick_hint", "Device upload or YouTube. 30–60 minutes with speech works best. Max 500 MB.")
+    }
+
+    fun loadYouTube(url: String) {
+        if (ownerId.isBlank() || busy) return
+        if (!isYouTubeUrl(url)) {
+            status = t("creator.video_clipper.link_error_youtube_only", "Please paste a YouTube URL.")
+            return
+        }
+        busy = true
+        status = t("creator.video_clipper.link_downloading", "Starting YouTube download…")
+        scope.launch {
+            try {
+                val ingest = withContext(Dispatchers.IO) { api.videoStudioLinkIngestMp4(ownerId, url.trim()) }
+                var asset = ingest.optJSONObject("asset")
+                val assetId = ingest.optString("asset_id", "")
+                val ingestStatus = ingest.optString("status", "")
+                if (!ingest.optBoolean("ok") && assetId.isBlank()) {
+                    throw IllegalStateException(ingest.optString("error", "youtube_failed"))
+                }
+                if (asset == null && assetId.isNotBlank() && ingestStatus != "ready") {
+                    status = t("creator.video_clipper.link_queued", "Import queued — preparing YouTube video…")
+                    var attempts = 0
+                    while (asset == null && attempts < 120) {
+                        delay(2000)
+                        attempts++
+                        if (attempts % 3 == 0) {
+                            status = t("creator.video_clipper.link_processing", "Downloading from YouTube…")
+                        }
+                        val polled = withContext(Dispatchers.IO) {
+                            api.videoStudioLinkIngestStatus(ownerId, assetId)
+                        }
+                        when (polled.optString("status")) {
+                            "ready" -> asset = polled.optJSONObject("asset")
+                            "failed" -> throw IllegalStateException(polled.optString("error", "youtube_failed"))
+                        }
+                    }
+                }
+                val remote = asset?.optString("url").orEmpty()
+                if (remote.isBlank()) throw IllegalStateException("youtube_failed")
+                status = t("creator.video_clipper.link_loading_player", "Loading video into Clipper…")
+                val dest = File(context.cacheDir, "cvcl-youtube.mp4")
+                val ok = withContext(Dispatchers.IO) { api.downloadUrlToFile(remote, dest) }
+                if (!ok) throw IllegalStateException("download_failed")
+                videoUri = Uri.fromFile(dest)
+                clips = emptyList()
+                durationS = VideoClipperMedia.durationSeconds(context, videoUri!!)
+                status = t("creator.video_clipper.link_ready", "YouTube video loaded.")
+            } catch (e: Exception) {
+                status = t("creator.video_clipper.link_error_youtube_failed", "Could not load that YouTube video.") +
+                    " " + (e.message ?: "")
+            }
+            busy = false
+        }
     }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -272,12 +336,12 @@ fun VideoClipperScreen(
                 )
                 Text(
                     if (videoUri == null) t("creator.video_clipper.pick_video", "Choose a long-form video")
-                    else t("creator.video_clipper.pick_hint", "30–60 minutes with speech works best. Max 500 MB."),
+                    else t("creator.video_clipper.pick_hint", "Device upload or YouTube. 30–60 minutes with speech works best. Max 500 MB."),
                     color = Color.White,
                     modifier = Modifier
                         .fillMaxWidth()
                         .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .clickable(enabled = !busy) { picker.launch("video/*") }
+                        .clickable(enabled = !busy) { showSourcePicker = true }
                         .padding(16.dp),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -402,6 +466,113 @@ fun VideoClipperScreen(
                 }
             }
         }
+    }
+
+    if (showSourcePicker) {
+        AlertDialog(
+            onDismissRequest = { showSourcePicker = false },
+            containerColor = Color(0xFF1F2937),
+            titleContentColor = Color.White,
+            textContentColor = Color.White.copy(alpha = 0.88f),
+            title = { Text(t("creator.video_clipper.add_source_title", "Choose video source")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ClipperSourceRow(
+                        icon = Icons.Default.PhotoLibrary,
+                        label = t("creator.video_clipper.add_source_device", "Device"),
+                        hint = t("creator.video_clipper.add_source_device_hint", "Upload a video from this device"),
+                    ) {
+                        showSourcePicker = false
+                        picker.launch("video/*")
+                    }
+                    ClipperSourceRow(
+                        icon = Icons.Default.Link,
+                        label = t("creator.video_clipper.add_source_link", "Link"),
+                        hint = t("creator.video_clipper.add_source_link_hint", "Paste a YouTube URL"),
+                    ) {
+                        showSourcePicker = false
+                        linkValue = ""
+                        showLinkDialog = true
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSourcePicker = false }) {
+                    Text(t("creator.video_clipper.cancel", "Cancel"), color = Color.White.copy(alpha = 0.85f))
+                }
+            },
+        )
+    }
+
+    if (showLinkDialog) {
+        AlertDialog(
+            onDismissRequest = { showLinkDialog = false },
+            containerColor = Color(0xFF1F2937),
+            titleContentColor = Color.White,
+            textContentColor = Color.White.copy(alpha = 0.88f),
+            title = { Text(t("creator.video_clipper.link_title", "Add from YouTube")) },
+            text = {
+                OutlinedTextField(
+                    value = linkValue,
+                    onValueChange = { linkValue = it },
+                    singleLine = true,
+                    label = { Text(t("creator.video_clipper.link_url_label", "YouTube URL")) },
+                    placeholder = { Text(t("creator.video_clipper.link_url_placeholder", "https://www.youtube.com/watch?v=…")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLinkDialog = false
+                        loadYouTube(linkValue)
+                    },
+                    enabled = linkValue.isNotBlank(),
+                ) {
+                    Text(t("creator.video_clipper.link_load", "Load video"), color = EazColors.Orange)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLinkDialog = false }) {
+                    Text(t("creator.video_clipper.cancel", "Cancel"), color = Color.White.copy(alpha = 0.85f))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ClipperSourceRow(
+    icon: ImageVector,
+    label: String,
+    hint: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF111827))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = EazColors.Orange, modifier = Modifier.size(22.dp))
+        Column {
+            Text(label, color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text(hint, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+private fun isYouTubeUrl(raw: String): Boolean {
+    return try {
+        val host = (Uri.parse(raw.trim()).host ?: "").removePrefix("www.").lowercase()
+        host == "youtu.be" || host == "youtube.com" || host == "m.youtube.com" || host == "music.youtube.com"
+    } catch (_: Exception) {
+        false
     }
 }
 

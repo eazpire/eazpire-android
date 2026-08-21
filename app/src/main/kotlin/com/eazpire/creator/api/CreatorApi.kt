@@ -12,6 +12,7 @@ import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.io.File
 
 /**
  * Creator API Client – analog zu creatorApiFetch im Web.
@@ -1984,6 +1985,35 @@ class CreatorApi(
             mapOf("owner_id" to ownerId, "url" to url, "kind" to kind),
             mapOf("owner_id" to ownerId),
         )
+
+    /** POST ?op=video-studio-link-ingest — YouTube / media URL as MP4 */
+    suspend fun videoStudioLinkIngestMp4(ownerId: String, url: String): JSONObject =
+        postJson(
+            "video-studio-link-ingest",
+            mapOf("owner_id" to ownerId, "url" to url, "format" to "mp4"),
+            mapOf("owner_id" to ownerId),
+        )
+
+    /** GET ?op=video-studio-link-ingest-status&asset_id=… */
+    suspend fun videoStudioLinkIngestStatus(ownerId: String, assetId: String): JSONObject =
+        call(
+            "video-studio-link-ingest-status",
+            mapOf("owner_id" to ownerId, "asset_id" to assetId),
+        )
+
+    suspend fun downloadUrlToFile(url: String, dest: File): Boolean =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url(url)
+                .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext false
+                val body = response.body ?: return@withContext false
+                dest.outputStream().use { out -> body.byteStream().copyTo(out) }
+                dest.exists() && dest.length() > 0L
+            }
+        }
 
     // ── Social Media Manager (IDEA-040 / IDEA-043) ─────────────────────────
 
