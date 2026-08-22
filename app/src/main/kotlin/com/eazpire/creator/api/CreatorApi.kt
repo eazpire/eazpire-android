@@ -75,16 +75,30 @@ class CreatorApi(
                 .method(method, if (method == "POST") okhttp3.RequestBody.create(null, byteArrayOf()) else null)
                 .build()
             val response = httpClient.newCall(request).execute()
-            val body = response.body?.string() ?: "{}"
-            return JSONObject(body)
+            val body = response.body?.string().orEmpty()
+            return parseApiJsonObject(body)
+        }
+
+        val hasOwner = params["owner_id"].isNullOrBlank().not()
+        // GET + owner_id: never send Bearer first. An invalid/mismatched JWT fail-closes
+        // on the worker and hides query owner_id, which is how the library is loaded.
+        if (method == "GET" && hasOwner) {
+            val withoutJwt = execute(sendJwt = false)
+            if (withoutJwt.optBoolean("ok", false) || !looksOwnerAuthFailure(withoutJwt)) {
+                return@withContext withoutJwt
+            }
+            if (!usableJwt(jwt).isNullOrBlank()) {
+                val withJwt = execute(sendJwt = true)
+                if (withJwt.optBoolean("ok", false)) return@withContext withJwt
+            }
+            return@withContext withoutJwt
         }
 
         val first = execute(sendJwt = true)
-        val err = first.optString("error", "")
         if (
             method == "GET" &&
             !usableJwt(jwt).isNullOrBlank() &&
-            (err == "missing_owner_id" || (first.optBoolean("ok", true).not() && err.contains("owner")))
+            looksOwnerAuthFailure(first)
         ) {
             return@withContext execute(sendJwt = false)
         }
@@ -4857,6 +4871,28 @@ fun jsonNextCursor(data: JSONObject): String? {
     val raw = data.optString("next_cursor", "").trim()
     if (raw.isBlank() || raw.equals("null", ignoreCase = true)) return null
     return raw
+}
+
+internal fun parseApiJsonObject(raw: String): JSONObject {
+    val body = raw.trim()
+    if (body.isBlank()) {
+        return JSONObject().put("ok", false).put("error", "empty_response")
+    }
+    return try {
+        JSONObject(body)
+    } catch (_: JSONException) {
+        JSONObject().put("ok", false).put("error", "invalid_json")
+    }
+}
+
+internal fun looksOwnerAuthFailure(body: JSONObject): Boolean {
+    val err = body.optString("error", "")
+    val warn = body.optString("warn", "")
+    val reason = body.optString("reason", "")
+    if (err == "missing_owner_id" || warn == "missing_owner_id") return true
+    if (err == "unauthorized" || err == "invalid_token" || reason == "invalid_token") return true
+    if (body.optBoolean("ok", true).not() && (err.contains("owner") || reason.contains("owner"))) return true
+    return false
 }
 
 internal fun usableJwt(raw: String?): String? {

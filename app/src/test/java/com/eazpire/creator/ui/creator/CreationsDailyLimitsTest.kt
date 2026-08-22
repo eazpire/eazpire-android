@@ -108,4 +108,14 @@ class CreationsDailyLimitsTest {
         assertEquals(null, com.eazpire.creator.api.usableJwt(expired))
         assertEquals("live-token", com.eazpire.creator.api.usableJwt("Bearer live-token"))
     }
+
+    @Test
+    fun looksOwnerAuthFailureReadsWarnAndError() {
+        val warn = JSONObject("""{"ok":true,"items":[],"warn":"missing_owner_id"}""")
+        assertTrue(com.eazpire.creator.api.looksOwnerAuthFailure(warn))
+        val err = JSONObject("""{"ok":false,"error":"missing_owner_id"}""")
+        assertTrue(com.eazpire.creator.api.looksOwnerAuthFailure(err))
+        val ok = JSONObject("""{"ok":true,"items":[{"id":"1"}]}""")
+        assertFalse(com.eazpire.creator.api.looksOwnerAuthFailure(ok))
+    }
 }

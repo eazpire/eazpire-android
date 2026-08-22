@@ -524,8 +524,13 @@ fun CreatorCreationsScreen(
     val chromeScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -1f) chromeVisible.value = false
-                else if (available.y > 1f) chromeVisible.value = true
+                if (available.y < -0.5f) chromeVisible.value = false
+                else if (available.y > 0.5f) chromeVisible.value = true
+                return Offset.Zero
+            }
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (consumed.y < -0.5f) chromeVisible.value = false
+                else if (consumed.y > 0.5f) chromeVisible.value = true
                 return Offset.Zero
             }
         }
@@ -674,7 +679,7 @@ fun CreatorCreationsScreen(
                                 state = designsListState,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .heightIn(max = boundedHeight),
+                                    .nestedScroll(chromeScrollConnection),
                                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + bulkBottomPad),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -715,7 +720,7 @@ fun CreatorCreationsScreen(
                                 columns = GridCells.Fixed(gridCols),
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .heightIn(max = boundedHeight),
+                                    .nestedScroll(chromeScrollConnection),
                                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + bulkBottomPad),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -861,14 +866,14 @@ fun CreatorCreationsScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
-                            .heightIn(max = boundedHeight)
                             .nestedScroll(chromeScrollConnection)
                     ) {
                         LazyColumn(
                             state = productsListState,
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxWidth(),
+                                .fillMaxWidth()
+                                .nestedScroll(chromeScrollConnection),
                             contentPadding = PaddingValues(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -909,7 +914,6 @@ fun CreatorCreationsScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
-                            .heightIn(max = boundedHeight)
                             .nestedScroll(chromeScrollConnection)
                     ) {
                         LazyVerticalGrid(
@@ -917,7 +921,8 @@ fun CreatorCreationsScreen(
                             columns = GridCells.Fixed(gridCols),
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxWidth(),
+                                .fillMaxWidth()
+                                .nestedScroll(chromeScrollConnection),
                             contentPadding = PaddingValues(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
