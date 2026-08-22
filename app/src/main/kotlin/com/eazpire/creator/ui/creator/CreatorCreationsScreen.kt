@@ -438,7 +438,7 @@ fun CreatorCreationsScreen(
         }
         sortCreationDesigns(list, designsSort) { d ->
             val id = d.id ?: d.designId ?: ""
-            productBadgesByDesignId[id]?.publishedProductCount ?: d.productsCount
+            productBadgesByDesignId[id]?.published ?: d.productsCount
         }
     }
 
