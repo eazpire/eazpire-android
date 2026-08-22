@@ -565,8 +565,8 @@ fun CreatorCreationsScreen(
     ) {
         AnimatedVisibility(
             visible = chromeVisible.value,
-            enter = expandVertically(),
-            exit = shrinkVertically(),
+            enter = expandVertically(expandFrom = Alignment.Top),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top),
         ) {
         Column {
         // Tabs
@@ -628,8 +628,8 @@ fun CreatorCreationsScreen(
             "designs" -> {
                 AnimatedVisibility(
                     visible = chromeVisible.value,
-                    enter = expandVertically(),
-                    exit = shrinkVertically(),
+                    enter = expandVertically(expandFrom = Alignment.Top),
+                    exit = shrinkVertically(shrinkTowards = Alignment.Top),
                 ) {
                 CreationsDesignsToolbar(
                     designsSearch = designsSearch,
@@ -797,8 +797,8 @@ fun CreatorCreationsScreen(
             "products" -> {
                 AnimatedVisibility(
                     visible = chromeVisible.value,
-                    enter = expandVertically(),
-                    exit = shrinkVertically(),
+                    enter = expandVertically(expandFrom = Alignment.Top),
+                    exit = shrinkVertically(shrinkTowards = Alignment.Top),
                 ) {
                     Row(
                         modifier = Modifier
