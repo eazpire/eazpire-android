@@ -283,7 +283,7 @@ internal fun ShopDesignStudioGenerateSheet(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val file = File(context.cacheDir, "shop_capture_${System.currentTimeMillis()}.jpg")
+            val file = File(File(context.cacheDir, "camera").apply { mkdirs() }, "shop_capture_${System.currentTimeMillis()}.jpg")
             val u = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             lastCameraUri = u
             cameraLauncher.launch(u)
@@ -324,7 +324,7 @@ internal fun ShopDesignStudioGenerateSheet(
             val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
             if (hasPermission) {
-                val file = File(context.cacheDir, "shop_capture_${System.currentTimeMillis()}.jpg")
+                val file = File(File(context.cacheDir, "camera").apply { mkdirs() }, "shop_capture_${System.currentTimeMillis()}.jpg")
                 val u = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                 lastCameraUri = u
                 cameraLauncher.launch(u)

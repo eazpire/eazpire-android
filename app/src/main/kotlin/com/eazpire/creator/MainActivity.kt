@@ -35,6 +35,7 @@ import com.eazpire.creator.debug.initDebugLog
 import com.eazpire.creator.debug.initLangSwitchDebug
 import com.eazpire.creator.chat.ArtifactsJson
 import com.eazpire.creator.chat.EazySidebarTab
+import com.eazpire.creator.security.DeepLinkInputs
 import com.eazpire.creator.push.PushTokenRegistrar
 import androidx.lifecycle.lifecycleScope
 import com.eazpire.creator.ui.ShopScreen
@@ -254,7 +255,7 @@ class MainActivity : ComponentActivity() {
         val path = data.path.orEmpty()
         if (path.contains("artifacts/claim")) return
         val token = WearPairApi.parseTokenFromQrPayload(data.toString())
-            ?: data.getQueryParameter("t")?.trim()?.takeIf { it.isNotBlank() }
+            ?: DeepLinkInputs.pairToken(data.getQueryParameter("t"))
         if (token != null) pendingWearPairToken.value = token
     }
 
@@ -264,7 +265,7 @@ class MainActivity : ComponentActivity() {
      */
     private fun consumePhoneUploadDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
-        val sessionId = data.getQueryParameter("s")?.trim().orEmpty()
+        val sessionId = DeepLinkInputs.sessionId(data.getQueryParameter("s")).orEmpty()
         val isPhoneUploadScheme = data.scheme == "eazpire" && data.host == "phone-upload"
         val isLegacyPhoneQr =
             data.scheme == "https" &&
@@ -294,21 +295,21 @@ class MainActivity : ComponentActivity() {
         val raw = data.toString()
 
         // Phone-upload sessions use /q/{token}?s=… — never treat those as artifact claims.
-        val phoneSession = data.getQueryParameter("s")?.trim().orEmpty()
+        val phoneSession = DeepLinkInputs.sessionId(data.getQueryParameter("s")).orEmpty()
         if (phoneSession.isNotBlank() && raw.contains("/q/")) return
 
-        data.getQueryParameter("artifact_token")?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
+        DeepLinkInputs.artifactToken(data.getQueryParameter("artifact_token"))?.let { token ->
             pendingArtifactClaimToken.value = token
             pendingEazyTab.value = EazySidebarTab.Artifacts
             return
         }
         if (data.getQueryParameter("eazy") == "artifacts") {
-            data.getQueryParameter("t")?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
+            DeepLinkInputs.artifactToken(data.getQueryParameter("t"))?.let { token ->
                 pendingArtifactClaimToken.value = token
                 pendingEazyTab.value = EazySidebarTab.Artifacts
                 return
             }
-            data.getQueryParameter("token")?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
+            DeepLinkInputs.artifactToken(data.getQueryParameter("token"))?.let { token ->
                 pendingArtifactClaimToken.value = token
                 pendingEazyTab.value = EazySidebarTab.Artifacts
                 return
@@ -317,8 +318,8 @@ class MainActivity : ComponentActivity() {
 
         if (!raw.contains("artifacts/claim") && !raw.contains("artifacts%2Fclaim") && !raw.contains("/q/")) return
         val token = ArtifactsJson.parseClaimToken(raw)
-            ?: data.getQueryParameter("t")?.trim()?.takeIf { it.isNotBlank() }
-            ?: data.getQueryParameter("token")?.trim()?.takeIf { it.isNotBlank() }
+            ?: DeepLinkInputs.artifactToken(data.getQueryParameter("t"))
+            ?: DeepLinkInputs.artifactToken(data.getQueryParameter("token"))
         if (token != null) {
             pendingArtifactClaimToken.value = token
             pendingEazyTab.value = EazySidebarTab.Artifacts
@@ -387,7 +388,7 @@ class MainActivity : ComponentActivity() {
     private fun handleOAuthCallback(intent: Intent?) {
         val data = intent?.data ?: return
         if (data.scheme?.startsWith("shop.") == true && data.host == "callback") {
-            AuthDebugLog.d("[MAIN CALLBACK] Forwarding OAuth callback to ShopScreen via pendingDeepLink: $data")
+            AuthDebugLog.d("[MAIN CALLBACK] Forwarding OAuth callback to ShopScreen via pendingDeepLink: ${com.eazpire.creator.security.DeepLinkInputs.redactUriForLog(data.toString())}")
             // Actual handling happens in ShopScreen -> oauthCallbackForAuth -> AuthScreen.
             // Do not exchange tokens here, otherwise state/verifier ownership becomes split.
         }

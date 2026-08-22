@@ -170,9 +170,15 @@ object ArtifactsJson {
     fun parseClaimToken(raw: String): String? {
         val s = raw.trim()
         if (s.isBlank()) return null
-        Regex("[?&](?:t|token|artifact_token)=([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)?.let { return it }
-        Regex("/q/([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)?.let { return it }
-        if (s.length >= 16 && !s.contains(' ')) return s
+        Regex("[?&](?:t|token|artifact_token)=([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)?.let {
+            return com.eazpire.creator.security.DeepLinkInputs.artifactToken(it)
+        }
+        Regex("/q/([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)?.let {
+            return com.eazpire.creator.security.DeepLinkInputs.artifactToken(it)
+        }
+        if (s.length >= 16 && !s.contains(' ')) {
+            return com.eazpire.creator.security.DeepLinkInputs.artifactToken(s)
+        }
         return null
     }
 

@@ -10,35 +10,28 @@ import com.eazpire.creator.debug.AuthDebugLog
 import com.eazpire.creator.perf.EazPerfTrace
 
 /**
- * Speichert JWT und Shopify access_token sicher via EncryptedSharedPreferences.
- * Zusätzlich Spiegel in normalem SharedPreferences, damit Sessions App-Updates überleben,
- * wenn der Keystore-/Encrypted-Prefs-Zustand nach einem Update nicht mehr lesbar ist.
+ * Stores JWT and Shopify tokens in EncryptedSharedPreferences only.
+ * A leftover plaintext mirror (`eazpire_auth_backup_v1`) is wiped on init.
+ * If the Keystore is unusable the session is treated as logged out.
  */
 class SecureTokenStore private constructor(context: Context) {
     private val appContext = context.applicationContext
-    private val backupPrefs: SharedPreferences =
-        appContext.getSharedPreferences(BACKUP_PREFS_NAME, Context.MODE_PRIVATE)
-    private val prefs: SharedPreferences = openEncryptedPrefs(appContext).also { p ->
-        ensureSessionHydrated(p)
-    }
-
-    private val usingPlaintextFallback: Boolean
-        get() = prefs === backupPrefs
+    private var keystoreUnavailable: Boolean = false
+    private val prefs: SharedPreferences = openEncryptedPrefs(appContext)
 
     private fun openEncryptedPrefs(context: Context): SharedPreferences {
+        wipeLegacyPlaintextBackup(context)
         return try {
             createEncryptedPrefs(context)
         } catch (e: Exception) {
-            AuthDebugLog.w("[TOKEN] Encrypted prefs open failed; recreating and restoring backup", e)
+            AuthDebugLog.w("[TOKEN] Encrypted prefs open failed; recreating", e)
             try {
                 context.deleteSharedPreferences(ENCRYPTED_PREFS_NAME)
-                val restored = createEncryptedPrefs(context)
-                restoreFromBackup(restored)
-                restored
+                createEncryptedPrefs(context)
             } catch (e2: Exception) {
-                // Keystore can stay broken after OEM updates — never crash cold start.
-                AuthDebugLog.w("[TOKEN] Encrypted prefs unavailable; using backup mirror only", e2)
-                backupPrefs
+                AuthDebugLog.w("[TOKEN] Encrypted prefs unavailable; session cleared", e2)
+                keystoreUnavailable = true
+                EmptyPrefs
             }
         }
     }
@@ -57,114 +50,27 @@ class SecureTokenStore private constructor(context: Context) {
             )
         }
 
-    /** After updates, encrypted prefs may be empty while the plain backup still holds the session. */
-    private fun ensureSessionHydrated(encrypted: SharedPreferences) {
-        val backupJwt = readNonBlank(backupPrefs, KEY_JWT)
-        val encryptedJwt = readNonBlank(encrypted, KEY_JWT)
-        when {
-            backupJwt != null && encryptedJwt == null -> {
-                AuthDebugLog.d("[TOKEN] Restoring session from backup mirror into encrypted prefs")
-                restoreFromBackup(encrypted)
-            }
-            encryptedJwt != null && backupJwt == null -> {
-                AuthDebugLog.d("[TOKEN] Backfilling backup mirror from encrypted prefs")
-                mirrorToBackup()
-            }
-        }
-    }
-
-    private fun restoreFromBackup(target: SharedPreferences) {
-        val jwt = backupPrefs.getString(KEY_JWT, null)?.takeIf { it.isNotBlank() } ?: return
-        val ownerId = backupPrefs.getString(KEY_OWNER_ID, null).orEmpty()
-        val access = backupPrefs.getString(KEY_ACCESS_TOKEN, null)
-        val refresh = backupPrefs.getString(KEY_REFRESH_TOKEN, null)
-        val exp = backupPrefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L)
-        val ed = target.edit()
-            .putString(KEY_JWT, jwt)
-            .putString(KEY_OWNER_ID, ownerId)
-            .putString(KEY_ACCESS_TOKEN, access ?: "")
-        if (exp > 0L) ed.putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, exp)
-        if (!refresh.isNullOrBlank()) ed.putString(KEY_REFRESH_TOKEN, refresh)
-        ed.commit()
-    }
-
-    private fun mirrorToBackup() {
-        val jwt = readNonBlank(prefs, KEY_JWT)
-        if (jwt == null) {
-            // Never wipe a valid backup session because encrypted prefs are temporarily empty.
-            if (readNonBlank(backupPrefs, KEY_JWT) == null) {
-                backupPrefs.edit().clear().commit()
-            }
-            return
-        }
-        val ed = backupPrefs.edit()
-            .putString(KEY_JWT, jwt)
-            .putString(KEY_OWNER_ID, prefs.getString(KEY_OWNER_ID, null).orEmpty())
-            .putString(KEY_ACCESS_TOKEN, prefs.getString(KEY_ACCESS_TOKEN, null).orEmpty())
-        val refresh = readNonBlank(prefs, KEY_REFRESH_TOKEN)
-        if (refresh != null) {
-            ed.putString(KEY_REFRESH_TOKEN, refresh)
-        } else {
-            ed.remove(KEY_REFRESH_TOKEN)
-        }
-        val exp = prefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L)
-        if (exp > 0L) ed.putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, exp)
-        else ed.remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
-        ed.commit()
-    }
-
-    private fun mirrorToBackup(
-        jwt: String,
-        ownerId: String,
-        accessToken: String?,
-        shopifyAccessExpiresAtEpochMs: Long?,
-        refreshToken: String?,
-    ) {
-        if (jwt.isBlank()) return
-        val ed = backupPrefs.edit()
-            .putString(KEY_JWT, jwt)
-            .putString(KEY_OWNER_ID, ownerId)
-            .putString(KEY_ACCESS_TOKEN, accessToken ?: "")
-        if (!refreshToken.isNullOrBlank()) {
-            ed.putString(KEY_REFRESH_TOKEN, refreshToken)
-        } else {
-            ed.remove(KEY_REFRESH_TOKEN)
-        }
-        if (shopifyAccessExpiresAtEpochMs != null && shopifyAccessExpiresAtEpochMs > 0L) {
-            ed.putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, shopifyAccessExpiresAtEpochMs)
-        } else {
-            ed.remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
-        }
-        ed.commit()
-    }
-
     private fun readNonBlank(store: SharedPreferences, key: String): String? =
         store.getString(key, null)?.takeIf { it.isNotBlank() }
 
     fun getJwt(): String? =
-        readNonBlank(prefs, KEY_JWT) ?: readNonBlank(backupPrefs, KEY_JWT)
+        if (keystoreUnavailable) null else readNonBlank(prefs, KEY_JWT)
 
     fun getOwnerId(): String? =
-        readNonBlank(prefs, KEY_OWNER_ID) ?: readNonBlank(backupPrefs, KEY_OWNER_ID)
+        if (keystoreUnavailable) null else readNonBlank(prefs, KEY_OWNER_ID)
 
     fun getAccessToken(): String? =
-        readNonBlank(prefs, KEY_ACCESS_TOKEN) ?: readNonBlank(backupPrefs, KEY_ACCESS_TOKEN)
+        if (keystoreUnavailable) null else readNonBlank(prefs, KEY_ACCESS_TOKEN)
 
     fun getRefreshToken(): String? =
-        readNonBlank(prefs, KEY_REFRESH_TOKEN) ?: readNonBlank(backupPrefs, KEY_REFRESH_TOKEN)
+        if (keystoreUnavailable) null else readNonBlank(prefs, KEY_REFRESH_TOKEN)
 
     fun saveJwt(jwt: String, ownerId: String) {
+        if (keystoreUnavailable) return
         prefs.edit()
             .putString(KEY_JWT, jwt)
             .putString(KEY_OWNER_ID, ownerId)
             .commit()
-        mirrorToBackup(
-            jwt = jwt,
-            ownerId = ownerId,
-            accessToken = readNonBlank(prefs, KEY_ACCESS_TOKEN),
-            shopifyAccessExpiresAtEpochMs = prefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L).takeIf { it > 0L },
-            refreshToken = readNonBlank(prefs, KEY_REFRESH_TOKEN),
-        )
     }
 
     fun saveTokens(
@@ -176,6 +82,7 @@ class SecureTokenStore private constructor(context: Context) {
         clearRefreshTokenIfNull: Boolean = false,
         sync: Boolean = false,
     ) {
+        if (keystoreUnavailable) return
         val ed = prefs.edit()
             .putString(KEY_JWT, jwt)
             .putString(KEY_OWNER_ID, ownerId)
@@ -190,33 +97,22 @@ class SecureTokenStore private constructor(context: Context) {
             clearRefreshTokenIfNull -> ed.remove(KEY_REFRESH_TOKEN)
         }
         ed.commit()
-        val rt = when {
-            refreshToken != null -> refreshToken
-            clearRefreshTokenIfNull -> null
-            else -> readNonBlank(prefs, KEY_REFRESH_TOKEN)
-        }
-        mirrorToBackup(jwt, ownerId, accessToken, shopifyAccessExpiresAtEpochMs, rt)
     }
 
     fun getShopifyAccessExpiresAtEpochMs(): Long {
-        val exp = prefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L)
-        return if (exp > 0L) exp else backupPrefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L)
+        if (keystoreUnavailable) return 0L
+        return prefs.getLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, 0L)
     }
 
     fun setShopifyAccessExpiresAtEpochMs(epochMs: Long) {
+        if (keystoreUnavailable) return
         prefs.edit().putLong(KEY_SHOPIFY_ACCESS_EXPIRES_AT, epochMs).commit()
-        mirrorToBackup()
     }
 
     /** Clears Shopify OAuth tokens only; keeps app JWT / owner id for creator API session. */
     fun clearShopifyOAuthTokens() {
+        if (keystoreUnavailable) return
         prefs.edit()
-            .remove(KEY_ACCESS_TOKEN)
-            .remove(KEY_REFRESH_TOKEN)
-            .remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
-            .putString(KEY_ACCESS_TOKEN, "")
-            .commit()
-        backupPrefs.edit()
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_SHOPIFY_ACCESS_EXPIRES_AT)
@@ -225,26 +121,26 @@ class SecureTokenStore private constructor(context: Context) {
     }
 
     fun clear() {
-        prefs.edit().clear().commit()
-        backupPrefs.edit().clear().commit()
+        if (!keystoreUnavailable) {
+            prefs.edit().clear().commit()
+        }
+        wipeLegacyPlaintextBackup(appContext)
     }
 
     fun isLoggedIn(): Boolean = !getJwt().isNullOrBlank()
 
     /** Debug helper after app start / update — no secrets logged. */
     fun sessionDebugSummary(): String {
-        val encJwt = readNonBlank(prefs, KEY_JWT) != null
-        val bakJwt = readNonBlank(backupPrefs, KEY_JWT) != null
+        val encJwt = !keystoreUnavailable && readNonBlank(prefs, KEY_JWT) != null
         val hasRefresh = getRefreshToken() != null
         val hasAccess = !getAccessToken().isNullOrBlank()
-        return "loggedIn=${isLoggedIn()} encJwt=$encJwt bakJwt=$bakJwt plaintextFallback=$usingPlaintextFallback hasRefresh=$hasRefresh hasAccess=$hasAccess ownerId=${!getOwnerId().isNullOrBlank()}"
+        return "loggedIn=${isLoggedIn()} encJwt=$encJwt bakJwt=false plaintextFallback=$keystoreUnavailable hasRefresh=$hasRefresh hasAccess=$hasAccess ownerId=${!getOwnerId().isNullOrBlank()}"
     }
 
     companion object {
         @Volatile
         private var instance: SecureTokenStore? = null
 
-        /** Process-wide singleton — Keystore init runs once per cold start. */
         fun get(context: Context): SecureTokenStore {
             val app = context.applicationContext
             return instance ?: synchronized(this) {
@@ -260,6 +156,16 @@ class SecureTokenStore private constructor(context: Context) {
         private const val KEY_SHOPIFY_ACCESS_EXPIRES_AT = "shopify_access_expires_at"
         private const val KEY_REFRESH_TOKEN = "shopify_refresh_token"
 
+        fun wipeLegacyPlaintextBackup(context: Context) {
+            runCatching {
+                context.applicationContext.getSharedPreferences(BACKUP_PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .clear()
+                    .commit()
+                context.applicationContext.deleteSharedPreferences(BACKUP_PREFS_NAME)
+            }
+        }
+
         fun clearAuthCookies() {
             val cm = CookieManager.getInstance()
             cm.removeAllCookies(null)
@@ -268,4 +174,32 @@ class SecureTokenStore private constructor(context: Context) {
             }
         }
     }
+}
+
+/** In-memory no-op prefs when Keystore cannot be opened. Nothing is persisted. */
+private object EmptyPrefs : SharedPreferences {
+    override fun getAll(): MutableMap<String, *> = mutableMapOf<String, Any>()
+    override fun getString(key: String?, defValue: String?): String? = defValue
+    override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = defValues
+    override fun getInt(key: String?, defValue: Int): Int = defValue
+    override fun getLong(key: String?, defValue: Long): Long = defValue
+    override fun getFloat(key: String?, defValue: Float): Float = defValue
+    override fun getBoolean(key: String?, defValue: Boolean): Boolean = defValue
+    override fun contains(key: String?): Boolean = false
+    override fun edit(): SharedPreferences.Editor = EmptyEditor
+    override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) = Unit
+    override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) = Unit
+}
+
+private object EmptyEditor : SharedPreferences.Editor {
+    override fun putString(key: String?, value: String?) = this
+    override fun putStringSet(key: String?, values: MutableSet<String>?) = this
+    override fun putInt(key: String?, value: Int) = this
+    override fun putLong(key: String?, value: Long) = this
+    override fun putFloat(key: String?, value: Float) = this
+    override fun putBoolean(key: String?, value: Boolean) = this
+    override fun remove(key: String?) = this
+    override fun clear() = this
+    override fun commit(): Boolean = true
+    override fun apply() = Unit
 }

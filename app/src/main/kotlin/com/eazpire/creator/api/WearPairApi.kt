@@ -1,5 +1,6 @@
 package com.eazpire.creator.api
 
+import com.eazpire.creator.security.DeepLinkInputs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -63,7 +64,9 @@ class WearPairApi(
                         parseQueryToken(u.rawQuery)
                     }
                     else -> {
-                        Regex("[?&]t=([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)
+                        DeepLinkInputs.pairToken(
+                            Regex("[?&]t=([A-Za-z0-9_-]+)").find(s)?.groupValues?.getOrNull(1)
+                        )
                     }
                 }
             } catch (_: Exception) {
@@ -75,8 +78,8 @@ class WearPairApi(
             if (query.isNullOrBlank()) return null
             for (part in query.split("&")) {
                 if (part.startsWith("t=")) {
-                    val v = part.removePrefix("t=").trim()
-                    if (v.isNotBlank()) return v
+                    val v = com.eazpire.creator.security.DeepLinkInputs.pairToken(part.removePrefix("t="))
+                    if (v != null) return v
                 }
             }
             return null

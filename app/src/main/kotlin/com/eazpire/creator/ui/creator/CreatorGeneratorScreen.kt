@@ -341,7 +341,7 @@ fun CreatorGeneratorScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val file = File(context.cacheDir, "capture_${System.currentTimeMillis()}.jpg")
+            val file = File(File(context.cacheDir, "camera").apply { mkdirs() }, "capture_${System.currentTimeMillis()}.jpg")
             lastCameraUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             lastCameraUri?.let { cameraLauncher.launch(it) }
         }
@@ -396,7 +396,7 @@ fun CreatorGeneratorScreen(
             val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
             if (hasPermission) {
-                val file = File(context.cacheDir, "capture_${System.currentTimeMillis()}.jpg")
+                val file = File(File(context.cacheDir, "camera").apply { mkdirs() }, "capture_${System.currentTimeMillis()}.jpg")
                 lastCameraUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                 cameraLauncher.launch(lastCameraUri!!)
             } else {
@@ -498,7 +498,7 @@ fun CreatorGeneratorScreen(
                         val base64 = dataUrl.substringAfter(",", "")
                         if (base64.isNotBlank()) {
                             val bytes = Base64.decode(base64, Base64.DEFAULT)
-                            val file = File(context.cacheDir, "ref_edit_${canvasEditIndex}_${System.currentTimeMillis()}.png")
+                            val file = File(File(context.cacheDir, "camera").apply { mkdirs() }, "ref_edit_${canvasEditIndex}_${System.currentTimeMillis()}.png")
                             file.writeBytes(bytes)
                         }
                     } catch (_: Exception) {}

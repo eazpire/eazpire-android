@@ -86,12 +86,12 @@ fun AuthScreen(
 
     fun handleCallback(url: String) {
         if (callbackHandled) return
-        AuthDebugLog.d("[CALLBACK] Received callback url=$url")
+        AuthDebugLog.d("[CALLBACK] Received callback url=${com.eazpire.creator.security.DeepLinkInputs.redactUriForLog(url)}")
         val uri = Uri.parse(url)
         val code = uri.getQueryParameter("code")
         val state = uri.getQueryParameter("state")
         if (code == null || state == null) {
-            AuthDebugLog.e("[CALLBACK] Missing code or state in url=$url")
+            AuthDebugLog.e("[CALLBACK] Missing code or state in url=${com.eazpire.creator.security.DeepLinkInputs.redactUriForLog(url)}")
             return
         }
         callbackHandled = true
@@ -105,7 +105,7 @@ fun AuthScreen(
         } ?: run {
             error = AuthErrorMessages.fromThrowable(AuthException("Invalid state"))
             callbackHandled = false
-            AuthDebugLog.e("[CALLBACK] Invalid state saved=$savedState callback=$state")
+            AuthDebugLog.e("[CALLBACK] Invalid state")
             return
         }
         scope.launch {
