@@ -2,6 +2,7 @@ package com.eazpire.creator.api
 
 import com.eazpire.creator.auth.AuthConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -52,7 +53,8 @@ class CreatorApi(
     suspend fun call(
         op: String,
         params: Map<String, String> = emptyMap(),
-        method: String = "GET"
+        method: String = "GET",
+        httpClient: OkHttpClient = client,
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = buildString {
             append("$baseUrl/apps/creator-dispatch?op=$op")
@@ -70,7 +72,7 @@ class CreatorApi(
             }
             .method(method, if (method == "POST") okhttp3.RequestBody.create(null, byteArrayOf()) else null)
             .build()
-        val response = client.newCall(request).execute()
+        val response = httpClient.newCall(request).execute()
         val body = response.body?.string() ?: "{}"
         JSONObject(body)
     }
@@ -520,10 +522,23 @@ class CreatorApi(
     )
 
     /** GET ?op=get-creator-journey&owner_id=xxx */
-    suspend fun getCreatorJourney(ownerId: String): JSONObject = call(
-        "get-creator-journey",
-        mapOf("owner_id" to ownerId)
-    )
+    suspend fun getCreatorJourney(ownerId: String): JSONObject {
+        var last: JSONObject? = null
+        repeat(2) { attempt ->
+            last = try {
+                call(
+                    "get-creator-journey",
+                    mapOf("owner_id" to ownerId),
+                    httpClient = CreatorHttpClient.journeyInstance,
+                )
+            } catch (_: Exception) {
+                null
+            }
+            if (last?.optBoolean("ok") == true) return last!!
+            if (attempt == 0) delay(400)
+        }
+        return last ?: JSONObject().put("ok", false).put("error", "journey_load_failed")
+    }
 
     /** GET ?op=get-journey-product-skill-info&product_key=xxx */
     suspend fun getJourneyProductSkillInfo(productKey: String): JSONObject = call(

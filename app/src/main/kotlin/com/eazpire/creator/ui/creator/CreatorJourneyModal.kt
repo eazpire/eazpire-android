@@ -124,6 +124,7 @@ fun CreatorJourneyModal(
     var currentTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 2)) }
     var drawerOpen by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf(false) }
     var journeyData by remember { mutableStateOf<JSONObject?>(null) }
     var actionBusy by remember { mutableStateOf(false) }
 
@@ -137,14 +138,21 @@ fun CreatorJourneyModal(
         if (ownerId.isNullOrBlank()) {
             journeyData = null
             loading = false
+            loadError = true
             return
         }
-        loading = true
+        if (journeyData == null) loading = true
         try {
-            journeyData = withContext(Dispatchers.IO) { api.getCreatorJourney(ownerId) }
-            journeyData?.optDouble("balance_eaz")?.takeIf { it.isFinite() }?.let { EazBalanceCache.write(it) }
+            val next = withContext(Dispatchers.IO) { api.getCreatorJourney(ownerId) }
+            if (next.optBoolean("ok", false)) {
+                journeyData = next
+                loadError = false
+                next.optDouble("balance_eaz").takeIf { it.isFinite() }?.let { EazBalanceCache.write(it) }
+            } else if (journeyData == null) {
+                loadError = true
+            }
         } catch (_: Exception) {
-            journeyData = null
+            if (journeyData == null) loadError = true
         } finally {
             loading = false
         }
@@ -202,9 +210,33 @@ fun CreatorJourneyModal(
                         .weight(1f)
                         .background(Color(0xFF0B1220)),
                 ) {
-                    if (loading) {
+                    if (loading && journeyData == null) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = EazColors.Orange)
+                        }
+                    } else if (loadError && journeyData == null) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = translationStore.t(
+                                    "creator.journey.load_error",
+                                    "Could not load journey data. Please try again.",
+                                ),
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = { scope.launch { reload() } },
+                                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                            ) {
+                                Text(translationStore.t("creator.journey.retry", "Try again"))
+                            }
                         }
                     } else {
                         when (currentTab) {

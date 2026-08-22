@@ -12,7 +12,12 @@ object CreatorHttpClient {
             .build()
     }
 
-    /** Daily mini-games (Simon begin) can be slow on cold D1 — allow extra read time. */
+    /** Unlock Tree can exceed 30s when catalog sync is cold; keep a dedicated client. */
+    val journeyInstance: OkHttpClient by lazy {
+        instance.newBuilder()
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+    }
     val dailyGameInstance: OkHttpClient by lazy {
         instance.newBuilder()
             .readTimeout(60, TimeUnit.SECONDS)
