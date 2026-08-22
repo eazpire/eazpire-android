@@ -132,7 +132,11 @@ data class CreationDesign(
     val publishSessionId: String? = null,
     val reviewStatus: String? = null,
     val qualityRating: String? = null,
-)
+    val remixCount: Int = 0,
+    val favoriteCount: Int = 0,
+) {
+    val sortUpdatedAt: Long get() = createdAt
+}
 
 data class CreationProduct(
     val id: String,
@@ -147,7 +151,12 @@ data class CreationProduct(
     val isSample: Boolean = false,
     val publishedDesignId: String? = null,
     val designIds: List<String> = emptyList(),
-)
+    val updatedAt: Long? = null,
+    val favoriteCount: Int = 0,
+    val remixCount: Int = 0,
+) {
+    val sortUpdatedAt: Long get() = updatedAt ?: publishedAt ?: 0L
+}
 
 private val VIEW_MODES = listOf("grid2", "grid3", "grid4", "list")
 
@@ -219,6 +228,11 @@ fun CreatorCreationsScreen(
     var viewModeOverlayVisible by remember { mutableStateOf(false) }
     var designPreviewDesign by remember { mutableStateOf<CreationDesign?>(null) }
     var creationsFilter by remember { mutableStateOf(CreationsFilterState()) }
+    var designsSort by remember { mutableStateOf(CreationsSortState()) }
+    var productsSort by remember { mutableStateOf(CreationsSortState()) }
+    var productsSortAvailability by remember { mutableStateOf(CreationsSortAvailability(favorites = true, remixes = true)) }
+    var designsSortMenuOpen by remember { mutableStateOf(false) }
+    var productsSortMenuOpen by remember { mutableStateOf(false) }
     var designsRefreshTrigger by remember { mutableIntStateOf(0) }
     var bulkSelectedKeys by remember { mutableStateOf(setOf<String>()) }
     var activateTargets by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
@@ -391,10 +405,9 @@ fun CreatorCreationsScreen(
                 val ls = d.effectiveLibraryStatus()
                 if (designsActivityFilter == "active") ls == "active" else ls == "inactive"
             }
-            .sortedByDescending { it.createdAt }
     }
 
-    val filteredDesigns = remember(activityFilteredDesigns, designsSearch.text, creationsFilter) {
+    val filteredDesigns = remember(activityFilteredDesigns, designsSearch.text, creationsFilter, designsSort, productBadgesByDesignId) {
         val q = designsSearch.text.trim().lowercase()
         var list = if (q.isBlank()) activityFilteredDesigns else activityFilteredDesigns.filter { d ->
             (d.title.lowercase().contains(q) || (d.prompt?.lowercase()?.contains(q) == true))
@@ -423,10 +436,13 @@ fun CreatorCreationsScreen(
                 true
             }
         }
-        list
+        sortCreationDesigns(list, designsSort) { d ->
+            val id = d.id ?: d.designId ?: ""
+            productBadgesByDesignId[id]?.publishedProductCount ?: d.productsCount
+        }
     }
 
-    val filteredProducts = remember(products, productsSearch.text, creationsFilter) {
+    val filteredProducts = remember(products, productsSearch.text, creationsFilter, productsSort) {
         val q = productsSearch.text.trim().lowercase()
         var list = if (q.isBlank()) products else products.filter { p ->
             p.title.lowercase().contains(q) || p.productName.lowercase().contains(q) || p.productKey.lowercase().contains(q)
@@ -450,7 +466,7 @@ fun CreatorCreationsScreen(
                 true
             }
         }
-        list
+        sortCreationProducts(list, productsSort)
     }
 
     var productsListPage by remember { mutableIntStateOf(1) }

@@ -19,6 +19,14 @@ object CreatorHttpClient {
             .build()
     }
 
+    /** Saved-design crop (decode + PNG crop + preview encode) can exceed 30s. */
+    val longEditInstance: OkHttpClient by lazy {
+        instance.newBuilder()
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
     /** Read-mostly home/catalog ops — skip cache-busting query param for HTTP/CDN reuse. */
     val cacheableGetOps: Set<String> = setOf(
         "list-home-carousel-products",

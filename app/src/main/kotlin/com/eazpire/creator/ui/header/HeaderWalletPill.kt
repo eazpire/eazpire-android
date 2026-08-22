@@ -51,7 +51,7 @@ fun HeaderWalletPill(
     val jwt = tokenStore?.getJwt()
     val walletApi = remember(jwt, ownerId) { CreatorApi(jwt = jwt) }
     val loadingWallet = remember(store) {
-        store?.t("eaz.wallet.loading", "…") ?: "…"
+        sanitizeWalletLoadingLabel(store?.t("eaz.wallet.loading", "...") ?: "...")
     }
     val walletAria = remember(store) {
         store?.t("eaz.wallet.open_vouchers", "Open gift cards and wallet")
@@ -110,6 +110,17 @@ fun HeaderWalletPill(
             )
         }
     }
+}
+
+/** Locale files sometimes store mojibake (â€¦) instead of "...". */
+internal fun sanitizeWalletLoadingLabel(raw: String): String {
+    return raw
+        .replace("â€¦", "...")
+        .replace("â‚¬", "€")
+        .replace("â€”", "—")
+        .replace("â€˜", "'")
+        .replace("â€™", "'")
+        .ifBlank { "..." }
 }
 
 /** Wie eaz-wallet.js fmtMoney (Intl currency). */

@@ -28,7 +28,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.History
@@ -72,8 +74,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -296,7 +301,13 @@ private fun ReferenceImageCarousel(
 }
 
 @Composable
-private fun DesignPreviewLightBox(previewUrl: String) {
+private fun DesignPreviewLightBox(
+    previewUrl: String,
+    cropMode: Boolean = false,
+    cropRect: CropRect = CropRect.FULL,
+    onCropRectChange: (CropRect) -> Unit = {},
+    cropBusy: Boolean = false,
+) {
     Surface(
         color = CLightSurface,
         shape = RoundedCornerShape(16.dp),
@@ -304,15 +315,64 @@ private fun DesignPreviewLightBox(previewUrl: String) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        AsyncImage(
-            model = previewUrl,
-            contentDescription = null,
+        var containerSize by remember { mutableStateOf(IntSize.Zero) }
+        var imageSize by remember { mutableStateOf<IntSize?>(null) }
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .padding(12.dp),
-            contentScale = ContentScale.Fit
-        )
+                .padding(12.dp)
+                .onSizeChanged { containerSize = it },
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = previewUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                onSuccess = { state ->
+                    val d = state.result.drawable
+                    if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
+                        imageSize = IntSize(d.intrinsicWidth, d.intrinsicHeight)
+                    }
+                }
+            )
+            val imgSz = imageSize
+            val imageDisplayRect = if (
+                cropMode &&
+                imgSz != null &&
+                containerSize.width > 0 &&
+                containerSize.height > 0
+            ) {
+                val scale = minOf(
+                    containerSize.width.toFloat() / imgSz.width,
+                    containerSize.height.toFloat() / imgSz.height
+                )
+                val dw = imgSz.width * scale
+                val dh = imgSz.height * scale
+                val left = (containerSize.width - dw) / 2f
+                val top = (containerSize.height - dh) / 2f
+                Rect(left, top, left + dw, top + dh)
+            } else null
+            if (imageDisplayRect != null) {
+                CropFrameOverlay(
+                    imageDisplayRect = imageDisplayRect,
+                    cropRect = cropRect,
+                    onCropRectChange = onCropRectChange,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            if (cropBusy) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = CAccent)
+                }
+            }
+        }
     }
 }
 
@@ -368,6 +428,10 @@ fun DesignDetailSheet(
     var glowUpBalance by remember { mutableStateOf<Double?>(null) }
     var glowUpCost by remember { mutableStateOf(15.0) }
     var glowUpError by remember { mutableStateOf<String?>(null) }
+    var cropMode by remember { mutableStateOf(false) }
+    var cropRect by remember { mutableStateOf(CropRect.FULL) }
+    var cropBusy by remember { mutableStateOf(false) }
+    var cropError by remember { mutableStateOf<String?>(null) }
 
     var newTopicLine by remember { mutableStateOf("") }
     var newSubtopicLine by remember { mutableStateOf("") }
@@ -392,6 +456,73 @@ fun DesignDetailSheet(
     }
 
     fun isDirtyDetails(): Boolean = isDirtyOverview()
+
+    fun applyLoadedDesign(d: JSONObject) {
+        designJson = d
+        draftPrompt = d.optString("prompt", "").ifBlank {
+            d.optJSONObject("metadata")?.optString("user_prompt", "").orEmpty()
+        }
+        draftVisibility = d.optString("visibility", "private").lowercase().let {
+            if (it == "public") "public" else "private"
+        }
+        val meta = d.optJSONObject("metadata") ?: JSONObject()
+        draftMeta = try {
+            JSONObject(meta.toString())
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        recomputeBaseline()
+    }
+
+    fun applyCropToServer() {
+        if (cropBusy || designId.isBlank() || ownerId.isBlank()) return
+        val serverW = designJson?.optInt("width", 0) ?: 0
+        val serverH = designJson?.optInt("height", 0) ?: 0
+        val pixels = cropRect.toManualCropPixels(serverW, serverH)
+        if (pixels == null) {
+            cropError = t("creator.js.crop_failed", "Crop failed")
+            return
+        }
+        scope.launch {
+            cropBusy = true
+            cropError = null
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.cropDesign(ownerId, designId, pixels.x, pixels.y, pixels.w, pixels.h)
+                }
+                if (res.optBoolean("ok", false)) {
+                    val updated = res.optJSONObject("design")
+                    if (updated != null) applyLoadedDesign(updated)
+                    cropMode = false
+                    cropRect = CropRect.FULL
+                } else {
+                    val code = res.optString("error", "crop_failed")
+                    val detail = res.optString("message", "").trim()
+                    cropError = if (detail.isNotBlank() && detail != code) {
+                        t("creator.js.crop_failed", "Crop failed") + ": " + detail
+                    } else {
+                        t("creator.js.crop_failed", "Crop failed")
+                    }
+                }
+            } catch (e: Exception) {
+                val raw = e.message.orEmpty()
+                cropError = if (raw.contains("timeout", ignoreCase = true) ||
+                    raw.contains("failed to connect", ignoreCase = true) ||
+                    raw.contains("Unable to resolve", ignoreCase = true)
+                ) {
+                    t(
+                        "creator.preview_modal.crop_network_failed",
+                        "Could not reach the crop server. Please try again."
+                    )
+                } else {
+                    t("creator.js.crop_failed", "Crop failed") +
+                        if (raw.isNotBlank()) ": ${raw.take(180)}" else ""
+                }
+            } finally {
+                cropBusy = false
+            }
+        }
+    }
 
     LaunchedEffect(designId, ownerId) {
         if (designId.isBlank() || ownerId.isBlank()) {
@@ -562,6 +693,48 @@ fun DesignDetailSheet(
                                     horizontalArrangement = Arrangement.SpaceEvenly,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    if (cropMode) {
+                                        IconButton(
+                                            onClick = {
+                                                if (!cropBusy) {
+                                                    cropMode = false
+                                                    cropRect = CropRect.FULL
+                                                    cropError = null
+                                                }
+                                            },
+                                            enabled = !cropBusy
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = t("creator.design_detail.content_desc_crop_cancel", "Cancel crop"),
+                                                tint = Color.White
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { applyCropToServer() },
+                                            enabled = !cropBusy
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = t("creator.design_detail.content_desc_crop_apply", "Apply crop"),
+                                                tint = CAccent
+                                            )
+                                        }
+                                        return@Row
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            cropError = null
+                                            cropRect = CropRect.FULL
+                                            cropMode = true
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Crop,
+                                            contentDescription = t("creator.design_detail.content_desc_crop", "Crop"),
+                                            tint = CAccent
+                                        )
+                                    }
                                     IconButton(
                                         onClick = {
                                             if (designId.isNotBlank()) {
@@ -711,6 +884,13 @@ fun DesignDetailSheet(
                     val previewUrl = designJson?.optString("preview_url").orEmpty().ifBlank {
                         design.imageUrl
                     }
+                    val cropImageUrl = if (cropMode) {
+                        designJson?.optString("original_url").orEmpty()
+                            .ifBlank { design.originalUrl }
+                            .ifBlank { previewUrl }
+                    } else {
+                        previewUrl
+                    }
                     val refUrls = remember(designJson, draftMeta, previewUrl) {
                         collectReferenceImageUrls(designJson, draftMeta, previewUrl)
                     }
@@ -739,7 +919,21 @@ fun DesignDetailSheet(
                                     when (tab) {
                                         DesignDetailTab.Overview -> {
                                             if (previewUrl.isNotBlank()) {
-                                                DesignPreviewLightBox(previewUrl)
+                                                DesignPreviewLightBox(
+                                                    previewUrl = cropImageUrl,
+                                                    cropMode = cropMode,
+                                                    cropRect = cropRect,
+                                                    onCropRectChange = { cropRect = it },
+                                                    cropBusy = cropBusy
+                                                )
+                                                cropError?.let { err ->
+                                                    Text(
+                                                        err,
+                                                        color = Color(0xFFFF6B6B),
+                                                        fontSize = 13.sp,
+                                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                         DesignDetailTab.Reference -> {

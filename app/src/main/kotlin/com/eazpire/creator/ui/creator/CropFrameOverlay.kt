@@ -22,6 +22,13 @@ import kotlin.math.min
 /**
  * Normalized crop rect: left, top, width, height in 0..1 (relative to displayed image).
  */
+data class ManualCropPixels(
+    val x: Int,
+    val y: Int,
+    val w: Int,
+    val h: Int
+)
+
 data class CropRect(
     val left: Float,
     val top: Float,
@@ -35,6 +42,16 @@ data class CropRect(
             ((left + width) * imgWidth).toInt().coerceIn(0, imgWidth),
             ((top + height) * imgHeight).toInt().coerceIn(0, imgHeight)
         )
+    }
+
+    /** Map the overlay (0..1) onto server original-PNG pixels for `op=crop-design`. */
+    fun toManualCropPixels(serverW: Int, serverH: Int): ManualCropPixels? {
+        if (serverW < 16 || serverH < 16) return null
+        val x = kotlin.math.round(left * serverW).toInt().coerceIn(0, serverW - 16)
+        val y = kotlin.math.round(top * serverH).toInt().coerceIn(0, serverH - 16)
+        val w = kotlin.math.round(width * serverW).toInt().coerceIn(16, serverW - x)
+        val h = kotlin.math.round(height * serverH).toInt().coerceIn(16, serverH - y)
+        return ManualCropPixels(x, y, w, h)
     }
 
     companion object {

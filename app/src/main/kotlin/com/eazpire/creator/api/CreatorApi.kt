@@ -3221,6 +3221,46 @@ class CreatorApi(
     /** PUT ?op=update-design — body must include design_id; optional metadata, prompt, visibility, title, description */
     suspend fun updateDesign(body: JSONObject): JSONObject = putJsonBodyOp("update-design", body)
 
+    /**
+     * POST ?op=crop-design — crop original PNG, then write matching preview WebP.
+     * [manualX]/[manualY]/[manualW]/[manualH] are pixels in original-PNG space.
+     */
+    suspend fun cropDesign(
+        ownerId: String,
+        designId: String,
+        manualX: Int,
+        manualY: Int,
+        manualW: Int,
+        manualH: Int,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("design_id", designId)
+            .put("owner_id", ownerId)
+            .put("logged_in_customer_id", ownerId)
+            .put(
+                "manual_crop",
+                JSONObject()
+                    .put("x", manualX)
+                    .put("y", manualY)
+                    .put("w", manualW)
+                    .put("h", manualH)
+            )
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=crop-design&_t=${System.currentTimeMillis()}")
+            append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+        }
+        val request = Request.Builder()
+            .url(url)
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .addHeader("Accept", "application/json")
+            .addHeader("Content-Type", "application/json")
+            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        val response = CreatorHttpClient.longEditInstance.newCall(request).execute()
+        parseJsonResponse(response)
+    }
+
     /** POST ?op=rate-design — owner rates own design (no_go | good | awesome). */
     suspend fun rateDesign(ownerId: String, designId: String?, jobId: String?, rating: String): JSONObject {
         val body = JSONObject().apply {

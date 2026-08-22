@@ -41,6 +41,7 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.ui.header.HeaderLocaleRow
+import com.eazpire.creator.ui.header.sanitizeWalletLoadingLabel
 import com.eazpire.creator.ui.header.LocaleModalItem
 import com.eazpire.creator.ui.header.LanguageChildren
 import com.eazpire.creator.ui.header.AVAILABLE_LANGUAGES
@@ -71,7 +72,7 @@ fun SubFooter(
     val ownerId = tokenStore?.getOwnerId().orEmpty()
     val walletApi = remember(jwt, ownerId) { CreatorApi(jwt = jwt) }
     val loadingWallet = remember(translationStore) {
-        translationStore?.t("eaz.wallet.loading", "…") ?: "…"
+        sanitizeWalletLoadingLabel(translationStore?.t("eaz.wallet.loading", "...") ?: "...")
     }
     val walletAria = remember(translationStore) {
         translationStore?.t("eaz.wallet.open_vouchers", "Open gift cards and wallet")

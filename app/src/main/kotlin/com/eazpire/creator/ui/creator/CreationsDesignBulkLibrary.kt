@@ -281,6 +281,8 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
         publishSessionId = obj.optString("publish_session_id", "").takeIf { it.isNotBlank() },
         reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
         qualityRating = normalizeQualityRating(obj.optString("quality_rating", "")),
+        remixCount = obj.optInt("remix_count", 0),
+        favoriteCount = obj.optInt("favorite_count", 0),
     )
 }
 
