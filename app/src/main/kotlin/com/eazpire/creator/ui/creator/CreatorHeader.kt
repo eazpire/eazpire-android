@@ -72,6 +72,8 @@ import com.eazpire.creator.chat.EazyMascotIcon
 import com.eazpire.creator.chat.EazyGuideModeStore
 import com.eazpire.creator.creatorcodes.creatorCodeHintPulse
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.creator.ui.eazc.EazcBadge
+import com.eazpire.creator.ui.eazc.EazcEarnInfoModal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -223,8 +225,7 @@ fun CreatorHeader(
     profileHintActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    var fiatText by remember { mutableStateOf("…") }
-    var fiatSymbol by remember { mutableStateOf("€") }
+    var earnInfoVisible by remember { mutableStateOf(false) }
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     val scope = rememberCoroutineScope()
@@ -244,31 +245,8 @@ fun CreatorHeader(
         }
     }
 
-    LaunchedEffect(ownerId) {
-        if (ownerId.isNotBlank()) {
-            try {
-                val payout = withContext(Dispatchers.IO) { api.getCreatorPayoutOverview(ownerId, 90) }
-                if (payout.optBoolean("ok", false)) {
-                    val amount = payout.optDouble("availableAmount", 0.0)
-                    fiatText = "%.2f".format(amount)
-                    fiatSymbol = when (payout.optString("currency", "EUR").uppercase()) {
-                        "USD" -> "$"
-                        "GBP" -> "£"
-                        "CHF" -> "CHF "
-                        else -> "€"
-                    }
-                } else {
-                    fiatText = "0.00"
-                }
-            } catch (_: Exception) {
-                fiatText = "0.00"
-            }
-        } else {
-            fiatText = "0.00"
-        }
-    }
-
-    Column(
+    Box {
+        Column(
         modifier = modifier
             .fillMaxWidth()
             .background(
@@ -281,7 +259,7 @@ fun CreatorHeader(
                 )
             )
             .padding(top = 12.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
-    ) {
+        ) {
         // Top row: logo (zentriert) | balance + account
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -330,43 +308,13 @@ fun CreatorHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .height(36.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) { onBalanceClick() }
-                        .background(
-                            Color.White.copy(alpha = 0.08f),
-                            RoundedCornerShape(10.dp)
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = fiatText,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            ),
-                            color = EazColors.Orange
-                        )
-                        Text(
-                            text = fiatSymbol,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 11.sp
-                            ),
-                            color = Color.White.copy(alpha = 0.7f)
-                        )
-                    }
-                }
+                EazcBadge(
+                    tokenStore = tokenStore,
+                    translationStore = translationStore,
+                    onInfoClick = { earnInfoVisible = true },
+                    onBalanceClick = onBalanceClick,
+                    dark = true
+                )
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -605,5 +553,11 @@ fun CreatorHeader(
                 color = Color.White.copy(alpha = 0.6f)
             )
         }
+    }
+        EazcEarnInfoModal(
+            visible = earnInfoVisible,
+            translationStore = translationStore,
+            onDismiss = { earnInfoVisible = false }
+        )
     }
 }

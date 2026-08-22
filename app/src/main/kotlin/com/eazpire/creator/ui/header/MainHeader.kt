@@ -58,6 +58,8 @@ import com.eazpire.creator.ui.share.sharePageLink
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
+import com.eazpire.creator.ui.eazc.EazcBadge
+import com.eazpire.creator.ui.eazc.EazcEarnInfoModal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -95,6 +97,7 @@ fun MainHeader(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var searchModalVisible by remember { mutableStateOf(false) }
+    var earnInfoVisible by remember { mutableStateOf(false) }
     var internalCartDrawerVisible by remember { mutableStateOf(false) }
     val cartDrawerVisible = cartDrawerVisibleControl ?: internalCartDrawerVisible
     val onCartDrawerChangeActual = onCartDrawerChange ?: { internalCartDrawerVisible = it }
@@ -333,11 +336,25 @@ fun MainHeader(
                 onCountryChange = onCountryChange,
                 onLanguageChange = onLanguageChange
             )
-            HeaderWalletPill(
-                tokenStore = tokenStore,
-                onClick = onWalletClick,
-                translationStore = translationStore
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (translationStore != null && tokenStore?.getOwnerId().orEmpty().isNotBlank()) {
+                    EazcBadge(
+                        tokenStore = tokenStore,
+                        translationStore = translationStore,
+                        onInfoClick = { earnInfoVisible = true },
+                        compact = true,
+                        dark = false
+                    )
+                }
+                HeaderWalletPill(
+                    tokenStore = tokenStore,
+                    onClick = onWalletClick,
+                    translationStore = translationStore
+                )
+            }
             Spacer(modifier = Modifier.width(2.dp))
             HeaderActions(
                 cartCount = AppCartStore.itemCount,
@@ -355,6 +372,13 @@ fun MainHeader(
                 .background(EazColors.TopbarBorder)
         )
     }
+        if (translationStore != null) {
+            EazcEarnInfoModal(
+                visible = earnInfoVisible,
+                translationStore = translationStore,
+                onDismiss = { earnInfoVisible = false }
+            )
+        }
         HeaderSearchModal(
             visible = searchModalVisible,
             query = searchQuery,

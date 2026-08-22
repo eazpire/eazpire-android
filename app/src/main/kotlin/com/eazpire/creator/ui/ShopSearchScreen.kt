@@ -46,6 +46,7 @@ import androidx.compose.runtime.collectAsState
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.api.UniversalSearchApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.locale.LocaleStore
@@ -84,6 +85,7 @@ fun ShopSearchScreen(
     val ownerId = remember { tokenStore.getOwnerId().orEmpty() }
     val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
     val creatorApi = remember(jwt) { CreatorApi(jwt = jwt) }
+    val universalApi = remember(creatorApi) { UniversalSearchApi(creatorApi) }
     var mockPreviewRevision by remember { mutableIntStateOf(CustomerMockPreviewStore.revision) }
     LaunchedEffect(ownerId, reloadTrigger) {
         if (ownerId.isNotBlank()) {
@@ -148,17 +150,48 @@ fun ShopSearchScreen(
         nextCursor = null
         hasMore = false
         autoLoadPaused = false
-        val r = withContext(Dispatchers.IO) {
-            api.getProducts(
-                searchQuery = searchQuery.trim(),
+        val worker = withContext(Dispatchers.IO) {
+            universalApi.search(
+                query = searchQuery.trim(),
+                mode = "products",
+                phase = "results",
                 limit = SEARCH_INITIAL_BATCH,
-                cursor = null,
-                countryCode = countryCode,
+                country = countryCode,
             )
         }
-        products = r.products
-        nextCursor = r.nextCursor
-        hasMore = r.hasNextPage && r.nextCursor != null
+        if (worker != null && worker.products.isNotEmpty()) {
+            products = worker.products.map { hit ->
+                val id = hit.shopifyId?.filter { it.isDigit() }?.toLongOrNull()
+                    ?: (hit.handle.hashCode().toLong() and 0x7fffffffL)
+                ShopifyProductsApi.ProductItem(
+                    id = id,
+                    title = hit.title,
+                    handle = hit.handle,
+                    images = listOfNotNull(hit.image),
+                    url = when {
+                        hit.url.startsWith("http") -> hit.url
+                        hit.url.startsWith("/") -> "https://www.eazpire.com${hit.url}"
+                        hit.handle.isNotBlank() -> "https://www.eazpire.com/products/${hit.handle}"
+                        else -> ""
+                    },
+                    vendor = hit.vendor.orEmpty(),
+                    creator = hit.creatorName.orEmpty(),
+                )
+            }
+            hasMore = false
+        } else {
+            val r = withContext(Dispatchers.IO) {
+                api.getProducts(
+                    searchQuery = searchQuery.trim(),
+                    limit = SEARCH_INITIAL_BATCH,
+                    cursor = null,
+                    countryCode = countryCode,
+                )
+            }
+            products = r.products
+            nextCursor = r.nextCursor
+            hasMore = r.hasNextPage && r.nextCursor != null
+        }
         if (products.size >= PRODUCT_LIST_MAX_AUTO) autoLoadPaused = true
         loading = false
     }

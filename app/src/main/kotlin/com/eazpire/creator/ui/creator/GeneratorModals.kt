@@ -2051,9 +2051,9 @@ fun GenMyDesignsModal(
     val filteredDesigns = remember(designs, searchQuery) {
         if (searchQuery.isBlank()) designs
         else {
-            val q = searchQuery.lowercase()
             designs.filter {
-                (it.optString("_title", "") + it.optString("title", "") + it.optString("prompt", "")).lowercase().contains(q)
+                val blob = it.optString("_title", "") + " " + it.optString("title", "") + " " + it.optString("prompt", "") + " " + it.optString("creator_name", "")
+                com.eazpire.creator.api.UniversalSearchApi.matchLocal(blob, searchQuery)
             }
         }
     }

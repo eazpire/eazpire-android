@@ -72,6 +72,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.ShopifyPredictiveSearchApi
 import com.eazpire.creator.api.ShopifyProductsApi
+import com.eazpire.creator.api.UniversalSearchApi
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.plp.PlpCardDisplay
@@ -101,6 +102,7 @@ fun HeaderSearch(
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
     val api = remember { ShopifyPredictiveSearchApi() }
+    val universalApi = remember { UniversalSearchApi(creatorApi ?: CreatorApi()) }
     val store = LocalTranslationStore.current
     val noResultsText = store?.t("eaz.search.no_results", "No results") ?: "No results"
     val searchErrorText = store?.t("eaz.search.error", "Search failed. Please try again.") ?: "Search failed. Please try again."
@@ -167,11 +169,35 @@ fun HeaderSearch(
         delay(300)
         if (query.trim() != q) return@LaunchedEffect
         try {
-            api.collectPredictiveSearch(q) { state ->
+            val worker = universalApi.search(q, mode = "products", phase = "suggest", limit = 24)
+            if (worker != null && (worker.products.isNotEmpty() || worker.queries.isNotEmpty())) {
                 if (query.trim() == q) {
-                    result = state
+                    result = ShopifyPredictiveSearchApi.PredictiveSearchState(
+                        queries = worker.queries.map {
+                            ShopifyPredictiveSearchApi.QuerySuggestion(it.text, it.styledText)
+                        },
+                        products = worker.products.map { p ->
+                            ShopifyPredictiveSearchApi.PredictiveProductRow(
+                                handle = p.handle,
+                                url = p.url.ifBlank { "/products/${p.handle}" },
+                                images = listOfNotNull(p.image),
+                                title = p.title,
+                                priceCents = null,
+                                vendor = p.vendor,
+                            )
+                        },
+                        sectionStillLoading = false,
+                    )
                     loading = false
                     searchError = false
+                }
+            } else {
+                api.collectPredictiveSearch(q) { state ->
+                    if (query.trim() == q) {
+                        result = state
+                        loading = false
+                        searchError = false
+                    }
                 }
             }
         } catch (_: Exception) {

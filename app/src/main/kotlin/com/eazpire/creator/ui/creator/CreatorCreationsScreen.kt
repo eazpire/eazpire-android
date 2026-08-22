@@ -425,7 +425,8 @@ fun CreatorCreationsScreen(
     val filteredDesigns = remember(activityFilteredDesigns, designsSearch.text, creationsFilter, designsSort, productBadgesByDesignId) {
         val q = designsSearch.text.trim().lowercase()
         var list = if (q.isBlank()) activityFilteredDesigns else activityFilteredDesigns.filter { d ->
-            (d.title.lowercase().contains(q) || (d.prompt?.lowercase()?.contains(q) == true))
+            val blob = listOfNotNull(d.title, d.prompt, d.creatorName).joinToString(" ")
+            com.eazpire.creator.api.UniversalSearchApi.matchLocal(blob, q)
         }
         val f = creationsFilter
         if (!f.isEmpty()) {
@@ -458,9 +459,10 @@ fun CreatorCreationsScreen(
     }
 
     val filteredProducts = remember(products, productsSearch.text, creationsFilter, productsSort) {
-        val q = productsSearch.text.trim().lowercase()
+        val q = productsSearch.text.trim()
         var list = if (q.isBlank()) products else products.filter { p ->
-            p.title.lowercase().contains(q) || p.productName.lowercase().contains(q) || p.productKey.lowercase().contains(q)
+            val blob = listOf(p.title, p.productName, p.productKey).joinToString(" ")
+            com.eazpire.creator.api.UniversalSearchApi.matchLocal(blob, q)
         }
         val f = creationsFilter
         if (!f.isEmpty()) {

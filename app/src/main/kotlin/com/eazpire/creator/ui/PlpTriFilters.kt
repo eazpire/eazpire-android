@@ -235,6 +235,8 @@ internal fun buildPlpSearchBlob(p: ShopifyProductsApi.ProductItem, creatorName: 
     append(p.designType).append(' ')
     append(p.ratio).append(' ')
     append(p.designLanguage).append(' ')
+    append(p.creator).append(' ')
+    append(p.vendor).append(' ')
     if (creatorName.isNotBlank()) append(creatorName).append(' ')
 }.toString()
 
@@ -245,7 +247,8 @@ internal fun productMatchesPlpWithinSearch(
 ): Boolean {
     val q = queryRaw.trim()
     if (q.isEmpty()) return true
-    return normalizeWithinSearch(buildPlpSearchBlob(p, creatorName)).contains(normalizeWithinSearch(q))
+    val blob = buildPlpSearchBlob(p, creatorName)
+    return com.eazpire.creator.api.UniversalSearchApi.matchLocal(blob, q)
 }
 
 internal fun applyCollectionWithinSearchFilter(

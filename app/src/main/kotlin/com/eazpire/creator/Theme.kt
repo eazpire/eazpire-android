@@ -12,6 +12,10 @@ object EazColors {
     val OrangeHover = Color(0xFFFB923C)
     val OrangeDark = Color(0xFFEA580C)
     val OrangeBg = Color(0x0FF97316) // 6% opacity
+    val EazcBlue = Color(0xFF3B82F6)
+    val EazcBlueDeep = Color(0xFF1D4ED8)
+    val EazcNavy = Color(0xFF071830)
+    val EazcNavyMid = Color(0xFF0B2A4A)
     /** Shop Design Studio selection tabs — matches web print-area red */
     val StudioSelection = Color(0xFFEF4444)
     /** Shop Design Studio rotate handle — matches web yellow icon */
