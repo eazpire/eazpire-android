@@ -307,13 +307,41 @@ internal fun listingLimitTierNodes(all: List<JourneyNodeItem>, channel: JourneyN
     return all.filter {
         if (it.category != "listing_limit") return@filter false
         if (it.metadata?.optString("listing_limit_kind") != "tier") return@filter false
-        if (it.channelId != ch) return@filter false
+        val nCh = it.channelId.ifBlank { it.metadata?.optString("channel_id") }.orEmpty()
+        if (nCh != ch) return@filter false
         if (axis.isNotBlank()) {
             val tierAxis = it.metadata?.optString("listing_limit_axis").orEmpty()
             if (tierAxis.isNotBlank() && tierAxis != axis) return@filter false
         }
         true
     }.sortedBy { it.metadata?.optInt("listing_tier_level", 0) ?: 0 }
+}
+
+internal fun listingLimitTiersForChannelAxis(
+    all: List<JourneyNodeItem>,
+    channel: JourneyNodeItem,
+    axis: String,
+): List<JourneyNodeItem> {
+    val ch = channel.channelId.ifBlank { channel.metadata?.optString("channel_id") }.orEmpty()
+    if (ch.isBlank()) return emptyList()
+    return all.filter {
+        it.category == "listing_limit" &&
+            it.metadata?.optString("listing_limit_kind") == "tier" &&
+            it.channelId.ifBlank { it.metadata?.optString("channel_id") }.orEmpty() == ch &&
+            (it.metadata?.optString("listing_limit_axis").orEmpty().ifBlank { "daily" } == axis)
+    }.sortedBy { it.metadata?.optInt("listing_tier_level", 0) ?: 0 }
+}
+
+internal fun listingLimitChannelNodes(nodes: List<JourneyNodeItem>): List<JourneyNodeItem> {
+    val channels = nodes.filter { isListingLimitChannel(it) }
+    if (channels.isNotEmpty()) return channels
+    val seen = mutableSetOf<String>()
+    return nodes.mapNotNull { node ->
+        if (!isListingLimitAxisParent(node)) return@mapNotNull null
+        val ch = node.channelId
+        if (ch.isBlank() || !seen.add(ch)) return@mapNotNull null
+        node
+    }
 }
 
 internal fun socialPlatformId(node: JourneyNodeItem): String {
@@ -433,7 +461,7 @@ internal fun isExpandableJourneyNode(node: JourneyNodeItem, allNodes: List<Journ
         return creationLimitTierNodes(allNodes, node).any { !it.unlocked }
     }
     if (isListingLimitChannel(node) || isListingLimitAxisParent(node)) {
-        return node.unlocked && listingLimitTierNodes(allNodes, node).any { !it.unlocked }
+        return false
     }
     if (isSocialPlatformNode(node)) {
         return node.unlocked && socialPostTierNodes(allNodes, node).any { !it.unlocked }
@@ -628,7 +656,7 @@ internal fun JourneyCreationLimitTreePanel(
 internal fun JourneyListingLimitTreePanel(
     nodes: List<JourneyNodeItem>,
     allNodes: List<JourneyNodeItem>,
-    expandState: JourneyExpandState,
+    @Suppress("UNUSED_PARAMETER") expandState: JourneyExpandState,
     isCreator: Boolean,
     busy: Boolean,
     translationStore: TranslationStore,
@@ -637,13 +665,8 @@ internal fun JourneyListingLimitTreePanel(
     onCommitClick: (JourneyNodeItem) -> Unit,
     onUnlock: (String) -> Unit,
 ) {
-    val dailyParents = nodes.filter {
-        isListingLimitAxisParent(it) && it.metadata?.optString("listing_limit_axis") == "daily"
-    }
-    val capParents = nodes.filter {
-        isListingLimitAxisParent(it) && it.metadata?.optString("listing_limit_axis") == "cap"
-    }
-    if (dailyParents.isEmpty() && capParents.isEmpty()) {
+    val channels = listingLimitChannelNodes(nodes)
+    if (channels.isEmpty()) {
         Box(modifier = modifier.padding(16.dp), contentAlignment = Alignment.Center) {
             Text(
                 translationStore.t("creator.journey.starter_empty", "No items in this category yet."),
@@ -652,49 +675,91 @@ internal fun JourneyListingLimitTreePanel(
         }
         return
     }
+    val dailyTitle = translationStore.t("creator.journey.listing_limits_daily_title", "Daily")
+    val capTitle = translationStore.t("creator.journey.listing_limits_cap_title", "Cap")
     LazyColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (dailyParents.isNotEmpty()) {
-            listingLimitAxisItems(
-                title = translationStore.t("creator.journey.listing_limits_daily_title", "Daily"),
-                axisLabel = translationStore.t("creator.journey.listing_limits_daily_title", "Daily"),
-                parents = dailyParents,
-                allNodes = allNodes,
-                expandState = expandState,
-                isCreator = isCreator,
-                busy = busy,
-                translationStore = translationStore,
-                onInfoClick = onInfoClick,
-                onCommitClick = onCommitClick,
-                onUnlock = onUnlock,
-            )
-        }
-        if (capParents.isNotEmpty()) {
-            listingLimitAxisItems(
-                title = translationStore.t("creator.journey.listing_limits_cap_title", "Cap"),
-                axisLabel = translationStore.t("creator.journey.listing_limits_cap_title", "Cap"),
-                parents = capParents,
-                allNodes = allNodes,
-                expandState = expandState,
-                isCreator = isCreator,
-                busy = busy,
-                translationStore = translationStore,
-                onInfoClick = onInfoClick,
-                onCommitClick = onCommitClick,
-                onUnlock = onUnlock,
-            )
+        items(channels, key = { it.nodeKey }) { channel ->
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                JourneyLimitParentCard(
+                    node = channel,
+                    allNodes = allNodes,
+                    expanded = false,
+                    isCreator = isCreator,
+                    busy = busy,
+                    translationStore = translationStore,
+                    onExpandToggle = {},
+                    onInfoClick = { onInfoClick(channel) },
+                    onCommitClick = onCommitClick,
+                    onUnlock = onUnlock,
+                    modifier = Modifier.width(156.dp),
+                )
+                if (channel.unlocked) {
+                    JourneyVariantConnector()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                2.dp,
+                                Color(0xFFFFC83C).copy(alpha = 0.85f),
+                                RoundedCornerShape(16.dp),
+                            )
+                            .background(
+                                Color.Black.copy(alpha = 0.32f),
+                                RoundedCornerShape(16.dp),
+                            )
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Text(
+                            channel.title,
+                            color = EazColors.Orange,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.sp,
+                            letterSpacing = 0.8.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        JourneyListingLimitSkillCarousel(
+                            title = dailyTitle,
+                            tiers = listingLimitTiersForChannelAxis(allNodes, channel, "daily"),
+                            allNodes = allNodes,
+                            isCreator = isCreator,
+                            busy = busy,
+                            translationStore = translationStore,
+                            onInfoClick = onInfoClick,
+                            onCommitClick = onCommitClick,
+                            onUnlock = onUnlock,
+                        )
+                        JourneyListingLimitSkillCarousel(
+                            title = capTitle,
+                            tiers = listingLimitTiersForChannelAxis(allNodes, channel, "cap"),
+                            allNodes = allNodes,
+                            isCreator = isCreator,
+                            busy = busy,
+                            translationStore = translationStore,
+                            onInfoClick = onInfoClick,
+                            onCommitClick = onCommitClick,
+                            onUnlock = onUnlock,
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
-private fun LazyListScope.listingLimitAxisItems(
+@Composable
+private fun JourneyListingLimitSkillCarousel(
     title: String,
-    axisLabel: String,
-    parents: List<JourneyNodeItem>,
+    tiers: List<JourneyNodeItem>,
     allNodes: List<JourneyNodeItem>,
-    expandState: JourneyExpandState,
     isCreator: Boolean,
     busy: Boolean,
     translationStore: TranslationStore,
@@ -702,102 +767,30 @@ private fun LazyListScope.listingLimitAxisItems(
     onCommitClick: (JourneyNodeItem) -> Unit,
     onUnlock: (String) -> Unit,
 ) {
-    val unlocked = parents.filter { it.unlocked }
-    val locked = parents.filter { !it.unlocked }
-    item {
+    if (tiers.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             title,
             color = EazColors.Orange,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 13.sp,
+            letterSpacing = 0.8.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-    }
-    if (unlocked.isNotEmpty()) {
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(unlocked, key = { it.nodeKey }) { channel ->
-                    JourneyLimitParentCard(
-                        node = channel,
-                        allNodes = allNodes,
-                        expanded = expandState.listingLimitChannel == channel.nodeKey,
-                        isCreator = isCreator,
-                        busy = busy,
-                        translationStore = translationStore,
-                        onExpandToggle = { expandState.toggleListingLimit(channel.nodeKey) },
-                        onInfoClick = { onInfoClick(channel) },
-                        onCommitClick = onCommitClick,
-                        onUnlock = onUnlock,
-                        modifier = Modifier.width(156.dp),
-                    )
-                }
-            }
-        }
-        expandState.listingLimitChannel?.let { channelKey ->
-            val channel = unlocked.firstOrNull { it.nodeKey == channelKey } ?: return@let
-            val tiers = listingLimitTierNodes(allNodes, channel).filter { !it.unlocked }
-            if (tiers.isNotEmpty()) {
-                item {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        JourneyVariantConnector()
-                        Text(
-                            channel.title + " · " + axisLabel,
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                        )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(tiers, key = { it.nodeKey }) { tier ->
-                                JourneyLimitTierCard(
-                                    node = tier,
-                                    allNodes = allNodes,
-                                    isCreator = isCreator,
-                                    busy = busy,
-                                    translationStore = translationStore,
-                                    onInfoClick = { onInfoClick(tier) },
-                                    onCommitClick = onCommitClick,
-                                    onUnlock = onUnlock,
-                                    modifier = Modifier.width(156.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if (locked.isNotEmpty()) {
-        item {
-            Text(
-                translationStore.t("creator.journey.available_skills", "Available"),
-                color = EazColors.Orange,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(locked, key = { it.nodeKey }) { channel ->
-                    JourneyLimitParentCard(
-                        node = channel,
-                        allNodes = allNodes,
-                        expanded = false,
-                        isCreator = isCreator,
-                        busy = busy,
-                        translationStore = translationStore,
-                        onExpandToggle = {},
-                        onInfoClick = { onInfoClick(channel) },
-                        onCommitClick = onCommitClick,
-                        onUnlock = onUnlock,
-                        modifier = Modifier.width(156.dp),
-                    )
-                }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(tiers, key = { it.nodeKey }) { tier ->
+                JourneyLimitTierCard(
+                    node = tier,
+                    allNodes = allNodes,
+                    isCreator = isCreator,
+                    busy = busy,
+                    translationStore = translationStore,
+                    onInfoClick = { onInfoClick(tier) },
+                    onCommitClick = onCommitClick,
+                    onUnlock = onUnlock,
+                    modifier = Modifier.width(156.dp),
+                )
             }
         }
     }
