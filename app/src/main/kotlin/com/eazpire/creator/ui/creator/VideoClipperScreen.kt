@@ -211,7 +211,7 @@ fun VideoClipperScreen(
                 val cues = JSONArray()
                 val words = JSONArray()
                 val texts = mutableListOf<String>()
-                val chunkSec = 8 * 60.0
+                val chunkSec = 25.0
                 val total = durationS.coerceAtLeast(1.0)
                 val chunks = kotlin.math.ceil(total / chunkSec).toInt().coerceAtLeast(1)
                 withContext(Dispatchers.IO) {
@@ -227,15 +227,37 @@ fun VideoClipperScreen(
                             out,
                         )
                         if (!ok || !out.exists() || out.length() <= 0L) continue
-                        val resp = api.videoClipperTranscribe(
+                        val audioBytes = out.readBytes()
+                        var resp = api.videoClipperTranscribe(
                             ownerId = ownerId,
-                            audioBytes = out.readBytes(),
+                            audioBytes = audioBytes,
                             filename = out.name,
                             offsetS = start,
                         )
+                        if (!resp.optBoolean("ok")) {
+                            resp = api.videoClipperTranscribe(
+                                ownerId = ownerId,
+                                audioBytes = audioBytes,
+                                filename = out.name,
+                                offsetS = start,
+                            )
+                        }
                         out.delete()
                         if (!resp.optBoolean("ok")) {
-                            throw IllegalStateException(resp.optString("error", "transcribe_failed"))
+                            val code = resp.optString("error", "transcribe_failed")
+                            throw IllegalStateException(
+                                if (code == "chunk_too_long") {
+                                    t(
+                                        "creator.video_clipper.chunk_too_long",
+                                        "That audio piece was too long. Refresh the page and try Analyze again.",
+                                    )
+                                } else {
+                                    t(
+                                        "creator.video_clipper.transcribe_failed",
+                                        "Speech recognition failed. Try Analyze again.",
+                                    )
+                                },
+                            )
                         }
                         if (resp.optString("text").isNotBlank()) texts += resp.optString("text")
                         mergeJsonArray(cues, resp.optJSONArray("cues"))
