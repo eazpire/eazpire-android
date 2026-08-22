@@ -2716,7 +2716,11 @@ class CreatorApi(
     /** GET ?op=list-jobs&owner_id=xxx&limit=20 → { ok, items: [...] } */
     suspend fun listJobs(ownerId: String, limit: Int = 20): JSONObject = call(
         "list-jobs",
-        mapOf("owner_id" to ownerId, "limit" to limit.toString())
+        mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
+            "limit" to limit.toString(),
+        )
     )
 
     /** GET ?op=list-quick-inspirations — same contract as the web QI modal / Eazy page. */
@@ -2771,6 +2775,7 @@ class CreatorApi(
         "list-generated",
         mapOf(
             "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
             "limit" to limit.toString(),
             "path_prefix" to "/apps/creator-dispatch"
         )
@@ -2820,13 +2825,14 @@ class CreatorApi(
     /** GET ?op=get-daily-limits — uploads/generations/publishes + journey slot caps. */
     suspend fun getDailyLimits(ownerId: String): JSONObject = call(
         "get-daily-limits",
-        mapOf("owner_id" to ownerId)
+        mapOf("owner_id" to ownerId, "logged_in_customer_id" to ownerId)
     )
 
     /** GET ?op=list&owner_id=xxx&limit=100 → { ok, items: [...] } Creator designs */
     suspend fun listDesigns(ownerId: String, limit: Int = 100, cursor: String? = null): JSONObject {
         val params = mutableMapOf(
             "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
             "limit" to limit.coerceIn(1, 100).toString(),
         )
         cursor?.takeIf { it.isNotBlank() }?.let { params["cursor"] = it }
@@ -2840,12 +2846,13 @@ class CreatorApi(
         var pages = 0
         do {
             val data = listDesigns(ownerId, limit = 50, cursor = cursor)
-            if (!data.optBoolean("ok", false)) break
             val items = data.optJSONArray("items") ?: JSONArray()
+            val ok = data.optBoolean("ok", false) || items.length() > 0
+            if (!ok) break
             for (i in 0 until items.length()) {
                 items.optJSONObject(i)?.let { all.add(it) }
             }
-            cursor = data.optString("next_cursor", "").trim().ifBlank { null }
+            cursor = jsonNextCursor(data)
             pages += 1
         } while (cursor != null && pages < 60)
         return all
@@ -2867,7 +2874,10 @@ class CreatorApi(
 
     /** GET ?op=get-published-products&owner_id=xxx&shop=xxx → { ok, products: [...] } */
     suspend fun getPublishedProducts(ownerId: String, shop: String? = null): JSONObject {
-        val params = mutableMapOf("owner_id" to ownerId)
+        val params = mutableMapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
+        )
         shop?.takeIf { it.isNotBlank() }?.let { params["shop"] = it }
         return call("get-published-products", params)
     }
@@ -4825,6 +4835,14 @@ class CreatorApi(
             .build()
         parseJsonResponse(client.newCall(request).execute())
     }
+}
+
+/** org.json turns JSON null into the string "null" via optString — treat that as no cursor. */
+fun jsonNextCursor(data: JSONObject): String? {
+    if (!data.has("next_cursor") || data.isNull("next_cursor")) return null
+    val raw = data.optString("next_cursor", "").trim()
+    if (raw.isBlank() || raw.equals("null", ignoreCase = true)) return null
+    return raw
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)

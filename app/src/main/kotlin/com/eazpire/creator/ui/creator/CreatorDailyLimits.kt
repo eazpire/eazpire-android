@@ -1,6 +1,8 @@
 package com.eazpire.creator.ui.creator
 
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -156,9 +159,11 @@ private fun CosmicUsageBar(
     modifier: Modifier = Modifier,
     barWidth: Int = 68,
     barHeight: Int = 16,
+    iconPrefix: String = "",
 ) {
     val pct = if (locked) 0 else slotFillPercent(used, cap)
-    val label = if (locked) lockedLabel else "$used/$cap"
+    val count = if (locked) lockedLabel else "$used/$cap"
+    val label = if (iconPrefix.isBlank()) count else "$iconPrefix $count"
     Box(
         modifier = modifier
             .width(barWidth.dp)
@@ -190,6 +195,7 @@ fun CreatorDailyLimitsSubheader(
     translationStore: TranslationStore,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val lockedLabel = translationStore.t("creator.daily_limits_subheader.locked", "Locked")
     var remainingMs by remember { mutableLongStateOf(msUntilNextUtcMidnight()) }
     LaunchedEffect(snapshot.showCountdown) {
@@ -203,6 +209,10 @@ fun CreatorDailyLimitsSubheader(
     val countdownPct = if (dayMs <= 0L) 0f else ((remainingMs.toFloat() / dayMs.toFloat()) * 100f)
         .coerceIn(0f, 100f)
 
+    fun showInfo(key: String, fallback: String) {
+        Toast.makeText(context, translationStore.t(key, fallback), Toast.LENGTH_LONG).show()
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -211,33 +221,61 @@ fun CreatorDailyLimitsSubheader(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DailyLimitChip(
-            name = translationStore.t("creator.daily_limits_subheader.uploads", "Uploads"),
+            iconPrefix = "↑",
             bar = snapshot.upload,
             lockedLabel = lockedLabel,
             fill = UploadFill,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .clickable {
+                    showInfo(
+                        "creator.daily_limits_subheader.info_uploads",
+                        "Daily image uploads used versus your limit. Resets with the timer.",
+                    )
+                },
         )
         Text("│", color = Color.White.copy(alpha = 0.16f), fontSize = 11.sp)
         DailyLimitChip(
-            name = translationStore.t("creator.daily_limits_subheader.designs", "Generations"),
+            iconPrefix = "✦",
             bar = snapshot.generate,
             lockedLabel = lockedLabel,
             fill = GenerateFill,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .clickable {
+                    showInfo(
+                        "creator.daily_limits_subheader.info_generations",
+                        "Daily AI generations used versus your limit. Each generate counts.",
+                    )
+                },
         )
         Text("│", color = Color.White.copy(alpha = 0.16f), fontSize = 11.sp)
         DailyLimitChip(
-            name = translationStore.t("creator.daily_limits_subheader.publishes", "Publishes"),
+            iconPrefix = "↗",
             bar = snapshot.publish,
             lockedLabel = lockedLabel,
             fill = PublishFill,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .clickable {
+                    showInfo(
+                        "creator.daily_limits_subheader.info_publishes",
+                        "Daily product publishes used versus your limit.",
+                    )
+                },
         )
         if (snapshot.showCountdown) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(start = 4.dp),
+                modifier = Modifier
+                    .padding(start = 4.dp)
+                    .clickable {
+                        showInfo(
+                            "creator.daily_limits_subheader.info_timer",
+                            "Time left until daily upload, generation, and publish limits reset (00:00 UTC).",
+                        )
+                    },
             ) {
                 Box(
                     modifier = Modifier
@@ -267,34 +305,23 @@ fun CreatorDailyLimitsSubheader(
 
 @Composable
 private fun DailyLimitChip(
-    name: String,
+    iconPrefix: String,
     bar: DailyLimitBar,
     lockedLabel: String,
     fill: Brush,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    CosmicUsageBar(
+        used = bar.used,
+        cap = bar.cap,
+        locked = bar.locked,
+        lockedLabel = lockedLabel,
+        fill = fill,
         modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            text = name,
-            color = Color(0xEB9AA8C7),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-        )
-        CosmicUsageBar(
-            used = bar.used,
-            cap = bar.cap,
-            locked = bar.locked,
-            lockedLabel = lockedLabel,
-            fill = fill,
-            barWidth = 56,
-            barHeight = 16,
-        )
-    }
+            barWidth = 84,
+        barHeight = 16,
+        iconPrefix = iconPrefix,
+    )
 }
 
 @Composable
@@ -306,6 +333,10 @@ fun CreationsSlotUsageBar(
     translationStore: TranslationStore,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    fun showInfo(key: String, fallback: String) {
+        Toast.makeText(context, translationStore.t(key, fallback), Toast.LENGTH_LONG).show()
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -321,42 +352,42 @@ fun CreationsSlotUsageBar(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.clickable {
+                showInfo(
+                    "creator.creations.slots_designs_info",
+                    "Active designs in your library versus your Skill Tree slot cap. Inactive designs do not count.",
+                )
+            },
         ) {
-            Text(
-                text = translationStore.t("creator.creations.slots_designs", "Active designs"),
-                color = Color(0xEB9AA8C7),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
             CosmicUsageBar(
                 used = designsUsed,
                 cap = designsCap,
                 locked = designsCap <= 0,
                 lockedLabel = "—",
                 fill = DesignsSlotFill,
-                barWidth = 72,
+                barWidth = 88,
+                iconPrefix = "✦",
             )
         }
         Text("│", color = Color.White.copy(alpha = 0.16f), fontSize = 11.sp)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.clickable {
+                showInfo(
+                    "creator.creations.slots_products_info",
+                    "Published product types versus your Skill Tree listing cap.",
+                )
+            },
         ) {
-            Text(
-                text = translationStore.t("creator.creations.slots_products", "Products"),
-                color = Color(0xEB9AA8C7),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
             CosmicUsageBar(
                 used = productsUsed,
                 cap = productsCap,
                 locked = productsCap <= 0,
                 lockedLabel = "—",
                 fill = ProductsSlotFill,
-                barWidth = 72,
+                barWidth = 88,
+                iconPrefix = "↗",
             )
         }
     }

@@ -26,8 +26,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.TranslationStore
 
 /**
- * View Mode Overlay – wie Web creator-view-mode-overlay
- * grid2, grid3, grid4, list
+ * View Mode Overlay – Web Mobile: 2 columns, 3 columns, list.
  */
 @Composable
 fun CreatorViewModeOverlay(
@@ -39,8 +38,7 @@ fun CreatorViewModeOverlay(
     val modes = listOf(
         0 to (translationStore.t("creator.creations.view_grid2", "2 columns")),
         1 to (translationStore.t("creator.creations.view_grid3", "3 columns")),
-        2 to (translationStore.t("creator.creations.view_grid4", "4 columns")),
-        3 to (translationStore.t("creator.creations.view_list", "List view"))
+        2 to (translationStore.t("creator.creations.view_list", "List view"))
     )
 
     Box(
@@ -81,7 +79,7 @@ fun CreatorViewModeOverlay(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Icon(
-                            if (index == 3) Icons.Default.List else Icons.Default.GridView,
+                            if (index == 2) Icons.Default.List else Icons.Default.GridView,
                             contentDescription = null,
                             tint = if (selected) EazColors.Orange else Color.White.copy(alpha = 0.8f)
                         )

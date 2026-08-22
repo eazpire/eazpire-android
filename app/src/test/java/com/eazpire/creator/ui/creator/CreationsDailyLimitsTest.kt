@@ -87,4 +87,16 @@ class CreationsDailyLimitsTest {
         assertEquals("active", design?.effectiveLibraryStatus())
         assertEquals("", design?.imageUrl)
     }
+
+    @Test
+    fun jsonNextCursorTreatsJsonNullAsAbsent() {
+        val withNull = JSONObject("""{"ok":true,"next_cursor":null}""")
+        assertEquals(null, com.eazpire.creator.api.jsonNextCursor(withNull))
+        val missing = JSONObject("""{"ok":true}""")
+        assertEquals(null, com.eazpire.creator.api.jsonNextCursor(missing))
+        val present = JSONObject("""{"ok":true,"next_cursor":"abc"}""")
+        assertEquals("abc", com.eazpire.creator.api.jsonNextCursor(present))
+        val fake = JSONObject("""{"ok":true,"next_cursor":"null"}""")
+        assertEquals(null, com.eazpire.creator.api.jsonNextCursor(fake))
+    }
 }

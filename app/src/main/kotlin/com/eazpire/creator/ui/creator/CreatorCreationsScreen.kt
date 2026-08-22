@@ -4,6 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -29,7 +32,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -70,6 +72,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -159,7 +164,7 @@ data class CreationProduct(
     val sortUpdatedAt: Long get() = updatedAt ?: publishedAt ?: 0L
 }
 
-private val VIEW_MODES = listOf("grid2", "grid3", "grid4", "list")
+private val VIEW_MODES = listOf("grid2", "grid3", "list")
 
 private fun normalizeImageUrl(url: String?): String? {
     if (url.isNullOrBlank()) return null
@@ -230,7 +235,7 @@ fun CreatorCreationsScreen(
     var productsLoading by remember { mutableStateOf(false) }
     var designsSearch by remember { mutableStateOf(TextFieldValue("")) }
     var productsSearch by remember { mutableStateOf(TextFieldValue("")) }
-    var viewMode by remember { mutableIntStateOf(0) } // grid2=0, grid3=1, grid4=2, list=3
+    var viewMode by remember { mutableIntStateOf(0) } // grid2=0, grid3=1, list=2
     var filterModalVisible by remember { mutableStateOf(false) }
     var viewModeOverlayVisible by remember { mutableStateOf(false) }
     var designPreviewDesign by remember { mutableStateOf<CreationDesign?>(null) }
@@ -333,16 +338,12 @@ fun CreatorCreationsScreen(
         uploadModalVisible = true
     }
 
-    LaunchedEffect(ownerId) {
-        designsLoadedOnce = false
-        productsLoadedOnce = false
-        designs = emptyList()
-        products = emptyList()
-        productBadgesByDesignId = emptyMap()
-        designsLoading = false
-        productsLoading = false
+    LaunchedEffect(ownerId, jwt) {
         if (ownerId.isBlank()) {
             slotUsage = JourneySlotUsage()
+            products = emptyList()
+            productsLoadedOnce = false
+            productsLoading = false
             return@LaunchedEffect
         }
         slotUsage = runCatching {
@@ -356,13 +357,13 @@ fun CreatorCreationsScreen(
             products = list
             productsLoadedOnce = true
         } catch (_: Exception) {
-            products = emptyList()
+            if (!productsLoadedOnce) products = emptyList()
         } finally {
             productsLoading = false
         }
     }
 
-    LaunchedEffect(ownerId, designsRefreshTrigger) {
+    LaunchedEffect(ownerId, jwt, designsRefreshTrigger) {
         if (ownerId.isBlank()) {
             designsLoading = false
             return@LaunchedEffect
@@ -493,13 +494,12 @@ fun CreatorCreationsScreen(
         filteredProducts.drop(start).take(CREATIONS_PRODUCTS_PER_PAGE)
     }
 
-    val gridCols = when (VIEW_MODES[viewMode]) {
+    val gridCols = when (VIEW_MODES.getOrElse(viewMode) { "grid2" }) {
         "grid2" -> 2
         "grid3" -> 3
-        "grid4" -> 4
         else -> 2
     }
-    val isListMode = VIEW_MODES[viewMode] == "list"
+    val isListMode = VIEW_MODES.getOrElse(viewMode) { "grid2" } == "list"
     val bulkCohort = remember(bulkSelectedKeys, designsActivityFilter) {
         resolveBulkCohort(bulkSelectedKeys, designsActivityFilter)
     }
@@ -513,11 +513,28 @@ fun CreatorCreationsScreen(
         }
     }
 
+    val chromeVisible = remember { mutableStateOf(true) }
+    val chromeScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < -6f) chromeVisible.value = false
+                else if (available.y > 6f) chromeVisible.value = true
+                return Offset.Zero
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .heightIn(max = boundedHeight)
     ) {
+        AnimatedVisibility(
+            visible = chromeVisible.value,
+            enter = expandVertically(),
+            exit = shrinkVertically(),
+        ) {
+        Column {
         // Tabs
         Row(
             modifier = Modifier
@@ -570,9 +587,16 @@ fun CreatorCreationsScreen(
             productsCap = slotUsage.maxProducts,
             translationStore = translationStore,
         )
+        }
+        }
 
         when (currentTab) {
             "designs" -> {
+                AnimatedVisibility(
+                    visible = chromeVisible.value,
+                    enter = expandVertically(),
+                    exit = shrinkVertically(),
+                ) {
                 CreationsDesignsToolbar(
                     designsSearch = designsSearch,
                     onDesignsSearchChange = { designsSearch = it },
@@ -588,10 +612,12 @@ fun CreatorCreationsScreen(
                     },
                     translationStore = translationStore,
                 )
+                }
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxSize(),
+                        .fillMaxSize()
+                        .nestedScroll(chromeScrollConnection),
                 ) {
                     val bulkBottomPad = if (bulkSelectedKeys.isNotEmpty()) 118.dp else 0.dp
                     val showDesignsSpinner = designsLoading && !designsLoadedOnce
@@ -735,12 +761,62 @@ fun CreatorCreationsScreen(
                 }
             }
             "products" -> {
+                AnimatedVisibility(
+                    visible = chromeVisible.value,
+                    enter = expandVertically(),
+                    exit = shrinkVertically(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF262930).copy(alpha = 0.68f))
+                            .padding(horizontal = 18.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        BasicTextField(
+                            value = productsSearch,
+                            onValueChange = { productsSearch = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.Black.copy(alpha = 0.3f))
+                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                .padding(10.dp),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                            decorationBox = { inner ->
+                                if (productsSearch.text.isEmpty()) {
+                                    Text(
+                                        translationStore.t("creator.common.search", "Search…"),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.5f)
+                                    )
+                                }
+                                inner()
+                            }
+                        )
+                        IconButton(
+                            onClick = { filterModalVisible = true },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                        ) {
+                            Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                        }
+                        Text(
+                            "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                }
                 if (productsLoading) {
-                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).fillMaxSize().nestedScroll(chromeScrollConnection), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = EazColors.Orange)
                     }
                 } else if (filteredProducts.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).fillMaxSize().nestedScroll(chromeScrollConnection), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.5f))
                             Spacer(Modifier.size(8.dp))
@@ -757,6 +833,7 @@ fun CreatorCreationsScreen(
                             .weight(1f)
                             .fillMaxSize()
                             .heightIn(max = boundedHeight)
+                            .nestedScroll(chromeScrollConnection)
                     ) {
                         LazyColumn(
                             state = productsListState,
@@ -766,52 +843,6 @@ fun CreatorCreationsScreen(
                             contentPadding = PaddingValues(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color(0xFF262930).copy(alpha = 0.68f))
-                                        .padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    BasicTextField(
-                                        value = productsSearch,
-                                        onValueChange = { productsSearch = it },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color.Black.copy(alpha = 0.3f))
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                            .padding(10.dp),
-                                        singleLine = true,
-                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                                        decorationBox = { inner ->
-                                            if (productsSearch.text.isEmpty()) {
-                                                Text(
-                                                    translationStore.t("creator.common.search", "Search…"),
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = Color.White.copy(alpha = 0.5f)
-                                                )
-                                            }
-                                            inner()
-                                        }
-                                    )
-                                    IconButton(
-                                        onClick = { filterModalVisible = true },
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                    ) {
-                                        Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
-                                    }
-                                    Text(
-                                        "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White.copy(alpha = 0.8f)
-                                    )
-                                }
-                            }
                             items(pagedProducts, key = { it.id }) { product ->
                                 CreationProductListItem(
                                     product = product,
@@ -850,6 +881,7 @@ fun CreatorCreationsScreen(
                             .weight(1f)
                             .fillMaxSize()
                             .heightIn(max = boundedHeight)
+                            .nestedScroll(chromeScrollConnection)
                     ) {
                         LazyVerticalGrid(
                             state = productsGridState,
@@ -861,52 +893,6 @@ fun CreatorCreationsScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            item(span = { GridItemSpan(gridCols) }) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color(0xFF262930).copy(alpha = 0.68f))
-                                        .padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    BasicTextField(
-                                        value = productsSearch,
-                                        onValueChange = { productsSearch = it },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color.Black.copy(alpha = 0.3f))
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                            .padding(10.dp),
-                                        singleLine = true,
-                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                                        decorationBox = { inner ->
-                                            if (productsSearch.text.isEmpty()) {
-                                                Text(
-                                                    translationStore.t("creator.common.search", "Search…"),
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = Color.White.copy(alpha = 0.5f)
-                                                )
-                                            }
-                                            inner()
-                                        }
-                                    )
-                                    IconButton(
-                                        onClick = { filterModalVisible = true },
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                    ) {
-                                        Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
-                                    }
-                                    Text(
-                                        "${filteredProducts.size} ${translationStore.t("creator.mobile.products", "Products")}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White.copy(alpha = 0.8f)
-                                    )
-                                }
-                            }
                             items(pagedProducts, key = { it.id }) { product ->
                                 CreationProductCard(
                                     product = product,
@@ -1349,8 +1335,9 @@ private suspend fun fetchPublishedCreationsProducts(
     shop: String,
 ): List<CreationProduct> {
     val resp = api.getPublishedProducts(ownerId, shop)
-    if (!resp.optBoolean("ok", false)) return emptyList()
-    return (resp.optJSONArray("products") ?: resp.optJSONArray("items") ?: JSONArray()).let { arr ->
+    val arr = resp.optJSONArray("products") ?: resp.optJSONArray("items") ?: JSONArray()
+    if (!resp.optBoolean("ok", false) && arr.length() == 0) return emptyList()
+    return run {
         fun toImageStr(v: Any?): String? = when (v) {
             is String -> v.takeIf { it.isNotBlank() }
             is JSONObject -> (v.optString("src", "").takeIf { it.isNotBlank() }
