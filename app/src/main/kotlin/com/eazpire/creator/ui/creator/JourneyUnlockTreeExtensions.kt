@@ -401,7 +401,7 @@ internal fun journeyParentLimitLabel(
                 ?: if (node.unlocked && node.channelId.equals("shopify", true)) 50 else null
         } else {
             active?.metadata?.optInt("listings_per_day")
-                ?: if (node.unlocked && node.channelId.equals("shopify", true)) 10 else null
+                ?.takeIf { it > 0 }
         }
         return value?.let {
             if (axis == "cap") {

@@ -93,7 +93,13 @@ fun parseDailyLimitsSnapshot(resp: JSONObject?): DailyLimitsSnapshot {
     val shopify = listing.optJSONObject("channels")?.optJSONObject("shopify") ?: JSONObject()
     val uploadCap = creation.optInt("upload_cap", 0)
     val generateCap = creation.optInt("generate_cap", 0)
-    val publishCap = shopify.optInt("listings_per_day", 0)
+    val dailyPublish = shopify.optInt("listings_per_day", 0)
+    val publishCap = if (dailyPublish > 0) dailyPublish else shopify.optInt("listings_cap", 0)
+    val publishUsed = if (dailyPublish > 0) {
+        shopify.optInt("listings_used_today", 0)
+    } else {
+        shopify.optInt("listings_used_total", 0)
+    }
     val mode = creation.optString("mode", "daily")
     return DailyLimitsSnapshot(
         upload = DailyLimitBar(
@@ -107,7 +113,7 @@ fun parseDailyLimitsSnapshot(resp: JSONObject?): DailyLimitsSnapshot {
             locked = generateCap <= 0,
         ),
         publish = DailyLimitBar(
-            used = shopify.optInt("listings_used_today", 0),
+            used = publishUsed,
             cap = publishCap,
             locked = shopify.optBoolean("channel_unlocked", true).not() || publishCap <= 0,
         ),
