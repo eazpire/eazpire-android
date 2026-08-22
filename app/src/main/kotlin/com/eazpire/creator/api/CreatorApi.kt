@@ -2802,11 +2802,39 @@ class CreatorApi(
         return all to (if (total > 0) total else all.size)
     }
 
-    /** GET ?op=list&owner_id=xxx&limit=100 → { ok, items: [...] } Creator designs */
-    suspend fun listDesigns(ownerId: String, limit: Int = 100): JSONObject = call(
-        "list",
-        mapOf("owner_id" to ownerId, "limit" to limit.toString())
+    /** GET ?op=get-daily-limits — uploads/generations/publishes + journey slot caps. */
+    suspend fun getDailyLimits(ownerId: String): JSONObject = call(
+        "get-daily-limits",
+        mapOf("owner_id" to ownerId)
     )
+
+    /** GET ?op=list&owner_id=xxx&limit=100 → { ok, items: [...] } Creator designs */
+    suspend fun listDesigns(ownerId: String, limit: Int = 100, cursor: String? = null): JSONObject {
+        val params = mutableMapOf(
+            "owner_id" to ownerId,
+            "limit" to limit.coerceIn(1, 100).toString(),
+        )
+        cursor?.takeIf { it.isNotBlank() }?.let { params["cursor"] = it }
+        return call("list", params)
+    }
+
+    /** Paginate `?op=list` like web `fetchAllSavedDesignPages` (cap 60 pages). */
+    suspend fun listDesignsAll(ownerId: String): List<JSONObject> {
+        val all = mutableListOf<JSONObject>()
+        var cursor: String? = null
+        var pages = 0
+        do {
+            val data = listDesigns(ownerId, limit = 50, cursor = cursor)
+            if (!data.optBoolean("ok", false)) break
+            val items = data.optJSONArray("items") ?: JSONArray()
+            for (i in 0 until items.length()) {
+                items.optJSONObject(i)?.let { all.add(it) }
+            }
+            cursor = data.optString("next_cursor", "").trim().ifBlank { null }
+            pages += 1
+        } while (cursor != null && pages < 60)
+        return all
+    }
 
     /** GET ?op=get-published-summary&owner_id=xxx&shop=xxx → { ok, designs: [{ design_id, products_count }] } */
     suspend fun getPublishedSummary(ownerId: String, shop: String? = null): JSONObject {

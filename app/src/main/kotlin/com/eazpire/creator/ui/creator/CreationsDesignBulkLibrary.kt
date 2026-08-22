@@ -71,6 +71,13 @@ enum class CreationsBulkCohort {
     Empty, ActiveSaved, InactiveSaved, InactiveUnsaved,
 }
 
+fun CreationDesign.listKey(): String {
+    val key = bulkSelectionKey()
+    if (key.isNotBlank()) return key
+    if (imageUrl.isNotBlank()) return "img:$imageUrl"
+    return "row:$title:$createdAt:${jobId.orEmpty()}"
+}
+
 fun CreationDesign.bulkSelectionKey(): String {
     val id = id?.trim().orEmpty()
     if (id.isNotBlank()) return "id:$id"
@@ -216,9 +223,20 @@ fun setBulkSelectedKey(
     return next
 }
 
+fun firstCreationImageUrl(obj: JSONObject, meta: JSONObject = JSONObject()): String {
+    val candidates = listOf(
+        obj.optString("preview_url", ""),
+        obj.optString("original_url", ""),
+        obj.optString("image_url", ""),
+        obj.optString("user_image_url", ""),
+        meta.optString("preview_url", ""),
+        meta.optString("user_image_url", ""),
+        meta.optString("image_url", ""),
+    )
+    return candidates.firstOrNull { it.isNotBlank() }.orEmpty()
+}
+
 fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
-    val preview = obj.optString("preview_url", "").ifBlank { obj.optString("original_url", "") }
-    if (preview.isBlank()) return null
     val meta = try {
         when (val m = obj.opt("metadata")) {
             is String -> JSONObject(m.ifBlank { "{}" })
@@ -228,6 +246,7 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
     } catch (_: Exception) {
         JSONObject()
     }
+    val preview = firstCreationImageUrl(obj, meta)
     val userImg = meta.optString("user_image_url", "").ifBlank { obj.optString("user_image_url", "") }
     val designPrompt = meta.optString("design_prompt", "").ifBlank { obj.optString("design_prompt", "") }
     val isUploaded = userImg.isNotBlank() && designPrompt.isBlank()
@@ -320,7 +339,7 @@ fun parseGeneratedCreationDesign(obj: JSONObject, savingToLibrary: Boolean = fal
         .ifBlank { obj.optJSONObject("result")?.optString("preview_url").orEmpty() }
         .ifBlank { obj.optJSONObject("result")?.optString("image_url").orEmpty() }
         .ifBlank { obj.optString("image_url", "") }
-    if (preview.isBlank()) return null
+        .ifBlank { firstCreationImageUrl(obj) }
     return CreationDesign(
         id = obj.optString("design_id", "").takeIf { it.isNotBlank() }
             ?: obj.optString("id", "").takeIf { it.isNotBlank() },

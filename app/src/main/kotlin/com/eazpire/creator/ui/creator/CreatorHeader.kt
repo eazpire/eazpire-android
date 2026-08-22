@@ -392,6 +392,14 @@ fun CreatorHeader(
             }
         }
 
+        if (ownerId.isNotBlank()) {
+            val dailyLimits = rememberDailyLimitsSnapshot(api = api, ownerId = ownerId)
+            CreatorDailyLimitsSubheader(
+                snapshot = dailyLimits,
+                translationStore = translationStore,
+            )
+        }
+
         // Content: dots + title + swipe hint (gap 4dp)
         Column(
             modifier = Modifier

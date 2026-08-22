@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -205,9 +206,15 @@ fun CreatorCreationsScreen(
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
-    val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
-    val ownerId = remember { runCatching { tokenStore.getOwnerId() }.getOrNull() ?: "" }
+    var jwt by remember { mutableStateOf(runCatching { tokenStore.getJwt() }.getOrNull()) }
+    var ownerId by remember { mutableStateOf(runCatching { tokenStore.getOwnerId() }.getOrNull().orEmpty()) }
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
+    LaunchedEffect(Unit) {
+        val nextJwt = runCatching { tokenStore.getJwt() }.getOrNull()
+        val nextOwner = runCatching { tokenStore.getOwnerId() }.getOrNull().orEmpty()
+        if (nextJwt != jwt) jwt = nextJwt
+        if (nextOwner != ownerId) ownerId = nextOwner
+    }
     val shopifyApi = remember { ShopifyProductsApi() }
     val shop = AuthConfig.SHOP_DOMAIN
 
@@ -234,6 +241,7 @@ fun CreatorCreationsScreen(
     var designsSortMenuOpen by remember { mutableStateOf(false) }
     var productsSortMenuOpen by remember { mutableStateOf(false) }
     var designsRefreshTrigger by remember { mutableIntStateOf(0) }
+    var slotUsage by remember { mutableStateOf(JourneySlotUsage()) }
     var bulkSelectedKeys by remember { mutableStateOf(setOf<String>()) }
     var activateTargets by remember { mutableStateOf<List<CreationDesign>>(emptyList()) }
     var showActivateDialog by remember { mutableStateOf(false) }
@@ -333,6 +341,25 @@ fun CreatorCreationsScreen(
         productBadgesByDesignId = emptyMap()
         designsLoading = false
         productsLoading = false
+        if (ownerId.isBlank()) {
+            slotUsage = JourneySlotUsage()
+            return@LaunchedEffect
+        }
+        slotUsage = runCatching {
+            withContext(Dispatchers.IO) { parseJourneySlotUsage(api.getDailyLimits(ownerId)) }
+        }.getOrDefault(JourneySlotUsage())
+        productsLoading = true
+        try {
+            val list = withContext(Dispatchers.IO) {
+                fetchPublishedCreationsProducts(api, ownerId, shop)
+            }
+            products = list
+            productsLoadedOnce = true
+        } catch (_: Exception) {
+            products = emptyList()
+        } finally {
+            productsLoading = false
+        }
     }
 
     LaunchedEffect(ownerId, designsRefreshTrigger) {
@@ -362,26 +389,6 @@ fun CreatorCreationsScreen(
         }
         if (badges.isNotEmpty()) {
             productBadgesByDesignId = badges
-        }
-    }
-
-    LaunchedEffect(ownerId, currentTab) {
-        if (ownerId.isBlank() || currentTab != "products") {
-            if (ownerId.isBlank()) productsLoading = false
-            return@LaunchedEffect
-        }
-        if (productsLoadedOnce) return@LaunchedEffect
-        productsLoading = true
-        try {
-            val list = withContext(Dispatchers.IO) {
-                fetchPublishedCreationsProducts(api, ownerId, shop)
-            }
-            products = list
-            productsLoadedOnce = true
-        } catch (_: Exception) {
-            products = emptyList()
-        } finally {
-            productsLoading = false
         }
     }
 
@@ -546,6 +553,24 @@ fun CreatorCreationsScreen(
             }
         }
 
+        val designsUsed = if (designsLoadedOnce) {
+            designs.count { it.effectiveLibraryStatus() == "active" }
+        } else {
+            slotUsage.activeDesignsUsed
+        }
+        val productsUsed = if (productsLoadedOnce) {
+            products.filter { !it.isSample }.map { it.productKey.ifBlank { it.id } }.distinct().size
+        } else {
+            slotUsage.productsUsed
+        }
+        CreationsSlotUsageBar(
+            designsUsed = designsUsed,
+            designsCap = slotUsage.maxActiveDesignSlots,
+            productsUsed = productsUsed,
+            productsCap = slotUsage.maxProducts,
+            translationStore = translationStore,
+        )
+
         when (currentTab) {
             "designs" -> {
                 CreationsDesignsToolbar(
@@ -561,7 +586,6 @@ fun CreatorCreationsScreen(
                             designsActivityFilter = key
                         }
                     },
-                    designsCount = filteredDesigns.size,
                     translationStore = translationStore,
                 )
                 Box(
@@ -599,7 +623,7 @@ fun CreatorCreationsScreen(
                                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + bulkBottomPad),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
+                                items(filteredDesigns, key = { d -> d.listKey() }) { design ->
                                     CreationDesignListItem(
                                         design = design,
                                         productBadgeText = formatDesignProductBadgeText(design, productBadgesByDesignId),
@@ -641,7 +665,7 @@ fun CreatorCreationsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(filteredDesigns, key = { d -> d.id ?: d.designId ?: d.jobId ?: d.imageUrl }) { design ->
+                                items(filteredDesigns, key = { d -> d.listKey() }) { design ->
                                     Box(Modifier.aspectRatio(1f)) {
                                         CreationDesignGridCard(
                                             design = design,
@@ -1258,14 +1282,18 @@ private suspend fun fetchCreationsDesignsMerged(
     api: com.eazpire.creator.api.CreatorApi,
     ownerId: String,
 ): List<CreationDesign> = coroutineScope {
-    val listRes = async { api.listDesigns(ownerId, 200) }
-    val genRes = async { api.listGenerated(ownerId, 100) }
-    val jobsRes = async { api.listJobs(ownerId, 50) }
+    val savedDeferred = async { runCatching { api.listDesignsAll(ownerId) }.getOrDefault(emptyList()) }
+    val genDeferred = async { runCatching { api.listGenerated(ownerId, 100) }.getOrNull() }
+    val jobsDeferred = async { runCatching { api.listJobs(ownerId, 50) }.getOrNull() }
+
+    val savedItems = savedDeferred.await()
+    val genRes = genDeferred.await()
+    val jobsRes = jobsDeferred.await()
 
     val savedJobIds = mutableSetOf<String>()
     val savingJobIds = mutableSetOf<String>()
     val savingKvJobs = mutableListOf<JSONObject>()
-    (jobsRes.await().optJSONArray("items") ?: JSONArray()).let { arr ->
+    (jobsRes?.optJSONArray("items") ?: JSONArray()).let { arr ->
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
             val jid = obj.optString("job_id", "").trim()
@@ -1281,17 +1309,14 @@ private suspend fun fetchCreationsDesignsMerged(
     }
     val merged = mutableListOf<CreationDesign>()
 
-    (listRes.await().optJSONArray("items") ?: JSONArray()).let { arr ->
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            parseSavedCreationDesign(obj)?.let { d ->
-                d.jobId?.let { savedJobIds.add(it) }
-                merged.add(d)
-            }
+    savedItems.forEach { obj ->
+        parseSavedCreationDesign(obj)?.let { d ->
+            d.jobId?.let { savedJobIds.add(it) }
+            merged.add(d)
         }
     }
 
-    (genRes.await().optJSONArray("items") ?: JSONArray()).let { arr ->
+    (genRes?.optJSONArray("items") ?: JSONArray()).let { arr ->
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
             val jid = obj.optString("job_id", "").trim()
@@ -1325,7 +1350,7 @@ private suspend fun fetchPublishedCreationsProducts(
 ): List<CreationProduct> {
     val resp = api.getPublishedProducts(ownerId, shop)
     if (!resp.optBoolean("ok", false)) return emptyList()
-    return (resp.optJSONArray("products") ?: JSONArray()).let { arr ->
+    return (resp.optJSONArray("products") ?: resp.optJSONArray("items") ?: JSONArray()).let { arr ->
         fun toImageStr(v: Any?): String? = when (v) {
             is String -> v.takeIf { it.isNotBlank() }
             is JSONObject -> (v.optString("src", "").takeIf { it.isNotBlank() }
@@ -1369,7 +1394,8 @@ private suspend fun fetchPublishedCreationsProducts(
             CreationProduct(
                 id = obj.optString("shopify_product_id", "")
                     .ifBlank { obj.optString("published_design_id", "") }
-                    .ifBlank { obj.optString("product_key", "") + "-product" },
+                    .ifBlank { obj.optString("product_key", "") + "-product" }
+                    .ifBlank { "product-$i" },
                 title = title,
                 productName = title,
                 productKey = productKey,
@@ -1397,49 +1423,37 @@ private suspend fun fetchPublishedCreationsProducts(
 private fun CreationsDesignsActivityMeta(
     designsActivityFilter: String,
     onDesignsActivityChange: (String) -> Unit,
-    designsCount: Int,
-    designsLabel: String,
     activeLabel: String,
     inactiveLabel: String,
 ) {
-    Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier.padding(start = 4.dp),
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.28f)),
     ) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
-                .background(Color.Black.copy(alpha = 0.28f)),
-        ) {
-            listOf("active" to activeLabel, "inactive" to inactiveLabel).forEach { (key, label) ->
-                val selected = designsActivityFilter == key
-                Box(
-                    modifier = Modifier
-                        .clickable { onDesignsActivityChange(key) }
-                        .background(
-                            if (selected) EazColors.Orange.copy(alpha = 0.22f) else Color.Transparent
-                        )
-                        .padding(horizontal = 7.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = label,
-                        fontSize = 10.sp,
-                        lineHeight = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (selected) Color.White else Color.White.copy(alpha = 0.55f),
+        listOf("active" to activeLabel, "inactive" to inactiveLabel).forEach { (key, label) ->
+            val selected = designsActivityFilter == key
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .clickable { onDesignsActivityChange(key) }
+                    .background(
+                        if (selected) EazColors.Orange.copy(alpha = 0.22f) else Color.Transparent
                     )
-                }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (selected) Color.White else Color.White.copy(alpha = 0.55f),
+                )
             }
         }
-        Text(
-            text = "$designsCount $designsLabel",
-            fontSize = 10.sp,
-            lineHeight = 12.sp,
-            color = Color.White.copy(alpha = 0.6f),
-        )
     }
 }
 
@@ -1451,7 +1465,6 @@ private fun CreationsDesignsToolbar(
     onUploadClick: () -> Unit,
     designsActivityFilter: String,
     onDesignsActivityChange: (String) -> Unit,
-    designsCount: Int,
     translationStore: TranslationStore,
 ) {
     Row(
@@ -1504,8 +1517,6 @@ private fun CreationsDesignsToolbar(
         CreationsDesignsActivityMeta(
             designsActivityFilter = designsActivityFilter,
             onDesignsActivityChange = onDesignsActivityChange,
-            designsCount = designsCount,
-            designsLabel = translationStore.t("creator.mobile.designs", "Designs"),
             activeLabel = translationStore.t("creator.creations.designs_tab_active", "Active"),
             inactiveLabel = translationStore.t("creator.creations.designs_tab_inactive", "Inactive"),
         )
