@@ -33,7 +33,7 @@ fun HeaderSearchModal(
     if (!visible) return
 
     val store = LocalTranslationStore.current
-    val placeholder = store?.t("search.placeholder", "Search...") ?: "Search..."
+    val placeholder = store?.t("eaz.search.placeholder", "Search at eazpire...") ?: "Search at eazpire..."
 
     Dialog(
         onDismissRequest = onDismiss,
