@@ -7,25 +7,34 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,11 +44,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.foundation.layout.size
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,10 +53,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -70,6 +86,13 @@ data class VideoClipperClip(
     val title: String,
     val reason: String,
     val selected: Boolean = true,
+)
+
+data class VideoClipperExport(
+    val id: String,
+    val title: String,
+    val uri: Uri,
+    val durationS: Double,
 )
 
 /**
@@ -103,6 +126,9 @@ fun VideoClipperScreen(
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var clips by remember { mutableStateOf(listOf<VideoClipperClip>()) }
+    var exported by remember { mutableStateOf(listOf<VideoClipperExport>()) }
+    var sidebarCollapsed by remember { mutableStateOf(false) }
+    var fullscreenUri by remember { mutableStateOf<Uri?>(null) }
     var showSourcePicker by remember { mutableStateOf(false) }
     var showLinkDialog by remember { mutableStateOf(false) }
     var linkValue by remember { mutableStateOf("") }
@@ -110,6 +136,7 @@ fun VideoClipperScreen(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         videoUri = uri
         clips = emptyList()
+        exported = emptyList()
         durationS = if (uri != null) VideoClipperMedia.durationSeconds(context, uri) else 0.0
         status = if (uri == null) "" else t("creator.video_clipper.pick_hint", "Device upload or YouTube. 30–60 minutes with speech works best. Max 500 MB.")
     }
@@ -141,6 +168,7 @@ fun VideoClipperScreen(
                         }
                         videoUri = Uri.fromFile(dest)
                         clips = emptyList()
+                        exported = emptyList()
                         durationS = VideoClipperMedia.durationSeconds(context, videoUri!!)
                         status = t("creator.video_clipper.link_ready", "YouTube video loaded.")
                         return@launch
@@ -173,6 +201,7 @@ fun VideoClipperScreen(
                 if (!ok) throw IllegalStateException("download_failed")
                 videoUri = Uri.fromFile(dest)
                 clips = emptyList()
+                exported = emptyList()
                 durationS = VideoClipperMedia.durationSeconds(context, videoUri!!)
                 status = t("creator.video_clipper.link_ready", "YouTube video loaded.")
             } catch (e: Exception) {
@@ -288,7 +317,11 @@ fun VideoClipperScreen(
                         reason = o.optString("reason"),
                     )
                 }
-                status = t("creator.video_clipper.plan_ready", "Plan ready — edit times if you want, then export.")
+                exported = emptyList()
+                status = t(
+                    "creator.video_clipper.plan_ready",
+                    "Analysis ready — export to split the video into Shorts.",
+                ) + " (${clips.size})"
             } catch (e: Exception) {
                 status = t("creator.video_clipper.analyze_failed", "Analyze failed.") + " " + (e.message ?: "")
             }
@@ -299,18 +332,19 @@ fun VideoClipperScreen(
     fun exportSelected() {
         val uri = videoUri
         if (uri == null || ownerId.isBlank() || busy) return
-        val chosen = clips.filter { it.selected }
+        val chosen = clips
         if (chosen.isEmpty()) {
-            status = t("creator.video_clipper.need_selection", "Select at least one clip.")
+            status = t("creator.video_clipper.need_selection", "Analyze the video first, then export.")
             return
         }
         busy = true
         scope.launch {
+            val made = mutableListOf<VideoClipperExport>()
             try {
                 chosen.forEachIndexed { idx, clip ->
-                    status = t("creator.video_clipper.exporting", "Exporting Short…") + " ${idx + 1}/${chosen.size}"
-                    withContext(Dispatchers.IO) {
-                        val out = File(context.cacheDir, "cvcl-clip-${clip.id}.mp4")
+                    status = t("creator.video_clipper.exporting", "Splitting Short…") + " ${idx + 1}/${chosen.size}"
+                    val item = withContext(Dispatchers.IO) {
+                        val out = File(context.cacheDir, "cvcl-out-${clip.id}.mp4")
                         val ok = VideoClipperMedia.extractVideoRange(
                             context,
                             uri,
@@ -319,24 +353,32 @@ fun VideoClipperScreen(
                             out,
                         )
                         if (!ok || !out.exists()) throw IllegalStateException("cut_failed")
-                        val resp = api.videoClipperExport(
-                            ownerId = ownerId,
-                            videoBytes = out.readBytes(),
-                            filename = "${clip.title.ifBlank { "short" }}.mp4",
-                            title = clip.title.ifBlank { "Video Clipper short" },
+                        runCatching {
+                            api.videoClipperExport(
+                                ownerId = ownerId,
+                                videoBytes = out.readBytes(),
+                                filename = "${clip.title.ifBlank { "short" }}.mp4",
+                                title = clip.title.ifBlank { "Video Clipper short" },
+                                durationS = (clip.end - clip.start).coerceAtLeast(0.1),
+                            )
+                        }
+                        VideoClipperExport(
+                            id = clip.id,
+                            title = clip.title.ifBlank { "Short ${idx + 1}" },
+                            uri = Uri.fromFile(out),
                             durationS = (clip.end - clip.start).coerceAtLeast(0.1),
                         )
-                        out.delete()
-                        if (!resp.optBoolean("ok")) {
-                            throw IllegalStateException(resp.optString("error", "export_failed"))
-                        }
                     }
+                    made += item
+                    exported = made.toList()
                 }
+                sidebarCollapsed = true
                 status = t(
-                    "creator.video_clipper.android_export_done",
-                    "Clips saved. 9:16 crop is available in the web Video Clipper.",
+                    "creator.video_clipper.export_done",
+                    "Shorts are ready on the right. Saved to your videos.",
                 )
             } catch (e: Exception) {
+                if (made.isNotEmpty()) exported = made.toList()
                 status = t("creator.video_clipper.export_failed", "Export failed.") + " " + (e.message ?: "")
             }
             busy = false
@@ -366,149 +408,175 @@ fun VideoClipperScreen(
                     )
                 }
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    t(
-                        "creator.video_clipper.lead",
-                        "Turn a long talking video into Shorts. We transcribe the speech, propose clip times, then cut 9:16 clips.",
-                    ),
-                    color = Color.White.copy(alpha = 0.7f),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    if (videoUri == null) t("creator.video_clipper.pick_video", "Choose a long-form video")
-                    else t("creator.video_clipper.pick_hint", "Device upload or YouTube. 30–60 minutes with speech works best. Max 500 MB."),
-                    color = Color.White,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .clickable(enabled = !busy) { showSourcePicker = true }
-                        .padding(16.dp),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = autoCount,
-                        onCheckedChange = { autoCount = it },
-                        colors = SwitchDefaults.colors(checkedTrackColor = EazColors.Orange),
-                    )
-                    Text(t("creator.video_clipper.auto_count", "Auto clip count"), color = Color.White)
-                }
-                if (!autoCount) {
-                    OutlinedTextField(
-                        value = clipCount,
-                        onValueChange = { clipCount = it.filter { ch -> ch.isDigit() }.take(2) },
-                        label = { Text(t("creator.video_clipper.clip_count", "Clips")) },
-                        colors = fieldColors,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = autoDuration,
-                        onCheckedChange = { autoDuration = it },
-                        colors = SwitchDefaults.colors(checkedTrackColor = EazColors.Orange),
-                    )
-                    Text(t("creator.video_clipper.auto_duration", "Auto duration"), color = Color.White)
-                }
-                if (!autoDuration) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = minS,
-                            onValueChange = { minS = it.filter { ch -> ch.isDigit() }.take(2) },
-                            label = { Text(t("creator.video_clipper.min_s", "Min seconds")) },
-                            colors = fieldColors,
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = maxS,
-                            onValueChange = { maxS = it.filter { ch -> ch.isDigit() }.take(2) },
-                            label = { Text(t("creator.video_clipper.max_s", "Max seconds")) },
-                            colors = fieldColors,
-                            modifier = Modifier.weight(1f),
-                        )
+            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Box {
+                    if (!sidebarCollapsed) {
+                        Column(
+                            modifier = Modifier
+                                .width(280.dp)
+                                .fillMaxHeight()
+                                .background(Color.Black.copy(alpha = 0.22f))
+                                .padding(10.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                t(
+                                    "creator.video_clipper.lead",
+                                    "Turn a long talking video into Shorts. We transcribe the speech, propose clip times, then cut 9:16 clips.",
+                                ),
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                if (videoUri == null) t("creator.video_clipper.pick_video", "Choose a long-form video")
+                                else t("creator.video_clipper.pick_hint", "Device upload or YouTube. 30–60 minutes with speech works best. Max 500 MB."),
+                                color = Color.White,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                    .clickable(enabled = !busy) { showSourcePicker = true }
+                                    .padding(16.dp),
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Switch(
+                                    checked = autoCount,
+                                    onCheckedChange = { autoCount = it },
+                                    colors = SwitchDefaults.colors(checkedTrackColor = EazColors.Orange),
+                                )
+                                Text(t("creator.video_clipper.auto_count", "Auto clip count"), color = Color.White)
+                            }
+                            if (!autoCount) {
+                                OutlinedTextField(
+                                    value = clipCount,
+                                    onValueChange = { clipCount = it.filter { ch -> ch.isDigit() }.take(2) },
+                                    label = { Text(t("creator.video_clipper.clip_count", "Clips")) },
+                                    colors = fieldColors,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Switch(
+                                    checked = autoDuration,
+                                    onCheckedChange = { autoDuration = it },
+                                    colors = SwitchDefaults.colors(checkedTrackColor = EazColors.Orange),
+                                )
+                                Text(t("creator.video_clipper.auto_duration", "Auto duration"), color = Color.White)
+                            }
+                            if (!autoDuration) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = minS,
+                                        onValueChange = { minS = it.filter { ch -> ch.isDigit() }.take(2) },
+                                        label = { Text(t("creator.video_clipper.min_s", "Min seconds")) },
+                                        colors = fieldColors,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    OutlinedTextField(
+                                        value = maxS,
+                                        onValueChange = { maxS = it.filter { ch -> ch.isDigit() }.take(2) },
+                                        label = { Text(t("creator.video_clipper.max_s", "Max seconds")) },
+                                        colors = fieldColors,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            if (status.isNotBlank()) {
+                                Text(status, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+                            }
+                            Button(
+                                onClick = { analyze() },
+                                enabled = !busy && videoUri != null && ownerId.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(t("creator.video_clipper.analyze", "Analyze video"))
+                            }
+                            Button(
+                                onClick = { exportSelected() },
+                                enabled = !busy && clips.isNotEmpty(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.16f)),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(t("creator.video_clipper.export_shorts", "Export Shorts"))
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    } else {
+                        Spacer(Modifier.width(28.dp).fillMaxHeight())
                     }
-                }
-                clips.forEachIndexed { idx, clip ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(12.dp))
-                            .padding(10.dp),
+                    IconButton(
+                        onClick = { sidebarCollapsed = !sidebarCollapsed },
+                        modifier = Modifier.align(Alignment.CenterEnd),
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
-                                checked = clip.selected,
-                                onCheckedChange = { checked ->
-                                    clips = clips.toMutableList().also {
-                                        it[idx] = clip.copy(selected = checked)
-                                    }
-                                },
-                                colors = CheckboxDefaults.colors(checkedColor = EazColors.Orange),
+                        Icon(
+                            imageVector = if (sidebarCollapsed) {
+                                Icons.Default.KeyboardArrowRight
+                            } else {
+                                Icons.Default.KeyboardArrowLeft
+                            },
+                            contentDescription = t("creator.video_clipper.toggle_sidebar", "Toggle sidebar"),
+                            tint = Color.White,
+                        )
+                    }
+                }
+
+                if (exported.isEmpty()) {
+                    Text(
+                        t(
+                            "creator.video_clipper.results_empty",
+                            "Analyze the video, then export to split it into Shorts.",
+                        ),
+                        color = Color.White.copy(alpha = 0.68f),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(20.dp),
+                    )
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 160.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(exported, key = { it.id }) { item ->
+                            ClipperResultCard(
+                                item = item,
+                                fullscreenLabel = t("creator.video_clipper.fullscreen", "Fullscreen"),
+                                onFullscreen = { fullscreenUri = item.uri },
                             )
-                            OutlinedTextField(
-                                value = clip.title,
-                                onValueChange = { value ->
-                                    clips = clips.toMutableList().also { it[idx] = clip.copy(title = value) }
-                                },
-                                colors = fieldColors,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = clip.start.toString(),
-                                onValueChange = { value ->
-                                    clips = clips.toMutableList().also {
-                                        it[idx] = clip.copy(start = value.toDoubleOrNull() ?: clip.start)
-                                    }
-                                },
-                                label = { Text(t("creator.video_clipper.start", "Start")) },
-                                colors = fieldColors,
-                                modifier = Modifier.weight(1f),
-                            )
-                            OutlinedTextField(
-                                value = clip.end.toString(),
-                                onValueChange = { value ->
-                                    clips = clips.toMutableList().also {
-                                        it[idx] = clip.copy(end = value.toDoubleOrNull() ?: clip.end)
-                                    }
-                                },
-                                label = { Text(t("creator.video_clipper.end", "End")) },
-                                colors = fieldColors,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        if (clip.reason.isNotBlank()) {
-                            Text(clip.reason, color = Color.White.copy(alpha = 0.65f), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
-                if (status.isNotBlank()) {
-                    Text(status, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
-                }
-                Spacer(Modifier.height(8.dp))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = { analyze() },
-                    enabled = !busy && videoUri != null && ownerId.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
-                    modifier = Modifier.weight(1f),
+        }
+    }
+
+    fullscreenUri?.let { playUri ->
+        Dialog(
+            onDismissRequest = { fullscreenUri = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+            ) {
+                ClipperPlayerView(uri = playUri, modifier = Modifier.fillMaxSize())
+                IconButton(
+                    onClick = { fullscreenUri = null },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
                 ) {
-                    Text(t("creator.video_clipper.analyze", "Analyze video"))
-                }
-                Button(
-                    onClick = { exportSelected() },
-                    enabled = !busy && clips.any { it.selected },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.16f)),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(t("creator.video_clipper.export_selected", "Export selected Shorts"))
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = t("creator.video_clipper.close", "Close"),
+                        tint = Color.White,
+                    )
                 }
             }
         }
@@ -611,6 +679,70 @@ private fun ClipperSourceRow(
             Text(hint, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+@Composable
+private fun ClipperResultCard(
+    item: VideoClipperExport,
+    fullscreenLabel: String,
+    onFullscreen: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(9f / 16f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black)
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+        ) {
+            ClipperPlayerView(uri = item.uri, modifier = Modifier.fillMaxSize())
+            IconButton(
+                onClick = onFullscreen,
+                modifier = Modifier.align(Alignment.TopEnd),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Fullscreen,
+                    contentDescription = fullscreenLabel,
+                    tint = Color.White,
+                )
+            }
+        }
+        Text(
+            item.title,
+            color = Color.White,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun ClipperPlayerView(
+    uri: Uri,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val exoPlayer = remember(uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(uri))
+            prepare()
+        }
+    }
+    DisposableEffect(exoPlayer) {
+        onDispose { exoPlayer.release() }
+    }
+    AndroidView(
+        modifier = modifier,
+        factory = {
+            PlayerView(context).apply {
+                useController = true
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                player = exoPlayer
+            }
+        },
+        update = { it.player = exoPlayer },
+    )
 }
 
 private fun isYouTubeUrl(raw: String): Boolean {
