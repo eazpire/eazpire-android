@@ -305,7 +305,7 @@ fun CreationsSlotUsageBar(
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xB8080512), Color(0x6B080512))
+                    listOf(Color(0xD11C2434), Color(0xBF1C2434))
                 )
             )
             .padding(horizontal = 16.dp, vertical = 7.dp),
