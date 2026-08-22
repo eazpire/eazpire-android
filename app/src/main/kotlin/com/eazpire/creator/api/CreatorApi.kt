@@ -2268,6 +2268,7 @@ class CreatorApi(
             .addFormDataPart("width", "1080")
             .addFormDataPart("height", "1920")
             .addFormDataPart("duration_s", durationS.toString())
+            .addFormDataPart("tool", "video_clipper")
             .build()
         val url =
             "$baseUrl/apps/creator-dispatch?op=video-studio-export" +
