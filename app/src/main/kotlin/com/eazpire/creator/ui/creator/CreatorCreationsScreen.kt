@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -215,10 +216,16 @@ fun CreatorCreationsScreen(
     var ownerId by remember { mutableStateOf(runCatching { tokenStore.getOwnerId() }.getOrNull().orEmpty()) }
     val api = remember(jwt) { com.eazpire.creator.api.CreatorApi(jwt = jwt) }
     LaunchedEffect(Unit) {
-        val nextJwt = runCatching { tokenStore.getJwt() }.getOrNull()
-        val nextOwner = runCatching { tokenStore.getOwnerId() }.getOrNull().orEmpty()
-        if (nextJwt != jwt) jwt = nextJwt
-        if (nextOwner != ownerId) ownerId = nextOwner
+        runCatching {
+            com.eazpire.creator.auth.ShopSessionCoordinator.refreshSession(
+                context,
+                tokenStore,
+                reason = "creations",
+                force = true,
+            )
+        }
+        jwt = runCatching { tokenStore.getJwt() }.getOrNull()
+        ownerId = runCatching { tokenStore.getOwnerId() }.getOrNull().orEmpty()
     }
     val shopifyApi = remember { ShopifyProductsApi() }
     val shop = AuthConfig.SHOP_DOMAIN
@@ -517,10 +524,32 @@ fun CreatorCreationsScreen(
     val chromeScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -6f) chromeVisible.value = false
-                else if (available.y > 6f) chromeVisible.value = true
+                if (available.y < -1f) chromeVisible.value = false
+                else if (available.y > 1f) chromeVisible.value = true
                 return Offset.Zero
             }
+        }
+    }
+    LaunchedEffect(currentTab, isListMode) {
+        var lastIdx = 0
+        var lastOff = 0
+        snapshotFlow {
+            if (currentTab == "designs") {
+                if (isListMode) designsListState.firstVisibleItemIndex to designsListState.firstVisibleItemScrollOffset
+                else designsGridState.firstVisibleItemIndex to designsGridState.firstVisibleItemScrollOffset
+            } else {
+                if (isListMode) productsListState.firstVisibleItemIndex to productsListState.firstVisibleItemScrollOffset
+                else productsGridState.firstVisibleItemIndex to productsGridState.firstVisibleItemScrollOffset
+            }
+        }.collect { (idx, off) ->
+            val dy = (idx - lastIdx) * 10000 + (off - lastOff)
+            when {
+                idx == 0 && off <= 4 -> chromeVisible.value = true
+                dy > 0 -> chromeVisible.value = false
+                dy < 0 -> chromeVisible.value = true
+            }
+            lastIdx = idx
+            lastOff = off
         }
     }
 

@@ -99,4 +99,13 @@ class CreationsDailyLimitsTest {
         val fake = JSONObject("""{"ok":true,"next_cursor":"null"}""")
         assertEquals(null, com.eazpire.creator.api.jsonNextCursor(fake))
     }
+
+    @Test
+    fun usableJwtSkipsExpiredToken() {
+        val payload = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("""{"exp":1}""".toByteArray())
+        val expired = "hdr.$payload.sig"
+        assertEquals(null, com.eazpire.creator.api.usableJwt(expired))
+        assertEquals("live-token", com.eazpire.creator.api.usableJwt("Bearer live-token"))
+    }
 }

@@ -702,53 +702,37 @@ internal fun JourneyListingLimitTreePanel(
                 )
                 if (channel.unlocked) {
                     JourneyVariantConnector()
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(
-                                2.dp,
-                                Color(0xFFFFC83C).copy(alpha = 0.85f),
-                                RoundedCornerShape(16.dp),
-                            )
-                            .background(
-                                Color.Black.copy(alpha = 0.32f),
-                                RoundedCornerShape(16.dp),
-                            )
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        Text(
-                            channel.title,
-                            color = EazColors.Orange,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 13.sp,
-                            letterSpacing = 0.8.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        JourneyListingLimitSkillCarousel(
-                            title = dailyTitle,
-                            tiers = listingLimitTiersForChannelAxis(allNodes, channel, "daily"),
-                            allNodes = allNodes,
-                            isCreator = isCreator,
-                            busy = busy,
-                            translationStore = translationStore,
-                            onInfoClick = onInfoClick,
-                            onCommitClick = onCommitClick,
-                            onUnlock = onUnlock,
-                        )
-                        JourneyListingLimitSkillCarousel(
-                            title = capTitle,
-                            tiers = listingLimitTiersForChannelAxis(allNodes, channel, "cap"),
-                            allNodes = allNodes,
-                            isCreator = isCreator,
-                            busy = busy,
-                            translationStore = translationStore,
-                            onInfoClick = onInfoClick,
-                            onCommitClick = onCommitClick,
-                            onUnlock = onUnlock,
-                        )
-                    }
+                    Text(
+                        channel.title,
+                        color = EazColors.Orange,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 13.sp,
+                        letterSpacing = 0.8.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    JourneyListingLimitSkillCarousel(
+                        title = dailyTitle,
+                        tiers = listingLimitTiersForChannelAxis(allNodes, channel, "daily"),
+                        allNodes = allNodes,
+                        isCreator = isCreator,
+                        busy = busy,
+                        translationStore = translationStore,
+                        onInfoClick = onInfoClick,
+                        onCommitClick = onCommitClick,
+                        onUnlock = onUnlock,
+                    )
+                    JourneyListingLimitSkillCarousel(
+                        title = capTitle,
+                        tiers = listingLimitTiersForChannelAxis(allNodes, channel, "cap"),
+                        allNodes = allNodes,
+                        isCreator = isCreator,
+                        busy = busy,
+                        translationStore = translationStore,
+                        onInfoClick = onInfoClick,
+                        onCommitClick = onCommitClick,
+                        onUnlock = onUnlock,
+                    )
                 }
             }
         }
@@ -768,7 +752,21 @@ private fun JourneyListingLimitSkillCarousel(
     onUnlock: (String) -> Unit,
 ) {
     if (tiers.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                2.dp,
+                Color(0xFFFFC83C).copy(alpha = 0.85f),
+                RoundedCornerShape(16.dp),
+            )
+            .background(
+                Color.Black.copy(alpha = 0.32f),
+                RoundedCornerShape(16.dp),
+            )
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Text(
             title,
             color = EazColors.Orange,

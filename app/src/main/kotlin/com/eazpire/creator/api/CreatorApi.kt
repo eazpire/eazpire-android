@@ -56,25 +56,39 @@ class CreatorApi(
         method: String = "GET",
         httpClient: OkHttpClient = client,
     ): JSONObject = withContext(Dispatchers.IO) {
-        val url = buildString {
-            append("$baseUrl/apps/creator-dispatch?op=$op")
-            if (method == "GET" && CreatorHttpClient.shouldCacheBust(op)) {
-                append("&_t=${System.currentTimeMillis()}")
+        fun execute(sendJwt: Boolean): JSONObject {
+            val url = buildString {
+                append("$baseUrl/apps/creator-dispatch?op=$op")
+                if (method == "GET" && CreatorHttpClient.shouldCacheBust(op)) {
+                    append("&_t=${System.currentTimeMillis()}")
+                }
+                params.forEach { (k, v) ->
+                    if (v.isNotBlank()) append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}")
+                }
             }
-            params.forEach { (k, v) ->
-                if (v.isNotBlank()) append("&${k}=${java.net.URLEncoder.encode(v, "UTF-8")}")
-            }
+            val token = if (sendJwt) usableJwt(jwt) else null
+            val request = Request.Builder()
+                .url(url)
+                .apply {
+                    token?.let { addHeader("Authorization", "Bearer $it") }
+                }
+                .method(method, if (method == "POST") okhttp3.RequestBody.create(null, byteArrayOf()) else null)
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val body = response.body?.string() ?: "{}"
+            return JSONObject(body)
         }
-        val request = Request.Builder()
-            .url(url)
-            .apply {
-                jwt?.let { addHeader("Authorization", "Bearer $it") }
-            }
-            .method(method, if (method == "POST") okhttp3.RequestBody.create(null, byteArrayOf()) else null)
-            .build()
-        val response = httpClient.newCall(request).execute()
-        val body = response.body?.string() ?: "{}"
-        JSONObject(body)
+
+        val first = execute(sendJwt = true)
+        val err = first.optString("error", "")
+        if (
+            method == "GET" &&
+            !usableJwt(jwt).isNullOrBlank() &&
+            (err == "missing_owner_id" || (first.optBoolean("ok", true).not() && err.contains("owner")))
+        ) {
+            return@withContext execute(sendJwt = false)
+        }
+        first
     }
 
     suspend fun getBalance(ownerId: String? = null): JSONObject {
@@ -4843,6 +4857,28 @@ fun jsonNextCursor(data: JSONObject): String? {
     val raw = data.optString("next_cursor", "").trim()
     if (raw.isBlank() || raw.equals("null", ignoreCase = true)) return null
     return raw
+}
+
+internal fun usableJwt(raw: String?): String? {
+    val token = raw?.trim()?.removePrefix("Bearer ")?.trim().orEmpty()
+    if (token.isBlank()) return null
+    if (jwtPayloadExpired(token)) return null
+    return token
+}
+
+private fun jwtPayloadExpired(token: String): Boolean {
+    return try {
+        val parts = token.split('.')
+        if (parts.size < 2) return false
+        var payload = parts[1]
+        val pad = (4 - payload.length % 4) % 4
+        if (pad > 0) payload += "=".repeat(pad)
+        val json = String(java.util.Base64.getUrlDecoder().decode(payload))
+        val exp = JSONObject(json).optLong("exp", 0L)
+        exp > 0L && exp * 1000L <= System.currentTimeMillis() + 15_000L
+    } catch (_: Exception) {
+        false
+    }
 }
 
 data class ApiLanguageItem(val code: String, val label: String, val flagCode: String)

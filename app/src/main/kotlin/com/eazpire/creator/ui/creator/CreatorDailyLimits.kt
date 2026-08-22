@@ -135,16 +135,16 @@ fun parseJourneySlotUsage(resp: JSONObject?): JourneySlotUsage {
 }
 
 private val UploadFill = Brush.horizontalGradient(
-    listOf(Color(0x5938BDF8), Color(0xFF38BDF8), Color(0xFF7C3AED))
+    listOf(Color(0x7338BDF8), Color(0x737C3AED))
 )
 private val GenerateFill = Brush.horizontalGradient(
-    listOf(Color(0xFF7C3AED), Color(0xFFC026D3), Color(0xFFF97316))
+    listOf(Color(0x737C3AED), Color(0x73C026D3))
 )
 private val PublishFill = Brush.horizontalGradient(
-    listOf(Color(0xFFC026D3), Color(0xFFF97316), Color(0xFFFDE68A))
+    listOf(Color(0x73C026D3), Color(0x73F97316))
 )
 private val CountdownFill = Brush.horizontalGradient(
-    listOf(Color(0xFF7C3AED), Color(0xFFC026D3), Color(0xFFF97316), Color(0xFFFDE68A))
+    listOf(Color(0x737C3AED), Color(0x73F97316))
 )
 private val DesignsSlotFill = GenerateFill
 private val ProductsSlotFill = PublishFill
@@ -158,7 +158,7 @@ private fun CosmicUsageBar(
     fill: Brush,
     modifier: Modifier = Modifier,
     barWidth: Int = 68,
-    barHeight: Int = 16,
+    barHeight: Int = 18,
     iconPrefix: String = "",
 ) {
     val pct = if (locked) 0 else slotFillPercent(used, cap)
@@ -169,7 +169,7 @@ private fun CosmicUsageBar(
             .width(barWidth.dp)
             .height(barHeight.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.06f)),
+            .background(Color(0xC706080E)),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -181,10 +181,14 @@ private fun CosmicUsageBar(
         )
         Text(
             text = label,
-            color = if (!locked && cap > 0 && used >= cap) Color(0xFFFB923C) else Color(0xFFF5F3FF),
-            fontSize = 9.sp,
+            color = if (!locked && cap > 0 && used >= cap) Color(0xFFFFB070) else Color.White,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
-            lineHeight = 10.sp,
+            lineHeight = 11.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0x99080A12))
+                .padding(horizontal = 5.dp, vertical = 1.dp),
         )
     }
 }
