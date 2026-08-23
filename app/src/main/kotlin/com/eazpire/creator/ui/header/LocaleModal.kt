@@ -43,16 +43,13 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.ui.components.GlassCircularFlag
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LocaleModal(
-    title: String,
+fun LocalePickerBody(
     items: List<LocaleModalItem>,
     selectedCode: String,
-    onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
     searchPlaceholder: String = "Search...",
-    sheetContainerColor: Color = Color.White,
     contentColorPrimary: Color = EazColors.TextPrimary,
     contentColorSecondary: Color = EazColors.TextSecondary,
     fieldContainerColor: Color = Color.White,
@@ -68,6 +65,92 @@ fun LocaleModal(
         }
     }
 
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = { searchQuery = it },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 8.dp),
+        placeholder = { Text(searchPlaceholder, color = contentColorSecondary) },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = contentColorSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = EazColors.Orange,
+            unfocusedBorderColor = outlineUnfocused,
+            focusedContainerColor = fieldContainerColor,
+            unfocusedContainerColor = fieldContainerColor,
+            cursorColor = EazColors.Orange,
+            focusedTextColor = contentColorPrimary,
+            unfocusedTextColor = contentColorPrimary
+        ),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
+    )
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        items(filtered) { item ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onSelect(item.code)
+                        onDismiss()
+                    }
+                    .background(
+                        if (item.code == selectedCode) EazColors.OrangeBg
+                        else Color.Transparent,
+                        RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GlassCircularFlag(countryCode = item.flagCode, size = 24.dp)
+                Text(
+                    text = item.label,
+                    modifier = Modifier.padding(start = 12.dp),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                    color = contentColorPrimary
+                )
+                if (item.code == selectedCode) {
+                    Text(
+                        text = "✓",
+                        modifier = Modifier.padding(start = 8.dp),
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                        color = EazColors.Orange
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LocaleModal(
+    title: String,
+    items: List<LocaleModalItem>,
+    selectedCode: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    searchPlaceholder: String = "Search...",
+    sheetContainerColor: Color = Color.White,
+    contentColorPrimary: Color = EazColors.TextPrimary,
+    contentColorSecondary: Color = EazColors.TextSecondary,
+    fieldContainerColor: Color = Color.White,
+    outlineUnfocused: Color = EazColors.TopbarBorder
+) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     EazBottomSheet(
@@ -108,75 +191,17 @@ fun LocaleModal(
                     )
                 }
             }
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 8.dp),
-                placeholder = { Text(searchPlaceholder, color = contentColorSecondary) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = null,
-                        tint = contentColorSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = outlineUnfocused,
-                    focusedContainerColor = fieldContainerColor,
-                    unfocusedContainerColor = fieldContainerColor,
-                    cursorColor = EazColors.Orange,
-                    focusedTextColor = contentColorPrimary,
-                    unfocusedTextColor = contentColorPrimary
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
+            LocalePickerBody(
+                items = items,
+                selectedCode = selectedCode,
+                onSelect = onSelect,
+                onDismiss = onDismiss,
+                searchPlaceholder = searchPlaceholder,
+                contentColorPrimary = contentColorPrimary,
+                contentColorSecondary = contentColorSecondary,
+                fieldContainerColor = fieldContainerColor,
+                outlineUnfocused = outlineUnfocused
             )
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                items(filtered) { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onSelect(item.code)
-                                onDismiss()
-                            }
-                            .background(
-                                if (item.code == selectedCode) EazColors.OrangeBg
-                                else androidx.compose.ui.graphics.Color.Transparent,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        GlassCircularFlag(countryCode = item.flagCode, size = 24.dp)
-                        Text(
-                            text = item.label,
-                            modifier = Modifier.padding(start = 12.dp),
-                            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                            color = contentColorPrimary
-                        )
-                        if (item.code == selectedCode) {
-                            Text(
-                                text = "✓",
-                                modifier = Modifier.padding(start = 8.dp),
-                                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                                color = EazColors.Orange
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }

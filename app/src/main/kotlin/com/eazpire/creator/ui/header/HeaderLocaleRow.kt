@@ -1,9 +1,10 @@
 package com.eazpire.creator.ui.header
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +15,6 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +23,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.debug.langDebug
@@ -31,8 +33,6 @@ import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.components.GlassCircularFlag
 import com.eazpire.creator.locale.LocaleStore
 import kotlinx.coroutines.launch
-
-private const val FLAG_CDN = "https://flagcdn.com/w80"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,77 +45,147 @@ fun HeaderLocaleRow(
     languageChildren: Map<String, LanguageChildren> = emptyMap(),
     onCountryChange: (String) -> Unit,
     onLanguageChange: (String) -> Unit,
+    combined: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var showCountryModal by remember { mutableStateOf(false) }
     var showLanguageModal by remember { mutableStateOf(false) }
+    var showCombinedModal by remember { mutableStateOf(false) }
     val flagCountryForLang = localeStore.getFlagCountryForLanguage(languageCode)
     val scope = rememberCoroutineScope()
     val store = translationStore ?: LocalTranslationStore.current
     val t = { key: String, default: String -> store?.t(key, default) ?: default }
+    val combinedAria = t("eaz.topbar.locale_combined_aria", "Location and language")
 
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    if (combined) {
         OutlinedCard(
-            onClick = { showCountryModal = true },
+            onClick = { showCombinedModal = true },
             shape = RoundedCornerShape(12.dp),
             border = BorderStroke(1.dp, EazColors.TopbarBorder),
             colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
                 containerColor = androidx.compose.ui.graphics.Color.White
             ),
-            modifier = Modifier.padding(0.dp)
+            modifier = modifier
+                .heightIn(min = 36.dp)
+                .semantics { contentDescription = combinedAria }
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.LocationOn,
-                    contentDescription = null,
-                    tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
-                GlassCircularFlag(countryCode = countryCode, size = 24.dp)
-                Icon(
-                    imageVector = Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.LocationOn,
+                        contentDescription = null,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Icon(
+                        imageVector = Icons.Outlined.Language,
+                        contentDescription = null,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(11.dp)
+                    )
+                }
+                GlassCircularFlag(countryCode = countryCode, size = 22.dp)
             }
         }
+    } else {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedCard(
+                onClick = { showCountryModal = true },
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, EazColors.TopbarBorder),
+                colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
+                    containerColor = androidx.compose.ui.graphics.Color.White
+                ),
+                modifier = Modifier.padding(0.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.LocationOn,
+                        contentDescription = null,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    GlassCircularFlag(countryCode = countryCode, size = 24.dp)
+                    Icon(
+                        imageVector = Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
 
-        OutlinedCard(
-            onClick = { showLanguageModal = true },
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, EazColors.TopbarBorder),
-            colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
-                containerColor = androidx.compose.ui.graphics.Color.White
-            ),
-            modifier = Modifier.padding(0.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            OutlinedCard(
+                onClick = { showLanguageModal = true },
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, EazColors.TopbarBorder),
+                colors = androidx.compose.material3.CardDefaults.outlinedCardColors(
+                    containerColor = androidx.compose.ui.graphics.Color.White
+                ),
+                modifier = Modifier.padding(0.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Language,
-                    contentDescription = null,
-                    tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
-                GlassCircularFlag(countryCode = flagCountryForLang, size = 24.dp)
-                Icon(
-                    imageVector = Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = EazColors.TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Language,
+                        contentDescription = null,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    GlassCircularFlag(countryCode = flagCountryForLang, size = 24.dp)
+                    Icon(
+                        imageVector = Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = EazColors.TextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
+    }
+
+    if (showCombinedModal) {
+        LocaleCombinedModal(
+            locationLabel = t("eaz.topbar.location_tab", "Location"),
+            languageLabel = t("eaz.topbar.language_tab", "Language"),
+            countryItems = AVAILABLE_COUNTRIES,
+            selectedCountryCode = countryCode,
+            onSelectCountry = { code ->
+                scope.launch {
+                    localeStore.setRegionOverride(code)
+                    onCountryChange(code)
+                }
+            },
+            countrySearchPlaceholder = t("creator.locale.search_country", "Search country..."),
+            standardLanguages = standardLanguages,
+            languageChildren = languageChildren,
+            selectedLanguageCode = languageCode,
+            onSelectLanguage = { code ->
+                langDebug("HeaderLocaleRow.kt:onSelect", "Language selected", mapOf("code" to code), "H1")
+                scope.launch {
+                    localeStore.setLanguageOverride(code)
+                    onLanguageChange(code)
+                }
+            },
+            languageSearchPlaceholder = t("eaz.topbar.search_language", "Search language..."),
+            onDismiss = { showCombinedModal = false }
+        )
     }
 
     if (showCountryModal) {
@@ -142,9 +212,7 @@ fun HeaderLocaleRow(
             selectedCode = languageCode,
             onDismiss = { showLanguageModal = false },
             onSelect = { code ->
-                // #region agent log
                 langDebug("HeaderLocaleRow.kt:onSelect", "Language selected", mapOf("code" to code), "H1")
-                // #endregion
                 scope.launch {
                     localeStore.setLanguageOverride(code)
                     onLanguageChange(code)

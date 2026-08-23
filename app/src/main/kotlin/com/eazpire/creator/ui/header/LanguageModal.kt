@@ -50,10 +50,8 @@ private val DarkTextSecondary = Color.White.copy(alpha = 0.7f)
 private val DarkBorder = Color.White.copy(alpha = 0.15f)
 private val DarkSelectedBg = EazColors.Orange.copy(alpha = 0.2f)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LanguageModal(
-    title: String,
+fun LanguagePickerBody(
     standardLanguages: List<LocaleModalItem>,
     languageChildren: Map<String, LanguageChildren>,
     selectedCode: String,
@@ -88,6 +86,135 @@ fun LanguageModal(
     val selectedBg = if (darkMode) DarkSelectedBg else EazColors.OrangeBg
     val borderColor = if (darkMode) DarkBorder else EazColors.TopbarBorder
 
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = { searchQuery = it },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 8.dp),
+        placeholder = { Text(searchPlaceholder, color = textSecondaryColor) },
+        leadingIcon = {
+            Icon(Icons.Filled.Search, contentDescription = null, tint = textSecondaryColor, modifier = Modifier.size(20.dp))
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = EazColors.Orange,
+            unfocusedBorderColor = borderColor,
+            focusedContainerColor = containerColor,
+            unfocusedContainerColor = containerColor,
+            cursorColor = EazColors.Orange,
+            focusedTextColor = textColor,
+            unfocusedTextColor = textColor
+        ),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { focusManager.clearFocus() })
+    )
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        items(filtered) { item ->
+            val baseLang = item.code.lowercase().split("-").first()
+            val children = languageChildren[baseLang]
+            val hasChildren = children != null && (children.dialects.isNotEmpty() || children.scripts.isNotEmpty())
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        if (item.code.equals(selectedCode, ignoreCase = true) ||
+                            selectedCode.startsWith("$baseLang-") && baseLang == item.code.lowercase()
+                        ) selectedBg
+                        else Color.Transparent,
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable {
+                        onSelect(item.code)
+                        onDismiss()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GlassCircularFlag(countryCode = item.flagCode, size = 24.dp)
+                Row(
+                    modifier = Modifier.weight(1f).padding(start = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = item.label,
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                        color = textColor
+                    )
+                    val dialectBadge = if (selectedCode.startsWith("${baseLang}-") && baseLang == item.code.lowercase())
+                        getDialectScriptBadge(getDialectScriptLabel(selectedCode, languageChildren)) else null
+                    if (dialectBadge != null) {
+                        Text(
+                            text = " · $dialectBadge",
+                            style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+                            color = textSecondaryColor
+                        )
+                    }
+                }
+                if (hasChildren) {
+                    IconButton(
+                        onClick = { dialectModalBaseLang = baseLang },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Dialect & Script",
+                            tint = EazColors.Orange,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                if (item.code.equals(selectedCode, ignoreCase = true) ||
+                    (selectedCode.startsWith("$baseLang-") && baseLang == item.code.lowercase())
+                ) {
+                    Text("✓", color = EazColors.Orange, style = androidx.compose.material3.MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+    }
+
+    dialectModalBaseLang?.let { base ->
+        val children = languageChildren[base]
+        if (children != null && (children.dialects.isNotEmpty() || children.scripts.isNotEmpty())) {
+            DialectModal(
+                baseLang = base,
+                baseLabel = standardLanguages.find { it.code.lowercase().split("-").first() == base }?.label ?: base.uppercase(),
+                baseFlag = standardLanguages.find { it.code.lowercase().split("-").first() == base }?.flagCode ?: "US",
+                children = children,
+                selectedCode = selectedCode,
+                onDismiss = { dialectModalBaseLang = null },
+                onSelect = { code ->
+                    onSelect(code)
+                    dialectModalBaseLang = null
+                    onDismiss()
+                },
+                darkMode = darkMode
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LanguageModal(
+    title: String,
+    standardLanguages: List<LocaleModalItem>,
+    languageChildren: Map<String, LanguageChildren>,
+    selectedCode: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    searchPlaceholder: String = "Search language...",
+    darkMode: Boolean = false
+) {
+    val containerColor = if (darkMode) DarkBg else Color.White
+    val textColor = if (darkMode) DarkTextPrimary else EazColors.TextPrimary
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     EazBottomSheet(
@@ -127,117 +254,13 @@ fun LanguageModal(
                     Icon(Icons.Default.Close, contentDescription = "Close", tint = textColor)
                 }
             }
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 8.dp),
-                placeholder = { Text(searchPlaceholder, color = textSecondaryColor) },
-                leadingIcon = {
-                    Icon(Icons.Filled.Search, contentDescription = null, tint = textSecondaryColor, modifier = Modifier.size(20.dp))
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = EazColors.Orange,
-                    unfocusedBorderColor = borderColor,
-                    focusedContainerColor = containerColor,
-                    unfocusedContainerColor = containerColor,
-                    cursorColor = EazColors.Orange,
-                    focusedTextColor = textColor,
-                    unfocusedTextColor = textColor
-                ),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { focusManager.clearFocus() })
-            )
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                items(filtered) { item ->
-                    val baseLang = item.code.lowercase().split("-").first()
-                    val children = languageChildren[baseLang]
-                    val hasChildren = children != null && (children.dialects.isNotEmpty() || children.scripts.isNotEmpty())
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                if (item.code.equals(selectedCode, ignoreCase = true) ||
-                                    selectedCode.startsWith("$baseLang-") && baseLang == item.code.lowercase()
-                                ) selectedBg
-                                else Color.Transparent,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable {
-                                onSelect(item.code)
-                                onDismiss()
-                            }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        GlassCircularFlag(countryCode = item.flagCode, size = 24.dp)
-                        Row(
-                            modifier = Modifier.weight(1f).padding(start = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = item.label,
-                                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                                color = textColor
-                            )
-                            val dialectBadge = if (selectedCode.startsWith("${baseLang}-") && baseLang == item.code.lowercase())
-                                getDialectScriptBadge(getDialectScriptLabel(selectedCode, languageChildren)) else null
-                            if (dialectBadge != null) {
-                                Text(
-                                    text = " · $dialectBadge",
-                                    style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
-                                    color = textSecondaryColor
-                                )
-                            }
-                        }
-                        if (hasChildren) {
-                            IconButton(
-                                onClick = { dialectModalBaseLang = baseLang },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Dialect & Script",
-                                    tint = EazColors.Orange,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        if (item.code.equals(selectedCode, ignoreCase = true) ||
-                            (selectedCode.startsWith("$baseLang-") && baseLang == item.code.lowercase())
-                        ) {
-                            Text("✓", color = EazColors.Orange, style = androidx.compose.material3.MaterialTheme.typography.bodyLarge)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    dialectModalBaseLang?.let { base ->
-        val children = languageChildren[base]
-        if (children != null && (children.dialects.isNotEmpty() || children.scripts.isNotEmpty())) {
-            DialectModal(
-                baseLang = base,
-                baseLabel = standardLanguages.find { it.code.lowercase().split("-").first() == base }?.label ?: base.uppercase(),
-                baseFlag = standardLanguages.find { it.code.lowercase().split("-").first() == base }?.flagCode ?: "US",
-                children = children,
+            LanguagePickerBody(
+                standardLanguages = standardLanguages,
+                languageChildren = languageChildren,
                 selectedCode = selectedCode,
-                onDismiss = { dialectModalBaseLang = null },
-                onSelect = { code ->
-                    onSelect(code)
-                    dialectModalBaseLang = null
-                    onDismiss()
-                },
+                onDismiss = onDismiss,
+                onSelect = onSelect,
+                searchPlaceholder = searchPlaceholder,
                 darkMode = darkMode
             )
         }

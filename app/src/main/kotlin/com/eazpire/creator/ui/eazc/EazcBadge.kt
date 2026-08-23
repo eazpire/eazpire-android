@@ -52,6 +52,7 @@ fun EazcBadge(
     modifier: Modifier = Modifier,
     onBalanceClick: (() -> Unit)? = null,
     compact: Boolean = false,
+    dense: Boolean = false,
     dark: Boolean = true,
 ) {
     val ownerId = tokenStore?.getOwnerId().orEmpty()
@@ -81,6 +82,15 @@ fun EazcBadge(
         }
     }
 
+    val minHeight = when {
+        dense -> 32.dp
+        compact -> 40.dp
+        else -> 36.dp
+    }
+    val coinSize = if (dense) 13.dp else 16.dp
+    val valueSize = if (dense) 12.sp else 14.sp
+    val infoBtn = if (dense) 24.dp else 36.dp
+    val infoIcon = if (dense) 14.dp else 18.dp
     val shape = RoundedCornerShape(if (compact || !dark) 50.dp else 10.dp)
     val bg = if (dark) {
         Brush.verticalGradient(
@@ -99,11 +109,11 @@ fun EazcBadge(
 
     Row(
         modifier = modifier
-            .heightIn(min = if (compact) 40.dp else 36.dp)
+            .heightIn(min = minHeight)
             .background(bg, shape)
             .border(1.dp, borderColor, shape)
             .semantics { contentDescription = balanceAria }
-            .padding(start = 8.dp, end = 4.dp),
+            .padding(start = if (dense) 6.dp else 8.dp, end = if (dense) 2.dp else 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -119,15 +129,15 @@ fun EazcBadge(
                         Modifier
                     }
                 )
-                .padding(vertical = 6.dp, horizontal = 2.dp),
+                .padding(vertical = if (dense) 3.dp else 6.dp, horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (dense) 3.dp else 6.dp)
         ) {
-            EazCoinImage(slot = BrandAssetSlots.EAZC_COIN_LOGO, size = 16.dp)
+            EazCoinImage(slot = BrandAssetSlots.EAZC_COIN_LOGO, size = coinSize)
             Text(
                 text = amountText,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                fontSize = valueSize,
                 color = EazColors.Orange
             )
             if (!compact) {
@@ -141,14 +151,14 @@ fun EazcBadge(
         }
         IconButton(
             onClick = onInfoClick,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(infoBtn)
         ) {
             Icon(
                 imageVector = Icons.Outlined.Info,
                 contentDescription = infoAria,
                 tint = EazColors.Orange,
                 modifier = Modifier
-                    .size(18.dp)
+                    .size(infoIcon)
                     .background(EazColors.Orange.copy(alpha = 0.14f), CircleShape)
                     .padding(2.dp)
             )

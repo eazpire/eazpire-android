@@ -34,17 +34,22 @@ fun HeaderActions(
     onFavoritesClick: () -> Unit = {},
     onCartClick: () -> Unit = {},
     profileHintActive: Boolean = false,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val actionSize = if (compact) 40.dp else 48.dp
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = {
-            com.eazpire.creator.util.DebugLog.click("Account")
-            onAccountClick()
-        }) {
+        IconButton(
+            onClick = {
+                com.eazpire.creator.util.DebugLog.click("Account")
+                onAccountClick()
+            },
+            modifier = Modifier.size(actionSize)
+        ) {
             Icon(
                 imageVector = Icons.Outlined.PersonOutline,
                 contentDescription = "Account",
@@ -53,10 +58,13 @@ fun HeaderActions(
             )
         }
         Box {
-            IconButton(onClick = {
-                com.eazpire.creator.util.DebugLog.click("Favorites")
-                onFavoritesClick()
-            }) {
+            IconButton(
+                onClick = {
+                    com.eazpire.creator.util.DebugLog.click("Favorites")
+                    onFavoritesClick()
+                },
+                modifier = Modifier.size(actionSize)
+            ) {
                 Icon(
                     imageVector = Icons.Outlined.FavoriteBorder,
                     contentDescription = "Favorites",
@@ -81,10 +89,13 @@ fun HeaderActions(
             }
         }
         Box {
-            IconButton(onClick = {
-                com.eazpire.creator.util.DebugLog.click("Cart")
-                onCartClick()
-            }) {
+            IconButton(
+                onClick = {
+                    com.eazpire.creator.util.DebugLog.click("Cart")
+                    onCartClick()
+                },
+                modifier = Modifier.size(actionSize)
+            ) {
                 Icon(
                     imageVector = Icons.Outlined.ShoppingCart,
                     contentDescription = "Cart",

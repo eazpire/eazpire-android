@@ -16,13 +16,11 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -325,37 +323,44 @@ fun MainHeader(
                     tint = EazColors.TextPrimary
                 )
             }
-            Spacer(modifier = Modifier.weight(1f))
-            HeaderLocaleRow(
-                localeStore = localeStore,
-                countryCode = countryCode,
-                languageCode = languageCode,
-                translationStore = translationStore,
-                standardLanguages = languageStandard,
-                languageChildren = languageChildren,
-                onCountryChange = onCountryChange,
-                onLanguageChange = onLanguageChange
-            )
             Row(
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)
             ) {
-                if (translationStore != null && tokenStore?.getOwnerId().orEmpty().isNotBlank()) {
-                    EazcBadge(
+                HeaderLocaleRow(
+                    localeStore = localeStore,
+                    countryCode = countryCode,
+                    languageCode = languageCode,
+                    translationStore = translationStore,
+                    standardLanguages = languageStandard,
+                    languageChildren = languageChildren,
+                    onCountryChange = onCountryChange,
+                    onLanguageChange = onLanguageChange,
+                    combined = true
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (translationStore != null && tokenStore?.getOwnerId().orEmpty().isNotBlank()) {
+                        EazcBadge(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore,
+                            onInfoClick = { earnInfoVisible = true },
+                            compact = true,
+                            dense = true,
+                            dark = false
+                        )
+                    }
+                    HeaderWalletPill(
                         tokenStore = tokenStore,
+                        onClick = onWalletClick,
                         translationStore = translationStore,
-                        onInfoClick = { earnInfoVisible = true },
-                        compact = true,
-                        dark = false
+                        dense = true
                     )
                 }
-                HeaderWalletPill(
-                    tokenStore = tokenStore,
-                    onClick = onWalletClick,
-                    translationStore = translationStore
-                )
             }
-            Spacer(modifier = Modifier.width(2.dp))
             HeaderActions(
                 cartCount = AppCartStore.itemCount,
                 favoritesCount = favoritesCount,
@@ -363,6 +368,7 @@ fun MainHeader(
                 onFavoritesClick = { onFavoritesModalChangeActual(true) },
                 onCartClick = { onCartDrawerChangeActual(true) },
                 profileHintActive = creatorCodeProfileHintActive && isCreatorMode,
+                compact = true,
             )
         }
         Box(

@@ -42,6 +42,7 @@ fun HeaderWalletPill(
     tokenStore: SecureTokenStore?,
     onClick: () -> Unit,
     translationStore: TranslationStore? = null,
+    dense: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val store = translationStore ?: LocalTranslationStore.current
@@ -86,18 +87,18 @@ fun HeaderWalletPill(
         onClick = onClick,
         modifier = modifier
             .semantics { contentDescription = walletAria }
-            .heightIn(min = 40.dp)
-            .widthIn(max = 110.dp),
+            .heightIn(min = if (dense) 32.dp else 40.dp)
+            .widthIn(max = if (dense) 84.dp else 110.dp),
         shape = RoundedCornerShape(50),
         color = EazColors.Orange.copy(alpha = 0.08f),
-        border = BorderStroke(2.dp, EazColors.Orange),
+        border = BorderStroke(if (dense) 1.5.dp else 2.dp, EazColors.Orange),
         shadowElevation = 0.dp,
         tonalElevation = 0.dp
     ) {
         Box(
             modifier = Modifier
-                .padding(horizontal = 10.dp)
-                .heightIn(min = 40.dp),
+                .padding(horizontal = if (dense) 8.dp else 10.dp)
+                .heightIn(min = if (dense) 32.dp else 40.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -105,7 +106,7 @@ fun HeaderWalletPill(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
+                fontSize = if (dense) 11.sp else 13.sp,
                 color = Color(0xFF111111)
             )
         }
