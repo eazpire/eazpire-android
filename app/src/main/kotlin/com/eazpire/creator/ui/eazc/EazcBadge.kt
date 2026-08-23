@@ -64,7 +64,7 @@ fun EazcBadge(
     )
     val infoAria = translationStore.t(
         "creator.eazc_earn.info_aria",
-        "How you earn EAZC from sales"
+        "How you earn money from sales"
     )
 
     LaunchedEffect(ownerId) {
