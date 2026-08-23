@@ -52,7 +52,13 @@ Voraussetzung: Shopify Customer Account API mit Mobile Client (Callback-URL) kon
 
 Creator-only Wear app lives in `../creator-watch/` (package `com.eazpire.creator.wear`). After login on this phone app, session syncs to the watch via Wearable Data Layer.
 
-Setup & Play: [docs/setup/CREATOR_WATCH_REPO_SETUP.md](../docs/setup/CREATOR_WATCH_REPO_SETUP.md) — `npm run creator-watch:build` / `creator-watch:install`.
+Setup & Play: [docs/setup/CREATOR_WATCH_REPO_SETUP.md](../docs/setup/CREATOR_WATCH_REPO_SETUP.md). Publish läuft über GitHub Actions nach Google Play, nicht über lokale Installation.
+
+## Publish (Google Play)
+
+Kein lokales Handy oder Emulator. Nach Änderungen: `npm run deploy` auf `main`. GitHub Actions synct nach `eazpire-android` und lädt das AAB zu Google Play.
+
+Details: [docs/setup/ANDROID_PLAY_PUBLISH.md](../docs/setup/ANDROID_PLAY_PUBLISH.md)
 
 ## Sync zu eazpire-android
 
