@@ -1,7 +1,6 @@
 package com.eazpire.creator.ui.creator
 
-import android.content.Intent
-import android.net.Uri
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -15,17 +14,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -57,7 +62,11 @@ private val CardBg = Color(0xE6120C24)
 private val TextMain = Color(0xFFF4F1FF)
 private val TextDim = Color(0xC7F4F1FF)
 private val Accent = Color(0xFF7C5CFF)
+private val HeartOn = Color(0xFFF97316)
 private val SafeGreen = Color(0xFF2ECC71)
+
+private const val WATCH_PREFS = "eazy-research"
+private const val WATCH_KEY = "eazy-research-watched"
 
 private data class ResearchProduct(
     val asin: String,
@@ -65,6 +74,7 @@ private data class ResearchProduct(
     val brand: String,
     val imageUrl: String,
     val nicheKey: String,
+    val subNiche: String,
     val reprintOk: Boolean,
     val rating: Double?,
     val reviews: Int?,
@@ -104,18 +114,18 @@ fun EazyResearchScreen(
     var query by remember { mutableStateOf("") }
     var niche by remember { mutableStateOf("all") }
     var sort by remember { mutableStateOf("review_growth") }
-    var reprintOnly by remember { mutableStateOf(true) }
     var view by remember { mutableStateOf("opportunities") }
     var selected by remember { mutableStateOf<ResearchProduct?>(null) }
+    var watched by remember { mutableStateOf(loadWatchedAsins(context)) }
 
-    LaunchedEffect(tokenStore.getJwt(), reprintOnly) {
+    LaunchedEffect(tokenStore.getJwt()) {
         loading = true
         error = null
         try {
             val data = api.call(
                 "eazy-research-products",
                 mapOf(
-                    "reprint_ok" to if (reprintOnly) "1" else "0",
+                    "reprint_ok" to "1",
                     "limit" to "80",
                     "sort" to sort,
                 ),
@@ -146,8 +156,8 @@ fun EazyResearchScreen(
         loading = false
     }
 
-    val filtered = remember(products, query, niche, sort, reprintOnly, view) {
-        filterProducts(products, query, niche, sort, reprintOnly, view)
+    val filtered = remember(products, query, niche, sort, view, watched) {
+        filterProducts(products, query, niche, sort, view, watched)
     }
 
     Column(
@@ -194,20 +204,6 @@ fun EazyResearchScreen(
                 unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
             ),
         )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                tr("creator.research.filter_reprint", "Reprint-safe only"),
-                color = TextDim,
-                fontSize = 13.sp,
-                modifier = Modifier.weight(1f),
-            )
-            Switch(
-                checked = reprintOnly,
-                onCheckedChange = { reprintOnly = it },
-                colors = SwitchDefaults.colors(checkedTrackColor = SafeGreen),
-            )
-            Text(tr("creator.research.marketplace_amazon_de", "Amazon.de"), color = TextDim, fontSize = 12.sp)
-        }
         ChipRow(
             items = listOf(ResearchNiche("all", tr("creator.research.niche_all", "All"))) + niches,
             selected = niche,
@@ -255,7 +251,7 @@ fun EazyResearchScreen(
                 if (view == "watched") {
                     tr(
                         "creator.research.empty_watched",
-                        "Watchlists are coming next. Browse Opportunities to find products worth tracking.",
+                        "No watched products yet. Tap the heart on a product to start tracking it.",
                     )
                 } else {
                     tr(
@@ -275,26 +271,33 @@ fun EazyResearchScreen(
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
                 items(filtered, key = { it.asin }) { product ->
-                    OpportunityCard(product = product, translationStore = translationStore, onOpen = { selected = product })
+                    OpportunityCard(
+                        product = product,
+                        watched = watched.contains(product.asin),
+                        translationStore = translationStore,
+                        onOpen = { selected = product },
+                        onToggleWatch = {
+                            val next = if (watched.contains(product.asin)) {
+                                watched - product.asin
+                            } else {
+                                watched + product.asin
+                            }
+                            watched = next
+                            saveWatchedAsins(context, next)
+                        },
+                    )
                 }
             }
         }
         selected?.let { product ->
-            ProductDetailCard(
-                product = product,
-                preview = preview,
-                translationStore = translationStore,
-                onClose = { selected = null },
-                onOpenAmazon = {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.amazon.de/dp/${product.asin}")),
-                    )
-                },
-                onSendToGenerator = {
-                    selected = null
-                    onSendToGenerator()
-                },
-            )
+            Dialog(onDismissRequest = { selected = null }) {
+                ProductDetailCard(
+                    product = product,
+                    niches = niches,
+                    translationStore = translationStore,
+                    onClose = { selected = null },
+                )
+            }
         }
         Text(status, color = TextDim, fontSize = 11.sp)
     }
@@ -329,8 +332,10 @@ private fun ChipRow(
 @Composable
 private fun OpportunityCard(
     product: ResearchProduct,
+    watched: Boolean,
     translationStore: TranslationStore,
     onOpen: () -> Unit,
+    onToggleWatch: () -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
     Column(
@@ -350,17 +355,24 @@ private fun OpportunityCard(
             } else {
                 Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Color(0xFF1B1430)))
             }
-            if (product.reprintOk) {
-                Text(
-                    tr("creator.research.reprint_ok", "Reprint-safe"),
-                    color = Color(0xFF06210F),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(SafeGreen.copy(alpha = 0.9f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+            IconButton(
+                onClick = onToggleWatch,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xB80A0618)),
+            ) {
+                Icon(
+                    imageVector = if (watched) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = if (watched) {
+                        tr("creator.research.watch_remove", "Remove from watchlist")
+                    } else {
+                        tr("creator.research.watch_add", "Add to watchlist")
+                    },
+                    tint = if (watched) HeartOn else TextMain,
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }
@@ -373,8 +385,9 @@ private fun OpportunityCard(
             )
             product.reviewDelta?.let {
                 val prefix = if (it > 0) "+" else ""
+                val window = product.reviewWindow?.let { w -> formatReviewWindow(w, translationStore) }
                 Text(
-                    "$prefix$it ${tr("creator.research.reviews", "reviews")}${product.reviewWindow?.let { w -> " / $w" } ?: ""}",
+                    "$prefix$it ${tr("creator.research.reviews", "reviews")}${window?.let { w -> " / $w" } ?: ""}",
                     color = SafeGreen,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -396,47 +409,62 @@ private fun OpportunityCard(
 @Composable
 private fun ProductDetailCard(
     product: ResearchProduct,
-    preview: Boolean,
+    niches: List<ResearchNiche>,
     translationStore: TranslationStore,
     onClose: () -> Unit,
-    onOpenAmazon: () -> Unit,
-    onSendToGenerator: () -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label ?: product.nicheKey
+    val nicheLine = listOf(nicheLabel, product.subNiche).filter { it.isNotBlank() }.joinToString(" · ")
+    val windowLabel = formatReviewWindow(product.reviewWindow ?: "7d", translationStore)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 280.dp)
+            .heightIn(max = 560.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(CardBg)
             .verticalScroll(rememberScrollState())
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(product.title, color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            TextButton(onClick = onClose) { Text(tr("creator.research.close_detail", "Close product"), color = TextDim) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onClose) { Text("×", color = TextMain, fontSize = 22.sp) }
         }
-        Text(
-            if (preview) {
-                tr("creator.research.confidence_preview", "Preview catalog — not live Amazon snapshots yet")
-            } else {
-                tr(
-                    "creator.research.no_sales_claim",
-                    "We never show invented unit sales. BSR and reviews are observed snapshots only.",
-                )
-            },
-            color = TextDim,
-            fontSize = 12.sp,
+        if (product.imageUrl.isNotBlank()) {
+            AsyncImage(
+                model = product.imageUrl,
+                contentDescription = product.title,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 220.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+                contentScale = ContentScale.Fit,
+            )
+        }
+        Text(product.title, color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        if (nicheLine.isNotBlank()) {
+            Text(nicheLine, color = TextDim, fontSize = 13.sp)
+        }
+        StatRow(tr("creator.research.reviews_total", "Reviews total"), product.reviews?.toString() ?: "—")
+        product.reviewDelta?.let { delta ->
+            val prefix = if (delta > 0) "+" else ""
+            StatRow(
+                tr("creator.research.reviews_last_window", "Reviews last {window}").replace("{window}", windowLabel),
+                "$prefix$delta",
+            )
+        }
+        StatRow(
+            tr("creator.research.rating_avg", "Average rating"),
+            product.rating?.let { String.format(Locale.US, "%.1f ★", it) } ?: "—",
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onOpenAmazon) {
-                Text(tr("creator.research.open_source", "Open on Amazon.de"), color = Accent)
-            }
-            TextButton(onClick = onSendToGenerator) {
-                Text(tr("creator.research.send_generator", "Send to Generator"), color = Accent)
-            }
-        }
+    }
+}
+
+@Composable
+private fun StatRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = TextDim, fontSize = 14.sp)
+        Text(value, color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -445,16 +473,24 @@ private fun formatPrice(price: Double?): String {
     return String.format(Locale.GERMANY, "€%.2f", value)
 }
 
+private fun formatReviewWindow(window: String, translationStore: TranslationStore): String {
+    val match = Regex("^(\\d+)\\s*d$", RegexOption.IGNORE_CASE).find(window.trim())
+    return if (match != null) {
+        translationStore.t("creator.research.window_days", "{n} days").replace("{n}", match.groupValues[1])
+    } else {
+        window
+    }
+}
+
 private fun filterProducts(
     products: List<ResearchProduct>,
     query: String,
     niche: String,
     sort: String,
-    reprintOnly: Boolean,
     view: String,
+    watched: Set<String>,
 ): List<ResearchProduct> {
-    var rows = products
-    if (reprintOnly) rows = rows.filter { it.reprintOk }
+    var rows = products.filter { it.reprintOk }
     if (niche != "all") rows = rows.filter { it.nicheKey == niche }
     val q = query.trim().lowercase(Locale.ROOT)
     if (q.isNotEmpty()) {
@@ -465,7 +501,7 @@ private fun filterProducts(
     rows = when (view) {
         "rising" -> rows.filter { it.trend == "rising" || it.risingScore > 0 }
         "review_growth" -> rows.filter { (it.reviewDelta ?: 0) > 0 }
-        "watched" -> emptyList()
+        "watched" -> rows.filter { watched.contains(it.asin) }
         else -> rows
     }
     return when (sort) {
@@ -488,6 +524,7 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             brand = p.optString("brand"),
             imageUrl = p.optString("image_url"),
             nicheKey = p.optString("niche_key"),
+            subNiche = p.optString("sub_niche").ifBlank { p.optString("sub_niche_key") },
             reprintOk = p.optBoolean("reprint_ok", true),
             rating = latest.optDoubleOrNull("rating"),
             reviews = latest.optIntOrNull("reviews_count"),
@@ -513,6 +550,26 @@ private fun parseNiches(arr: JSONArray?): List<ResearchNiche> {
         out += ResearchNiche(key, n.optString("label").ifBlank { key })
     }
     return out
+}
+
+private fun loadWatchedAsins(context: Context): Set<String> {
+    val raw = context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+        .getString(WATCH_KEY, "[]") ?: "[]"
+    return try {
+        val arr = JSONArray(raw)
+        (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }.toSet()
+    } catch (_: Exception) {
+        emptySet()
+    }
+}
+
+private fun saveWatchedAsins(context: Context, asins: Set<String>) {
+    val arr = JSONArray()
+    asins.forEach { arr.put(it) }
+    context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString(WATCH_KEY, arr.toString())
+        .apply()
 }
 
 private fun JSONObject.optDoubleOrNull(key: String): Double? =
