@@ -129,13 +129,13 @@ private val EARN_TOPICS = listOf(
         "community",
         "Path 05",
         "Creator Community",
-        "Invite another creator. If you both opt in, you share their creator royalty when they sell.",
-        "The seller keeps 70% of the creator share. The recruiter who invited them receives 30%. Publish Assist does not add an extra split.",
-        "Lena opted in with her recruiter. Her hoodie still has about €0.80 creator share.",
-        "Lena, the seller", "€0.56 (70%)",
-        "Her recruiter", "€0.24 (30%)",
-        "If only one opted in", "no community split",
-        "Both people must opt in. It is a partnership, not an automatic tax."
+        "Invite another creator. If you both opt in, they can publish on products you unlocked and they have not.",
+        "They keep 70% of the creator share on those borrowed products or sizes; you receive 30%. On products they unlocked themselves they keep 100%. Publish Assist does not add an extra split.",
+        "Lena borrowed extra hoodie sizes from her recruiter. The hoodie creator share is about €0.80.",
+        "Lena sells a size she already has", "€0.80 (100%)",
+        "Lena sells a size only the recruiter unlocked", "€0.56 Lena / €0.24 recruiter",
+        "If only one opted in", "no borrowed products",
+        "Both people must opt in. When Lena unlocks that size herself, the recruiter share stops on the next sale."
     ),
     EarnTopic(
         "referral",

@@ -208,7 +208,6 @@ private fun CreatorSettingsCreatorCodesContent(
     var recruiterOptIn by remember { mutableStateOf(false) }
     var memberRelationships by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
     var communityMembers by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
-    var pendingCommunityDesigns by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
     var redeemedHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var showUserPickerDialog by remember { mutableStateOf(false) }
     var showPoolDialog by remember { mutableStateOf(false) }
@@ -281,17 +280,6 @@ private fun CreatorSettingsCreatorCodesContent(
                     if (membersResp.optBoolean("ok", false)) {
                         val arr = membersResp.optJSONArray("members") ?: org.json.JSONArray()
                         communityMembers = buildList(arr.length()) {
-                            for (i in 0 until arr.length()) {
-                                arr.optJSONObject(i)?.let { add(it) }
-                            }
-                        }
-                    }
-                    val designsResp = withContext(Dispatchers.IO) {
-                        api.getCommunityDesigns(ownerId)
-                    }
-                    if (designsResp.optBoolean("ok", false)) {
-                        val arr = designsResp.optJSONArray("designs") ?: org.json.JSONArray()
-                        pendingCommunityDesigns = buildList(arr.length()) {
                             for (i in 0 until arr.length()) {
                                 arr.optJSONObject(i)?.let { add(it) }
                             }
@@ -640,7 +628,7 @@ private fun CreatorSettingsCreatorCodesContent(
                 Text(
                     translationStore.t(
                         "creator.settings.creator_community_recruiter_opt_in_confirm_title",
-                        "Enable community for recruits",
+                        "Share my unlocked products",
                     ),
                 )
             },
@@ -648,7 +636,7 @@ private fun CreatorSettingsCreatorCodesContent(
                 Text(
                     translationStore.t(
                         "creator.settings.creator_community_recruiter_opt_in_confirm_body",
-                        "When you and a recruit both opt in: you receive AI bonus designs when they create, and you earn 30% of their net creator profit on new sales (they keep 70%). You can turn this off anytime — new sales stop sharing revenue; already published products keep their split.",
+                        "When you and a recruit both opt in, they can publish their designs on products and variants you have unlocked and they have not. You earn 30% of their creator share on those borrowed slots. They keep 100% on slots they unlock themselves. You can turn this off anytime; the next sale uses the new rule.",
                     ),
                 )
             },
@@ -687,7 +675,7 @@ private fun CreatorSettingsCreatorCodesContent(
                 Text(
                     translationStore.t(
                         "creator.settings.creator_community_member_opt_in_confirm_title",
-                        "Join community program",
+                        "Borrow recruiter products",
                     ),
                 )
             },
@@ -695,7 +683,7 @@ private fun CreatorSettingsCreatorCodesContent(
                 Text(
                     translationStore.t(
                         "creator.settings.creator_community_member_opt_in_confirm_body",
-                        "When you and the creator who invited you both opt in: they receive bonus designs when you create, and you keep 70% of your net creator profit on new sales (they receive 30%). You can turn this off anytime — new sales stop sharing revenue; your existing published products keep their split.",
+                        "When you and the creator who invited you both opt in, you can publish your designs on products and variants they have unlocked and you have not. You keep 70% of the creator share on those borrowed slots, and 100% on everything you unlock yourself. You can turn this off anytime; the next sale uses the new rule.",
                     ),
                 )
             },
@@ -764,10 +752,10 @@ private fun CreatorSettingsCreatorCodesContent(
                 color = Color.White,
             )
             Text(
-                text = translationStore.t(
-                    "creator.settings.creator_community_subtitle",
-                    "Bonus designs and 70/30 revenue split when both sides opt in.",
-                ),
+                text =                     translationStore.t(
+                        "creator.settings.creator_community_subtitle",
+                        "Borrow recruiter products. They earn 30% only on slots you have not unlocked yet.",
+                    ),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.65f),
                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
@@ -780,7 +768,7 @@ private fun CreatorSettingsCreatorCodesContent(
                 Text(
                     text = translationStore.t(
                         "creator.settings.creator_community_recruiter_opt_in",
-                        "Enable community features for my recruits",
+                        "Let my recruits publish on products I have unlocked",
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White,
@@ -814,7 +802,7 @@ private fun CreatorSettingsCreatorCodesContent(
                     Text(
                         text = translationStore.t(
                             "creator.settings.creator_community_member_opt_in",
-                            "Join community program",
+                            "Use my recruiter's unlocked products",
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White,
@@ -895,63 +883,6 @@ private fun CreatorSettingsCreatorCodesContent(
                             style = MaterialTheme.typography.labelSmall,
                             color = if (active) EazColors.Orange else Color.White.copy(alpha = 0.55f),
                         )
-                    }
-                }
-            }
-            Text(
-                text = translationStore.t("creator.settings.creator_community_designs_title", "Bonus designs"),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.75f),
-                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-            )
-            if (pendingCommunityDesigns.isEmpty()) {
-                Text(
-                    text = translationStore.t(
-                        "creator.settings.creator_community_designs_empty",
-                        "No pending bonus designs.",
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.55f),
-                )
-            } else {
-                pendingCommunityDesigns.forEach { d ->
-                    val designId = d.optLong("id")
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        api.claimCommunityDesign(ownerId, designId)
-                                    }
-                                    reload()
-                                }
-                            },
-                        ) {
-                            Text(
-                                translationStore.t("creator.settings.creator_community_claim_btn", "Claim"),
-                                color = EazColors.Orange,
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        api.dismissCommunityDesign(ownerId, designId)
-                                    }
-                                    reload()
-                                }
-                            },
-                        ) {
-                            Text(
-                                translationStore.t("creator.settings.creator_community_dismiss_btn", "Dismiss"),
-                                color = Color.White.copy(alpha = 0.75f),
-                            )
-                        }
                     }
                 }
             }

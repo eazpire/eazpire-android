@@ -1,4 +1,4 @@
-package com.eazpire.creator.ui.creator
+﻿package com.eazpire.creator.ui.creator
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -131,8 +131,12 @@ fun PublishAssistPendingModal(
         }
     }
 
-    LaunchedEffect(visible, ownerId) {
-        if (visible) refresh()
+    LaunchedEffect(visible) {
+        if (visible) {
+            loading = false
+            error = null
+            items = emptyList()
+        }
     }
 
     Dialog(
@@ -158,7 +162,7 @@ fun PublishAssistPendingModal(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = t("creator.publish_assist.pending_title", "Publish Assist — Pending"),
+                    text = t("creator.publish_assist.pending_title", "Publish Assist â€” Pending"),
                     modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 18.sp,
@@ -172,120 +176,14 @@ fun PublishAssistPendingModal(
             HorizontalDivider(color = EazColors.TopbarBorder)
             Text(
                 text = t(
-                    "creator.publish_assist.pending_hint",
-                    "Accept starts publish for the requested design × variant.",
+                    "creator.publish_assist.retired_body",
+                    "Publish Assist offers and requests are retired. Borrowed products appear in your product picker when both of you opt in to Creator Community.",
                 ),
                 modifier = Modifier.padding(16.dp),
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 color = EazColors.TextSecondary,
             )
-            when {
-                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = EazColors.Orange)
-                }
-                error != null -> Text(
-                    error!!,
-                    modifier = Modifier.padding(16.dp),
-                    color = EazColors.TextSecondary,
-                )
-                items.isEmpty() -> Text(
-                    t("creator.publish_assist.pending_empty", "No pending requests."),
-                    modifier = Modifier.padding(16.dp),
-                    color = EazColors.TextSecondary,
-                )
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(items, key = { it.id }) { item ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, EazColors.TopbarBorder, RoundedCornerShape(12.dp))
-                                .padding(12.dp),
-                        ) {
-                            Text(
-                                "${item.direction.replaceFirstChar { it.uppercase() }} · ${item.side}",
-                                fontSize = 11.sp,
-                                color = EazColors.TextSecondary,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(item.designTitle, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                            Text(
-                                listOfNotNull(
-                                    item.partnerName.takeIf { it.isNotBlank() }?.let { "@$it" },
-                                    item.productKey.takeIf { it.isNotBlank() },
-                                    item.variantLabel.takeIf { it.isNotBlank() },
-                                ).joinToString(" · "),
-                                fontSize = 12.sp,
-                                color = EazColors.TextSecondary,
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            if (busyId == item.id) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = EazColors.Orange,
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    if (item.side == "incoming") {
-                                        Button(
-                                            onClick = {
-                                                scope.launch {
-                                                    busyId = item.id
-                                                    try {
-                                                        creatorApi.resolvePublishAssistRequest(ownerId, item.id, "accept")
-                                                        refresh()
-                                                    } catch (_: Exception) {
-                                                    } finally {
-                                                        busyId = null
-                                                    }
-                                                }
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = EazColors.Orange),
-                                        ) {
-                                            Text(t("creator.publish_assist.accept", "Accept"))
-                                        }
-                                        TextButton(onClick = {
-                                            scope.launch {
-                                                busyId = item.id
-                                                try {
-                                                    creatorApi.resolvePublishAssistRequest(ownerId, item.id, "decline")
-                                                    refresh()
-                                                } catch (_: Exception) {
-                                                } finally {
-                                                    busyId = null
-                                                }
-                                            }
-                                        }) {
-                                            Text(t("creator.publish_assist.decline", "Decline"))
-                                        }
-                                    } else {
-                                        TextButton(onClick = {
-                                            scope.launch {
-                                                busyId = item.id
-                                                try {
-                                                    creatorApi.resolvePublishAssistRequest(ownerId, item.id, "cancel")
-                                                    refresh()
-                                                } catch (_: Exception) {
-                                                } finally {
-                                                    busyId = null
-                                                }
-                                            }
-                                        }) {
-                                            Text(t("creator.publish_assist.cancel", "Cancel"), color = Color(0xFFB91C1C))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    item { Spacer(Modifier.height(24.dp)) }
-                }
-            }
         }
     }
 }
+

@@ -371,7 +371,14 @@ data class ActivateCatalogProduct(
     val previewImageUrl: String?,
     val mockUrls: List<String>,
     val unlocked: Boolean = true,
-)
+    val borrowed: Boolean = false,
+    val borrowedVariants: Boolean = false,
+    val variantsUnlocked: Int = 0,
+    val variantsTotal: Int = 0,
+) {
+    val selectable: Boolean get() = unlocked || borrowed
+    val borrowedOnly: Boolean get() = borrowed && !unlocked
+}
 
 data class ActivateCatalogBundle(
     val products: List<ActivateCatalogProduct> = emptyList(),
@@ -465,12 +472,16 @@ suspend fun loadActivateCatalogBundle(
                         previewImageUrl = o.optString("preview_image_url", "").trim().takeIf { it.isNotBlank() },
                         mockUrls = mockUrls,
                         unlocked = o.optBoolean("unlocked", true),
+                        borrowed = o.optBoolean("borrowed", false),
+                        borrowedVariants = o.optBoolean("borrowed_variants", false),
+                        variantsUnlocked = o.optInt("variants_unlocked", 0),
+                        variantsTotal = o.optInt("variants_total", 0),
                     )
                 )
             }
         }
-        val products = allProducts.filter { it.unlocked }
-        val lockedKeys = allProducts.filter { !it.unlocked }.map { it.productKey }
+        val products = allProducts.filter { it.selectable }
+        val lockedKeys = allProducts.filter { !it.selectable }.map { it.productKey }
         val eligibleKeys = products.map { it.productKey }
         val metaSnap = metadataExcluded.distinct()
         val checked = eligibleKeys.associateWith { pk -> !metaSnap.contains(pk) }
@@ -825,6 +836,28 @@ private fun ActivateCatalogProductCard(
             maxLines = 2,
             lineHeight = 12.sp,
         )
+        if (product.borrowedVariants) {
+            Text(
+                translationStore.t(
+                    "creator.creations.design_products_borrowed_variants_hint",
+                    "More variants available from your recruiter",
+                ),
+                color = Color(0xFFB4D2FF).copy(alpha = 0.92f),
+                fontSize = 8.sp,
+                maxLines = 2,
+                lineHeight = 10.sp,
+            )
+        } else if (product.borrowedOnly) {
+            Text(
+                translationStore.t(
+                    "creator.creations.design_products_borrowed_variant_tag",
+                    "From recruiter",
+                ),
+                color = Color(0xFFB4D2FF).copy(alpha = 0.92f),
+                fontSize = 8.sp,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -1015,22 +1048,64 @@ fun CreationsActivateDesignDialog(
                                     )
                                 }
                             }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                products.forEach { product ->
-                                    ActivateCatalogProductCard(
-                                        product = product,
-                                        checked = checkedMap[product.productKey] == true,
-                                        publishedRow = bundle?.publishedByKey?.get(product.productKey),
-                                        translationStore = translationStore,
-                                        onCheckedChange = { on ->
-                                            checkedMap[product.productKey] = on
-                                        },
-                                    )
+                            val ownProducts = products.filter { !it.borrowedOnly }
+                            val borrowedProducts = products.filter { it.borrowedOnly }
+                            if (ownProducts.isNotEmpty()) {
+                                Text(
+                                    translationStore.t(
+                                        "creator.creations.design_products_group_own",
+                                        "Your products",
+                                    ),
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    ownProducts.forEach { product ->
+                                        ActivateCatalogProductCard(
+                                            product = product,
+                                            checked = checkedMap[product.productKey] == true,
+                                            publishedRow = bundle?.publishedByKey?.get(product.productKey),
+                                            translationStore = translationStore,
+                                            onCheckedChange = { on ->
+                                                checkedMap[product.productKey] = on
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                            if (borrowedProducts.isNotEmpty()) {
+                                Text(
+                                    translationStore.t(
+                                        "creator.creations.design_products_group_borrowed",
+                                        "Additional from your recruiter",
+                                    ),
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    borrowedProducts.forEach { product ->
+                                        ActivateCatalogProductCard(
+                                            product = product,
+                                            checked = checkedMap[product.productKey] == true,
+                                            publishedRow = bundle?.publishedByKey?.get(product.productKey),
+                                            translationStore = translationStore,
+                                            onCheckedChange = { on ->
+                                                checkedMap[product.productKey] = on
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         } else {
