@@ -410,7 +410,7 @@ fun CreatorMainScreen(
                             )
                         }
                 ) {
-                    val guestLockedScreen = !tokenStore.isLoggedIn() && currentScreen in 1..5 && currentScreen != 2
+                    val guestLockedScreen = !tokenStore.isLoggedIn() && currentScreen in 3..5
                     Box(modifier = Modifier.fillMaxSize()) {
                     when (currentScreen) {
                         0 -> CreatorDashboardScreen(
@@ -440,6 +440,7 @@ fun CreatorMainScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             maxHeight = contentMaxHeight,
+                            onSendToGenerator = { currentScreen = 2 },
                             modifier = Modifier.fillMaxSize()
                         )
                         2 -> CreatorGeneratorScreen(
