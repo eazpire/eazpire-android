@@ -473,7 +473,7 @@ fun ShopScreen(
         if (pin?.value == true) {
             switchCreatorMode(toCreator = true, animate = false)
             eazyChatVisible = false
-            pendingCreationsScreen = 2
+            pendingCreationsScreen = 3
             pendingDesignsActivityFilter = "inactive"
             pin.value = false
         }
@@ -484,7 +484,7 @@ fun ShopScreen(
         if (pin?.value == true) {
             switchCreatorMode(toCreator = true, animate = false)
             eazyChatVisible = false
-            pendingCreationsScreen = 2
+            pendingCreationsScreen = 3
             pendingDesignsActivityFilter = "active"
             pin.value = false
         }

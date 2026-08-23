@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -98,6 +99,7 @@ fun CreatorDrawer(
     val navIcons: List<ImageVector> = remember {
         listOf(
             Icons.Outlined.GridView,
+            Icons.Outlined.TravelExplore,
             Icons.Outlined.LightMode,
             Icons.Outlined.Image,
             Icons.Outlined.Campaign,

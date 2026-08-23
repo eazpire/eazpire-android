@@ -143,10 +143,10 @@ fun CreatorMainScreen(
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
     val creatorCodeHintActive by CreatorCodeAvailableHintStore.active.collectAsState()
     var currentScreen by remember(initialScreen) {
-        mutableIntStateOf(initialScreen?.coerceIn(0, 4) ?: 0)
+        mutableIntStateOf(initialScreen?.coerceIn(0, 5) ?: 0)
     }
     LaunchedEffect(initialScreen) {
-        val screen = initialScreen?.coerceIn(0, 4) ?: return@LaunchedEffect
+        val screen = initialScreen?.coerceIn(0, 5) ?: return@LaunchedEffect
         currentScreen = screen
     }
     var generatorEazyReady by remember { mutableStateOf(false) }
@@ -169,8 +169,8 @@ fun CreatorMainScreen(
         if (overlayComposeStartKey <= 0 || overlayComposeStartKey == prevOverlayComposeKey) return@LaunchedEffect
         prevOverlayComposeKey = overlayComposeStartKey
         when (currentScreen) {
-            1 -> genHeaderStartNonce++
-            3 -> {
+            2 -> genHeaderStartNonce++
+            4 -> {
                 if (marketingVideoTabVisible) videoHeaderStartNonce++
                 else heroHeaderStartNonce++
             }
@@ -187,9 +187,9 @@ fun CreatorMainScreen(
         marketingVideoTabVisible
     ) {
         val marketingLook =
-            (currentScreen == 3 && marketingHeroTabVisible && heroEazyReady) ||
-                (currentScreen == 3 && marketingVideoTabVisible && videoEazyReady)
-        val look = (currentScreen == 1 && generatorEazyReady) || marketingLook
+            (currentScreen == 4 && marketingHeroTabVisible && heroEazyReady) ||
+                (currentScreen == 4 && marketingVideoTabVisible && videoEazyReady)
+        val look = (currentScreen == 2 && generatorEazyReady) || marketingLook
         onGeneratorEazyLookLeftChange(look)
     }
 
@@ -204,7 +204,7 @@ fun CreatorMainScreen(
         videoGenerating
     ) {
         when (currentScreen) {
-            3 -> {
+            4 -> {
                 val visible =
                     (marketingHeroTabVisible && (heroEazyReady || heroGenerating)) ||
                         (marketingVideoTabVisible && (videoEazyReady || videoGenerating))
@@ -213,14 +213,14 @@ fun CreatorMainScreen(
                         (marketingVideoTabVisible && videoGenerating)
                 onEazyGenerationOverlayChange(visible, loading)
             }
-            1 -> Unit
+            2 -> Unit
             else -> onEazyGenerationOverlayChange(false, false)
         }
     }
 
     LaunchedEffect(currentScreen) {
-        if (currentScreen != 1) generatorGenerating = false
-        if (currentScreen != 3) {
+        if (currentScreen != 2) generatorGenerating = false
+        if (currentScreen != 4) {
             heroGenerating = false
             videoGenerating = false
         }
@@ -298,6 +298,7 @@ fun CreatorMainScreen(
                     currentScreen = currentScreen,
                     screenLabels = listOf(
                         translationStore.t("creator.mobile.dashboard", "Dashboard"),
+                        translationStore.t("creator.mobile.research", "Research"),
                         translationStore.t("creator.mobile.generator", "Generator"),
                         translationStore.t("creator.mobile.creations", "Creations"),
                         translationStore.t("creator.mobile.marketing", "Marketing"),
@@ -325,21 +326,21 @@ fun CreatorMainScreen(
                     eazyLookLeft = generationBubbleFaceLeft
                         ?: run {
                             val marketingLook =
-                                (currentScreen == 3 && marketingHeroTabVisible && heroEazyReady) ||
-                                    (currentScreen == 3 && marketingVideoTabVisible && videoEazyReady)
-                            (currentScreen == 1 && generatorEazyReady) || marketingLook
+                                (currentScreen == 4 && marketingHeroTabVisible && heroEazyReady) ||
+                                    (currentScreen == 4 && marketingVideoTabVisible && videoEazyReady)
+                            (currentScreen == 2 && generatorEazyReady) || marketingLook
                         },
                     hideEazyHeaderSlotWhenGenerationOverlay = shopGenerationOverlayActive,
                     showStartGenerationBubble = false,
-                    startGenerationLoading = (currentScreen == 1 && generatorGenerating) ||
-                        (currentScreen == 3 && (
+                    startGenerationLoading = (currentScreen == 2 && generatorGenerating) ||
+                        (currentScreen == 4 && (
                             (marketingHeroTabVisible && heroGenerating) ||
                                 (marketingVideoTabVisible && videoGenerating)
                             )),
                     onStartGenerationClick = {
                         when (currentScreen) {
-                            1 -> genHeaderStartNonce++
-                            3 -> {
+                            2 -> genHeaderStartNonce++
+                            4 -> {
                                 if (marketingVideoTabVisible) videoHeaderStartNonce++
                                 else heroHeaderStartNonce++
                             }
@@ -352,12 +353,12 @@ fun CreatorMainScreen(
                 )
 
             LaunchedEffect(currentScreen) {
-                if (currentScreen == 3) {
+                if (currentScreen == 4) {
                     marketingSessionKey++
                 } else {
                     marketingTitleOverride = null
                 }
-                if (currentScreen != 4) {
+                if (currentScreen != 5) {
                     automationsTitleOverride = null
                 }
             }
@@ -401,7 +402,7 @@ fun CreatorMainScreen(
                                         termsModalVisible
                                     if (modalVisible) return@detectHorizontalDragGestures
                                     when {
-                                        dragX <= -120f -> currentScreen = (currentScreen + 1).coerceAtMost(4)
+                                        dragX <= -120f -> currentScreen = (currentScreen + 1).coerceAtMost(5)
                                         dragX >= 120f -> currentScreen = (currentScreen - 1).coerceAtLeast(0)
                                     }
                                     dragX = 0f
@@ -409,7 +410,7 @@ fun CreatorMainScreen(
                             )
                         }
                 ) {
-                    val guestLockedScreen = !tokenStore.isLoggedIn() && currentScreen in 1..4
+                    val guestLockedScreen = !tokenStore.isLoggedIn() && currentScreen in 1..5 && currentScreen != 2
                     Box(modifier = Modifier.fillMaxSize()) {
                     when (currentScreen) {
                         0 -> CreatorDashboardScreen(
@@ -418,24 +419,30 @@ fun CreatorMainScreen(
                             onOpenSalesModal = { salesModalVisible = true },
                             onOpenJourney = { creatorJourneyInitialTab = 0; creatorJourneyVisible = true },
                             onLoginClick = onAccountClick,
-                            onNavigateToGenerator = { currentScreen = 1 },
+                            onNavigateToGenerator = { currentScreen = 2 },
                             onNavigateToDesigns = {
                                 pendingCreationsTab = "designs"
-                                currentScreen = 2
+                                currentScreen = 3
                             },
                             onNavigateToProducts = {
                                 pendingCreationsTab = "products"
-                                currentScreen = 2
+                                currentScreen = 3
                             },
                             onNavigateToMarketingHero = {
                                 pendingMarketingHero = true
-                                currentScreen = 3
+                                currentScreen = 4
                             },
-                            onNavigateToAutomations = { currentScreen = 4 },
+                            onNavigateToAutomations = { currentScreen = 5 },
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )
-                        1 -> CreatorGeneratorScreen(
+                        1 -> EazyResearchScreen(
+                            tokenStore = tokenStore,
+                            translationStore = translationStore,
+                            maxHeight = contentMaxHeight,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        2 -> CreatorGeneratorScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onOpenEazyChat = onEazyChatOpen,
@@ -454,7 +461,7 @@ fun CreatorMainScreen(
                             generatorPrefillRequest = generatorPrefillRequest,
                             onGeneratorPrefillConsumed = { generatorPrefillRequest = null }
                         )
-                        2 -> CreatorCreationsScreen(
+                        3 -> CreatorCreationsScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             initialDesignsActivityFilter = initialDesignsActivityFilter,
@@ -465,12 +472,12 @@ fun CreatorMainScreen(
                             modifier = Modifier.fillMaxSize(),
                             onRequestGeneratorPrefill = { req ->
                                 generatorPrefillRequest = req
-                                currentScreen = 1
+                                currentScreen = 2
                             },
                             onGlowUpJobStarted = onGeneratorJobStarted,
                             onOpenEazyJobs = { onEazyChatOpen(EazySidebarTab.Jobs) }
                         )
-                        3 -> {
+                        4 -> {
                             val activity = LocalContext.current as? MainActivity
                             val smmOAuthRefresh = activity?.pendingSmmOAuthRefresh?.value ?: 0
                             MarketingScreen(
@@ -508,7 +515,7 @@ fun CreatorMainScreen(
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
-                        4 -> AutomationsScreen(
+                        5 -> AutomationsScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             onHeaderTitleChange = { automationsTitleOverride = it },
@@ -580,6 +587,7 @@ fun CreatorMainScreen(
                         currentScreen = currentScreen,
                         screenLabels = listOf(
                             translationStore.t("creator.mobile.dashboard", "Dashboard"),
+                            translationStore.t("creator.mobile.research", "Research"),
                             translationStore.t("creator.mobile.generator", "Generator"),
                             translationStore.t("creator.mobile.creations", "Creations"),
                             translationStore.t("creator.mobile.marketing", "Marketing"),
