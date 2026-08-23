@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Groups
@@ -332,6 +333,22 @@ internal fun listingLimitTiersForChannelAxis(
     }.sortedBy { it.metadata?.optInt("listing_tier_level", 0) ?: 0 }
 }
 
+internal fun listingLimitAxisParents(all: List<JourneyNodeItem>, channel: JourneyNodeItem): List<JourneyNodeItem> {
+    val ch = channel.channelId.ifBlank { channel.metadata?.optString("channel_id") }.orEmpty()
+    return all.filter {
+        if (!isListingLimitAxisParent(it)) return@filter false
+        val nCh = it.channelId.ifBlank { it.metadata?.optString("channel_id") }.orEmpty()
+        nCh == ch || it.nodeKey.startsWith("listing_limit:$ch:")
+    }.sortedBy { if (it.metadata?.optString("listing_limit_axis") == "cap") 1 else 0 }
+}
+
+internal fun listingLimitAxisLabel(axis: String, translationStore: TranslationStore): String =
+    if (axis.equals("cap", ignoreCase = true)) {
+        translationStore.t("creator.journey.listing_limits_cap_title", "Cap")
+    } else {
+        translationStore.t("creator.journey.listing_limits_daily_title", "Daily")
+    }
+
 internal fun listingLimitChannelNodes(nodes: List<JourneyNodeItem>): List<JourneyNodeItem> {
     val channels = nodes.filter { isListingLimitChannel(it) }
     if (channels.isNotEmpty()) return channels
@@ -378,7 +395,13 @@ internal fun journeySkillIcon(node: JourneyNodeItem): ImageVector? {
             val axis = node.metadata?.optString("creation_limit_axis")
             return if (axis == "upload") Icons.Default.FileUpload else Icons.Default.AutoAwesome
         }
-        "listing_limit" -> return listingChannelIcon(node.channelId)
+        "listing_limit" -> {
+            if (isListingLimitAxisParent(node)) {
+                val axis = node.metadata?.optString("listing_limit_axis").orEmpty()
+                return if (axis.equals("cap", ignoreCase = true)) Icons.Default.Layers else Icons.Default.DateRange
+            }
+            return listingChannelIcon(node.channelId)
+        }
         "design_slot" -> {
             return if (isDesignSlotLevelNode(node)) Icons.Default.Layers else Icons.Default.Image
         }
@@ -460,7 +483,10 @@ internal fun isExpandableJourneyNode(node: JourneyNodeItem, allNodes: List<Journ
     if (isCreationLimitParent(node)) {
         return creationLimitTierNodes(allNodes, node).any { !it.unlocked }
     }
-    if (isListingLimitChannel(node) || isListingLimitAxisParent(node)) {
+    if (isListingLimitAxisParent(node)) {
+        return listingLimitTierNodes(allNodes, node).isNotEmpty()
+    }
+    if (isListingLimitChannel(node)) {
         return false
     }
     if (isSocialPlatformNode(node)) {
@@ -656,7 +682,7 @@ internal fun JourneyCreationLimitTreePanel(
 internal fun JourneyListingLimitTreePanel(
     nodes: List<JourneyNodeItem>,
     allNodes: List<JourneyNodeItem>,
-    @Suppress("UNUSED_PARAMETER") expandState: JourneyExpandState,
+    expandState: JourneyExpandState,
     isCreator: Boolean,
     busy: Boolean,
     translationStore: TranslationStore,
@@ -675,13 +701,13 @@ internal fun JourneyListingLimitTreePanel(
         }
         return
     }
-    val dailyTitle = translationStore.t("creator.journey.listing_limits_daily_title", "Daily")
-    val capTitle = translationStore.t("creator.journey.listing_limits_cap_title", "Cap")
     LazyColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(channels, key = { it.nodeKey }) { channel ->
+            val axisParents = listingLimitAxisParents(allNodes, channel)
+            val expandedAxis = axisParents.firstOrNull { it.nodeKey == expandState.listingLimitChannel }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -711,28 +737,44 @@ internal fun JourneyListingLimitTreePanel(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    JourneyListingLimitSkillCarousel(
-                        title = dailyTitle,
-                        tiers = listingLimitTiersForChannelAxis(allNodes, channel, "daily"),
-                        allNodes = allNodes,
-                        isCreator = isCreator,
-                        busy = busy,
-                        translationStore = translationStore,
-                        onInfoClick = onInfoClick,
-                        onCommitClick = onCommitClick,
-                        onUnlock = onUnlock,
-                    )
-                    JourneyListingLimitSkillCarousel(
-                        title = capTitle,
-                        tiers = listingLimitTiersForChannelAxis(allNodes, channel, "cap"),
-                        allNodes = allNodes,
-                        isCreator = isCreator,
-                        busy = busy,
-                        translationStore = translationStore,
-                        onInfoClick = onInfoClick,
-                        onCommitClick = onCommitClick,
-                        onUnlock = onUnlock,
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        axisParents.forEach { axisNode ->
+                            val axis = axisNode.metadata?.optString("listing_limit_axis").orEmpty()
+                                .ifBlank { "daily" }
+                            val titled = axisNode.copy(title = listingLimitAxisLabel(axis, translationStore))
+                            JourneyLimitParentCard(
+                                node = titled,
+                                allNodes = allNodes,
+                                expanded = expandState.listingLimitChannel == axisNode.nodeKey,
+                                isCreator = isCreator,
+                                busy = busy,
+                                translationStore = translationStore,
+                                onExpandToggle = { expandState.toggleListingLimit(axisNode.nodeKey) },
+                                onInfoClick = { onInfoClick(axisNode) },
+                                onCommitClick = onCommitClick,
+                                onUnlock = onUnlock,
+                                modifier = Modifier.width(156.dp),
+                            )
+                        }
+                    }
+                    expandedAxis?.let { axisNode ->
+                        val axis = axisNode.metadata?.optString("listing_limit_axis").orEmpty()
+                            .ifBlank { "daily" }
+                        JourneyListingLimitSkillCarousel(
+                            title = listingLimitAxisLabel(axis, translationStore),
+                            tiers = listingLimitTiersForChannelAxis(allNodes, channel, axis),
+                            allNodes = allNodes,
+                            isCreator = isCreator,
+                            busy = busy,
+                            translationStore = translationStore,
+                            onInfoClick = onInfoClick,
+                            onCommitClick = onCommitClick,
+                            onUnlock = onUnlock,
+                        )
+                    }
                 }
             }
         }
@@ -1103,7 +1145,8 @@ private fun JourneyLimitParentCard(
             onInfoClick = if (expandable) onInfoClick else null,
             onCommitClick = { onCommitClick(node) },
             onUnlockClick = { onUnlock(node.nodeKey) },
-            skipParentActions = isCreationLimitParent(node) || isListingLimitChannel(node) || isSocialPlatformNode(node),
+            skipParentActions = isCreationLimitParent(node) || isListingLimitChannel(node) ||
+                isListingLimitAxisParent(node) || isSocialPlatformNode(node),
         )
     }
 }

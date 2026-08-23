@@ -611,16 +611,13 @@ fun CreatorCreationsScreen(
         } else {
             slotUsage.activeDesignsUsed
         }
-        val productsUsed = if (productsLoadedOnce) {
-            products.filter { !it.isSample }.map { it.productKey.ifBlank { it.id } }.distinct().size
-        } else {
-            slotUsage.productsUsed
-        }
+        val productsUsed = slotUsage.productsUsed
+        val productsCap = slotUsage.maxProducts
         CreationsSlotUsageBar(
             designsUsed = designsUsed,
             designsCap = slotUsage.maxActiveDesignSlots,
             productsUsed = productsUsed,
-            productsCap = slotUsage.maxProducts,
+            productsCap = productsCap,
             translationStore = translationStore,
         )
         }

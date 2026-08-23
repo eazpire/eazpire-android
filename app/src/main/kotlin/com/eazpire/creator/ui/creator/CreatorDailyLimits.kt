@@ -125,12 +125,21 @@ fun parseDailyLimitsSnapshot(resp: JSONObject?): DailyLimitsSnapshot {
 }
 
 fun parseJourneySlotUsage(resp: JSONObject?): JourneySlotUsage {
-    val j = resp?.optJSONObject("journey_limits") ?: return JourneySlotUsage()
+    val j = resp?.optJSONObject("journey_limits") ?: JSONObject()
+    val listing = resp?.optJSONObject("listing_limits_effective")
+    val shopify = listing?.optJSONObject("channels")?.optJSONObject("shopify")
+    val listingCap = shopify?.optInt("listings_cap", 0) ?: 0
+    val listingUsed = when {
+        shopify == null -> j.optInt("products_used", 0)
+        shopify.has("listings_used_total") -> shopify.optInt("listings_used_total", 0)
+        shopify.has("listings_used_total") -> shopify.optInt("listings_used_total", 0)
+        else -> j.optInt("products_used", 0)
+    }
     return JourneySlotUsage(
         maxActiveDesignSlots = j.optInt("max_active_design_slots", 0),
-        maxProducts = j.optInt("max_products", 0),
+        maxProducts = if (listingCap > 0) listingCap else j.optInt("max_products", 0),
         activeDesignsUsed = j.optInt("active_designs_used", 0),
-        productsUsed = j.optInt("products_used", 0),
+        productsUsed = if (shopify != null || listingCap > 0) listingUsed else j.optInt("products_used", 0),
     )
 }
 
@@ -376,7 +385,7 @@ fun CreationsSlotUsageBar(
             modifier = Modifier.clickable {
                 showInfo(
                     "creator.creations.slots_products_info",
-                    "Unlocked product types versus your Skill Tree product-slot cap. Level 1 is free; more product slots unlock with EAZV.",
+                    "Live listings versus your Skill Tree listing cap. Each listed product uses one slot.",
                 )
             },
         ) {

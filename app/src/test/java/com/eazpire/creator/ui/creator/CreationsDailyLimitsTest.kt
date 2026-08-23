@@ -43,6 +43,37 @@ class CreationsDailyLimitsTest {
     }
 
     @Test
+    fun parseJourneySlotUsagePrefersListingCapOverProductTypes() {
+        val json = JSONObject(
+            """
+            {
+              "ok": true,
+              "journey_limits": {
+                "max_active_design_slots": 50,
+                "max_products": 12,
+                "active_designs_used": 12,
+                "products_used": 12
+              },
+              "listing_limits_effective": {
+                "channels": {
+                  "shopify": {
+                    "listings_used_total": 87,
+                    "listings_cap": 210,
+                    "channel_unlocked": true
+                  }
+                }
+              }
+            }
+            """.trimIndent()
+        )
+        val usage = parseJourneySlotUsage(json)
+        assertEquals(50, usage.maxActiveDesignSlots)
+        assertEquals(210, usage.maxProducts)
+        assertEquals(12, usage.activeDesignsUsed)
+        assertEquals(87, usage.productsUsed)
+    }
+
+    @Test
     fun parseJourneySlotUsageReadsCapsAndUsed() {
         val json = JSONObject(
             """
