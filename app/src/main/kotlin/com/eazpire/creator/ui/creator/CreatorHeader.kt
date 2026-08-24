@@ -340,15 +340,7 @@ fun CreatorHeader(
             }
         }
 
-        if (ownerId.isNotBlank()) {
-            val dailyLimits = rememberDailyLimitsSnapshot(api = api, ownerId = ownerId)
-            CreatorDailyLimitsSubheader(
-                snapshot = dailyLimits,
-                translationStore = translationStore,
-            )
-        }
-
-        // Content: dots + title + swipe hint (gap 4dp)
+        // Content: title + swipe hint + dots (gap 4dp)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -356,37 +348,6 @@ fun CreatorHeader(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Dots: 8x8, gap 8
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                screenLabels.forEachIndexed { index, _ ->
-                    val direction = if (index % 2 == 0) 1f else -1f
-                    val intensity = if (audioIsPlaying) partyVisuals?.intensity ?: 0f else 0f
-                    val smooth = if (audioIsPlaying) partyVisuals?.smoothBass ?: 0f else 0f
-                    val energies = partyVisuals?.dotEnergies.orEmpty()
-                    val energy = energies.getOrNull(index) ?: 0f
-                    val activeDotIndex = partyVisuals?.activeDotIndex ?: 0
-                    val active = energy * intensity + smooth * 0.18f * if (index == activeDotIndex) 1f else 0f
-                    val dotTravel = 3f + intensity * 7f
-                    val dotOffsetY = active * dotTravel * direction
-                    val dotScale = 1f + active * (intensity * 0.2f)
-                    Box(
-                        modifier = Modifier
-                            .offset(y = dotOffsetY.dp)
-                            .graphicsLayer {
-                                scaleX = dotScale
-                                scaleY = dotScale
-                            }
-                            .size(8.dp)
-                            .background(
-                                color = if (index == currentScreen) EazColors.Orange else Color.White.copy(alpha = 0.2f),
-                                shape = androidx.compose.foundation.shape.CircleShape
-                            )
-                    )
-                }
-            }
             // Title row: Audio-Widget (links) + Titel (zentriert) + Eazy-Snap-Slot (rechts) – wie Web
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -551,6 +512,43 @@ fun CreatorHeader(
                     fontWeight = FontWeight.Medium
                 ),
                 color = Color.White.copy(alpha = 0.6f)
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                screenLabels.forEachIndexed { index, _ ->
+                    val direction = if (index % 2 == 0) 1f else -1f
+                    val intensity = if (audioIsPlaying) partyVisuals?.intensity ?: 0f else 0f
+                    val smooth = if (audioIsPlaying) partyVisuals?.smoothBass ?: 0f else 0f
+                    val energies = partyVisuals?.dotEnergies.orEmpty()
+                    val energy = energies.getOrNull(index) ?: 0f
+                    val activeDotIndex = partyVisuals?.activeDotIndex ?: 0
+                    val active = energy * intensity + smooth * 0.18f * if (index == activeDotIndex) 1f else 0f
+                    val dotTravel = 3f + intensity * 7f
+                    val dotOffsetY = active * dotTravel * direction
+                    val dotScale = 1f + active * (intensity * 0.2f)
+                    Box(
+                        modifier = Modifier
+                            .offset(y = dotOffsetY.dp)
+                            .graphicsLayer {
+                                scaleX = dotScale
+                                scaleY = dotScale
+                            }
+                            .size(8.dp)
+                            .background(
+                                color = if (index == currentScreen) EazColors.Orange else Color.White.copy(alpha = 0.2f),
+                                shape = androidx.compose.foundation.shape.CircleShape
+                            )
+                    )
+                }
+            }
+        }
+        if (ownerId.isNotBlank()) {
+            val dailyLimits = rememberDailyLimitsSnapshot(api = api, ownerId = ownerId)
+            CreatorDailyLimitsSubheader(
+                snapshot = dailyLimits,
+                translationStore = translationStore,
             )
         }
     }

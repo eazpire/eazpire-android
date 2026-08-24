@@ -141,6 +141,14 @@ data class CreationDesign(
     val qualityRating: String? = null,
     val remixCount: Int = 0,
     val favoriteCount: Int = 0,
+    val personalizable: String? = null,
+    val designLanguage: String? = null,
+    val dialect: String? = null,
+    val writingSystem: String? = null,
+    val designColor: String? = null,
+    val background: String? = null,
+    val designStyle: String? = null,
+    val targetProduct: String? = null,
 ) {
     val sortUpdatedAt: Long get() = createdAt
 }
@@ -163,6 +171,37 @@ data class CreationProduct(
     val remixCount: Int = 0,
 ) {
     val sortUpdatedAt: Long get() = updatedAt ?: publishedAt ?: 0L
+}
+
+internal fun matchesCreationsDesignFilter(d: CreationDesign, f: CreationsFilterState): Boolean {
+    if (f.designArt.isNotEmpty()) {
+        val src = when (d.designSource.lowercase()) {
+            "generated" -> "generated"
+            "uploaded" -> "uploaded"
+            "saved" -> "personalized"
+            else -> d.designSource.lowercase()
+        }
+        val wanted = f.designArt.map { it.lowercase() }.toSet()
+        val isAutomation = d.designSource.contains("automation", true) || d.source.contains("automation", true)
+        if (src !in wanted && !("automation" in wanted && isAutomation)) return false
+    }
+    fun miss(selected: Set<String>, value: String?): Boolean {
+        if (selected.isEmpty() || value == null) return false
+        return value.lowercase() !in selected.map { it.lowercase() }
+    }
+    if (miss(f.ratio, d.ratio)) return false
+    if (miss(f.designType, d.designType)) return false
+    if (miss(f.contentType, d.contentType)) return false
+    if (miss(f.qualityRating, d.qualityRating)) return false
+    if (miss(f.personalizable, d.personalizable)) return false
+    if (miss(f.designLanguage, d.designLanguage)) return false
+    if (miss(f.dialect, d.dialect)) return false
+    if (miss(f.writingSystem, d.writingSystem)) return false
+    if (miss(f.designColor, d.designColor)) return false
+    if (miss(f.background, d.background)) return false
+    if (miss(f.designStyle, d.designStyle)) return false
+    if (miss(f.targetProduct, d.targetProduct)) return false
+    return true
 }
 
 private val VIEW_MODES = listOf("grid2", "grid3", "list")
@@ -363,6 +402,9 @@ fun CreatorCreationsScreen(
             }
             products = list
             productsLoadedOnce = true
+            if (slotUsage.maxProducts > 0 && slotUsage.productsUsed == 0 && list.isNotEmpty()) {
+                slotUsage = slotUsage.copy(productsUsed = list.size)
+            }
         } catch (_: Exception) {
             if (!productsLoadedOnce) products = emptyList()
         } finally {
@@ -383,6 +425,9 @@ fun CreatorCreationsScreen(
             }
             designs = list
             designsLoadedOnce = true
+            slotUsage = slotUsage.copy(
+                activeDesignsUsed = list.count { it.effectiveLibraryStatus() == "active" },
+            )
         } catch (_: Exception) {
             if (!designsLoadedOnce) designs = emptyList()
         } finally {
@@ -430,27 +475,7 @@ fun CreatorCreationsScreen(
         }
         val f = creationsFilter
         if (!f.isEmpty()) {
-            list = list.filter { d ->
-                if (f.designArt.isNotEmpty()) {
-                    val src = when (d.designSource.lowercase()) {
-                        "generated" -> "generated"
-                        "uploaded" -> "uploaded"
-                        "saved" -> "personalized"
-                        else -> d.designSource.lowercase()
-                    }
-                    if (src !in f.designArt.map { it.lowercase() }) return@filter false
-                }
-                if (f.ratio.isNotEmpty() && d.ratio != null) {
-                    if (d.ratio !in f.ratio.map { it.lowercase() }) return@filter false
-                }
-                if (f.designType.isNotEmpty() && d.designType != null) {
-                    if (d.designType !in f.designType.map { it.lowercase() }) return@filter false
-                }
-                if (f.contentType.isNotEmpty() && d.contentType != null) {
-                    if (d.contentType !in f.contentType.map { it.lowercase() }) return@filter false
-                }
-                true
-            }
+            list = list.filter { d -> matchesCreationsDesignFilter(d, f) }
         }
         sortCreationDesigns(list, designsSort) { d ->
             val id = d.id ?: d.designId ?: ""
@@ -471,8 +496,8 @@ fun CreatorCreationsScreen(
                     val ok = f.sales.any { range ->
                         when (range) {
                             "0" -> p.publishedCount == 0
-                            "1-10" -> p.publishedCount in 1..10
-                            "11-50" -> p.publishedCount in 11..50
+                            "1-10", "1-10" -> p.publishedCount in 1..10
+                            "11-50", "11-50" -> p.publishedCount in 11..50
                             "51-100" -> p.publishedCount in 51..100
                             "100+" -> p.publishedCount >= 100
                             else -> false
@@ -1340,7 +1365,11 @@ private suspend fun fetchCreationsDesignsMerged(
             val obj = arr.optJSONObject(i) ?: continue
             val jid = obj.optString("job_id", "").trim()
             if (jid.isNotBlank() && savedJobIds.contains(jid)) continue
-            parseGeneratedCreationDesign(obj, savingToLibrary = savingJobIds.contains(jid))?.let { merged.add(it) }
+            parseGeneratedCreationDesign(obj, savingToLibrary = savingJobIds.contains(jid))?.let { d ->
+                val did = d.id?.trim().orEmpty()
+                if (did.isNotBlank() && merged.any { it.id == did }) return@let
+                merged.add(d)
+            }
         }
     }
 

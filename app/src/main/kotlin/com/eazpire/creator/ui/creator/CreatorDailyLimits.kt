@@ -139,7 +139,7 @@ fun parseJourneySlotUsage(resp: JSONObject?): JourneySlotUsage {
         maxActiveDesignSlots = j.optInt("max_active_design_slots", 0),
         maxProducts = if (listingCap > 0) listingCap else j.optInt("max_products", 0),
         activeDesignsUsed = j.optInt("active_designs_used", 0),
-        productsUsed = if (shopify != null || listingCap > 0) listingUsed else j.optInt("products_used", 0),
+        productsUsed = if (listingCap > 0) listingUsed else j.optInt("products_used", 0),
     )
 }
 

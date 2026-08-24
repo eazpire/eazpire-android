@@ -538,6 +538,33 @@ fun ShopScreen(
     val jwtForApi = tokenStore.getJwt()
     val ownerId = tokenStore.getOwnerId().orEmpty()
     val eazySyncApi = remember(jwtForApi, ownerId) { CreatorApi(jwt = jwtForApi) }
+
+    LaunchedEffect(ownerId) {
+        if (ownerId.isBlank() || !tokenStore.isLoggedIn()) return@LaunchedEffect
+        delay(600)
+        if (eazyChatVisible) return@LaunchedEffect
+        val tab = withContext(Dispatchers.IO) {
+            eazyChatStore.consumeUnseenUserFeed(eazySyncApi, ownerId)
+        } ?: return@LaunchedEffect
+        eazyStartTab = tab
+        eazyChatVisible = true
+    }
+
+    DisposableEffect(lifecycleOwner, ownerId, eazyChatVisible) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            if (eazyChatVisible || ownerId.isBlank() || !tokenStore.isLoggedIn()) return@LifecycleEventObserver
+            scope.launch {
+                val tab = withContext(Dispatchers.IO) {
+                    eazyChatStore.consumeUnseenUserFeed(eazySyncApi, ownerId)
+                } ?: return@launch
+                eazyStartTab = tab
+                eazyChatVisible = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val creatorCodeHintActive by CreatorCodeAvailableHintStore.active.collectAsState()
     var thankYouGiftCount by remember { mutableIntStateOf(0) }
 
@@ -853,14 +880,20 @@ fun ShopScreen(
             onHeroJobStarted = { id, summary ->
                 eazyChatStore.startHeroJob(id, summary)
                 eazyStartTab = EazySidebarTab.Jobs
+                eazyChatVisible = true
+                scope.launch { eazyChatStore.markSeen(tokenStore.getOwnerId().orEmpty(), emptyList(), listOf(id)) }
             },
             onVideoJobStarted = { id, summary ->
                 eazyChatStore.startVideoJob(id, summary)
                 eazyStartTab = EazySidebarTab.Jobs
+                eazyChatVisible = true
+                scope.launch { eazyChatStore.markSeen(tokenStore.getOwnerId().orEmpty(), emptyList(), listOf(id)) }
             },
             onGeneratorJobStarted = { id, summary ->
                 eazyChatStore.startDesignJob(id, summary)
                 eazyStartTab = EazySidebarTab.Jobs
+                eazyChatVisible = true
+                scope.launch { eazyChatStore.markSeen(tokenStore.getOwnerId().orEmpty(), emptyList(), listOf(id)) }
             },
             onGeneratorEazyLookLeftChange = { creatorGenEazyLookLeft = it },
             eazyDocked = eazyDocked,

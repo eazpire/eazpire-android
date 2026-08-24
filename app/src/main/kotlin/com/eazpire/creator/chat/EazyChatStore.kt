@@ -106,6 +106,104 @@ class EazyChatStore(private val context: Context) {
         context.eazyChatDataStore.edit { it[FN_VISIBILITY_KEY] = jo.toString() }
     }
 
+    data class SeenUserFeed(val notifs: Map<String, Long>, val jobs: Map<String, Long>)
+
+    suspend fun loadSeenUserFeed(ownerId: String): SeenUserFeed {
+        val raw = context.eazyChatDataStore.data.map { it[SEEN_FEED_KEY] }.first() ?: return SeenUserFeed(emptyMap(), emptyMap())
+        return try {
+            val all = JSONObject(raw)
+            val rec = all.optJSONObject(ownerId) ?: return SeenUserFeed(emptyMap(), emptyMap())
+            SeenUserFeed(jsonToLongMap(rec.optJSONObject("notifs")), jsonToLongMap(rec.optJSONObject("jobs")))
+        } catch (_: Exception) {
+            SeenUserFeed(emptyMap(), emptyMap())
+        }
+    }
+
+    suspend fun markSeen(ownerId: String, notifIds: Collection<String>, jobIds: Collection<String>) {
+        if (ownerId.isBlank()) return
+        val now = System.currentTimeMillis()
+        val cur = loadSeenUserFeed(ownerId)
+        val notifs = cur.notifs.toMutableMap()
+        val jobs = cur.jobs.toMutableMap()
+        notifIds.filter { it.isNotBlank() }.forEach { notifs[it] = now }
+        jobIds.filter { it.isNotBlank() }.forEach { jobs[it] = now }
+        val rec = JSONObject()
+            .put("notifs", longMapToJson(pruneMap(notifs)))
+            .put("jobs", longMapToJson(pruneMap(jobs)))
+        val raw = context.eazyChatDataStore.data.map { it[SEEN_FEED_KEY] }.first()
+        val all = try { if (raw.isNullOrBlank()) JSONObject() else JSONObject(raw) } catch (_: Exception) { JSONObject() }
+        all.put(ownerId, rec)
+        context.eazyChatDataStore.edit { it[SEEN_FEED_KEY] = all.toString() }
+    }
+
+    /**
+     * Returns Jobs or Notifications if a new unseen user item exists; marks those IDs seen.
+     */
+    suspend fun consumeUnseenUserFeed(
+        api: com.eazpire.creator.api.CreatorApi,
+        ownerId: String,
+    ): EazySidebarTab? {
+        if (ownerId.isBlank()) return null
+        val seen = loadSeenUserFeed(ownerId)
+        val jobsRes = runCatching { api.listJobs(ownerId, 50) }.getOrNull()
+        val jobIds = mutableListOf<String>()
+        if (jobsRes?.optBoolean("ok", false) == true) {
+            val arr = jobsRes.optJSONArray("items") ?: org.json.JSONArray()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optString("job_id", o.optString("id", "")).trim()
+                val done = o.optBoolean("done", false)
+                val saving = o.optBoolean("saving", false)
+                val saved = o.optBoolean("saved", false)
+                val active = if (o.has("active")) o.optBoolean("active") else (!done || (saving && !saved))
+                if (id.isNotBlank() && active) jobIds += id
+            }
+        }
+        val unseenJobs = jobIds.filter { it !in seen.jobs }
+        if (unseenJobs.isNotEmpty()) {
+            markSeen(ownerId, emptyList(), unseenJobs)
+            return EazySidebarTab.Jobs
+        }
+        val notifRes = runCatching { api.getNotifications(ownerId) }.getOrNull()
+        val unseenNotifs = mutableListOf<String>()
+        if (notifRes?.optBoolean("ok", false) == true) {
+            val arr = notifRes.optJSONArray("notifications") ?: org.json.JSONArray()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optString("notification_id", o.optString("id", "")).trim()
+                val read = o.optBoolean("is_read", false) || o.optInt("is_read", 0) == 1
+                if (id.isNotBlank() && !read && id !in seen.notifs) unseenNotifs += id
+            }
+        }
+        if (unseenNotifs.isNotEmpty()) {
+            markSeen(ownerId, unseenNotifs, emptyList())
+            return EazySidebarTab.Notifications
+        }
+        return null
+    }
+
+    private fun jsonToLongMap(obj: org.json.JSONObject?): Map<String, Long> {
+        if (obj == null) return emptyMap()
+        val m = mutableMapOf<String, Long>()
+        val it = obj.keys()
+        while (it.hasNext()) {
+            val k = it.next()
+            m[k] = obj.optLong(k, 0L)
+        }
+        return m
+    }
+
+    private fun longMapToJson(map: Map<String, Long>): org.json.JSONObject {
+        val o = org.json.JSONObject()
+        map.forEach { (k, v) -> o.put(k, v) }
+        return o
+    }
+
+    private fun pruneMap(map: Map<String, Long>): Map<String, Long> {
+        if (map.size <= 250) return map
+        return map.entries.sortedBy { it.value }.takeLast(200).associate { it.key to it.value }
+    }
+
     fun startHeroJob(jobId: String, summary: String) {
         _heroJobState.value = HeroJobState(jobId = jobId, summary = summary, progress = 0, message = null)
         EazBalanceRefreshBus.requestRefresh()
@@ -256,6 +354,7 @@ class EazyChatStore(private val context: Context) {
     companion object {
         private val USER_ID_KEY = stringPreferencesKey("eazy_user_id")
         private val FN_VISIBILITY_KEY = stringPreferencesKey("eazy_fn_visibility")
+        private val SEEN_FEED_KEY = stringPreferencesKey("eazy_seen_user_feed_v1")
     }
 }
 

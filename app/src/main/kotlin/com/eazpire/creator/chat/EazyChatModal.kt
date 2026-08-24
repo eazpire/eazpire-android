@@ -943,10 +943,31 @@ fun EazyChatModal(
         }
     }
 
+    val dismissModal: () -> Unit = {
+        val oid = ownerId
+        if (oid != null) {
+            val nids = if (selectedTab == EazySidebarTab.Notifications && notifFeedScope == "user") {
+                notifsUser.map { it.id }
+            } else {
+                emptyList()
+            }
+            val jids = if (selectedTab == EazySidebarTab.Jobs && jobsFeedScope == "user") {
+                (userKvJobs.map { it.id } +
+                    listOfNotNull(heroJob?.jobId, videoJob?.jobId, designJob?.jobId)).distinct()
+            } else {
+                emptyList()
+            }
+            if (nids.isNotEmpty() || jids.isNotEmpty()) {
+                scope.launch { chatStore.markSeen(oid, nids, jids) }
+            }
+        }
+        onDismiss()
+    }
+
     val eazyPalette = remember(chatContext) { eazyPaletteFor(chatContext) }
     CompositionLocalProvider(LocalEazyModalPalette provides eazyPalette) {
     EazBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismissModal,
         sheetState = sheetState,
         containerColor = eazyPalette.bg,
         fullscreen = true,
@@ -1001,7 +1022,7 @@ fun EazyChatModal(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 IconButton(
-                                    onClick = onDismiss,
+                                    onClick = dismissModal,
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(
@@ -1107,7 +1128,7 @@ fun EazyChatModal(
                                         Spacer(modifier = Modifier.height(16.dp))
                                         TextButton(
                                             onClick = {
-                                                onDismiss()
+                                                dismissModal()
                                                 onLoginClick()
                                             },
                                             colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = LocalEazyModalPalette.current.accent)
@@ -1221,6 +1242,20 @@ fun EazyChatModal(
                                         loadNotificationsList()
                                     }
                                 },
+                                onMarkAllRead = {
+                                    val oid = ownerId ?: return@EazyNotificationsPanel
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            if (notifFeedScope == "system") {
+                                                api.markAllSystemNotificationsRead(oid, "creator")
+                                                api.markAllSystemNotificationsRead(oid, "shop")
+                                            } else {
+                                                api.markAllNotificationsRead(oid)
+                                            }
+                                        }
+                                        loadNotificationsList()
+                                    }
+                                },
                                 onOpenCreatorCodes = onOpenCreatorCodes,
                                 onOpenPublishAssist = onOpenPublishAssist,
                             )
@@ -1259,7 +1294,7 @@ fun EazyChatModal(
                                 ownerId = ownerId,
                                 isLoggedIn = isLoggedIn,
                                 onLoginClick = onLoginClick,
-                                onDismiss = onDismiss,
+                                onDismiss = dismissModal,
                                 t = t,
                                 initialSection = pendingGamesSection,
                                 pendingTradeOfferId = pendingTradeOfferId,
@@ -1304,7 +1339,7 @@ fun EazyChatModal(
                                         Spacer(modifier = Modifier.height(16.dp))
                                         TextButton(
                                             onClick = {
-                                                onDismiss()
+                                                dismissModal()
                                                 onLoginClick()
                                             },
                                             colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = LocalEazyModalPalette.current.accent)
@@ -1555,6 +1590,7 @@ private fun EazyNotificationsPanel(
     onNotifFeedScopeChange: (String) -> Unit,
     t: (String, String) -> String,
     onMarkRead: (EazyNotifRow) -> Unit,
+    onMarkAllRead: (() -> Unit)? = null,
     onOpenCreatorCodes: (prefillCode: String?) -> Unit = {},
     onOpenPublishAssist: () -> Unit = {},
 ) {
@@ -1578,6 +1614,19 @@ private fun EazyNotificationsPanel(
             activeKey = notifFilter,
             onSelect = onFilterChange,
         )
+        if (unread.isNotEmpty() && onMarkAllRead != null) {
+            TextButton(
+                onClick = onMarkAllRead,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+            ) {
+                Text(
+                    t("creator.notifications.mark_all_read", "Mark all as read"),
+                    color = LocalEazyModalPalette.current.accent,
+                )
+            }
+        }
         if (loading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = LocalEazyModalPalette.current.accent)
@@ -1891,6 +1940,9 @@ private fun EazyChatSidebarOverlay(
 private fun systemJobKindUiLabel(jobKind: String, t: (String, String) -> String): String =
     when (jobKind.trim()) {
         "automation_design" -> t("eazy_chat.chat_job_kind_automation_design", "Scheduled design automation")
+        "amazon_publish" -> t("eazy_chat.chat_job_kind_amazon_publish", "Amazon publish")
+        "amazon_unpublish" -> t("eazy_chat.chat_job_kind_amazon_unpublish", "Amazon unpublish")
+        "auto_hero" -> t("eazy_chat.chat_job_kind_auto_hero", "Automatic hero image")
         else -> t("eazy_chat.chat_job_kind_system_publish", "Automatic publishing")
     }
 

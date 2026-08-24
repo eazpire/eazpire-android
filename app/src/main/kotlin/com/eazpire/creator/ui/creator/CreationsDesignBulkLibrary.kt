@@ -266,13 +266,16 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
             else -> c.ifBlank { null }
         }
     }
-    val ls = obj.optString("library_status", "").trim().lowercase().let {
-        if (it == "active" || it == "inactive") it else if (obj.optString("id", "").isNotBlank()) "active" else "inactive"
-    }
+    val id = com.eazpire.creator.api.jsonCoercedString(obj, "id", "design_id")
+    val jobId = com.eazpire.creator.api.jsonCoercedString(obj, "job_id")
+    val ls = com.eazpire.creator.api.jsonCoercedString(obj, "library_status", "library_status")
+        .trim().lowercase().let {
+            if (it == "active" || it == "inactive") it else if (id.isNotBlank()) "active" else "inactive"
+        }
     return CreationDesign(
-        id = obj.optString("id", "").takeIf { it.isNotBlank() },
-        designId = obj.optString("id", "").takeIf { it.isNotBlank() },
-        jobId = obj.optString("job_id", "").takeIf { it.isNotBlank() },
+        id = id.takeIf { it.isNotBlank() },
+        designId = id.takeIf { it.isNotBlank() },
+        jobId = jobId.takeIf { it.isNotBlank() },
         imageUrl = preview,
         previewUrl = obj.optString("preview_url", "").ifBlank { preview },
         originalUrl = obj.optString("original_url", "").ifBlank { preview },
@@ -299,9 +302,19 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
             obj.optString("publish_session_id", "").isNotBlank(),
         publishSessionId = obj.optString("publish_session_id", "").takeIf { it.isNotBlank() },
         reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
-        qualityRating = normalizeQualityRating(obj.optString("quality_rating", "")),
-        remixCount = obj.optInt("remix_count", 0),
-        favoriteCount = obj.optInt("favorite_count", 0),
+        qualityRating = normalizeQualityRating(
+            com.eazpire.creator.api.jsonCoercedString(obj, "quality_rating", "quality_rating")
+        ),
+        remixCount = obj.optInt("remix_count", obj.optInt("remix_count", 0)),
+        favoriteCount = obj.optInt("favorite_count", obj.optInt("favorite_count", 0)),
+        personalizable = meta.optString("personalizable", "").ifBlank { null },
+        designLanguage = meta.optString("design_language", "").ifBlank { null },
+        dialect = meta.optString("dialect", "").ifBlank { null },
+        writingSystem = meta.optString("writing_system", "").ifBlank { null },
+        designColor = meta.optString("design_color", "").ifBlank { null },
+        background = meta.optString("background", "").ifBlank { null },
+        designStyle = meta.optString("design_style", "").ifBlank { null },
+        targetProduct = meta.optString("target_product", "").ifBlank { null },
     )
 }
 
@@ -335,17 +348,27 @@ fun parseKvSavingCreationDesign(obj: JSONObject): CreationDesign? {
 }
 
 fun parseGeneratedCreationDesign(obj: JSONObject, savingToLibrary: Boolean = false): CreationDesign? {
+    val designId = com.eazpire.creator.api.jsonCoercedString(obj, "design_id", "id")
+    val savedFlag = obj.optBoolean("saved", false) ||
+        com.eazpire.creator.api.jsonCoercedString(obj, "library_status", "library_status")
+            .equals("inactive", ignoreCase = true)
+    if (savedFlag && designId.isNotBlank()) {
+        val copy = JSONObject(obj.toString())
+        copy.put("id", designId)
+        if (com.eazpire.creator.api.jsonCoercedString(copy, "library_status", "library_status").isBlank()) {
+            copy.put("library_status", "inactive")
+        }
+        parseSavedCreationDesign(copy)?.let { return it.copy(savingToLibrary = savingToLibrary) }
+    }
     val preview = obj.optString("preview_url", "")
         .ifBlank { obj.optJSONObject("result")?.optString("preview_url").orEmpty() }
         .ifBlank { obj.optJSONObject("result")?.optString("image_url").orEmpty() }
         .ifBlank { obj.optString("image_url", "") }
         .ifBlank { firstCreationImageUrl(obj) }
     return CreationDesign(
-        id = obj.optString("design_id", "").takeIf { it.isNotBlank() }
-            ?: obj.optString("id", "").takeIf { it.isNotBlank() },
-        designId = obj.optString("design_id", "").takeIf { it.isNotBlank() }
-            ?: obj.optString("id", "").takeIf { it.isNotBlank() },
-        jobId = obj.optString("job_id", "").takeIf { it.isNotBlank() },
+        id = designId.takeIf { it.isNotBlank() },
+        designId = designId.takeIf { it.isNotBlank() },
+        jobId = com.eazpire.creator.api.jsonCoercedString(obj, "job_id").takeIf { it.isNotBlank() },
         imageUrl = preview,
         previewUrl = preview,
         originalUrl = preview,
@@ -361,7 +384,11 @@ fun parseGeneratedCreationDesign(obj: JSONObject, savingToLibrary: Boolean = fal
         libraryStatus = "inactive",
         savingToLibrary = savingToLibrary,
         reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
-        qualityRating = normalizeQualityRating(obj.optString("quality_rating", "")),
+        qualityRating = normalizeQualityRating(
+            com.eazpire.creator.api.jsonCoercedString(obj, "quality_rating", "quality_rating")
+        ),
+        remixCount = obj.optInt("remix_count", obj.optInt("remix_count", 0)),
+        favoriteCount = obj.optInt("favorite_count", obj.optInt("favorite_count", 0)),
     )
 }
 

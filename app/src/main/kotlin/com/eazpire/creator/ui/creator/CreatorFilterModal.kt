@@ -48,13 +48,25 @@ data class CreationsFilterState(
     val ratio: Set<String> = emptySet(),
     val designType: Set<String> = emptySet(),
     val contentType: Set<String> = emptySet(),
+    val qualityRating: Set<String> = emptySet(),
+    val personalizable: Set<String> = emptySet(),
+    val designLanguage: Set<String> = emptySet(),
+    val dialect: Set<String> = emptySet(),
+    val writingSystem: Set<String> = emptySet(),
+    val designColor: Set<String> = emptySet(),
+    val background: Set<String> = emptySet(),
+    val designStyle: Set<String> = emptySet(),
+    val targetProduct: Set<String> = emptySet(),
     val productCategory: Set<String> = emptySet(),
     val sales: Set<String> = emptySet(),
     val priceMin: String = "",
     val priceMax: String = ""
 ) {
     fun isEmpty() = designArt.isEmpty() && ratio.isEmpty() && designType.isEmpty() &&
-        contentType.isEmpty() && productCategory.isEmpty() && sales.isEmpty() &&
+        contentType.isEmpty() && qualityRating.isEmpty() && personalizable.isEmpty() &&
+        designLanguage.isEmpty() && dialect.isEmpty() && writingSystem.isEmpty() &&
+        designColor.isEmpty() && background.isEmpty() && designStyle.isEmpty() &&
+        targetProduct.isEmpty() && productCategory.isEmpty() && sales.isEmpty() &&
         priceMin.isBlank() && priceMax.isBlank()
 }
 
@@ -71,7 +83,8 @@ fun CreatorFilterModal(
     initialFilter: CreationsFilterState = CreationsFilterState(),
     onApply: (CreationsFilterState) -> Unit = {},
     designs: List<CreationDesign> = emptyList(),
-    products: List<CreationProduct> = emptyList()
+    products: List<CreationProduct> = emptyList(),
+    hideProductFilters: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var filterTab by remember { mutableStateOf(if (source == "products") "product" else "design") }
@@ -80,6 +93,15 @@ fun CreatorFilterModal(
     var ratio by remember { mutableStateOf(initialFilter.ratio) }
     var designType by remember { mutableStateOf(initialFilter.designType) }
     var contentType by remember { mutableStateOf(initialFilter.contentType) }
+    var qualityRating by remember { mutableStateOf(initialFilter.qualityRating) }
+    var personalizable by remember { mutableStateOf(initialFilter.personalizable) }
+    var designLanguage by remember { mutableStateOf(initialFilter.designLanguage) }
+    var dialect by remember { mutableStateOf(initialFilter.dialect) }
+    var writingSystem by remember { mutableStateOf(initialFilter.writingSystem) }
+    var designColor by remember { mutableStateOf(initialFilter.designColor) }
+    var background by remember { mutableStateOf(initialFilter.background) }
+    var designStyle by remember { mutableStateOf(initialFilter.designStyle) }
+    var targetProduct by remember { mutableStateOf(initialFilter.targetProduct) }
     var productCategory by remember { mutableStateOf(initialFilter.productCategory) }
     var sales by remember { mutableStateOf(initialFilter.sales) }
     var priceMin by remember { mutableStateOf(initialFilter.priceMin) }
@@ -89,6 +111,15 @@ fun CreatorFilterModal(
     fun toggleRatio(v: String) { ratio = if (v in ratio) ratio - v else ratio + v }
     fun toggleDesignType(v: String) { designType = if (v in designType) designType - v else designType + v }
     fun toggleContentType(v: String) { contentType = if (v in contentType) contentType - v else contentType + v }
+    fun toggleQualityRating(v: String) { qualityRating = if (v in qualityRating) qualityRating - v else qualityRating + v }
+    fun togglePersonalizable(v: String) { personalizable = if (v in personalizable) personalizable - v else personalizable + v }
+    fun toggleDesignLanguage(v: String) { designLanguage = if (v in designLanguage) designLanguage - v else designLanguage + v }
+    fun toggleDialect(v: String) { dialect = if (v in dialect) dialect - v else dialect + v }
+    fun toggleWritingSystem(v: String) { writingSystem = if (v in writingSystem) writingSystem - v else writingSystem + v }
+    fun toggleDesignColor(v: String) { designColor = if (v in designColor) designColor - v else designColor + v }
+    fun toggleBackground(v: String) { background = if (v in background) background - v else background + v }
+    fun toggleDesignStyle(v: String) { designStyle = if (v in designStyle) designStyle - v else designStyle + v }
+    fun toggleTargetProduct(v: String) { targetProduct = if (v in targetProduct) targetProduct - v else targetProduct + v }
     fun toggleProductCategory(v: String) { productCategory = if (v in productCategory) productCategory - v else productCategory + v }
     fun toggleSales(v: String) { sales = if (v in sales) sales - v else sales + v }
 
@@ -97,6 +128,15 @@ fun CreatorFilterModal(
         ratio = emptySet()
         designType = emptySet()
         contentType = emptySet()
+        qualityRating = emptySet()
+        personalizable = emptySet()
+        designLanguage = emptySet()
+        dialect = emptySet()
+        writingSystem = emptySet()
+        designColor = emptySet()
+        background = emptySet()
+        designStyle = emptySet()
+        targetProduct = emptySet()
         productCategory = emptySet()
         sales = emptySet()
         priceMin = ""
@@ -109,6 +149,15 @@ fun CreatorFilterModal(
             ratio = ratio,
             designType = designType,
             contentType = contentType,
+            qualityRating = qualityRating,
+            personalizable = personalizable,
+            designLanguage = designLanguage,
+            dialect = dialect,
+            writingSystem = writingSystem,
+            designColor = designColor,
+            background = background,
+            designStyle = designStyle,
+            targetProduct = targetProduct,
             productCategory = productCategory,
             sales = sales,
             priceMin = priceMin,
@@ -166,10 +215,12 @@ fun CreatorFilterModal(
                             .background(Color(0xFF080F1C).copy(alpha = 0.75f))
                             .padding(horizontal = 16.dp)
                     ) {
-                        val filterTabs = listOf(
-                            "design" to (translationStore.t("creator.filter.design_filter", "Design Filter")),
-                            "product" to (translationStore.t("creator.filter.product_filter", "Product Filter"))
-                        )
+                        val filterTabs = buildList {
+                            add("design" to translationStore.t("creator.filter.design_filter", "Design Filter"))
+                            if (!hideProductFilters) {
+                                add("product" to translationStore.t("creator.filter.product_filter", "Product Filter"))
+                            }
+                        }
                         for ((tab, label) in filterTabs) {
                             val active = filterTab == tab
                             Box(
@@ -258,6 +309,7 @@ fun CreatorFilterModal(
                             FilterOptionWithCount(translationStore.t("creator.filter.generated", "Generated"), "generated", designArt, designCounts["generated"] ?: 0) { toggleDesignArt("generated") }
                             FilterOptionWithCount(translationStore.t("creator.filter.uploaded", "Uploaded"), "uploaded", designArt, designCounts["uploaded"] ?: 0) { toggleDesignArt("uploaded") }
                             FilterOptionWithCount(translationStore.t("creator.filter.personalized", "Personalized"), "personalized", designArt, designCounts["personalized"] ?: 0) { toggleDesignArt("personalized") }
+                            FilterOptionWithCount(translationStore.t("creator.filter.automation", "Automation"), "automation", designArt, designs.count { it.designSource.contains("automation", true) || it.source.contains("automation", true) }) { toggleDesignArt("automation") }
                         }
                         FilterGroup(translationStore.t("creator.filter.ratio", "Ratio")) {
                             FilterOptionWithCount(translationStore.t("creator.filter.portrait", "Portrait"), "portrait", ratio, designCounts["portrait"] ?: 0) { toggleRatio("portrait") }
@@ -273,6 +325,54 @@ fun CreatorFilterModal(
                             FilterOptionWithCount(translationStore.t("creator.filter.classic", "Classic"), "classic", designType, designCounts["classic"] ?: 0) { toggleDesignType("classic") }
                             FilterOptionWithCount(translationStore.t("creator.filter.pattern", "Pattern"), "pattern", designType, designCounts["pattern"] ?: 0) { toggleDesignType("pattern") }
                             FilterOptionWithCount(translationStore.t("creator.filter.all_over", "All Over"), "all_over", designType, designCounts["all_over"] ?: 0) { toggleDesignType("all_over") }
+                            FilterOptionWithCount(translationStore.t("creator.filter.full_surface", "Full Surface"), "full_surface", designType, designs.count { it.designType == "full_surface" }) { toggleDesignType("full_surface") }
+                            FilterOptionWithCount(translationStore.t("creator.filter.panorama", "Panorama / Wrap Around"), "panorama", designType, designs.count { it.designType == "panorama" }) { toggleDesignType("panorama") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.rating", "Rating")) {
+                            FilterOptionWithCount(translationStore.t("creator.creations.rating_no_go", "No Go"), "no_go", qualityRating, designs.count { it.qualityRating == "no_go" }) { toggleQualityRating("no_go") }
+                            FilterOptionWithCount(translationStore.t("creator.creations.rating_good", "Good"), "good", qualityRating, designs.count { it.qualityRating == "good" }) { toggleQualityRating("good") }
+                            FilterOptionWithCount(translationStore.t("creator.creations.rating_awesome", "Awesome"), "awesome", qualityRating, designs.count { it.qualityRating == "awesome" }) { toggleQualityRating("awesome") }
+                            FilterOptionWithCount(translationStore.t("creator.filter.rating_none", "no Rating"), "none", qualityRating, designs.count { it.qualityRating.isNullOrBlank() }) { toggleQualityRating("none") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.personalizable", "Personalizable")) {
+                            FilterOptionWithCount("Yes", "yes", personalizable, designs.count { it.personalizable.equals("yes", true) }) { togglePersonalizable("yes") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.language", "Language")) {
+                            FilterOptionWithCount("English", "English", designLanguage, designs.count { it.designLanguage.equals("English", true) }) { toggleDesignLanguage("English") }
+                            FilterOptionWithCount("German", "German", designLanguage, designs.count { it.designLanguage.equals("German", true) }) { toggleDesignLanguage("German") }
+                            FilterOptionWithCount("Bilingual", "Bilingual", designLanguage, designs.count { it.designLanguage.equals("Bilingual", true) }) { toggleDesignLanguage("Bilingual") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.dialect", "Dialect")) {
+                            FilterOptionWithCount("Swiss German", "Swiss German", dialect, 0) { toggleDialect("Swiss German") }
+                            FilterOptionWithCount("Austrian German", "Austrian German", dialect, 0) { toggleDialect("Austrian German") }
+                            FilterOptionWithCount("American English", "American English", dialect, 0) { toggleDialect("American English") }
+                            FilterOptionWithCount("British English", "British English", dialect, 0) { toggleDialect("British English") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.writing_system", "Writing System")) {
+                            FilterOptionWithCount("Latin", "latin", writingSystem, 0) { toggleWritingSystem("latin") }
+                            FilterOptionWithCount("Cyrillic", "cyrillic", writingSystem, 0) { toggleWritingSystem("cyrillic") }
+                            FilterOptionWithCount("Greek", "greek", writingSystem, 0) { toggleWritingSystem("greek") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.color", "Color")) {
+                            FilterOptionWithCount("Colorful", "colorful", designColor, 0) { toggleDesignColor("colorful") }
+                            FilterOptionWithCount("Light", "light", designColor, 0) { toggleDesignColor("light") }
+                            FilterOptionWithCount("Dark", "dark", designColor, 0) { toggleDesignColor("dark") }
+                            FilterOptionWithCount("White", "white", designColor, 0) { toggleDesignColor("white") }
+                            FilterOptionWithCount("Black", "black", designColor, 0) { toggleDesignColor("black") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.background", "Background")) {
+                            FilterOptionWithCount("None", "none", background, 0) { toggleBackground("none") }
+                            FilterOptionWithCount("Transparent", "transparent", background, 0) { toggleBackground("transparent") }
+                            FilterOptionWithCount("Semi-Transparent", "semi_transparent", background, 0) { toggleBackground("semi_transparent") }
+                            FilterOptionWithCount("Solid", "solid", background, 0) { toggleBackground("solid") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.design_style", "Design Style")) {
+                            FilterOptionWithCount("Minimalist", "minimalist", designStyle, 0) { toggleDesignStyle("minimalist") }
+                            FilterOptionWithCount("Urban", "urban", designStyle, 0) { toggleDesignStyle("urban") }
+                        }
+                        FilterGroup(translationStore.t("creator.filter.target_product", "Target Product")) {
+                            FilterOptionWithCount("Standard", "standard", targetProduct, 0) { toggleTargetProduct("standard") }
+                            FilterOptionWithCount("Poster", "poster", targetProduct, 0) { toggleTargetProduct("poster") }
                         }
                     }
                     "product" -> {

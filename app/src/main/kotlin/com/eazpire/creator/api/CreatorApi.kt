@@ -2861,6 +2861,7 @@ class CreatorApi(
         val params = mutableMapOf(
             "owner_id" to ownerId,
             "logged_in_customer_id" to ownerId,
+            "path_prefix" to "/apps/creator-dispatch",
             "limit" to limit.coerceIn(1, 100).toString(),
         )
         cursor?.takeIf { it.isNotBlank() }?.let { params["cursor"] = it }
@@ -2874,7 +2875,7 @@ class CreatorApi(
         var pages = 0
         do {
             val data = listDesigns(ownerId, limit = 50, cursor = cursor)
-            val items = data.optJSONArray("items") ?: JSONArray()
+            val items = jsonItemsArray(data, "items", "designs")
             val ok = data.optBoolean("ok", false) || items.length() > 0
             if (!ok) break
             for (i in 0 until items.length()) {
@@ -2905,6 +2906,7 @@ class CreatorApi(
         val params = mutableMapOf(
             "owner_id" to ownerId,
             "logged_in_customer_id" to ownerId,
+            "path_prefix" to "/apps/creator-dispatch",
         )
         shop?.takeIf { it.isNotBlank() }?.let { params["shop"] = it }
         return call("get-published-products", params)
@@ -4045,6 +4047,17 @@ class CreatorApi(
             )
         )
 
+    /** POST ?op=mark-all-notifications-read – body user_id */
+    suspend fun markAllNotificationsRead(userId: String): JSONObject =
+        postJson("mark-all-notifications-read", mapOf("user_id" to userId))
+
+    /** POST ?op=mark-all-system-notifications-read – body user_id, audience */
+    suspend fun markAllSystemNotificationsRead(userId: String, audience: String): JSONObject =
+        postJson(
+            "mark-all-system-notifications-read",
+            mapOf("user_id" to userId, "audience" to audience.lowercase())
+        )
+
     /** POST ?op=mark-system-notification-read – body user_id, notification_id */
     suspend fun markSystemNotificationRead(userId: String, notificationId: String): JSONObject =
         postJson(
@@ -4865,12 +4878,48 @@ class CreatorApi(
     }
 }
 
+/** Coerce JSON string/number/boolean fields (Android optString is empty for numeric ids). */
+fun jsonCoercedString(obj: JSONObject, vararg keys: String): String {
+    for (key in keys) {
+        if (!obj.has(key) || obj.isNull(key)) continue
+        when (val v = obj.opt(key)) {
+            is String -> {
+                val t = v.trim()
+                if (t.isNotBlank() && !t.equals("null", ignoreCase = true)) return t
+            }
+            is Number, is Boolean -> return v.toString()
+        }
+    }
+    return ""
+}
+
+fun jsonItemsArray(data: JSONObject, vararg keys: String): JSONArray {
+    val lookup = if (keys.isEmpty()) arrayOf("items") else keys
+    for (key in lookup) {
+        data.optJSONArray(key)?.let { return it }
+    }
+    val nested = data.optJSONObject("data")
+    if (nested != null) {
+        for (key in lookup) {
+            nested.optJSONArray(key)?.let { return it }
+        }
+    }
+    return JSONArray()
+}
+
 /** org.json turns JSON null into the string "null" via optString — treat that as no cursor. */
 fun jsonNextCursor(data: JSONObject): String? {
-    if (!data.has("next_cursor") || data.isNull("next_cursor")) return null
-    val raw = data.optString("next_cursor", "").trim()
-    if (raw.isBlank() || raw.equals("null", ignoreCase = true)) return null
-    return raw
+    for (key in listOf("next_cursor", "next_cursor", "cursor")) {
+        if (!data.has(key) || data.isNull(key)) continue
+        val raw = when (val v = data.opt(key)) {
+            is String -> v.trim()
+            is Number -> v.toString()
+            else -> data.optString(key, "").trim()
+        }
+        if (raw.isBlank() || raw.equals("null", ignoreCase = true)) continue
+        return raw
+    }
+    return null
 }
 
 internal fun parseApiJsonObject(raw: String): JSONObject {
