@@ -101,6 +101,7 @@ private data class ResearchProduct(
     val designType: String?,
     val language: String?,
     val personalizable: Boolean,
+    val audience: String,
     val reprintOk: Boolean,
     val rating: Double?,
     val reviews: Int?,
@@ -148,6 +149,7 @@ fun EazyResearchScreen(
     var designType by remember { mutableStateOf("") }
     var language by remember { mutableStateOf("") }
     var personalization by remember { mutableStateOf("") }
+    var selectedAudiences by remember { mutableStateOf(setOf<String>()) }
     var sort by remember { mutableStateOf("review_growth") }
     var view by remember { mutableStateOf("opportunities") }
     var selected by remember { mutableStateOf<ResearchProduct?>(null) }
@@ -167,6 +169,7 @@ fun EazyResearchScreen(
                 "sort" to sort,
             )
             if (selectedNiches.isNotEmpty()) params["niche"] = selectedNiches.joinToString(",")
+            if (selectedAudiences.isNotEmpty()) params["audience"] = selectedAudiences.joinToString(",")
             val data = api.call("eazy-research-products", params)
             if (!data.optBoolean("ok", false)) {
                 error = tr("creator.research.error", "Research data could not be loaded.")
@@ -259,7 +262,7 @@ fun EazyResearchScreen(
         }
     }
 
-    val filtered = remember(products, query, selectedNiches, designType, language, personalization, sort, view, watched, searchId) {
+    val filtered = remember(products, query, selectedNiches, designType, language, personalization, selectedAudiences, sort, view, watched, searchId) {
         filterProducts(
             products,
             query,
@@ -267,6 +270,7 @@ fun EazyResearchScreen(
             designType,
             language,
             personalization,
+            selectedAudiences,
             sort,
             view,
             watched,
@@ -302,6 +306,12 @@ fun EazyResearchScreen(
             onLanguage = { language = if (language == it) "" else it },
             personalization = personalization,
             onPersonalization = { personalization = if (personalization == it) "" else it },
+            selectedAudiences = selectedAudiences,
+            onToggleAudience = { key ->
+                selectedAudiences = if (key == "all") emptySet() else {
+                    if (key in selectedAudiences) selectedAudiences - key else selectedAudiences + key
+                }
+            },
             view = view,
             onView = { view = it },
         )
@@ -518,6 +528,8 @@ private fun ResearchFilterPanel(
     onLanguage: (String) -> Unit,
     personalization: String,
     onPersonalization: (String) -> Unit,
+    selectedAudiences: Set<String>,
+    onToggleAudience: (String) -> Unit,
     view: String,
     onView: (String) -> Unit,
 ) {
@@ -742,6 +754,44 @@ private fun ResearchFilterPanel(
                 selected = personalization == id,
                 onClick = { onPersonalization(id) },
                 radio = true,
+            )
+        }
+    }
+    Text(
+        tr("creator.research.audience", "Audience"),
+        color = TextDim,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
+        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+    )
+    if (selectedAudiences.isEmpty()) {
+        Text(
+            tr("creator.research.audience_all_hint", "All audiences"),
+            color = TextDim,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        FilterChip(
+            label = tr("creator.research.niche_all", "All"),
+            selected = selectedAudiences.isEmpty(),
+            onClick = { onToggleAudience("all") },
+        )
+        listOf(
+            "men" to tr("creator.research.audience_men", "Men"),
+            "women" to tr("creator.research.audience_women", "Women"),
+            "kids" to tr("creator.research.audience_kids", "Kids"),
+            "toddler" to tr("creator.research.audience_toddler", "Toddler"),
+        ).forEach { (id, label) ->
+            FilterChip(
+                label = label,
+                selected = id in selectedAudiences,
+                onClick = { onToggleAudience(id) },
             )
         }
     }
@@ -972,6 +1022,7 @@ private fun filterProducts(
     designType: String,
     language: String,
     personalization: String,
+    audiences: Set<String>,
     sort: String,
     view: String,
     watched: Set<String>,
@@ -986,6 +1037,9 @@ private fun filterProducts(
             val key = if (product.personalizable) "personalizable" else "standard"
             key.equals(personalization, ignoreCase = true)
         }
+    }
+    if (audiences.isNotEmpty()) {
+        rows = rows.filter { it.audience in audiences }
     }
     val q = query.trim().lowercase(Locale.ROOT)
     if (q.isNotEmpty() && !sessionSearch) {
@@ -1006,6 +1060,36 @@ private fun filterProducts(
         "newest" -> rows.sortedByDescending { it.capturedAt ?: 0L }
         else -> rows.sortedByDescending { it.reviewDelta ?: 0 }
     }
+}
+
+private val ToddlerRe =
+    Regex("""\b(toddlers?|bab(?:y|ies)|infants?|newborns?|kleinkind(?:er)?|s[äa]ugling(?:e)?|b[ée]b[ée]s?|neonat[ioe]s?|neugeboren(?:e|es)?)\b""", RegexOption.IGNORE_CASE)
+private val KidsRe =
+    Regex("""\b(kids?|kinder|child(?:ren)?|youth|jungen|m[äa]dchen|boys?|girls?|juniors?|teens?)\b""", RegexOption.IGNORE_CASE)
+private val MenRe =
+    Regex("""\b(men'?s|mens\b|herren|homme(?:s)?|uomo|uomini|hombre(?:s)?|m[äa]nner)\b""", RegexOption.IGNORE_CASE)
+private val WomenRe =
+    Regex("""\b(women'?s|womens\b|damen|femme(?:s)?|donna|donne|mujer(?:es)?|ladies|lady)\b""", RegexOption.IGNORE_CASE)
+
+private fun audienceScore(text: String, re: Regex, weight: Int): Int =
+    if (text.isBlank()) 0 else re.findAll(text).count() * weight
+
+private fun classifyAudience(title: String, category: String): String {
+    val t = title
+    val c = category
+    val blob = "$t $c".trim()
+    if (blob.isEmpty()) return ""
+    if (ToddlerRe.containsMatchIn(blob)) return "toddler"
+    if (KidsRe.containsMatchIn(blob)) return "kids"
+    val men = audienceScore(t, MenRe, 3) + audienceScore(c, MenRe, 1)
+    val women = audienceScore(t, WomenRe, 3) + audienceScore(c, WomenRe, 1)
+    if (men > 0 && women > 0) {
+        if (men == women) return ""
+        return if (men > women) "men" else "women"
+    }
+    if (men > 0) return "men"
+    if (women > 0) return "women"
+    return ""
 }
 
 private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
@@ -1030,6 +1114,17 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             personalizable = p.optInt("personalizable", 0) == 1 ||
                 p.optBoolean("personalizable", false) ||
                 p.optString("personalization").equals("personalizable", ignoreCase = true),
+            audience = p.optString("audience").ifBlank {
+                classifyAudience(
+                    p.optString("title"),
+                    listOf(
+                        latest.optString("bsr_category"),
+                        p.optString("bsr_category"),
+                        p.optString("browse_node"),
+                        p.optString("category"),
+                    ).filter { it.isNotBlank() }.joinToString(" "),
+                )
+            },
             reprintOk = p.optBoolean("reprint_ok", true),
             rating = latest.optDoubleOrNull("rating"),
             reviews = latest.optIntOrNull("reviews_count"),
