@@ -222,14 +222,6 @@ fun EazyResearchScreen(
         val compact = maxWidth < 600.dp
         Row(Modifier.fillMaxSize()) {
             if (!compact) {
-                FilterCollapseRail(
-                    collapsed = filtersCollapsed,
-                    translationStore = translationStore,
-                    onToggle = {
-                        filtersCollapsed = !filtersCollapsed
-                        saveFiltersCollapsed(context, filtersCollapsed)
-                    },
-                )
                 if (!filtersCollapsed) {
                     Column(
                         modifier = Modifier
@@ -242,6 +234,14 @@ fun EazyResearchScreen(
                         filterPanel()
                     }
                 }
+                FilterCollapseRail(
+                    collapsed = filtersCollapsed,
+                    translationStore = translationStore,
+                    onToggle = {
+                        filtersCollapsed = !filtersCollapsed
+                        saveFiltersCollapsed(context, filtersCollapsed)
+                    },
+                )
             }
             Column(
                 modifier = Modifier
