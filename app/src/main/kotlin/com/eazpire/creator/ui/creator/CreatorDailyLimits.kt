@@ -1,6 +1,5 @@
 package com.eazpire.creator.ui.creator
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -219,7 +218,7 @@ fun CreatorDailyLimitsSubheader(
         .coerceIn(0f, 100f)
 
     fun showInfo(key: String, fallback: String) {
-        Toast.makeText(context, translationStore.t(key, fallback), Toast.LENGTH_LONG).show()
+        ReplaceInfoToast.show(context, translationStore.t(key, fallback))
     }
 
     Row(
@@ -344,7 +343,7 @@ fun CreationsSlotUsageBar(
 ) {
     val context = LocalContext.current
     fun showInfo(key: String, fallback: String) {
-        Toast.makeText(context, translationStore.t(key, fallback), Toast.LENGTH_LONG).show()
+        ReplaceInfoToast.show(context, translationStore.t(key, fallback))
     }
     Row(
         modifier = modifier

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -72,6 +73,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
@@ -489,13 +491,37 @@ fun EazyResearchScreen(
                     }
                 }
                 selected?.let { product ->
-                    Dialog(onDismissRequest = { selected = null }) {
-                        ProductDetailCard(
-                            product = product,
-                            niches = niches,
-                            translationStore = translationStore,
-                            onClose = { selected = null },
-                        )
+                    Dialog(
+                        onDismissRequest = { selected = null },
+                        properties = DialogProperties(
+                            usePlatformDefaultWidth = false,
+                            decorFitsSystemWindows = false,
+                        ),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xC7080618))
+                                .clickable { selected = null },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp)
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() },
+                                    ) { },
+                            ) {
+                                ProductDetailCard(
+                                    product = product,
+                                    niches = niches,
+                                    translationStore = translationStore,
+                                    onClose = { selected = null },
+                                )
+                            }
+                        }
                     }
                 }
                 Text(status, color = TextDim, fontSize = 11.sp)

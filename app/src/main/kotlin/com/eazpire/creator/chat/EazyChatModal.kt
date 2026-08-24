@@ -80,7 +80,6 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -105,14 +104,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.eazpire.creator.ui.modal.EazInsetDialog
 import kotlinx.coroutines.CoroutineScope
-import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.LocalTranslationStore
@@ -170,23 +167,33 @@ private data class EazyNotifRow(
     val category: String?,
     val isSystem: Boolean = false,
     val systemAudience: String? = null,
-    /** From notification `data` JSON: design/hero/product/job preview when available. */
     val previewImageUrl: String? = null,
-    /** Creator Code invite: prefill redeem field when opening Creator Settings. */
+    val productTitle: String? = null,
     val creatorCodePrefill: String? = null,
     val opensCreatorCodes: Boolean = false,
     val opensPublishAssist: Boolean = false,
 )
 
+private data class EazyPhaseChipRow(
+    val id: String,
+    val state: String,
+)
+
 private data class EazySystemJobRow(
+    val cardId: String,
     val sessionId: String,
     val title: String,
+    val productTitle: String,
     val status: String,
     val message: String?,
     val jobKind: String,
     val subtitleDetail: String,
     val progress: Int,
     val thumbUrl: String?,
+    val phases: List<EazyPhaseChipRow> = emptyList(),
+    val startedAt: Long? = null,
+    val etaAt: Long? = null,
+    val markets: List<String> = emptyList(),
 )
 
 private fun parseMessagesArray(msgs: JSONArray): List<ChatMessage> {
@@ -212,6 +219,33 @@ private fun JSONObject.notificationIsRead(): Boolean {
         else -> false
     }
 }
+
+private fun JSONObject.optLongish(key: String): Long? {
+    if (!has(key) || isNull(key)) return null
+    return when (val v = opt(key)) {
+        is Number -> v.toLong()
+        is String -> v.toLongOrNull()
+        else -> null
+    }
+}
+
+private fun JSONObject.optStringList(key: String): List<String> {
+    val arr = optJSONArray(key) ?: return emptyList()
+    return (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+}
+
+private fun JSONObject.optPhaseChips(): List<EazyPhaseChipRow> {
+    val arr = optJSONArray("card_phases") ?: return emptyList()
+    return (0 until arr.length()).mapNotNull { i ->
+        val p = arr.optJSONObject(i) ?: return@mapNotNull null
+        val id = p.optString("id", "").trim()
+        if (id.isBlank()) return@mapNotNull null
+        EazyPhaseChipRow(id = id, state = p.optString("state", "todo"))
+    }
+}
+
+private fun Long.asEpochMillis(): Long =
+    if (this in 1L until 1_000_000_000_000L) this * 1000L else this
 
 private fun String?.asHttpImageUrl(): String? {
     val s = this?.trim() ?: return null
@@ -260,9 +294,11 @@ private fun isPublishAssistNotificationCategory(category: String?): Boolean {
  * Covers design/hero/video/product jobs: thumbnail_url, preview_url, result.*, product_image_url, etc.
  */
 private fun extractNotificationPreviewUrl(notification: JSONObject): String? {
+    notification.firstHttpUrl("card_preview_url")?.let { return it }
     val data = extractNotificationDataObject(notification) ?: return null
 
     data.firstHttpUrl(
+        "card_preview_url",
         "thumbnail_url",
         "preview_url",
         "image_url",
@@ -339,7 +375,7 @@ private fun parseNotifications(
         }
         EazyNotifRow(
             id = id,
-            title = o.optString("title", "").ifBlank { "Notification" },
+            title = o.optString("card_design_title", "").ifBlank { o.optString("title", "") }.ifBlank { "Notification" },
             message = o.optString("message", ""),
             isRead = o.notificationIsRead(),
             createdAt = o.optString("created_at", "").takeIf { it.isNotBlank() },
@@ -347,6 +383,7 @@ private fun parseNotifications(
             isSystem = isSystem,
             systemAudience = systemAudience,
             previewImageUrl = extractNotificationPreviewUrl(o),
+            productTitle = o.optString("card_product_title", "").takeIf { it.isNotBlank() },
             creatorCodePrefill = prefill,
             opensCreatorCodes = isCreatorCode,
             opensPublishAssist = isPublishAssist,
@@ -369,9 +406,16 @@ private fun parseKvJobs(arr: JSONArray): List<EazyKvJobRow> {
         val type = o.optString("type", o.optString("action", ""))
         val isWear = clientDevice.equals("wear", ignoreCase = true) ||
             type.contains("wear", ignoreCase = true)
+        val result = o.optJSONObject("result")
+        val thumb = o.firstHttpUrl("card_preview_url", "preview_url", "image_url")
+            ?: result?.firstHttpUrl("preview_url", "image_url", "thumbnail_url")
+        val started = (o.optLongish("started") ?: o.optLongish("started_at") ?: o.optLongish("created_at"))
+            ?.asEpochMillis()
         EazyKvJobRow(
             id = id,
-            title = o.optString("prompt", o.optString("title", "")).ifBlank { id },
+            title = o.optString("card_design_title", "").ifBlank {
+                o.optString("prompt", o.optString("title", ""))
+            }.ifBlank { id },
             progress = progress,
             done = done,
             saving = saving,
@@ -379,6 +423,11 @@ private fun parseKvJobs(arr: JSONArray): List<EazyKvJobRow> {
             isWear = isWear,
             status = o.optString("status", "").takeIf { it.isNotBlank() },
             message = o.optString("message", "").takeIf { it.isNotBlank() },
+            productTitle = o.optString("card_product_title", "").ifBlank {
+                o.optString("product_name", "")
+            }.takeIf { it.isNotBlank() },
+            thumbUrl = thumb,
+            startedAt = started,
         )
     }.filter { !it.done || (it.saving && !it.saved) }
 }
@@ -387,24 +436,31 @@ private fun parseSystemJobs(arr: JSONArray): List<EazySystemJobRow> {
     return (0 until arr.length()).mapNotNull { i ->
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val sid = o.optString("session_id", "").ifBlank { return@mapNotNull null }
-        val effMsg = sequenceOf(
-            o.optString("effective_message", ""),
-            o.optString("message", ""),
-            o.optString("error_message", ""),
-            o.optString("summary", ""),
-        ).firstOrNull { it.isNotBlank() }
-        val msg = effMsg?.takeIf { it.isNotBlank() }
-        val thumbRaw = o.optString("effective_preview_url", "").asHttpImageUrl()
+        val productKey = o.optString("card_product_key", o.optString("product_key", "")).trim()
+        val cardId = o.optString("card_id", "").ifBlank {
+            if (productKey.isNotBlank()) "$sid:$productKey" else sid
+        }
+        val friendly = o.optString("card_error_friendly", "").takeIf { it.isNotBlank() }
+        val status = o.optString("status", "")
+        val failed = status.equals("failed", true) || status.equals("cancelled", true)
+        val thumb = o.firstHttpUrl("card_preview_url")
+            ?: o.optString("effective_preview_url", "").asHttpImageUrl()
         val kind = o.optString("job_kind", "system_publish").ifBlank { "system_publish" }
         EazySystemJobRow(
+            cardId = cardId,
             sessionId = sid,
-            title = o.optString("title", "").ifBlank { "System publish" },
-            status = o.optString("status", ""),
-            message = msg,
+            title = o.optString("card_design_title", "").ifBlank { o.optString("title", "") }.ifBlank { "System publish" },
+            productTitle = o.optString("card_product_title", ""),
+            status = status,
+            message = if (failed) friendly else null,
             jobKind = kind,
             subtitleDetail = o.optString("subtitle_detail", ""),
             progress = o.optInt("effective_progress", 55).coerceIn(0, 100),
-            thumbUrl = thumbRaw,
+            thumbUrl = thumb,
+            phases = o.optPhaseChips(),
+            startedAt = (o.optLongish("card_started_at") ?: o.optLongish("created_at"))?.asEpochMillis(),
+            etaAt = o.optLongish("card_eta_at")?.asEpochMillis(),
+            markets = o.optStringList("card_marketplace"),
         )
     }
 }
@@ -425,10 +481,10 @@ private fun mergeSystemNotificationRows(a: List<EazyNotifRow>, b: List<EazyNotif
     return merged.values.sortedWith(compareByDescending { it.createdAt ?: "" })
 }
 
-/** System jobs: creator + shop lists merged, deduped by session id (no Creator/Shop tabs in UI). */
+/** System jobs: creator + shop lists merged, deduped by product card id. */
 private fun mergeSystemJobRows(a: List<EazySystemJobRow>, b: List<EazySystemJobRow>): List<EazySystemJobRow> {
     val seen = mutableSetOf<String>()
-    return (a + b).filter { seen.add(it.sessionId) }
+    return (a + b).filter { seen.add(it.cardId) }
 }
 
 /** Avoid duplicate rows when the same job_id is shown in the local async overlay (hero/video/design). */
@@ -1650,42 +1706,36 @@ private fun EazyNotificationsPanel(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(shown, key = { it.id }) { n ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (!n.isRead) LocalEazyModalPalette.current.accent.copy(alpha = 0.12f) else LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
-                            .clickable {
-                                if (!n.isRead) onMarkRead(n)
-                                when {
-                                    n.opensPublishAssist -> onOpenPublishAssist()
-                                    n.opensCreatorCodes -> onOpenCreatorCodes(n.creatorCodePrefill)
-                                }
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        n.previewImageUrl?.let { url ->
-                            AsyncImage(
-                                model = url,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
+                    val typeLabel = eazyNotifTypeLabel(n, t)
+                    val chips = buildList {
+                        add(
+                            EazyFeedChip(
+                                label = typeLabel,
+                                info = t("eazy_chat.chat_stat_info_type", "What this notification is about."),
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(n.title, style = MaterialTheme.typography.titleSmall, color = LocalEazyModalPalette.current.text)
-                            if (n.message.isNotBlank()) {
-                                Text(n.message, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
-                            }
-                            n.createdAt?.let {
-                                Text(it, style = MaterialTheme.typography.labelSmall, color = LocalEazyModalPalette.current.muted.copy(alpha = 0.7f))
-                            }
+                        )
+                        n.createdAt?.takeIf { it.isNotBlank() }?.let { whenAt ->
+                            add(
+                                EazyFeedChip(
+                                    label = "📅 ${formatNotifWhen(whenAt)}",
+                                    info = t("eazy_chat.chat_stat_info_when", "When this notification arrived."),
+                                )
+                            )
                         }
                     }
+                    EazyFeedCard(
+                        designTitle = n.title,
+                        productTitle = n.productTitle,
+                        thumbUrl = n.previewImageUrl,
+                        chips = chips,
+                        onCardClick = {
+                            if (!n.isRead) onMarkRead(n)
+                            when {
+                                n.opensPublishAssist -> onOpenPublishAssist()
+                                n.opensCreatorCodes -> onOpenCreatorCodes(n.creatorCodePrefill)
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -1946,6 +1996,36 @@ private fun systemJobKindUiLabel(jobKind: String, t: (String, String) -> String)
         else -> t("eazy_chat.chat_job_kind_system_publish", "Automatic publishing")
     }
 
+private fun eazyNotifTypeLabel(n: EazyNotifRow, t: (String, String) -> String): String {
+    val cat = n.category?.lowercase()?.trim().orEmpty()
+    return when {
+        n.isSystem || cat == "system" -> t("creator.notifications.notif_badge_system", "System")
+        cat == "generated" -> t("creator.notifications.notif_badge_generated", "Generate")
+        cat == "saved" -> t("creator.notifications.notif_badge_saved", "Saved")
+        cat == "uploaded" -> t("creator.notifications.notif_badge_uploaded", "Upload")
+        cat == "published" || cat == "publish" -> t("creator.notifications.notif_badge_published", "Publish")
+        cat == "hero_image" -> t("creator.notifications.notif_badge_hero_image", "Hero Image")
+        cat == "merged" -> t("creator.notifications.notif_badge_merged", "Merge")
+        cat == "amazon_publish" -> t("creator.notifications.notif_badge_amazon_publish", "Amazon Publish")
+        cat == "amazon_unpublish" -> t("creator.notifications.notif_badge_amazon_unpublish", "Amazon Remove")
+        cat == "removed_products" -> t("creator.notifications.notif_badge_removed_product", "Product removed")
+        cat == "removed_designs" -> t("creator.notifications.notif_badge_removed_design", "Design removed")
+        else -> t("creator.notifications.notif_badge_unknown", "Notification")
+    }
+}
+
+private fun formatNotifWhen(raw: String): String {
+    val s = raw.trim()
+    if (s.isEmpty()) return ""
+    val ms = s.toLongOrNull()?.asEpochMillis()
+        ?: try {
+            java.time.Instant.parse(s).toEpochMilli()
+        } catch (_: Exception) {
+            null
+        }
+    return if (ms != null) formatEazyClock(ms) else s
+}
+
 @Composable
 private fun EazyJobsCombinedPanel(
     hero: HeroJobState?,
@@ -1995,35 +2075,86 @@ private fun EazyJobsCombinedPanel(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(systemJobs, key = { it.sessionId }) { j ->
-                            val kindLbl = systemJobKindUiLabel(j.jobKind, t)
-                            val prog = j.progress.coerceIn(0, 100)
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(LocalEazyModalPalette.current.muted.copy(alpha = 0.08f))
-                                    .padding(12.dp)
-                            ) {
-                                Text(j.title, style = MaterialTheme.typography.titleSmall, color = LocalEazyModalPalette.current.text)
-                                Text(kindLbl, style = MaterialTheme.typography.labelSmall, color = LocalEazyModalPalette.current.muted)
-                                if (j.subtitleDetail.isNotBlank()) {
-                                    Text(
-                                        j.subtitleDetail.take(140),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = LocalEazyModalPalette.current.muted
+                        items(systemJobs, key = { it.cardId }) { j ->
+                            val chips = buildList {
+                                add(
+                                    EazyFeedChip(
+                                        label = "⚙ ${systemJobKindUiLabel(j.jobKind, t)}",
+                                        info = t("eazy_chat.chat_stat_info_kind", "What this background job is doing."),
+                                    )
+                                )
+                                j.phases.forEach { ph ->
+                                    val mark = when (ph.state) {
+                                        "done" -> "✓ "
+                                        "current" -> "● "
+                                        else -> "○ "
+                                    }
+                                    add(
+                                        EazyFeedChip(
+                                            label = mark + eazyPhaseLabel(ph.id, t),
+                                            info = eazyPhaseInfo(ph.id, t),
+                                            state = ph.state,
+                                        )
                                     )
                                 }
-                                LinearProgressIndicator(
-                                    progress = prog.coerceIn(0, 100) / 100f,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = LocalEazyModalPalette.current.accent,
-                                    trackColor = LocalEazyModalPalette.current.muted.copy(alpha = 0.3f)
+                                val statusLabel = when (j.status.lowercase()) {
+                                    "failed", "cancelled" -> t("eazy_chat.chat_job_status_failed", "Failed")
+                                    "completed" -> t("eazy_chat.chat_job_status_done", "Done")
+                                    else -> t("eazy_chat.chat_job_status_running", "Running…")
+                                }
+                                add(
+                                    EazyFeedChip(
+                                        label = "⚡ $statusLabel",
+                                        info = t("eazy_chat.chat_stat_info_status", "Current status of this job."),
+                                    )
                                 )
-                                j.message?.takeIf { it.isNotBlank() }?.let { m ->
-                                    Text(m, style = MaterialTheme.typography.bodySmall, color = LocalEazyModalPalette.current.muted)
+                                j.startedAt?.let { ts ->
+                                    val clock = formatEazyClock(ts)
+                                    if (clock.isNotBlank()) {
+                                        add(
+                                            EazyFeedChip(
+                                                label = "⏱ $clock",
+                                                info = t("eazy_chat.chat_stat_info_started", "When this job started."),
+                                            )
+                                        )
+                                    }
+                                    val elapsed = formatEazyElapsed(ts)
+                                    if (elapsed.isNotBlank()) {
+                                        add(
+                                            EazyFeedChip(
+                                                label = "⏳ $elapsed",
+                                                info = t("eazy_chat.chat_stat_info_elapsed", "How long this job has been running."),
+                                            )
+                                        )
+                                    }
+                                }
+                                j.etaAt?.let { eta ->
+                                    val clock = formatEazyClock(eta)
+                                    if (clock.isNotBlank()) {
+                                        add(
+                                            EazyFeedChip(
+                                                label = "📅 ${t("eazy_chat.chat_job_eta", "Ready around")} $clock",
+                                                info = t("eazy_chat.chat_stat_info_eta", "Estimated finish time. This can change."),
+                                            )
+                                        )
+                                    }
+                                }
+                                j.markets.forEach { m ->
+                                    add(
+                                        EazyFeedChip(
+                                            label = "🛒 $m",
+                                            info = t("eazy_chat.chat_stat_info_market", "Amazon marketplace for this listing."),
+                                        )
+                                    )
                                 }
                             }
+                            EazyFeedCard(
+                                designTitle = j.title,
+                                productTitle = j.productTitle,
+                                thumbUrl = j.thumbUrl,
+                                chips = chips,
+                                errorText = j.message,
+                            )
                         }
                     }
                 }

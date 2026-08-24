@@ -54,6 +54,9 @@ data class EazyKvJobRow(
     val isWear: Boolean,
     val status: String?,
     val message: String?,
+    val productTitle: String? = null,
+    val thumbUrl: String? = null,
+    val startedAt: Long? = null,
 )
 
 /**
@@ -225,12 +228,40 @@ fun EazyKvJobCard(job: EazyKvJobRow, t: (String, String) -> String) {
         job.saving -> job.message?.ifBlank { null } ?: "Saving…"
         else -> job.message ?: job.status
     }
-    EazyActiveJobCard(
-        title = job.title,
-        subtitle = null,
-        statusLine = statusLine,
+    val chips = buildList {
+                add(
+                    EazyFeedChip(
+                        label = "⚡ ${statusLine ?: t("eazy_chat.chat_job_status_running", "Running…")}",
+                        info = t("eazy_chat.chat_stat_info_status", "Current status of this job."),
+                    )
+                )
+        job.startedAt?.let { ts ->
+            val clock = formatEazyClock(ts)
+            if (clock.isNotBlank()) {
+                add(
+                    EazyFeedChip(
+                        label = "⏱ $clock",
+                        info = t("eazy_chat.chat_stat_info_started", "When this job started."),
+                    )
+                )
+            }
+            val elapsed = formatEazyElapsed(ts)
+            if (elapsed.isNotBlank()) {
+                add(
+                    EazyFeedChip(
+                        label = "⏳ $elapsed",
+                        info = t("eazy_chat.chat_stat_info_elapsed", "How long this job has been running."),
+                    )
+                )
+            }
+        }
+    }
+    EazyFeedCard(
+        designTitle = job.title,
+        productTitle = job.productTitle,
+        thumbUrl = job.thumbUrl,
+        chips = chips,
         progress = job.progress,
-        kindIcon = Icons.Default.Bolt,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
     )
 }
