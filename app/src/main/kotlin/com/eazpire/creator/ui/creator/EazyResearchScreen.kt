@@ -52,7 +52,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,7 +73,6 @@ import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -158,7 +156,6 @@ fun EazyResearchScreen(
     var filtersSheetOpen by remember { mutableStateOf(false) }
     val filterScroll = rememberScrollState()
     val gridState = rememberLazyGridState()
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(tokenStore.getJwt()) {
         loading = true
@@ -289,7 +286,6 @@ fun EazyResearchScreen(
                 products = emptyList()
                 searchId = ""
                 pendingAnalyze = true
-                scope.launch { gridState.scrollToItem(0) }
             },
             sort = sort,
             onSort = { sort = it },
@@ -322,11 +318,11 @@ fun EazyResearchScreen(
                 if (!filtersCollapsed) {
                     Column(
                         modifier = Modifier
-                            .width(272.dp)
+                            .width(248.dp)
                             .fillMaxHeight()
                             .background(RailBg)
                             .verticalScroll(filterScroll)
-                            .padding(12.dp),
+                            .padding(10.dp),
                     ) {
                         filterPanel()
                     }
@@ -591,15 +587,15 @@ private fun ResearchFilterPanel(
         )
         Text(
             if (analyzing) tr("creator.research.analyze_loading", "Analyzing…") else tr("creator.research.analyze", "Analyze"),
-            color = TextMain,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier
-                .heightIn(min = 48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(if (analyzeEnabled) Accent.copy(alpha = 0.38f) else Color.White.copy(alpha = 0.08f))
+                .heightIn(min = 36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (analyzeEnabled) Color(0xFFF97316) else Color.White.copy(alpha = 0.12f))
                 .clickable(enabled = analyzeEnabled, onClick = onAnalyze)
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         )
     }
     FlowRow(
@@ -618,8 +614,9 @@ private fun ResearchFilterPanel(
     Text(
         tr("creator.research.topics", "Topics"),
         color = TextDim,
-        fontSize = 12.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
         modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
     )
     if (selectedNiches.isEmpty()) {
@@ -631,8 +628,8 @@ private fun ResearchFilterPanel(
         )
     }
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         FilterChip(
             label = tr("creator.research.niche_all", "All"),
@@ -650,8 +647,9 @@ private fun ResearchFilterPanel(
     Text(
         tr("creator.research.design_type", "Design type"),
         color = TextDim,
-        fontSize = 12.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
         modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
     )
     if (designType.isEmpty()) {
@@ -663,8 +661,8 @@ private fun ResearchFilterPanel(
         )
     }
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         listOf(
             "design_only" to tr("creator.quick_inspirations.content_type_design_only", "Design Only"),
@@ -682,8 +680,9 @@ private fun ResearchFilterPanel(
     Text(
         tr("creator.research.language", "Language"),
         color = TextDim,
-        fontSize = 12.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
         modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
     )
     if (language.isEmpty()) {
@@ -695,8 +694,8 @@ private fun ResearchFilterPanel(
         )
     }
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         listOf(
             "none" to tr("creator.quick_inspirations.language_none", "None"),
@@ -717,8 +716,9 @@ private fun ResearchFilterPanel(
     Text(
         tr("creator.research.personalization", "Personalization"),
         color = TextDim,
-        fontSize = 12.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
         modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
     )
     if (personalization.isEmpty()) {
@@ -730,8 +730,8 @@ private fun ResearchFilterPanel(
         )
     }
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         listOf(
             "standard" to tr("creator.research.personalization_standard", "Standard"),
@@ -757,14 +757,14 @@ private fun FilterChip(
     Text(
         label,
         color = TextMain,
-        fontSize = 13.sp,
+        fontSize = 11.sp,
         modifier = Modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = 28.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) Accent.copy(alpha = 0.38f) else Color.White.copy(alpha = 0.06f))
+            .background(if (selected) Color(0xFFF97316).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.06f))
             .border(
                 width = 1.dp,
-                color = if (selected) Color(0xB3A78BFA) else Color.White.copy(alpha = 0.14f),
+                color = if (selected) Color(0xB3FB923C) else Color.White.copy(alpha = 0.14f),
                 shape = RoundedCornerShape(999.dp),
             )
             .semantics {
@@ -772,7 +772,7 @@ private fun FilterChip(
                 role = if (radio) Role.RadioButton else Role.Checkbox
             }
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = 9.dp, vertical = 5.dp),
     )
 }
 
