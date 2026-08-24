@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,8 +34,10 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
@@ -49,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +73,8 @@ import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -131,6 +137,9 @@ fun EazyResearchScreen(
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
 
     var loading by remember { mutableStateOf(true) }
+    var analyzing by remember { mutableStateOf(false) }
+    var searchId by remember { mutableStateOf("") }
+    var pendingAnalyze by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var preview by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
@@ -147,6 +156,9 @@ fun EazyResearchScreen(
     var watched by remember { mutableStateOf(loadWatchedAsins(context)) }
     var filtersCollapsed by remember { mutableStateOf(loadFiltersCollapsed(context)) }
     var filtersSheetOpen by remember { mutableStateOf(false) }
+    val filterScroll = rememberScrollState()
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(tokenStore.getJwt()) {
         loading = true
@@ -163,7 +175,7 @@ fun EazyResearchScreen(
                 error = tr("creator.research.error", "Research data could not be loaded.")
             } else {
                 preview = data.optBoolean("preview", false)
-                products = parseProducts(data.optJSONArray("products"))
+                if (searchId.isBlank()) products = parseProducts(data.optJSONArray("products"))
                 niches = parseNiches(data.optJSONArray("niches"))
                 val last = data.optJSONObject("last_run")
                 status = if (preview) {
@@ -185,8 +197,84 @@ fun EazyResearchScreen(
         loading = false
     }
 
-    val filtered = remember(products, query, selectedNiches, designType, language, personalization, sort, view, watched) {
-        filterProducts(products, query, selectedNiches, designType, language, personalization, sort, view, watched)
+    LaunchedEffect(pendingAnalyze) {
+        if (!pendingAnalyze) return@LaunchedEffect
+        val q = query.trim()
+        if (q.isEmpty()) {
+            analyzing = false
+            pendingAnalyze = false
+            status = tr("creator.research.analyze_empty_query", "Type a search before Analyze.")
+            return@LaunchedEffect
+        }
+        if (!tokenStore.isLoggedIn()) {
+            analyzing = false
+            pendingAnalyze = false
+            status = tr("creator.research.analyze_login", "Log in to run a live catalog search.")
+            return@LaunchedEffect
+        }
+        try {
+            val data = api.postDispatchJson(
+                "eazy-research-analyze-search",
+                JSONObject().put("q", q),
+            )
+            if (!data.optBoolean("ok", false)) {
+                analyzing = false
+                pendingAnalyze = false
+                status = when (data.optString("error")) {
+                    "login_required" -> tr("creator.research.analyze_login", "Log in to run a live catalog search.")
+                    "cooldown" -> tr("creator.research.analyze_cooldown", "Please wait before another live search.")
+                    "daily_limit" -> tr("creator.research.analyze_daily_limit", "Daily live search limit reached.")
+                    else -> tr("creator.research.analyze_error", "Live catalog search could not start.")
+                }
+                return@LaunchedEffect
+            }
+            searchId = data.optString("search_id")
+        } catch (_: Exception) {
+            analyzing = false
+            status = tr("creator.research.analyze_error", "Live catalog search could not start.")
+        }
+        pendingAnalyze = false
+    }
+
+    LaunchedEffect(searchId) {
+        if (searchId.isBlank()) return@LaunchedEffect
+        while (true) {
+            try {
+                val data = api.call("eazy-research-search-status", mapOf("search_id" to searchId))
+                if (data.optBoolean("ok", false)) {
+                    products = parseProducts(data.optJSONArray("products"))
+                    preview = false
+                    val done = data.optBoolean("done", false) ||
+                        data.optString("status") == "done" ||
+                        data.optString("status") == "error"
+                    if (done) {
+                        analyzing = false
+                        if (data.optString("status") == "error") {
+                            status = tr("creator.research.analyze_error", "Live catalog search could not start.")
+                        }
+                        break
+                    }
+                }
+            } catch (_: Exception) {
+                // keep polling until the worker marks the search done
+            }
+            delay(900)
+        }
+    }
+
+    val filtered = remember(products, query, selectedNiches, designType, language, personalization, sort, view, watched, searchId) {
+        filterProducts(
+            products,
+            query,
+            selectedNiches,
+            designType,
+            language,
+            personalization,
+            sort,
+            view,
+            watched,
+            sessionSearch = searchId.isNotBlank(),
+        )
     }
 
     val filterPanel: @Composable () -> Unit = {
@@ -194,6 +282,15 @@ fun EazyResearchScreen(
             translationStore = translationStore,
             query = query,
             onQuery = { query = it },
+            analyzeEnabled = tokenStore.isLoggedIn() && !analyzing,
+            analyzing = analyzing,
+            onAnalyze = {
+                analyzing = true
+                products = emptyList()
+                searchId = ""
+                pendingAnalyze = true
+                scope.launch { gridState.scrollToItem(0) }
+            },
             sort = sort,
             onSort = { sort = it },
             niches = niches,
@@ -228,7 +325,7 @@ fun EazyResearchScreen(
                             .width(272.dp)
                             .fillMaxHeight()
                             .background(RailBg)
-                            .verticalScroll(rememberScrollState())
+                            .verticalScroll(filterScroll)
                             .padding(12.dp),
                     ) {
                         filterPanel()
@@ -265,52 +362,66 @@ fun EazyResearchScreen(
                     )
                 }
                 when {
-                    loading -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Accent)
-                    }
-                    error != null -> Text(error ?: "", color = TextDim, fontSize = 14.sp)
-                    filtered.isEmpty() -> Text(
-                        if (view == "watched") {
-                            tr(
-                                "creator.research.empty_watched",
-                                "No watched products yet. Tap the heart on a product to start tracking it.",
-                            )
-                        } else {
-                            tr(
-                                "creator.research.empty_search",
-                                "No reprint-safe products match this search. Try a broader niche such as Coffee or Hiking.",
-                            )
-                        },
-                        color = TextDim,
-                        fontSize = 14.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    else -> LazyVerticalGrid(
-                        columns = GridCells.Adaptive(160.dp),
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 8.dp),
-                    ) {
-                        items(filtered, key = { watchId(it) }) { product ->
-                            val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label
-                                ?: product.nicheKey
-                            OpportunityCard(
-                                product = product,
-                                nicheLabel = nicheLabel,
-                                watched = isWatched(watched, product),
-                                translationStore = translationStore,
-                                onOpen = { selected = product },
-                                onToggleWatch = {
-                                    val id = watchId(product)
-                                    val next = if (isWatched(watched, product)) {
-                                        watched - id - product.asin
-                                    } else {
-                                        watched + id
-                                    }
-                                    watched = next
-                                    saveWatchedAsins(context, next)
+                    error != null && products.isEmpty() && !analyzing -> Text(error ?: "", color = TextDim, fontSize = 14.sp)
+                    else -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                        val showSkeleton = (loading && products.isEmpty()) || (analyzing && filtered.isEmpty())
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(160.dp),
+                            state = gridState,
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(bottom = 8.dp),
+                        ) {
+                            if (showSkeleton) {
+                                items(8) {
+                                    Box(
+                                        modifier = Modifier
+                                            .aspectRatio(0.72f)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(Color.White.copy(alpha = 0.08f)),
+                                    )
+                                }
+                            } else {
+                                items(filtered, key = { watchId(it) }) { product ->
+                                    val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label
+                                        ?: product.nicheKey
+                                    OpportunityCard(
+                                        product = product,
+                                        nicheLabel = nicheLabel,
+                                        watched = isWatched(watched, product),
+                                        translationStore = translationStore,
+                                        onOpen = { selected = product },
+                                        onToggleWatch = {
+                                            val id = watchId(product)
+                                            val next = if (isWatched(watched, product)) {
+                                                watched - id - product.asin
+                                            } else {
+                                                watched + id
+                                            }
+                                            watched = next
+                                            saveWatchedAsins(context, next)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        if (!showSkeleton && filtered.isEmpty()) {
+                            Text(
+                                if (view == "watched") {
+                                    tr(
+                                        "creator.research.empty_watched",
+                                        "No watched products yet. Tap the heart on a product to start tracking it.",
+                                    )
+                                } else {
+                                    tr(
+                                        "creator.research.empty_search",
+                                        "No reprint-safe products match this search. Try a broader niche such as Coffee or Hiking.",
+                                    )
                                 },
+                                color = TextDim,
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(top = 8.dp),
                             )
                         }
                     }
@@ -338,7 +449,7 @@ fun EazyResearchScreen(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(max = 520.dp)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(filterScroll)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
                     filterPanel()
@@ -391,12 +502,15 @@ private fun FilterCollapseRail(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ResearchFilterPanel(
     translationStore: TranslationStore,
     query: String,
     onQuery: (String) -> Unit,
+    analyzeEnabled: Boolean,
+    analyzing: Boolean,
+    onAnalyze: () -> Unit,
     sort: String,
     onSort: (String) -> Unit,
     niches: List<ResearchNiche>,
@@ -418,15 +532,52 @@ private fun ResearchFilterPanel(
         "bsr" to tr("creator.research.sort_bsr", "BSR"),
         "newest" to tr("creator.research.sort_newest", "Newest snapshot"),
     )
+    val views = listOf(
+        "opportunities" to tr("creator.research.tab_opportunities", "Opportunities"),
+        "rising" to tr("creator.research.tab_rising", "Rising"),
+        "review_growth" to tr("creator.research.tab_review_growth", "Review growth"),
+        "watched" to tr("creator.research.tab_watched", "Watched"),
+    )
+    var viewsOpen by remember { mutableStateOf(false) }
+    val viewLabel = views.firstOrNull { it.first == view }?.second ?: views.first().second
+    ExposedDropdownMenuBox(expanded = viewsOpen, onExpandedChange = { viewsOpen = it }) {
+        OutlinedTextField(
+            value = viewLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(tr("creator.research.views", "Views"), color = TextDim) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(viewsOpen) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextMain,
+                unfocusedTextColor = TextMain,
+                focusedBorderColor = Accent,
+                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                focusedLabelColor = TextDim,
+                unfocusedLabelColor = TextDim,
+            ),
+        )
+        ExposedDropdownMenu(expanded = viewsOpen, onDismissRequest = { viewsOpen = false }) {
+            views.forEach { (id, label) ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    onClick = {
+                        onView(id)
+                        viewsOpen = false
+                    },
+                )
+            }
+        }
+    }
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         OutlinedTextField(
             value = query,
             onValueChange = onQuery,
-            modifier = Modifier.weight(1.15f),
+            modifier = Modifier.weight(1f),
             singleLine = true,
             placeholder = {
                 Text(tr("creator.research.search_placeholder", "Search reprint-safe products"), color = TextDim)
@@ -438,18 +589,30 @@ private fun ResearchFilterPanel(
                 unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
             ),
         )
-        FlowRow(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            sorts.forEach { (id, label) ->
-                FilterChip(
-                    label = label,
-                    selected = sort == id,
-                    onClick = { onSort(id) },
-                )
-            }
+        Text(
+            if (analyzing) tr("creator.research.analyze_loading", "Analyzing…") else tr("creator.research.analyze", "Analyze"),
+            color = TextMain,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (analyzeEnabled) Accent.copy(alpha = 0.38f) else Color.White.copy(alpha = 0.08f))
+                .clickable(enabled = analyzeEnabled, onClick = onAnalyze)
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+        )
+    }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        sorts.forEach { (id, label) ->
+            FilterChip(
+                label = label,
+                selected = sort == id,
+                onClick = { onSort(id) },
+            )
         }
     }
     Text(
@@ -578,31 +741,6 @@ private fun ResearchFilterPanel(
                 label = label,
                 selected = personalization == id,
                 onClick = { onPersonalization(id) },
-                radio = true,
-            )
-        }
-    }
-    Text(
-        tr("creator.research.views", "Views"),
-        color = TextDim,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = 14.dp, bottom = 6.dp),
-    )
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        listOf(
-            "opportunities" to tr("creator.research.tab_opportunities", "Opportunities"),
-            "rising" to tr("creator.research.tab_rising", "Rising"),
-            "review_growth" to tr("creator.research.tab_review_growth", "Review growth"),
-            "watched" to tr("creator.research.tab_watched", "Watched"),
-        ).forEach { (id, label) ->
-            FilterChip(
-                label = label,
-                selected = view == id,
-                onClick = { onView(id) },
                 radio = true,
             )
         }
@@ -837,6 +975,7 @@ private fun filterProducts(
     sort: String,
     view: String,
     watched: Set<String>,
+    sessionSearch: Boolean = false,
 ): List<ResearchProduct> {
     var rows = products.filter { it.reprintOk }
     if (niches.isNotEmpty()) rows = rows.filter { it.nicheKey in niches }
@@ -849,7 +988,7 @@ private fun filterProducts(
         }
     }
     val q = query.trim().lowercase(Locale.ROOT)
-    if (q.isNotEmpty()) {
+    if (q.isNotEmpty() && !sessionSearch) {
         rows = rows.filter {
             listOf(it.title, it.brand, it.asin, it.nicheKey, it.marketplace, it.marketplaceTag)
                 .joinToString(" ").lowercase(Locale.ROOT).contains(q)
