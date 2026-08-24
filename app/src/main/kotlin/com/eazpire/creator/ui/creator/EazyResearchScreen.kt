@@ -76,6 +76,7 @@ import coil.compose.AsyncImage
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.creator.ui.components.GlassCircularFlag
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
@@ -624,6 +625,11 @@ private fun ResearchFilterPanel(
             onValueChange = {},
             readOnly = true,
             label = { Text(tr("creator.research.country", "Country"), color = TextDim) },
+            leadingIcon = {
+                flagCodeForMarketplace(marketplace)?.let { code ->
+                    GlassCircularFlag(countryCode = code, size = 20.dp)
+                }
+            },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(countryOpen) },
             modifier = Modifier.menuAnchor().fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -638,7 +644,17 @@ private fun ResearchFilterPanel(
         ExposedDropdownMenu(expanded = countryOpen, onDismissRequest = { countryOpen = false }) {
             countryOptions.forEach { (id, label) ->
                 DropdownMenuItem(
-                    text = { Text(label) },
+                    text = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            flagCodeForMarketplace(id)?.let { code ->
+                                GlassCircularFlag(countryCode = code, size = 18.dp)
+                            }
+                            Text(label)
+                        }
+                    },
                     onClick = {
                         onMarketplace(id)
                         countryOpen = false
@@ -850,7 +866,13 @@ private fun ResearchFilterPanel(
         "fr" to tr("creator.research.lang_fr", "French"),
         "it" to tr("creator.research.lang_it", "Italian"),
     ).forEach { (id, label) ->
-        FilterCheckRow(label = label, count = countOf("language", id), checked = id in languages, onToggle = { onToggleLanguage(id) })
+        FilterCheckRow(
+            label = label,
+            count = countOf("language", id),
+            checked = id in languages,
+            flagCode = flagCodeForLanguage(id),
+            onToggle = { onToggleLanguage(id) },
+        )
     }
 }
 
@@ -860,6 +882,7 @@ private fun FilterCheckRow(
     count: Int,
     checked: Boolean,
     onToggle: () -> Unit,
+    flagCode: String? = null,
 ) {
     Row(
         modifier = Modifier
@@ -874,6 +897,7 @@ private fun FilterCheckRow(
             onCheckedChange = { onToggle() },
             colors = CheckboxDefaults.colors(checkedColor = Color(0xFFF97316), uncheckedColor = TextDim),
         )
+        flagCode?.let { GlassCircularFlag(countryCode = it, size = 18.dp) }
         Text(label, color = TextMain, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(count.toString(), color = TextDim, fontSize = 11.sp)
     }
@@ -918,7 +942,6 @@ private fun OpportunityCard(
     onToggleWatch: () -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
-    val change = formatBsrChange(product, translationStore)
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
@@ -957,35 +980,14 @@ private fun OpportunityCard(
                 )
             }
         }
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(product.title, color = TextMain, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
+            ResearchStatsBox(product = product, translationStore = translationStore)
+            product.bsrCategory?.takeIf { it.isNotBlank() }?.let { cat ->
+                Text(cat, color = TextDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             nicheLabels.forEach { label ->
                 Text(label, color = TextDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            languageBadge(product.language)?.let { badge ->
-                Text(badge, color = TextMain, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            }
-            product.relevanceScore?.let { score ->
-                Text(
-                    tr("creator.research.relevance", "Category rank") + " $score",
-                    color = Color(0xFFC4B5FD),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            Text(
-                formatBsr(product, translationStore),
-                color = TextMain,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            change?.let { (label, improved) ->
-                Text(
-                    label,
-                    color = if (improved) SafeGreen else Color(0xFFFF8D85),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
             }
             product.reviews?.let { count ->
                 Text(
@@ -1036,7 +1038,11 @@ private fun ProductDetailCard(
             StatRow(tr("creator.research.brand", "Brand"), product.brand)
         }
         if (product.marketplaceTag.isNotBlank()) {
-            StatRow(tr("creator.research.marketplace", "Marketplace"), product.marketplaceTag)
+            StatFlagRow(
+                label = tr("creator.research.marketplace", "Marketplace"),
+                flagCode = flagCodeForMarketplace(product.marketplace),
+                value = product.marketplaceTag,
+            )
         }
         StatRow(tr("creator.research.bsr_label", "BSR"), formatBsr(product, translationStore))
         formatBsrChange(product, translationStore)?.let { (label, _) ->
@@ -1054,8 +1060,16 @@ private fun ProductDetailCard(
         product.designType?.takeIf { it.isNotBlank() }?.let { type ->
             StatRow(tr("creator.research.design_type", "Design type"), type.replace('_', ' '))
         }
-        languageBadge(product.language)?.let { badge ->
-            StatRow(tr("creator.research.language", "Language"), badge)
+        product.language?.takeIf { it.isNotBlank() }?.let { lang ->
+            StatFlagRow(
+                label = tr("creator.research.language", "Language"),
+                flagCode = flagCodeForLanguage(lang),
+                value = if (lang.equals("none", ignoreCase = true)) {
+                    tr("creator.quick_inspirations.language_none", "None")
+                } else {
+                    lang.uppercase(Locale.ROOT)
+                },
+            )
         }
         StatRow(
             tr("creator.research.custom_design", "Custom Design"),
@@ -1081,6 +1095,107 @@ private fun StatRow(label: String, value: String) {
         Text(label, color = TextDim, fontSize = 14.sp)
         Text(value, color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
+}
+
+@Composable
+private fun StatFlagRow(label: String, flagCode: String?, value: String) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = TextDim, fontSize = 14.sp)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            flagCode?.let { GlassCircularFlag(countryCode = it, size = 16.dp) }
+            Text(value, color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun ResearchStatsBox(product: ResearchProduct, translationStore: TranslationStore) {
+    fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    val change = formatBsrChange(product, translationStore)
+    val rankText = formatBsrRank(product) ?: tr("creator.research.bsr_missing", "No BSR")
+    val catScore = product.relevanceScore?.toString() ?: "—"
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xC70A0618))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    tr("creator.research.bsr_label", "BSR").uppercase(Locale.ROOT),
+                    color = TextDim,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(rankText, color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                    change?.let { (_, improved) ->
+                        Text(
+                            if (improved) "↑" else "↓",
+                            color = if (improved) SafeGreen else Color(0xFFFF8D85),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    tr("creator.research.cat_rank", "Cat. rank").uppercase(Locale.ROOT),
+                    color = TextDim,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(HeartOn),
+                    )
+                    Text(catScore, color = Color(0xFFFFD7B0), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+        product.language?.takeIf { it.isNotBlank() }?.let { lang ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                flagCodeForLanguage(lang)?.let { GlassCircularFlag(countryCode = it, size = 16.dp) }
+                Text(
+                    if (lang.equals("none", ignoreCase = true)) {
+                        tr("creator.quick_inspirations.language_none", "None")
+                    } else {
+                        lang.uppercase(Locale.ROOT)
+                    },
+                    color = TextMain,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
+
+private fun formatBsrRank(product: ResearchProduct): String? {
+    val rank = product.bsr ?: return null
+    return String.format(Locale.GERMANY, "%,d", rank)
 }
 
 private fun formatBsr(product: ResearchProduct, translationStore: TranslationStore): String {
@@ -1356,19 +1471,30 @@ private fun displayTopicLabels(product: ResearchProduct, niches: List<ResearchNi
     return out
 }
 
-private fun languageBadge(language: String?): String? {
+private fun flagCodeForLanguage(language: String?): String? {
     val code = language?.trim()?.lowercase(Locale.ROOT).orEmpty()
     if (code.isBlank() || code == "none") return null
-    val flag = when (code) {
-        "en" -> "🇬🇧"
-        "de" -> "🇩🇪"
-        "es" -> "🇪🇸"
-        "fr" -> "🇫🇷"
-        "it" -> "🇮🇹"
-        else -> ""
+    return when (code) {
+        "en" -> "GB"
+        "de" -> "DE"
+        "es" -> "ES"
+        "fr" -> "FR"
+        "it" -> "IT"
+        else -> null
     }
-    val shown = code.uppercase(Locale.ROOT)
-    return if (flag.isBlank()) shown else "$flag $shown"
+}
+
+private fun flagCodeForMarketplace(host: String): String? = when (host.trim().lowercase(Locale.ROOT)) {
+    "amazon.de" -> "DE"
+    "amazon.co.uk" -> "GB"
+    "amazon.fr" -> "FR"
+    "amazon.it" -> "IT"
+    "amazon.es" -> "ES"
+    "amazon.com" -> "US"
+    "amazon.ca" -> "CA"
+    "amazon.co.jp" -> "JP"
+    "amazon.com.au" -> "AU"
+    else -> null
 }
 
 private fun countryLabel(host: String, translationStore: TranslationStore): String {
