@@ -283,22 +283,25 @@ fun EazyResearchScreen(
         loading = false
     }
 
-    LaunchedEffect(gridState, products.size, hasMore, loading, loadingMore, searchId, view) {
+    LaunchedEffect(gridState, hasMore, searchId, view) {
         snapshotFlow {
-            gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-        }.collect { lastVisible ->
+            Triple(
+                gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0,
+                products.size,
+                loading || loadingMore,
+            )
+        }.collect { (lastVisible, size, busy) ->
             if (
                 hasMore &&
-                !loading &&
-                !loadingMore &&
+                !busy &&
                 searchId.isBlank() &&
                 view != "watched" &&
-                products.isNotEmpty() &&
-                lastVisible >= products.lastIndex - 4
+                size > 0 &&
+                lastVisible >= size - 5
             ) {
                 loadingMore = true
                 try {
-                    val data = api.call("eazy-research-products", researchListParams(products.size))
+                    val data = api.call("eazy-research-products", researchListParams(size))
                     if (data.optBoolean("ok", false)) applyResearchListPayload(data, append = true)
                 } catch (_: Exception) {
                     // nächste Scroll-Position versucht es erneut
