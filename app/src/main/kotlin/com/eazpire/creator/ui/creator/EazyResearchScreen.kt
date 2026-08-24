@@ -81,7 +81,9 @@ private data class ResearchProduct(
     val reviewDelta: Int?,
     val reviewWindow: String?,
     val bsr: Int?,
-    val price: Double?,
+    val bsrCategory: String?,
+    val bsrDelta: Int?,
+    val bsrImproved: Boolean?,
     val capturedAt: Long?,
     val trend: String,
     val risingScore: Int,
@@ -271,8 +273,11 @@ fun EazyResearchScreen(
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
                 items(filtered, key = { it.asin }) { product ->
+                    val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label
+                        ?: product.nicheKey
                     OpportunityCard(
                         product = product,
+                        nicheLabel = nicheLabel,
                         watched = watched.contains(product.asin),
                         translationStore = translationStore,
                         onOpen = { selected = product },
@@ -332,12 +337,14 @@ private fun ChipRow(
 @Composable
 private fun OpportunityCard(
     product: ResearchProduct,
+    nicheLabel: String,
     watched: Boolean,
     translationStore: TranslationStore,
     onOpen: () -> Unit,
     onToggleWatch: () -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    val change = formatBsrChange(product, translationStore)
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
@@ -378,29 +385,29 @@ private fun OpportunityCard(
         }
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(product.title, color = TextMain, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
+            if (nicheLabel.isNotBlank()) {
+                Text(nicheLabel, color = TextDim, fontSize = 11.sp)
+            }
             Text(
-                "${product.rating?.let { String.format(Locale.US, "%.1f ★", it) } ?: "—"} · ${product.reviews ?: "—"}",
-                color = TextDim,
-                fontSize = 12.sp,
+                formatBsr(product, translationStore),
+                color = TextMain,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
             )
-            product.reviewDelta?.let {
-                val prefix = if (it > 0) "+" else ""
-                val window = product.reviewWindow?.let { w -> formatReviewWindow(w, translationStore) }
+            change?.let { (label, improved) ->
                 Text(
-                    "$prefix$it ${tr("creator.research.reviews", "reviews")}${window?.let { w -> " / $w" } ?: ""}",
-                    color = SafeGreen,
+                    label,
+                    color = if (improved) SafeGreen else Color(0xFFFF8D85),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            product.reviews?.let { count ->
                 Text(
-                    product.bsr?.let { "${tr("creator.research.bsr_label", "BSR")} ${String.format(Locale.GERMANY, "%,d", it)}" }
-                        ?: tr("creator.research.bsr_missing", "No BSR"),
+                    tr("creator.research.reviews_count", "{count} reviews").replace("{count}", count.toString()),
                     color = TextDim,
                     fontSize = 11.sp,
                 )
-                Text(formatPrice(product.price), color = TextDim, fontSize = 11.sp)
             }
         }
     }
@@ -416,7 +423,6 @@ private fun ProductDetailCard(
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
     val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label ?: product.nicheKey
     val nicheLine = listOf(nicheLabel, product.subNiche).filter { it.isNotBlank() }.joinToString(" · ")
-    val windowLabel = formatReviewWindow(product.reviewWindow ?: "7d", translationStore)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -445,18 +451,13 @@ private fun ProductDetailCard(
         if (nicheLine.isNotBlank()) {
             Text(nicheLine, color = TextDim, fontSize = 13.sp)
         }
-        StatRow(tr("creator.research.reviews_total", "Reviews total"), product.reviews?.toString() ?: "—")
-        product.reviewDelta?.let { delta ->
-            val prefix = if (delta > 0) "+" else ""
-            StatRow(
-                tr("creator.research.reviews_last_window", "Reviews last {window}").replace("{window}", windowLabel),
-                "$prefix$delta",
-            )
+        StatRow(tr("creator.research.bsr_label", "BSR"), formatBsr(product, translationStore))
+        formatBsrChange(product, translationStore)?.let { (label, _) ->
+            StatRow(tr("creator.research.bsr_change", "BSR change"), label)
         }
-        StatRow(
-            tr("creator.research.rating_avg", "Average rating"),
-            product.rating?.let { String.format(Locale.US, "%.1f ★", it) } ?: "—",
-        )
+        product.reviews?.let { count ->
+            StatRow(tr("creator.research.reviews_total", "Reviews total"), count.toString())
+        }
     }
 }
 
@@ -468,18 +469,32 @@ private fun StatRow(label: String, value: String) {
     }
 }
 
-private fun formatPrice(price: Double?): String {
-    val value = price ?: return "—"
-    return String.format(Locale.GERMANY, "€%.2f", value)
+private fun formatBsr(product: ResearchProduct, translationStore: TranslationStore): String {
+    val rank = product.bsr ?: return translationStore.t("creator.research.bsr_missing", "No BSR")
+    val rankText = String.format(Locale.GERMANY, "%,d", rank)
+    val category = product.bsrCategory?.trim().orEmpty()
+    return if (category.isNotEmpty()) {
+        translationStore.t("creator.research.bsr_with_category", "BSR {rank} · {category}")
+            .replace("{rank}", rankText)
+            .replace("{category}", category)
+    } else {
+        "${translationStore.t("creator.research.bsr_label", "BSR")} $rankText"
+    }
 }
 
-private fun formatReviewWindow(window: String, translationStore: TranslationStore): String {
-    val match = Regex("^(\\d+)\\s*d$", RegexOption.IGNORE_CASE).find(window.trim())
-    return if (match != null) {
-        translationStore.t("creator.research.window_days", "{n} days").replace("{n}", match.groupValues[1])
+private fun formatBsrChange(
+    product: ResearchProduct,
+    translationStore: TranslationStore,
+): Pair<String, Boolean>? {
+    val delta = product.bsrDelta ?: return null
+    if (delta == 0) return null
+    val improved = product.bsrImproved == true || delta < 0
+    val label = if (improved) {
+        translationStore.t("creator.research.bsr_change_improved", "↑ Improved")
     } else {
-        window
+        translationStore.t("creator.research.bsr_change_worse", "↓ Worse")
     }
+    return label to improved
 }
 
 private fun filterProducts(
@@ -531,7 +546,9 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             reviewDelta = p.optIntOrNull("review_delta"),
             reviewWindow = p.optString("review_delta_window").ifBlank { null },
             bsr = latest.optIntOrNull("bsr"),
-            price = p.optDoubleOrNull("price"),
+            bsrCategory = latest.optString("bsr_category").ifBlank { p.optString("bsr_category") }.ifBlank { null },
+            bsrDelta = p.optIntOrNull("bsr_delta"),
+            bsrImproved = p.optBooleanOrNull("bsr_improved"),
             capturedAt = latest.optLongOrNull("captured_at"),
             trend = p.optString("trend"),
             risingScore = p.optInt("rising_score", 0),
@@ -580,3 +597,6 @@ private fun JSONObject.optIntOrNull(key: String): Int? =
 
 private fun JSONObject.optLongOrNull(key: String): Long? =
     if (!has(key) || isNull(key)) null else optLong(key)
+
+private fun JSONObject.optBooleanOrNull(key: String): Boolean? =
+    if (!has(key) || isNull(key)) null else optBoolean(key)
