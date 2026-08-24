@@ -2,19 +2,24 @@ package com.eazpire.creator.ui.creator
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -24,14 +29,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +55,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -64,17 +79,23 @@ private val TextDim = Color(0xC7F4F1FF)
 private val Accent = Color(0xFF7C5CFF)
 private val HeartOn = Color(0xFFF97316)
 private val SafeGreen = Color(0xFF2ECC71)
+private val RailBg = Color(0x8010122A)
 
 private const val WATCH_PREFS = "eazy-research"
 private const val WATCH_KEY = "eazy-research-watched"
+private const val FILTERS_COLLAPSE_KEY = "eazy-research-filters-collapsed"
 
 private data class ResearchProduct(
     val asin: String,
+    val marketplace: String,
+    val marketplaceTag: String,
     val title: String,
     val brand: String,
     val imageUrl: String,
     val nicheKey: String,
     val subNiche: String,
+    val designType: String?,
+    val language: String?,
     val reprintOk: Boolean,
     val rating: Double?,
     val reviews: Int?,
@@ -94,6 +115,7 @@ private data class ResearchNiche(
     val label: String,
 )
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun EazyResearchScreen(
     tokenStore: SecureTokenStore,
@@ -114,24 +136,27 @@ fun EazyResearchScreen(
     var products by remember { mutableStateOf(listOf<ResearchProduct>()) }
     var niches by remember { mutableStateOf(listOf<ResearchNiche>()) }
     var query by remember { mutableStateOf("") }
-    var niche by remember { mutableStateOf("all") }
+    var selectedNiches by remember { mutableStateOf(setOf<String>()) }
+    var designType by remember { mutableStateOf("") }
+    var language by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf("review_growth") }
     var view by remember { mutableStateOf("opportunities") }
     var selected by remember { mutableStateOf<ResearchProduct?>(null) }
     var watched by remember { mutableStateOf(loadWatchedAsins(context)) }
+    var filtersCollapsed by remember { mutableStateOf(loadFiltersCollapsed(context)) }
+    var filtersSheetOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(tokenStore.getJwt()) {
         loading = true
         error = null
         try {
-            val data = api.call(
-                "eazy-research-products",
-                mapOf(
-                    "reprint_ok" to "1",
-                    "limit" to "80",
-                    "sort" to sort,
-                ),
+            val params = mutableMapOf(
+                "reprint_ok" to "1",
+                "limit" to "80",
+                "sort" to sort,
             )
+            if (selectedNiches.isNotEmpty()) params["niche"] = selectedNiches.joinToString(",")
+            val data = api.call("eazy-research-products", params)
             if (!data.optBoolean("ok", false)) {
                 error = tr("creator.research.error", "Research data could not be loaded.")
             } else {
@@ -148,7 +173,7 @@ fun EazyResearchScreen(
                 } else {
                     tr(
                         "creator.research.empty",
-                        "No Amazon.de snapshots yet. Official catalog collection runs in the background.",
+                        "No Amazon snapshots yet. Official catalog collection runs in the background.",
                     )
                 }
             }
@@ -158,43 +183,244 @@ fun EazyResearchScreen(
         loading = false
     }
 
-    val filtered = remember(products, query, niche, sort, view, watched) {
-        filterProducts(products, query, niche, sort, view, watched)
+    val filtered = remember(products, query, selectedNiches, designType, language, sort, view, watched) {
+        filterProducts(products, query, selectedNiches, designType, language, sort, view, watched)
     }
 
-    Column(
+    val filterPanel: @Composable () -> Unit = {
+        ResearchFilterPanel(
+            translationStore = translationStore,
+            query = query,
+            onQuery = { query = it },
+            sort = sort,
+            onSort = { sort = it },
+            niches = niches,
+            selectedNiches = selectedNiches,
+            onToggleNiche = { key ->
+                selectedNiches = if (key == "all") emptySet() else {
+                    if (key in selectedNiches) selectedNiches - key else selectedNiches + key
+                }
+            },
+            designType = designType,
+            onDesignType = { designType = if (designType == it) "" else it },
+            language = language,
+            onLanguage = { language = if (language == it) "" else it },
+            view = view,
+            onView = { view = it },
+        )
+    }
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .heightIn(max = cap)
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .heightIn(max = cap),
     ) {
-        Text(tr("creator.research.title", "eazy Research"), color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text(
-            tr(
-                "creator.research.subtitle",
-                "Reprint-safe Amazon.de demand signals. Reviews and BSR only — never invented sales.",
-            ),
-            color = TextDim,
-            fontSize = 13.sp,
-        )
-        if (preview) {
-            Text(
-                tr("creator.research.preview_banner", "Preview data — live snapshots coming"),
-                color = Color(0xFFFFD7B0),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+        val compact = maxWidth < 600.dp
+        Row(Modifier.fillMaxSize()) {
+            if (!compact) {
+                FilterCollapseRail(
+                    collapsed = filtersCollapsed,
+                    translationStore = translationStore,
+                    onToggle = {
+                        filtersCollapsed = !filtersCollapsed
+                        saveFiltersCollapsed(context, filtersCollapsed)
+                    },
+                )
+                if (!filtersCollapsed) {
+                    Column(
+                        modifier = Modifier
+                            .width(272.dp)
+                            .fillMaxHeight()
+                            .background(RailBg)
+                            .verticalScroll(rememberScrollState())
+                            .padding(12.dp),
+                    ) {
+                        filterPanel()
+                    }
+                }
+            }
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0x33F97316))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (compact) {
+                    Text(
+                        tr("creator.research.filter_open", "Open filters"),
+                        color = TextMain,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Accent.copy(alpha = 0.28f))
+                            .clickable { filtersSheetOpen = true }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    )
+                }
+                when {
+                    loading -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Accent)
+                    }
+                    error != null -> Text(error ?: "", color = TextDim, fontSize = 14.sp)
+                    filtered.isEmpty() -> Text(
+                        if (view == "watched") {
+                            tr(
+                                "creator.research.empty_watched",
+                                "No watched products yet. Tap the heart on a product to start tracking it.",
+                            )
+                        } else {
+                            tr(
+                                "creator.research.empty_search",
+                                "No reprint-safe products match this search. Try a broader niche such as Coffee or Hiking.",
+                            )
+                        },
+                        color = TextDim,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    else -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(160.dp),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 8.dp),
+                    ) {
+                        items(filtered, key = { watchId(it) }) { product ->
+                            val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label
+                                ?: product.nicheKey
+                            OpportunityCard(
+                                product = product,
+                                nicheLabel = nicheLabel,
+                                watched = isWatched(watched, product),
+                                translationStore = translationStore,
+                                onOpen = { selected = product },
+                                onToggleWatch = {
+                                    val id = watchId(product)
+                                    val next = if (isWatched(watched, product)) {
+                                        watched - id - product.asin
+                                    } else {
+                                        watched + id
+                                    }
+                                    watched = next
+                                    saveWatchedAsins(context, next)
+                                },
+                            )
+                        }
+                    }
+                }
+                selected?.let { product ->
+                    Dialog(onDismissRequest = { selected = null }) {
+                        ProductDetailCard(
+                            product = product,
+                            niches = niches,
+                            translationStore = translationStore,
+                            onClose = { selected = null },
+                        )
+                    }
+                }
+                Text(status, color = TextDim, fontSize = 11.sp)
+            }
+        }
+        if (compact && filtersSheetOpen) {
+            ModalBottomSheet(
+                onDismissRequest = { filtersSheetOpen = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = Color(0xFF120C22),
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    filterPanel()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterCollapseRail(
+    collapsed: Boolean,
+    translationStore: TranslationStore,
+    onToggle: () -> Unit,
+) {
+    val label = if (collapsed) {
+        translationStore.t("creator.research.filter_expand", "Expand filters")
+    } else {
+        translationStore.t("creator.research.filter_collapse", "Collapse filters")
+    }
+    Column(
+        modifier = Modifier
+            .width(56.dp)
+            .fillMaxHeight()
+            .background(RailBg)
+            .clickable(onClick = onToggle)
+            .padding(top = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        IconButton(onClick = onToggle, modifier = Modifier.size(48.dp)) {
+            Icon(
+                imageVector = if (collapsed) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft,
+                contentDescription = label,
+                tint = TextDim,
             )
         }
+        Icon(
+            imageVector = Icons.Filled.FilterList,
+            contentDescription = null,
+            tint = TextDim,
+            modifier = Modifier.size(18.dp).padding(top = 8.dp),
+        )
+        Text(
+            translationStore.t("creator.research.filter_toggle", "Filters"),
+            color = TextDim,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ResearchFilterPanel(
+    translationStore: TranslationStore,
+    query: String,
+    onQuery: (String) -> Unit,
+    sort: String,
+    onSort: (String) -> Unit,
+    niches: List<ResearchNiche>,
+    selectedNiches: Set<String>,
+    onToggleNiche: (String) -> Unit,
+    designType: String,
+    onDesignType: (String) -> Unit,
+    language: String,
+    onLanguage: (String) -> Unit,
+    view: String,
+    onView: (String) -> Unit,
+) {
+    fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    val sorts = listOf(
+        "review_growth" to tr("creator.research.sort_review_growth", "Review growth"),
+        "reviews" to tr("creator.research.sort_reviews", "Reviews"),
+        "bsr" to tr("creator.research.sort_bsr", "BSR"),
+        "newest" to tr("creator.research.sort_newest", "Newest snapshot"),
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+    ) {
         OutlinedTextField(
             value = query,
-            onValueChange = { query = it },
-            modifier = Modifier.fillMaxWidth(),
+            onValueChange = onQuery,
+            modifier = Modifier.weight(1.15f),
             singleLine = true,
             placeholder = {
                 Text(tr("creator.research.search_placeholder", "Search reprint-safe products"), color = TextDim)
@@ -206,132 +432,173 @@ fun EazyResearchScreen(
                 unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
             ),
         )
-        ChipRow(
-            items = listOf(ResearchNiche("all", tr("creator.research.niche_all", "All"))) + niches,
-            selected = niche,
-            onSelect = { niche = it },
-        )
-        ChipRow(
-            items = listOf(
-                ResearchNiche("opportunities", tr("creator.research.tab_opportunities", "Opportunities")),
-                ResearchNiche("rising", tr("creator.research.tab_rising", "Rising")),
-                ResearchNiche("review_growth", tr("creator.research.tab_review_growth", "Review growth")),
-                ResearchNiche("watched", tr("creator.research.tab_watched", "Watched")),
-            ),
-            selected = view,
-            onSelect = { view = it },
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        FlowRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            listOf(
-                "review_growth" to tr("creator.research.sort_review_growth", "Review growth"),
-                "reviews" to tr("creator.research.sort_reviews", "Reviews"),
-                "bsr" to tr("creator.research.sort_bsr", "BSR"),
-                "newest" to tr("creator.research.sort_newest", "Newest snapshot"),
-            ).forEach { (id, label) ->
-                val on = sort == id
-                Text(
-                    label,
-                    color = if (on) TextMain else TextDim,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(if (on) Accent.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.06f))
-                        .clickable { sort = id }
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
+            sorts.forEach { (id, label) ->
+                FilterChip(
+                    label = label,
+                    selected = sort == id,
+                    onClick = { onSort(id) },
                 )
             }
         }
-        when {
-            loading -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Accent)
-            }
-            error != null -> Text(error ?: "", color = TextDim, fontSize = 14.sp)
-            filtered.isEmpty() -> Text(
-                if (view == "watched") {
-                    tr(
-                        "creator.research.empty_watched",
-                        "No watched products yet. Tap the heart on a product to start tracking it.",
-                    )
-                } else {
-                    tr(
-                        "creator.research.empty_search",
-                        "No reprint-safe products match this search. Try a broader niche such as Coffee or Hiking.",
-                    )
-                },
-                color = TextDim,
-                fontSize = 14.sp,
-                modifier = Modifier.weight(1f),
+    }
+    Text(
+        tr("creator.research.topics", "Topics"),
+        color = TextDim,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+    )
+    if (selectedNiches.isEmpty()) {
+        Text(
+            tr("creator.research.topics_all_hint", "All topics"),
+            color = TextDim,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            label = tr("creator.research.niche_all", "All"),
+            selected = selectedNiches.isEmpty(),
+            onClick = { onToggleNiche("all") },
+        )
+        niches.forEach { item ->
+            FilterChip(
+                label = item.label,
+                selected = item.key in selectedNiches,
+                onClick = { onToggleNiche(item.key) },
             )
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(160.dp),
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 8.dp),
-            ) {
-                items(filtered, key = { it.asin }) { product ->
-                    val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label
-                        ?: product.nicheKey
-                    OpportunityCard(
-                        product = product,
-                        nicheLabel = nicheLabel,
-                        watched = watched.contains(product.asin),
-                        translationStore = translationStore,
-                        onOpen = { selected = product },
-                        onToggleWatch = {
-                            val next = if (watched.contains(product.asin)) {
-                                watched - product.asin
-                            } else {
-                                watched + product.asin
-                            }
-                            watched = next
-                            saveWatchedAsins(context, next)
-                        },
-                    )
-                }
-            }
         }
-        selected?.let { product ->
-            Dialog(onDismissRequest = { selected = null }) {
-                ProductDetailCard(
-                    product = product,
-                    niches = niches,
-                    translationStore = translationStore,
-                    onClose = { selected = null },
-                )
-            }
+    }
+    Text(
+        tr("creator.research.design_type", "Design type"),
+        color = TextDim,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+    )
+    if (designType.isEmpty()) {
+        Text(
+            tr("creator.research.design_type_all_hint", "All design types"),
+            color = TextDim,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf(
+            "design_only" to tr("creator.quick_inspirations.content_type_design_only", "Design Only"),
+            "text_only" to tr("creator.quick_inspirations.content_type_text_only", "Text Only"),
+            "design_text" to tr("creator.quick_inspirations.content_type_design_text", "Design + Text"),
+        ).forEach { (id, label) ->
+            FilterChip(
+                label = label,
+                selected = designType == id,
+                onClick = { onDesignType(id) },
+                radio = true,
+            )
         }
-        Text(status, color = TextDim, fontSize = 11.sp)
+    }
+    Text(
+        tr("creator.research.language", "Language"),
+        color = TextDim,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+    )
+    if (language.isEmpty()) {
+        Text(
+            tr("creator.research.language_all_hint", "All languages"),
+            color = TextDim,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf(
+            "none" to tr("creator.quick_inspirations.language_none", "None"),
+            "en" to tr("creator.research.lang_en", "English"),
+            "de" to tr("creator.research.lang_de", "German"),
+            "es" to tr("creator.research.lang_es", "Spanish"),
+            "fr" to tr("creator.research.lang_fr", "French"),
+            "it" to tr("creator.research.lang_it", "Italian"),
+        ).forEach { (id, label) ->
+            FilterChip(
+                label = label,
+                selected = language == id,
+                onClick = { onLanguage(id) },
+                radio = true,
+            )
+        }
+    }
+    Text(
+        tr("creator.research.views", "Views"),
+        color = TextDim,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 14.dp, bottom = 6.dp),
+    )
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf(
+            "opportunities" to tr("creator.research.tab_opportunities", "Opportunities"),
+            "rising" to tr("creator.research.tab_rising", "Rising"),
+            "review_growth" to tr("creator.research.tab_review_growth", "Review growth"),
+            "watched" to tr("creator.research.tab_watched", "Watched"),
+        ).forEach { (id, label) ->
+            FilterChip(
+                label = label,
+                selected = view == id,
+                onClick = { onView(id) },
+                radio = true,
+            )
+        }
     }
 }
 
 @Composable
-private fun ChipRow(
-    items: List<ResearchNiche>,
-    selected: String,
-    onSelect: (String) -> Unit,
+private fun FilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    radio: Boolean = false,
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-    ) {
-        items.forEach { item ->
-            val on = selected == item.key
-            Text(
-                item.label,
-                color = TextMain,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(if (on) Accent.copy(alpha = 0.38f) else Color.White.copy(alpha = 0.06f))
-                    .clickable { onSelect(item.key) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+    Text(
+        label,
+        color = TextMain,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) Accent.copy(alpha = 0.38f) else Color.White.copy(alpha = 0.06f))
+            .border(
+                width = 1.dp,
+                color = if (selected) Color(0xB3A78BFA) else Color.White.copy(alpha = 0.14f),
+                shape = RoundedCornerShape(999.dp),
             )
-        }
-    }
+            .semantics {
+                this.selected = selected
+                role = if (radio) Role.RadioButton else Role.Checkbox
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+    )
 }
 
 @Composable
@@ -362,12 +629,26 @@ private fun OpportunityCard(
             } else {
                 Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Color(0xFF1B1430)))
             }
+            if (product.marketplaceTag.isNotBlank()) {
+                Text(
+                    product.marketplaceTag,
+                    color = TextMain,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xC70A0618))
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                )
+            }
             IconButton(
                 onClick = onToggleWatch,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(4.dp)
-                    .size(40.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(Color(0xB80A0618)),
             ) {
@@ -448,6 +729,18 @@ private fun ProductDetailCard(
             )
         }
         Text(product.title, color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        if (product.marketplaceTag.isNotBlank()) {
+            Text(
+                product.marketplaceTag,
+                color = TextMain,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0xC70A0618))
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
+            )
+        }
         if (nicheLine.isNotBlank()) {
             Text(nicheLine, color = TextDim, fontSize = 13.sp)
         }
@@ -500,23 +793,28 @@ private fun formatBsrChange(
 private fun filterProducts(
     products: List<ResearchProduct>,
     query: String,
-    niche: String,
+    niches: Set<String>,
+    designType: String,
+    language: String,
     sort: String,
     view: String,
     watched: Set<String>,
 ): List<ResearchProduct> {
     var rows = products.filter { it.reprintOk }
-    if (niche != "all") rows = rows.filter { it.nicheKey == niche }
+    if (niches.isNotEmpty()) rows = rows.filter { it.nicheKey in niches }
+    if (designType.isNotBlank()) rows = rows.filter { it.designType.equals(designType, ignoreCase = true) }
+    if (language.isNotBlank()) rows = rows.filter { it.language.equals(language, ignoreCase = true) }
     val q = query.trim().lowercase(Locale.ROOT)
     if (q.isNotEmpty()) {
         rows = rows.filter {
-            listOf(it.title, it.brand, it.asin, it.nicheKey).joinToString(" ").lowercase(Locale.ROOT).contains(q)
+            listOf(it.title, it.brand, it.asin, it.nicheKey, it.marketplace, it.marketplaceTag)
+                .joinToString(" ").lowercase(Locale.ROOT).contains(q)
         }
     }
     rows = when (view) {
         "rising" -> rows.filter { it.trend == "rising" || it.risingScore > 0 }
         "review_growth" -> rows.filter { (it.reviewDelta ?: 0) > 0 }
-        "watched" -> rows.filter { watched.contains(it.asin) }
+        "watched" -> rows.filter { isWatched(watched, it) }
         else -> rows
     }
     return when (sort) {
@@ -535,11 +833,17 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
         val latest = p.optJSONObject("latest") ?: JSONObject()
         out += ResearchProduct(
             asin = p.optString("asin"),
+            marketplace = p.optString("marketplace"),
+            marketplaceTag = p.optString("marketplace_tag").ifBlank {
+                marketplaceTagFromHost(p.optString("marketplace"))
+            },
             title = p.optString("title").ifBlank { p.optString("asin") },
             brand = p.optString("brand"),
             imageUrl = p.optString("image_url"),
             nicheKey = p.optString("niche_key"),
             subNiche = p.optString("sub_niche").ifBlank { p.optString("sub_niche_key") },
+            designType = p.optString("design_type").ifBlank { null },
+            language = p.optString("language").ifBlank { null },
             reprintOk = p.optBoolean("reprint_ok", true),
             rating = latest.optDoubleOrNull("rating"),
             reviews = latest.optIntOrNull("reviews_count"),
@@ -569,6 +873,25 @@ private fun parseNiches(arr: JSONArray?): List<ResearchNiche> {
     return out
 }
 
+private fun watchId(product: ResearchProduct): String =
+    if (product.marketplace.isBlank()) product.asin else "${product.asin}:${product.marketplace}"
+
+private fun isWatched(watched: Set<String>, product: ResearchProduct): Boolean =
+    watched.contains(watchId(product)) || watched.contains(product.asin)
+
+private fun marketplaceTagFromHost(host: String): String = when (host.trim().lowercase(Locale.ROOT)) {
+    "amazon.de" -> "DE"
+    "amazon.co.uk" -> "UK"
+    "amazon.fr" -> "FR"
+    "amazon.it" -> "IT"
+    "amazon.es" -> "ES"
+    "amazon.com" -> "US"
+    "amazon.ca" -> "CA"
+    "amazon.co.jp" -> "JP"
+    "amazon.com.au" -> "AU"
+    else -> ""
+}
+
 private fun loadWatchedAsins(context: Context): Set<String> {
     val raw = context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
         .getString(WATCH_KEY, "[]") ?: "[]"
@@ -586,6 +909,17 @@ private fun saveWatchedAsins(context: Context, asins: Set<String>) {
     context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
         .edit()
         .putString(WATCH_KEY, arr.toString())
+        .apply()
+}
+
+private fun loadFiltersCollapsed(context: Context): Boolean =
+    context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(FILTERS_COLLAPSE_KEY, false)
+
+private fun saveFiltersCollapsed(context: Context, collapsed: Boolean) {
+    context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(FILTERS_COLLAPSE_KEY, collapsed)
         .apply()
 }
 
