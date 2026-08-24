@@ -96,6 +96,7 @@ private data class ResearchProduct(
     val subNiche: String,
     val designType: String?,
     val language: String?,
+    val personalizable: Boolean,
     val reprintOk: Boolean,
     val rating: Double?,
     val reviews: Int?,
@@ -139,6 +140,7 @@ fun EazyResearchScreen(
     var selectedNiches by remember { mutableStateOf(setOf<String>()) }
     var designType by remember { mutableStateOf("") }
     var language by remember { mutableStateOf("") }
+    var personalization by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf("review_growth") }
     var view by remember { mutableStateOf("opportunities") }
     var selected by remember { mutableStateOf<ResearchProduct?>(null) }
@@ -183,8 +185,8 @@ fun EazyResearchScreen(
         loading = false
     }
 
-    val filtered = remember(products, query, selectedNiches, designType, language, sort, view, watched) {
-        filterProducts(products, query, selectedNiches, designType, language, sort, view, watched)
+    val filtered = remember(products, query, selectedNiches, designType, language, personalization, sort, view, watched) {
+        filterProducts(products, query, selectedNiches, designType, language, personalization, sort, view, watched)
     }
 
     val filterPanel: @Composable () -> Unit = {
@@ -205,6 +207,8 @@ fun EazyResearchScreen(
             onDesignType = { designType = if (designType == it) "" else it },
             language = language,
             onLanguage = { language = if (language == it) "" else it },
+            personalization = personalization,
+            onPersonalization = { personalization = if (personalization == it) "" else it },
             view = view,
             onView = { view = it },
         )
@@ -402,6 +406,8 @@ private fun ResearchFilterPanel(
     onDesignType: (String) -> Unit,
     language: String,
     onLanguage: (String) -> Unit,
+    personalization: String,
+    onPersonalization: (String) -> Unit,
     view: String,
     onView: (String) -> Unit,
 ) {
@@ -541,6 +547,37 @@ private fun ResearchFilterPanel(
                 label = label,
                 selected = language == id,
                 onClick = { onLanguage(id) },
+                radio = true,
+            )
+        }
+    }
+    Text(
+        tr("creator.research.personalization", "Personalization"),
+        color = TextDim,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+    )
+    if (personalization.isEmpty()) {
+        Text(
+            tr("creator.research.personalization_all_hint", "Standard and personalizable"),
+            color = TextDim,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf(
+            "standard" to tr("creator.research.personalization_standard", "Standard"),
+            "personalizable" to tr("creator.research.personalization_personalizable", "Personalizable"),
+        ).forEach { (id, label) ->
+            FilterChip(
+                label = label,
+                selected = personalization == id,
+                onClick = { onPersonalization(id) },
                 radio = true,
             )
         }
@@ -796,6 +833,7 @@ private fun filterProducts(
     niches: Set<String>,
     designType: String,
     language: String,
+    personalization: String,
     sort: String,
     view: String,
     watched: Set<String>,
@@ -804,6 +842,12 @@ private fun filterProducts(
     if (niches.isNotEmpty()) rows = rows.filter { it.nicheKey in niches }
     if (designType.isNotBlank()) rows = rows.filter { it.designType.equals(designType, ignoreCase = true) }
     if (language.isNotBlank()) rows = rows.filter { it.language.equals(language, ignoreCase = true) }
+    if (personalization.isNotBlank()) {
+        rows = rows.filter { product ->
+            val key = if (product.personalizable) "personalizable" else "standard"
+            key.equals(personalization, ignoreCase = true)
+        }
+    }
     val q = query.trim().lowercase(Locale.ROOT)
     if (q.isNotEmpty()) {
         rows = rows.filter {
@@ -844,6 +888,9 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             subNiche = p.optString("sub_niche").ifBlank { p.optString("sub_niche_key") },
             designType = p.optString("design_type").ifBlank { null },
             language = p.optString("language").ifBlank { null },
+            personalizable = p.optInt("personalizable", 0) == 1 ||
+                p.optBoolean("personalizable", false) ||
+                p.optString("personalization").equals("personalizable", ignoreCase = true),
             reprintOk = p.optBoolean("reprint_ok", true),
             rating = latest.optDoubleOrNull("rating"),
             reviews = latest.optIntOrNull("reviews_count"),
