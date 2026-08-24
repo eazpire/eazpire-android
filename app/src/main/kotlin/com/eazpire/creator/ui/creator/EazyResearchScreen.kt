@@ -56,6 +56,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -179,6 +180,9 @@ fun EazyResearchScreen(
     var marketplace by remember { mutableStateOf("all") }
     var analyzeLimits by remember { mutableStateOf(AnalyzeLimits()) }
     var query by remember { mutableStateOf("") }
+    var debouncedQuery by remember { mutableStateOf("") }
+    var hasMore by remember { mutableStateOf(false) }
+    var loadingMore by remember { mutableStateOf(false) }
     var selectedNiches by remember { mutableStateOf(setOf<String>()) }
     var designTypes by remember { mutableStateOf(setOf<String>()) }
     var languages by remember { mutableStateOf(setOf<String>()) }
@@ -193,44 +197,115 @@ fun EazyResearchScreen(
     val filterScroll = rememberScrollState()
     val gridState = rememberLazyGridState()
 
-    LaunchedEffect(tokenStore.getJwt(), marketplace) {
+    fun researchListParams(offset: Int): Map<String, String> {
+        val params = mutableMapOf(
+            "reprint_ok" to "1",
+            "limit" to "80",
+            "offset" to offset.coerceAtLeast(0).toString(),
+            "sort" to sort,
+            "view" to if (view == "watched") "opportunities" else view,
+        )
+        if (marketplace.isNotBlank() && marketplace != "all") params["marketplace"] = marketplace
+        if (debouncedQuery.isNotBlank()) params["q"] = debouncedQuery
+        if (selectedNiches.isNotEmpty()) params["niche"] = selectedNiches.joinToString(",")
+        if (designTypes.isNotEmpty()) params["design_type"] = designTypes.joinToString(",")
+        if (languages.isNotEmpty()) params["language"] = languages.joinToString(",")
+        if (personalizations.isNotEmpty()) params["personalization"] = personalizations.joinToString(",")
+        if (selectedAudiences.isNotEmpty()) params["audience"] = selectedAudiences.joinToString(",")
+        return params
+    }
+
+    fun applyResearchListPayload(data: org.json.JSONObject, append: Boolean) {
+        preview = data.optBoolean("preview", false)
+        val page = parseProducts(data.optJSONArray("products"))
+        if (searchId.isBlank()) {
+            products = if (append) {
+                val seen = products.map { watchId(it) }.toMutableSet()
+                products + page.filter { seen.add(watchId(it)) }
+            } else {
+                page
+            }
+        }
+        hasMore = data.optBoolean("has_more", false)
+        niches = parseNiches(data.optJSONArray("niches"))
+        facets = parseFacets(data.optJSONObject("facets"))
+        marketplaces = parseMarketplaces(data.optJSONArray("marketplaces"))
+        analyzeLimits = parseAnalyzeLimits(data.optJSONObject("analyze_limits"))
+        val last = data.optJSONObject("last_run")
+        status = if (preview) {
+            tr("creator.research.preview_banner", "Preview data — live snapshots coming") +
+                " · ${products.size}"
+        } else if (last != null) {
+            tr("creator.research.last_run", "Last snapshot") + " · " +
+                last.optString("niche_pack", last.optString("source", ""))
+        } else {
+            tr(
+                "creator.research.empty",
+                "No Amazon snapshots yet. Official catalog collection runs in the background.",
+            )
+        }
+    }
+
+    LaunchedEffect(query) {
+        delay(180)
+        debouncedQuery = query.trim()
+    }
+
+    LaunchedEffect(
+        tokenStore.getJwt(),
+        marketplace,
+        selectedNiches,
+        designTypes,
+        languages,
+        personalizations,
+        selectedAudiences,
+        sort,
+        view,
+        debouncedQuery,
+        searchId,
+    ) {
+        if (searchId.isNotBlank() || view == "watched") return@LaunchedEffect
         loading = true
         error = null
+        products = emptyList()
+        hasMore = false
         try {
-            val params = mutableMapOf(
-                "reprint_ok" to "1",
-                "limit" to "80",
-                "sort" to sort,
-            )
-            if (marketplace.isNotBlank() && marketplace != "all") params["marketplace"] = marketplace
-            val data = api.call("eazy-research-products", params)
+            val data = api.call("eazy-research-products", researchListParams(0))
             if (!data.optBoolean("ok", false)) {
                 error = tr("creator.research.error", "Research data could not be loaded.")
             } else {
-                preview = data.optBoolean("preview", false)
-                if (searchId.isBlank()) products = parseProducts(data.optJSONArray("products"))
-                niches = parseNiches(data.optJSONArray("niches"))
-                facets = parseFacets(data.optJSONObject("facets"))
-                marketplaces = parseMarketplaces(data.optJSONArray("marketplaces"))
-                analyzeLimits = parseAnalyzeLimits(data.optJSONObject("analyze_limits"))
-                val last = data.optJSONObject("last_run")
-                status = if (preview) {
-                    tr("creator.research.preview_banner", "Preview data — live snapshots coming") +
-                        " · ${products.size}"
-                } else if (last != null) {
-                    tr("creator.research.last_run", "Last snapshot") + " · " +
-                        last.optString("niche_pack", last.optString("source", ""))
-                } else {
-                    tr(
-                        "creator.research.empty",
-                        "No Amazon snapshots yet. Official catalog collection runs in the background.",
-                    )
-                }
+                applyResearchListPayload(data, append = false)
+                gridState.scrollToItem(0)
             }
         } catch (_: Exception) {
             error = tr("creator.research.error", "Research data could not be loaded.")
         }
         loading = false
+    }
+
+    LaunchedEffect(gridState, products.size, hasMore, loading, loadingMore, searchId, view) {
+        snapshotFlow {
+            gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+        }.collect { lastVisible ->
+            if (
+                hasMore &&
+                !loading &&
+                !loadingMore &&
+                searchId.isBlank() &&
+                view != "watched" &&
+                products.isNotEmpty() &&
+                lastVisible >= products.lastIndex - 4
+            ) {
+                loadingMore = true
+                try {
+                    val data = api.call("eazy-research-products", researchListParams(products.size))
+                    if (data.optBoolean("ok", false)) applyResearchListPayload(data, append = true)
+                } catch (_: Exception) {
+                    // nächste Scroll-Position versucht es erneut
+                }
+                loadingMore = false
+            }
+        }
     }
 
     LaunchedEffect(pendingAnalyze) {
@@ -309,21 +384,25 @@ fun EazyResearchScreen(
         }
     }
 
-    val filtered = remember(products, query, selectedNiches, designTypes, languages, personalizations, selectedAudiences, sort, view, watched, searchId, marketplace) {
-        filterProducts(
-            products,
-            query,
-            selectedNiches,
-            designTypes,
-            languages,
-            personalizations,
-            selectedAudiences,
-            sort,
-            view,
-            watched,
-            marketplace,
-            sessionSearch = searchId.isNotBlank(),
-        )
+    val displayed = remember(products, query, selectedNiches, designTypes, languages, personalizations, selectedAudiences, sort, view, watched, searchId, marketplace) {
+        if (searchId.isNotBlank() || view == "watched") {
+            filterProducts(
+                products,
+                query,
+                selectedNiches,
+                designTypes,
+                languages,
+                personalizations,
+                selectedAudiences,
+                sort,
+                view,
+                watched,
+                marketplace,
+                sessionSearch = searchId.isNotBlank(),
+            )
+        } else {
+            products
+        }
     }
 
     val filterPanel: @Composable () -> Unit = {
@@ -433,7 +512,7 @@ fun EazyResearchScreen(
                 when {
                     error != null && products.isEmpty() && !analyzing -> Text(error ?: "", color = TextDim, fontSize = 14.sp)
                     else -> Box(Modifier.weight(1f).fillMaxWidth()) {
-                        val showSkeleton = (loading && products.isEmpty()) || (analyzing && filtered.isEmpty())
+                        val showSkeleton = (loading && products.isEmpty()) || (analyzing && displayed.isEmpty())
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(160.dp),
                             state = gridState,
@@ -452,7 +531,7 @@ fun EazyResearchScreen(
                                     )
                                 }
                             } else {
-                                items(filtered, key = { watchId(it) }) { product ->
+                                items(displayed, key = { watchId(it) }) { product ->
                                     OpportunityCard(
                                         product = product,
                                         nicheLabels = displayTopicLabels(product, niches),
@@ -473,7 +552,7 @@ fun EazyResearchScreen(
                                 }
                             }
                         }
-                        if (!showSkeleton && filtered.isEmpty()) {
+                        if (!showSkeleton && displayed.isEmpty()) {
                             Text(
                                 emptyGridCopy(
                                     translationStore = translationStore,
