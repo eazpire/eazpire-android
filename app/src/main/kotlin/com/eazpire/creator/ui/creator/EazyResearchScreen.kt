@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,6 +35,8 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -98,7 +101,10 @@ private data class ResearchProduct(
     val brand: String,
     val imageUrl: String,
     val nicheKey: String,
+    val topic: String,
     val subNiche: String,
+    val tags: List<String>,
+    val prompt: String,
     val designType: String?,
     val language: String?,
     val personalizable: Boolean,
@@ -112,6 +118,7 @@ private data class ResearchProduct(
     val bsrCategory: String?,
     val bsrDelta: Int?,
     val bsrImproved: Boolean?,
+    val relevanceScore: Int?,
     val capturedAt: Long?,
     val trend: String,
     val risingScore: Int,
@@ -120,6 +127,23 @@ private data class ResearchProduct(
 private data class ResearchNiche(
     val key: String,
     val label: String,
+)
+
+private data class ResearchFacet(
+    val key: String,
+    val count: Int,
+)
+
+private data class ResearchMarketplace(
+    val host: String,
+    val tag: String,
+)
+
+private data class AnalyzeLimits(
+    val used: Int = 0,
+    val remaining: Int = 5,
+    val limit: Int = 5,
+    val busy: Boolean = false,
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -147,11 +171,15 @@ fun EazyResearchScreen(
     var status by remember { mutableStateOf("") }
     var products by remember { mutableStateOf(listOf<ResearchProduct>()) }
     var niches by remember { mutableStateOf(listOf<ResearchNiche>()) }
+    var facets by remember { mutableStateOf(mapOf<String, List<ResearchFacet>>()) }
+    var marketplaces by remember { mutableStateOf(listOf<ResearchMarketplace>()) }
+    var marketplace by remember { mutableStateOf("all") }
+    var analyzeLimits by remember { mutableStateOf(AnalyzeLimits()) }
     var query by remember { mutableStateOf("") }
     var selectedNiches by remember { mutableStateOf(setOf<String>()) }
-    var designType by remember { mutableStateOf("") }
-    var language by remember { mutableStateOf("") }
-    var personalization by remember { mutableStateOf("") }
+    var designTypes by remember { mutableStateOf(setOf<String>()) }
+    var languages by remember { mutableStateOf(setOf<String>()) }
+    var personalizations by remember { mutableStateOf(setOf<String>()) }
     var selectedAudiences by remember { mutableStateOf(setOf<String>()) }
     var sort by remember { mutableStateOf("review_growth") }
     var view by remember { mutableStateOf("opportunities") }
@@ -162,7 +190,7 @@ fun EazyResearchScreen(
     val filterScroll = rememberScrollState()
     val gridState = rememberLazyGridState()
 
-    LaunchedEffect(tokenStore.getJwt()) {
+    LaunchedEffect(tokenStore.getJwt(), marketplace) {
         loading = true
         error = null
         try {
@@ -171,8 +199,7 @@ fun EazyResearchScreen(
                 "limit" to "80",
                 "sort" to sort,
             )
-            if (selectedNiches.isNotEmpty()) params["niche"] = selectedNiches.joinToString(",")
-            if (selectedAudiences.isNotEmpty()) params["audience"] = selectedAudiences.joinToString(",")
+            if (marketplace.isNotBlank() && marketplace != "all") params["marketplace"] = marketplace
             val data = api.call("eazy-research-products", params)
             if (!data.optBoolean("ok", false)) {
                 error = tr("creator.research.error", "Research data could not be loaded.")
@@ -180,6 +207,9 @@ fun EazyResearchScreen(
                 preview = data.optBoolean("preview", false)
                 if (searchId.isBlank()) products = parseProducts(data.optJSONArray("products"))
                 niches = parseNiches(data.optJSONArray("niches"))
+                facets = parseFacets(data.optJSONObject("facets"))
+                marketplaces = parseMarketplaces(data.optJSONArray("marketplaces"))
+                analyzeLimits = parseAnalyzeLimits(data.optJSONObject("analyze_limits"))
                 val last = data.optJSONObject("last_run")
                 status = if (preview) {
                     tr("creator.research.preview_banner", "Preview data — live snapshots coming") +
@@ -216,22 +246,27 @@ fun EazyResearchScreen(
             return@LaunchedEffect
         }
         try {
+            val payload = JSONObject().put("q", q)
+            if (marketplace.isNotBlank() && marketplace != "all") payload.put("marketplace", marketplace)
             val data = api.postDispatchJson(
                 "eazy-research-analyze-search",
-                JSONObject().put("q", q),
+                payload,
             )
             if (!data.optBoolean("ok", false)) {
                 analyzing = false
                 pendingAnalyze = false
+                analyzeLimits = parseAnalyzeLimits(data.optJSONObject("daily") ?: data)
                 status = when (data.optString("error")) {
                     "login_required" -> tr("creator.research.analyze_login", "Log in to run a live catalog search.")
                     "cooldown" -> tr("creator.research.analyze_cooldown", "Please wait before another live search.")
-                    "daily_limit" -> tr("creator.research.analyze_daily_limit", "Daily live search limit reached.")
+                    "daily_limit" -> tr("creator.research.analyze_daily_limit", "Daily live search limit reached (5 per UTC day).")
+                    "busy" -> tr("creator.research.analyze_busy", "Another Analyze is running. Please wait a few seconds.")
                     else -> tr("creator.research.analyze_error", "Live catalog search could not start.")
                 }
                 return@LaunchedEffect
             }
             searchId = data.optString("search_id")
+            analyzeLimits = parseAnalyzeLimits(data.optJSONObject("daily"))
         } catch (_: Exception) {
             analyzing = false
             status = tr("creator.research.analyze_error", "Live catalog search could not start.")
@@ -271,18 +306,19 @@ fun EazyResearchScreen(
         }
     }
 
-    val filtered = remember(products, query, selectedNiches, designType, language, personalization, selectedAudiences, sort, view, watched, searchId) {
+    val filtered = remember(products, query, selectedNiches, designTypes, languages, personalizations, selectedAudiences, sort, view, watched, searchId, marketplace) {
         filterProducts(
             products,
             query,
             selectedNiches,
-            designType,
-            language,
-            personalization,
+            designTypes,
+            languages,
+            personalizations,
             selectedAudiences,
             sort,
             view,
             watched,
+            marketplace,
             sessionSearch = searchId.isNotBlank(),
         )
     }
@@ -301,34 +337,41 @@ fun EazyResearchScreen(
                 searchEmptyReason = "running"
                 searchAmazonReturned = 0
                 selectedNiches = emptySet()
-                designType = ""
-                language = ""
-                personalization = ""
+                designTypes = emptySet()
+                languages = emptySet()
+                personalizations = emptySet()
                 selectedAudiences = emptySet()
                 view = "opportunities"
                 pendingAnalyze = true
             },
             sort = sort,
             onSort = { sort = it },
+            marketplace = marketplace,
+            marketplaces = marketplaces,
+            onMarketplace = { marketplace = it },
             niches = niches,
             selectedNiches = selectedNiches,
             onToggleNiche = { key ->
-                selectedNiches = if (key == "all") emptySet() else {
-                    if (key in selectedNiches) selectedNiches - key else selectedNiches + key
-                }
+                selectedNiches = if (key in selectedNiches) selectedNiches - key else selectedNiches + key
             },
-            designType = designType,
-            onDesignType = { designType = if (designType == it) "" else it },
-            language = language,
-            onLanguage = { language = if (it.isEmpty() || language == it) "" else it },
-            personalization = personalization,
-            onPersonalization = { personalization = if (personalization == it) "" else it },
+            designTypes = designTypes,
+            onToggleDesignType = { key ->
+                designTypes = if (key in designTypes) designTypes - key else designTypes + key
+            },
+            languages = languages,
+            onToggleLanguage = { key ->
+                languages = if (key in languages) languages - key else languages + key
+            },
+            personalizations = personalizations,
+            onTogglePersonalization = { key ->
+                personalizations = if (key in personalizations) personalizations - key else personalizations + key
+            },
             selectedAudiences = selectedAudiences,
             onToggleAudience = { key ->
-                selectedAudiences = if (key == "all") emptySet() else {
-                    if (key in selectedAudiences) selectedAudiences - key else selectedAudiences + key
-                }
+                selectedAudiences = if (key in selectedAudiences) selectedAudiences - key else selectedAudiences + key
             },
+            facets = facets,
+            analyzeLimits = analyzeLimits,
             view = view,
             onView = { view = it },
         )
@@ -407,11 +450,9 @@ fun EazyResearchScreen(
                                 }
                             } else {
                                 items(filtered, key = { watchId(it) }) { product ->
-                                    val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label
-                                        ?: product.nicheKey
                                     OpportunityCard(
                                         product = product,
-                                        nicheLabel = nicheLabel,
+                                        nicheLabels = displayTopicLabels(product, niches),
                                         watched = isWatched(watched, product),
                                         translationStore = translationStore,
                                         onOpen = { selected = product },
@@ -533,21 +574,34 @@ private fun ResearchFilterPanel(
     onAnalyze: () -> Unit,
     sort: String,
     onSort: (String) -> Unit,
+    marketplace: String,
+    marketplaces: List<ResearchMarketplace>,
+    onMarketplace: (String) -> Unit,
     niches: List<ResearchNiche>,
     selectedNiches: Set<String>,
     onToggleNiche: (String) -> Unit,
-    designType: String,
-    onDesignType: (String) -> Unit,
-    language: String,
-    onLanguage: (String) -> Unit,
-    personalization: String,
-    onPersonalization: (String) -> Unit,
+    designTypes: Set<String>,
+    onToggleDesignType: (String) -> Unit,
+    languages: Set<String>,
+    onToggleLanguage: (String) -> Unit,
+    personalizations: Set<String>,
+    onTogglePersonalization: (String) -> Unit,
     selectedAudiences: Set<String>,
     onToggleAudience: (String) -> Unit,
+    facets: Map<String, List<ResearchFacet>>,
+    analyzeLimits: AnalyzeLimits,
     view: String,
     onView: (String) -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    fun countOf(group: String, key: String): Int =
+        facets[group]?.firstOrNull { it.key == key }?.count ?: 0
+    val hosts = marketplaces.ifEmpty {
+        listOf("amazon.de", "amazon.co.uk", "amazon.fr", "amazon.it", "amazon.es", "amazon.com", "amazon.ca")
+            .map { ResearchMarketplace(it, marketplaceTagFromHost(it)) }
+    }
+    val countryOptions = listOf("all" to tr("creator.research.country_all", "All countries")) +
+        hosts.map { it.host to countryLabel(it.host, translationStore) }
     val sorts = listOf(
         "review_growth" to tr("creator.research.sort_review_growth", "Review growth"),
         "reviews" to tr("creator.research.sort_reviews", "Reviews"),
@@ -560,8 +614,39 @@ private fun ResearchFilterPanel(
         "review_growth" to tr("creator.research.tab_review_growth", "Review growth"),
         "watched" to tr("creator.research.tab_watched", "Watched"),
     )
+    var countryOpen by remember { mutableStateOf(false) }
     var viewsOpen by remember { mutableStateOf(false) }
+    val countryLabelText = countryOptions.firstOrNull { it.first == marketplace }?.second ?: countryOptions.first().second
     val viewLabel = views.firstOrNull { it.first == view }?.second ?: views.first().second
+    ExposedDropdownMenuBox(expanded = countryOpen, onExpandedChange = { countryOpen = it }) {
+        OutlinedTextField(
+            value = countryLabelText,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(tr("creator.research.country", "Country"), color = TextDim) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(countryOpen) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextMain,
+                unfocusedTextColor = TextMain,
+                focusedBorderColor = Accent,
+                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                focusedLabelColor = TextDim,
+                unfocusedLabelColor = TextDim,
+            ),
+        )
+        ExposedDropdownMenu(expanded = countryOpen, onDismissRequest = { countryOpen = false }) {
+            countryOptions.forEach { (id, label) ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    onClick = {
+                        onMarketplace(id)
+                        countryOpen = false
+                    },
+                )
+            }
+        }
+    }
     ExposedDropdownMenuBox(expanded = viewsOpen, onExpandedChange = { viewsOpen = it }) {
         OutlinedTextField(
             value = viewLabel,
@@ -612,7 +697,13 @@ private fun ResearchFilterPanel(
             ),
         )
         Text(
-            if (analyzing) tr("creator.research.analyze_loading", "Analyzing…") else tr("creator.research.analyze", "Analyze"),
+            if (analyzing) {
+                tr("creator.research.analyze_loading", "Analyzing…")
+            } else {
+                tr("creator.research.analyze_remaining", "Analyze ({remaining}/{limit})")
+                    .replace("{remaining}", analyzeLimits.remaining.toString())
+                    .replace("{limit}", analyzeLimits.limit.toString())
+            },
             color = Color.White,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
@@ -653,22 +744,12 @@ private fun ResearchFilterPanel(
             modifier = Modifier.padding(bottom = 4.dp),
         )
     }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        FilterChip(
-            label = tr("creator.research.niche_all", "All"),
-            selected = selectedNiches.isEmpty(),
-            onClick = { onToggleNiche("all") },
-        )
-        niches.forEach { item ->
-            FilterChip(
-                label = item.label,
-                selected = item.key in selectedNiches,
-                onClick = { onToggleNiche(item.key) },
-            )
-        }
+    val topicRows = (facets["topics"] ?: emptyList()).ifEmpty {
+        niches.map { ResearchFacet(it.key, countOf("topics", it.key)) }
+    }.filter { it.key.isNotBlank() && it.key != "user_search" }
+    topicRows.forEach { item ->
+        val label = niches.firstOrNull { it.key == item.key }?.label ?: item.key
+        FilterCheckRow(label = label, count = item.count, checked = item.key in selectedNiches, onToggle = { onToggleNiche(item.key) })
     }
     Text(
         tr("creator.research.audience", "Audience"),
@@ -686,27 +767,13 @@ private fun ResearchFilterPanel(
             modifier = Modifier.padding(bottom = 4.dp),
         )
     }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        FilterChip(
-            label = tr("creator.research.niche_all", "All"),
-            selected = selectedAudiences.isEmpty(),
-            onClick = { onToggleAudience("all") },
-        )
-        listOf(
-            "men" to tr("creator.research.audience_men", "Men"),
-            "women" to tr("creator.research.audience_women", "Women"),
-            "kids" to tr("creator.research.audience_kids", "Kids"),
-            "toddler" to tr("creator.research.audience_toddler", "Toddler"),
-        ).forEach { (id, label) ->
-            FilterChip(
-                label = label,
-                selected = id in selectedAudiences,
-                onClick = { onToggleAudience(id) },
-            )
-        }
+    listOf(
+        "men" to tr("creator.research.audience_men", "Men"),
+        "women" to tr("creator.research.audience_women", "Women"),
+        "kids" to tr("creator.research.audience_kids", "Kids"),
+        "toddler" to tr("creator.research.audience_toddler", "Toddler"),
+    ).forEach { (id, label) ->
+        FilterCheckRow(label = label, count = countOf("audience", id), checked = id in selectedAudiences, onToggle = { onToggleAudience(id) })
     }
     Text(
         tr("creator.research.custom_design", "Custom Design"),
@@ -716,19 +783,25 @@ private fun ResearchFilterPanel(
         letterSpacing = 1.2.sp,
         modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
     )
-    if (personalization.isEmpty()) {
+    if (personalizations.isEmpty() || personalizations.size == 2) {
         Text(
-            tr("creator.research.custom_design_all_hint", "All listings — tap Yes or No, tap again for all"),
+            tr("creator.research.custom_design_all_hint", "Neither or both = all listings"),
             color = TextDim,
             fontSize = 11.sp,
             modifier = Modifier.padding(bottom = 4.dp),
         )
     }
-    CustomDesignSwitch(
-        yesLabel = tr("creator.research.custom_design_yes", "Yes"),
-        noLabel = tr("creator.research.custom_design_no", "No"),
-        value = personalization,
-        onValue = onPersonalization,
+    FilterCheckRow(
+        label = tr("creator.research.custom_design_yes", "Yes"),
+        count = countOf("personalization", "personalizable"),
+        checked = "personalizable" in personalizations,
+        onToggle = { onTogglePersonalization("personalizable") },
+    )
+    FilterCheckRow(
+        label = tr("creator.research.custom_design_no", "No"),
+        count = countOf("personalization", "standard"),
+        checked = "standard" in personalizations,
+        onToggle = { onTogglePersonalization("standard") },
     )
     Text(
         tr("creator.research.design_type", "Design type"),
@@ -738,7 +811,7 @@ private fun ResearchFilterPanel(
         letterSpacing = 1.2.sp,
         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
     )
-    if (designType.isEmpty()) {
+    if (designTypes.isEmpty()) {
         Text(
             tr("creator.research.design_type_all_hint", "All design types"),
             color = TextDim,
@@ -746,21 +819,12 @@ private fun ResearchFilterPanel(
             modifier = Modifier.padding(bottom = 4.dp),
         )
     }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        listOf(
-            "design_only" to tr("creator.quick_inspirations.content_type_design_only", "Design Only"),
-            "text_only" to tr("creator.quick_inspirations.content_type_text_only", "Text Only"),
-        ).forEach { (id, label) ->
-            FilterChip(
-                label = label,
-                selected = designType == id,
-                onClick = { onDesignType(id) },
-                radio = true,
-            )
-        }
+    listOf(
+        "design_only" to tr("creator.quick_inspirations.content_type_design_only", "Design Only"),
+        "text_only" to tr("creator.quick_inspirations.content_type_text_only", "Text Only"),
+        "design_text" to tr("creator.quick_inspirations.content_type_design_text", "Design + Text"),
+    ).forEach { (id, label) ->
+        FilterCheckRow(label = label, count = countOf("design_type", id), checked = id in designTypes, onToggle = { onToggleDesignType(id) })
     }
     Text(
         tr("creator.research.language", "Language"),
@@ -770,7 +834,7 @@ private fun ResearchFilterPanel(
         letterSpacing = 1.2.sp,
         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
     )
-    if (language.isEmpty()) {
+    if (languages.isEmpty()) {
         Text(
             tr("creator.research.language_all_hint", "All languages"),
             color = TextDim,
@@ -778,71 +842,40 @@ private fun ResearchFilterPanel(
             modifier = Modifier.padding(bottom = 4.dp),
         )
     }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        FilterChip(
-            label = tr("creator.research.niche_all", "All"),
-            selected = language.isEmpty(),
-            onClick = { onLanguage("") },
-            radio = true,
-        )
-        listOf(
-            "none" to tr("creator.quick_inspirations.language_none", "None"),
-            "en" to tr("creator.research.lang_en", "English"),
-            "de" to tr("creator.research.lang_de", "German"),
-            "es" to tr("creator.research.lang_es", "Spanish"),
-            "fr" to tr("creator.research.lang_fr", "French"),
-            "it" to tr("creator.research.lang_it", "Italian"),
-        ).forEach { (id, label) ->
-            FilterChip(
-                label = label,
-                selected = language == id,
-                onClick = { onLanguage(id) },
-                radio = true,
-            )
-        }
+    listOf(
+        "none" to tr("creator.quick_inspirations.language_none", "None"),
+        "en" to tr("creator.research.lang_en", "English"),
+        "de" to tr("creator.research.lang_de", "German"),
+        "es" to tr("creator.research.lang_es", "Spanish"),
+        "fr" to tr("creator.research.lang_fr", "French"),
+        "it" to tr("creator.research.lang_it", "Italian"),
+    ).forEach { (id, label) ->
+        FilterCheckRow(label = label, count = countOf("language", id), checked = id in languages, onToggle = { onToggleLanguage(id) })
     }
 }
 
 @Composable
-private fun CustomDesignSwitch(
-    yesLabel: String,
-    noLabel: String,
-    value: String,
-    onValue: (String) -> Unit,
+private fun FilterCheckRow(
+    label: String,
+    count: Int,
+    checked: Boolean,
+    onToggle: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(999.dp))
-            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
-            .background(Color(0xB8080A1A)),
+            .heightIn(min = 32.dp)
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        listOf(
-            "personalizable" to yesLabel,
-            "standard" to noLabel,
-        ).forEach { (id, label) ->
-            val on = value == id
-            Text(
-                label,
-                color = TextMain,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 28.dp)
-                    .background(if (on) Color(0x617C5CFF) else Color.Transparent)
-                    .semantics {
-                        selected = on
-                        role = Role.RadioButton
-                    }
-                    .clickable { onValue(id) }
-                    .padding(vertical = 6.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
+        Checkbox(
+            checked = checked,
+            onCheckedChange = { onToggle() },
+            colors = CheckboxDefaults.colors(checkedColor = Color(0xFFF97316), uncheckedColor = TextDim),
+        )
+        Text(label, color = TextMain, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(count.toString(), color = TextDim, fontSize = 11.sp)
     }
 }
 
@@ -878,7 +911,7 @@ private fun FilterChip(
 @Composable
 private fun OpportunityCard(
     product: ResearchProduct,
-    nicheLabel: String,
+    nicheLabels: List<String>,
     watched: Boolean,
     translationStore: TranslationStore,
     onOpen: () -> Unit,
@@ -903,20 +936,6 @@ private fun OpportunityCard(
             } else {
                 Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Color(0xFF1B1430)))
             }
-            if (product.marketplaceTag.isNotBlank()) {
-                Text(
-                    product.marketplaceTag,
-                    color = TextMain,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0xC70A0618))
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                )
-            }
             IconButton(
                 onClick = onToggleWatch,
                 modifier = Modifier
@@ -940,8 +959,19 @@ private fun OpportunityCard(
         }
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(product.title, color = TextMain, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
-            if (nicheLabel.isNotBlank()) {
-                Text(nicheLabel, color = TextDim, fontSize = 11.sp)
+            nicheLabels.forEach { label ->
+                Text(label, color = TextDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            languageBadge(product.language)?.let { badge ->
+                Text(badge, color = TextMain, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+            product.relevanceScore?.let { score ->
+                Text(
+                    tr("creator.research.relevance", "Category rank") + " $score",
+                    color = Color(0xFFC4B5FD),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
             Text(
                 formatBsr(product, translationStore),
@@ -976,12 +1006,11 @@ private fun ProductDetailCard(
     onClose: () -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
-    val nicheLabel = niches.firstOrNull { it.key == product.nicheKey }?.label ?: product.nicheKey
-    val nicheLine = listOf(nicheLabel, product.subNiche).filter { it.isNotBlank() }.joinToString(" · ")
+    val topics = displayTopicLabels(product, niches)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 560.dp)
+            .fillMaxHeight(0.92f)
             .clip(RoundedCornerShape(16.dp))
             .background(CardBg)
             .verticalScroll(rememberScrollState())
@@ -997,34 +1026,52 @@ private fun ProductDetailCard(
                 contentDescription = product.title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 220.dp)
+                    .heightIn(min = 220.dp, max = 360.dp)
                     .clip(RoundedCornerShape(12.dp)),
                 contentScale = ContentScale.Fit,
             )
         }
         Text(product.title, color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        if (product.marketplaceTag.isNotBlank()) {
-            Text(
-                product.marketplaceTag,
-                color = TextMain,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Color(0xC70A0618))
-                    .padding(horizontal = 7.dp, vertical = 3.dp),
-            )
+        if (product.brand.isNotBlank()) {
+            StatRow(tr("creator.research.brand", "Brand"), product.brand)
         }
-        if (nicheLine.isNotBlank()) {
-            Text(nicheLine, color = TextDim, fontSize = 13.sp)
+        if (product.marketplaceTag.isNotBlank()) {
+            StatRow(tr("creator.research.marketplace", "Marketplace"), product.marketplaceTag)
         }
         StatRow(tr("creator.research.bsr_label", "BSR"), formatBsr(product, translationStore))
         formatBsrChange(product, translationStore)?.let { (label, _) ->
             StatRow(tr("creator.research.bsr_change", "BSR change"), label)
         }
+        product.relevanceScore?.let { score ->
+            StatRow(tr("creator.research.relevance", "Category rank"), score.toString())
+        }
         product.reviews?.let { count ->
             StatRow(tr("creator.research.reviews_total", "Reviews total"), count.toString())
         }
+        if (topics.isNotEmpty()) {
+            StatRow(tr("creator.research.topic", "Topic"), topics.joinToString(" · "))
+        }
+        product.designType?.takeIf { it.isNotBlank() }?.let { type ->
+            StatRow(tr("creator.research.design_type", "Design type"), type.replace('_', ' '))
+        }
+        languageBadge(product.language)?.let { badge ->
+            StatRow(tr("creator.research.language", "Language"), badge)
+        }
+        StatRow(
+            tr("creator.research.custom_design", "Custom Design"),
+            if (product.personalizable) tr("creator.research.yes", "Yes") else tr("creator.research.no", "No"),
+        )
+        if (product.tags.isNotEmpty()) {
+            StatRow(tr("creator.research.tags", "Tags"), product.tags.joinToString(", "))
+        }
+        if (product.prompt.isNotBlank()) {
+            StatRow(tr("creator.research.prompt", "Prompt"), product.prompt)
+        }
+        Text(
+            tr("creator.research.relevance_hint", "Score 1–100 from this listing's BSR in its own marketplace category. Not demand or sales."),
+            color = TextDim,
+            fontSize = 11.sp,
+        )
     }
 }
 
@@ -1102,23 +1149,31 @@ private fun filterProducts(
     products: List<ResearchProduct>,
     query: String,
     niches: Set<String>,
-    designType: String,
-    language: String,
-    personalization: String,
+    designTypes: Set<String>,
+    languages: Set<String>,
+    personalizations: Set<String>,
     audiences: Set<String>,
     sort: String,
     view: String,
     watched: Set<String>,
+    marketplace: String,
     sessionSearch: Boolean = false,
 ): List<ResearchProduct> {
     var rows = products.filter { it.reprintOk }
-    if (!sessionSearch && niches.isNotEmpty()) rows = rows.filter { it.nicheKey in niches }
-    if (!sessionSearch && designType.isNotBlank()) rows = rows.filter { it.designType.equals(designType, ignoreCase = true) }
-    if (!sessionSearch && language.isNotBlank()) rows = rows.filter { it.language.equals(language, ignoreCase = true) }
-    if (!sessionSearch && personalization.isNotBlank()) {
+    if (marketplace.isNotBlank() && marketplace != "all") {
+        rows = rows.filter { it.marketplace.equals(marketplace, ignoreCase = true) }
+    }
+    if (!sessionSearch && niches.isNotEmpty()) rows = rows.filter { topicKeyOf(it) in niches }
+    if (!sessionSearch && designTypes.isNotEmpty()) {
+        rows = rows.filter { (it.designType ?: "").lowercase(Locale.ROOT) in designTypes }
+    }
+    if (!sessionSearch && languages.isNotEmpty()) {
+        rows = rows.filter { (it.language ?: "").lowercase(Locale.ROOT) in languages }
+    }
+    if (!sessionSearch && personalizations.size == 1) {
         rows = rows.filter { product ->
             val key = if (product.personalizable) "personalizable" else "standard"
-            key.equals(personalization, ignoreCase = true)
+            key in personalizations
         }
     }
     if (!sessionSearch && audiences.isNotEmpty()) {
@@ -1193,7 +1248,10 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             brand = p.optString("brand"),
             imageUrl = p.optString("image_url"),
             nicheKey = p.optString("niche_key"),
-            subNiche = p.optString("sub_niche").ifBlank { p.optString("sub_niche_key") },
+            topic = p.optString("topic"),
+            subNiche = p.optString("subtopic").ifBlank { p.optString("sub_niche") }.ifBlank { p.optString("sub_niche_key") },
+            tags = parseStringList(p.opt("tags")),
+            prompt = p.optString("prompt"),
             designType = p.optString("design_type").ifBlank { null },
             language = p.optString("language").ifBlank { null },
             personalizable = p.optInt("personalizable", 0) == 1 ||
@@ -1219,12 +1277,126 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             bsrCategory = latest.optString("bsr_category").ifBlank { p.optString("bsr_category") }.ifBlank { null },
             bsrDelta = p.optIntOrNull("bsr_delta"),
             bsrImproved = p.optBooleanOrNull("bsr_improved"),
+            relevanceScore = p.optIntOrNull("relevance_score"),
             capturedAt = latest.optLongOrNull("captured_at"),
             trend = p.optString("trend"),
             risingScore = p.optInt("rising_score", 0),
         )
     }
     return out
+}
+
+private fun parseFacets(obj: JSONObject?): Map<String, List<ResearchFacet>> {
+    if (obj == null) return emptyMap()
+    val out = mutableMapOf<String, List<ResearchFacet>>()
+    listOf("topics", "audience", "personalization", "design_type", "language").forEach { group ->
+        val arr = obj.optJSONArray(group) ?: return@forEach
+        val rows = ArrayList<ResearchFacet>(arr.length())
+        for (i in 0 until arr.length()) {
+            val row = arr.optJSONObject(i) ?: continue
+            val key = row.optString("key")
+            if (key.isBlank()) continue
+            rows += ResearchFacet(key, row.optInt("count", 0))
+        }
+        out[group] = rows
+    }
+    return out
+}
+
+private fun parseMarketplaces(arr: JSONArray?): List<ResearchMarketplace> {
+    if (arr == null) return emptyList()
+    val out = ArrayList<ResearchMarketplace>(arr.length())
+    for (i in 0 until arr.length()) {
+        val row = arr.optJSONObject(i) ?: continue
+        val host = row.optString("host")
+        if (host.isBlank()) continue
+        out += ResearchMarketplace(host, row.optString("tag").ifBlank { marketplaceTagFromHost(host) })
+    }
+    return out
+}
+
+private fun parseAnalyzeLimits(obj: JSONObject?): AnalyzeLimits {
+    if (obj == null) return AnalyzeLimits()
+    return AnalyzeLimits(
+        used = obj.optInt("used", 0),
+        remaining = obj.optInt("remaining", 5),
+        limit = obj.optInt("limit", 5),
+        busy = obj.optBoolean("busy", false),
+    )
+}
+
+private fun parseStringList(raw: Any?): List<String> {
+    if (raw is JSONArray) {
+        return (0 until raw.length()).mapNotNull { raw.optString(it).takeIf { s -> s.isNotBlank() } }
+    }
+    if (raw is String && raw.isNotBlank()) {
+        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    }
+    return emptyList()
+}
+
+private fun topicKeyOf(product: ResearchProduct): String {
+    val topic = product.topic.trim().lowercase(Locale.ROOT)
+    if (topic.isNotBlank()) return topic
+    val key = product.nicheKey.trim().lowercase(Locale.ROOT)
+    return if (key.isNotBlank() && key != "user_search") key else ""
+}
+
+private fun displayTopicLabels(product: ResearchProduct, niches: List<ResearchNiche>): List<String> {
+    val out = mutableListOf<String>()
+    val topic = product.topic.trim()
+    val sub = product.subNiche.trim()
+    if (topic.isNotBlank()) out += if (sub.isNotBlank()) "$topic · $sub" else topic
+    val key = product.nicheKey.trim()
+    if (key.isNotBlank() && key.lowercase(Locale.ROOT) != "user_search") {
+        val label = niches.firstOrNull { it.key == key }?.label ?: key.replace('_', ' ')
+        val already = topic.isNotBlank() && (topic.equals(key, true) || topic.equals(label, true))
+        if (!already) out += label
+    }
+    return out
+}
+
+private fun languageBadge(language: String?): String? {
+    val code = language?.trim()?.lowercase(Locale.ROOT).orEmpty()
+    if (code.isBlank() || code == "none") return null
+    val flag = when (code) {
+        "en" -> "🇬🇧"
+        "de" -> "🇩🇪"
+        "es" -> "🇪🇸"
+        "fr" -> "🇫🇷"
+        "it" -> "🇮🇹"
+        else -> ""
+    }
+    val shown = code.uppercase(Locale.ROOT)
+    return if (flag.isBlank()) shown else "$flag $shown"
+}
+
+private fun countryLabel(host: String, translationStore: TranslationStore): String {
+    val key = when (host) {
+        "amazon.de" -> "creator.research.country_amazon_de"
+        "amazon.co.uk" -> "creator.research.country_amazon_co_uk"
+        "amazon.fr" -> "creator.research.country_amazon_fr"
+        "amazon.it" -> "creator.research.country_amazon_it"
+        "amazon.es" -> "creator.research.country_amazon_es"
+        "amazon.com" -> "creator.research.country_amazon_com"
+        "amazon.ca" -> "creator.research.country_amazon_ca"
+        "amazon.co.jp" -> "creator.research.country_amazon_co_jp"
+        "amazon.com.au" -> "creator.research.country_amazon_com_au"
+        else -> ""
+    }
+    val fallback = when (host) {
+        "amazon.de" -> "DE · Amazon.de"
+        "amazon.co.uk" -> "UK · Amazon.co.uk"
+        "amazon.fr" -> "FR · Amazon.fr"
+        "amazon.it" -> "IT · Amazon.it"
+        "amazon.es" -> "ES · Amazon.es"
+        "amazon.com" -> "US · Amazon.com"
+        "amazon.ca" -> "CA · Amazon.ca"
+        "amazon.co.jp" -> "JP · Amazon.co.jp"
+        "amazon.com.au" -> "AU · Amazon.com.au"
+        else -> host
+    }
+    return if (key.isBlank()) fallback else translationStore.t(key, fallback)
 }
 
 private fun parseNiches(arr: JSONArray?): List<ResearchNiche> {
