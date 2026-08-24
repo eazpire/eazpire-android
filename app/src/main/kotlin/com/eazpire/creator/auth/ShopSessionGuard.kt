@@ -2,6 +2,7 @@ package com.eazpire.creator.auth
 
 import android.content.Context
 import com.eazpire.creator.api.ShopifyCustomerAccountApi
+import com.eazpire.creator.api.usableJwt
 import com.eazpire.creator.push.PushTokenRegistrar
 import com.eazpire.creator.wear.sync.WearAuthSync
 import kotlinx.coroutines.Dispatchers
@@ -53,32 +54,38 @@ object ShopSessionGuard {
             val access = tokenStore.getAccessToken().orEmpty()
             val exp = tokenStore.getShopifyAccessExpiresAtEpochMs()
             val now = System.currentTimeMillis()
+            val jwtExpired = usableJwt(tokenStore.getJwt()).isNullOrBlank()
 
             /** Auch ohne access_token weiter, solange refresh da ist (z. B. nach Upgrade / teilweise leere Prefs). */
-            val needRefresh =
+            val needShopifyRefresh =
                 access.isBlank() ||
                     exp <= 0L ||
                     (exp > 0L && now >= exp - REFRESH_BUFFER_MS)
-            if (!needRefresh) return@withContext
+            if (!needShopifyRefresh && !jwtExpired) return@withContext
 
             val auth = ShopifyAuthService()
             try {
-                val tr = auth.refreshAccessToken(refresh)
-                val jwtResult = auth.exchangeShopifyTokenForJwt(
-                    tr.accessToken,
-                    tr.idToken.ifBlank { null }
-                )
-                val rt = tr.refreshToken?.takeIf { it.isNotBlank() } ?: refresh
-                val newExp = System.currentTimeMillis() + tr.expiresInSeconds * 1000L
-                tokenStore.saveTokens(
-                    jwtResult.jwt,
-                    jwtResult.ownerId,
-                    tr.accessToken.ifBlank { null },
-                    newExp,
-                    refreshToken = rt,
-                    clearRefreshTokenIfNull = false,
-                    sync = true,
-                )
+                if (needShopifyRefresh) {
+                    val tr = auth.refreshAccessToken(refresh)
+                    val jwtResult = auth.exchangeShopifyTokenForJwt(
+                        tr.accessToken,
+                        tr.idToken.ifBlank { null }
+                    )
+                    val rt = tr.refreshToken?.takeIf { it.isNotBlank() } ?: refresh
+                    val newExp = System.currentTimeMillis() + tr.expiresInSeconds * 1000L
+                    tokenStore.saveTokens(
+                        jwtResult.jwt,
+                        jwtResult.ownerId,
+                        tr.accessToken.ifBlank { null },
+                        newExp,
+                        refreshToken = rt,
+                        clearRefreshTokenIfNull = false,
+                        sync = true,
+                    )
+                } else {
+                    val jwtResult = auth.exchangeShopifyTokenForJwt(access, null)
+                    tokenStore.saveJwt(jwtResult.jwt, jwtResult.ownerId)
+                }
                 WearAuthSync.push(context, tokenStore)
             } catch (_: IOException) {
                 // Transient – nächster App-Start oder später erneut

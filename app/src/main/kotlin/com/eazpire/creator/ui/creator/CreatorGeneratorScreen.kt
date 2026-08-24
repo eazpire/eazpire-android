@@ -65,8 +65,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.api.usableJwt
 import com.eazpire.creator.billing.EazCostCatalog
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.chat.EazySidebarTab
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -210,7 +212,8 @@ fun CreatorGeneratorScreen(
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
+    val jwt = tokenStore.getJwt()
+    val api = remember(jwt) { CreatorApi(jwt = jwt) }
     val ownerId = remember(tokenStore) { tokenStore.getOwnerId() ?: "" }
 
     var targetProduct by remember { mutableStateOf("all") }
@@ -581,6 +584,16 @@ fun CreatorGeneratorScreen(
         scope.launch {
             generatingGen = true
             try {
+                ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
+                val freshJwt = tokenStore.getJwt()
+                if (usableJwt(freshJwt).isNullOrBlank()) {
+                    errorMessage = translationStore.t(
+                        "creator.generator_eazy.session_expired",
+                        "Please sign in again to generate."
+                    )
+                    return@launch
+                }
+                val submitApi = CreatorApi(jwt = freshJwt)
                 val body = buildDesignGeneratePayload(
                     ownerId = ownerId,
                     prompt = pTrim,
@@ -593,7 +606,7 @@ fun CreatorGeneratorScreen(
                     colorState = colorState,
                     selectedImages = selectedImages
                 )
-                val resp = withContext(Dispatchers.IO) { api.submitGenerateJob(ownerId, body) }
+                val resp = withContext(Dispatchers.IO) { submitApi.submitGenerateJob(ownerId, body) }
                 val jobId = resp.optString("jobId", "").ifBlank { resp.optString("job_id", "") }
                 if (jobId.isNotBlank()) {
                     val summary = buildString {

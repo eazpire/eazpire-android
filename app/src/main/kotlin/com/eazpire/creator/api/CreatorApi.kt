@@ -2735,7 +2735,7 @@ class CreatorApi(
             .post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toByteArray()))
             .addHeader("Accept", "application/json")
             .addHeader("Content-Type", "application/json")
-            .apply { jwt?.let { addHeader("Authorization", "Bearer $it") } }
+            .apply { usableJwt(jwt)?.let { addHeader("Authorization", "Bearer $it") } }
             .build()
         val response = client.newCall(request).execute()
         JSONObject(response.body?.string() ?: "{}")

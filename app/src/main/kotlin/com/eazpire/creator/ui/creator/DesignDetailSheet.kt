@@ -80,13 +80,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
+import com.eazpire.creator.api.usableJwt
 import com.eazpire.creator.auth.SecureTokenStore
+import com.eazpire.creator.auth.ShopSessionGuard
 import com.eazpire.creator.billing.EazCostCatalog
 import com.eazpire.creator.i18n.TranslationStore
 import kotlinx.coroutines.Dispatchers
@@ -390,7 +393,8 @@ fun DesignDetailSheet(
 ) {
     val t = { key: String, def: String -> translationStore.t(key, def) }
     val scope = rememberCoroutineScope()
-    val jwt = remember { runCatching { tokenStore.getJwt() }.getOrNull() }
+    val context = LocalContext.current
+    val jwt = tokenStore.getJwt()
     val ownerId = remember { runCatching { tokenStore.getOwnerId() }.getOrNull().orEmpty() }
     val api = remember(jwt) { CreatorApi(jwt = jwt) }
 
@@ -1209,6 +1213,16 @@ fun DesignDetailSheet(
                         glowUpError = null
                         scope.launch {
                             try {
+                                ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
+                                val freshJwt = tokenStore.getJwt()
+                                if (usableJwt(freshJwt).isNullOrBlank()) {
+                                    glowUpError = t(
+                                        "creator.generator_eazy.session_expired",
+                                        "Please sign in again to generate."
+                                    )
+                                    return@launch
+                                }
+                                val submitApi = CreatorApi(jwt = freshJwt)
                                 val body = JSONObject()
                                     .put("owner_id", ownerId)
                                     .put("prompt", draftPrompt)
@@ -1221,7 +1235,7 @@ fun DesignDetailSheet(
                                     .put("ratio", "portrait")
                                     .put("content_type", "design-text")
                                     .put("background", JSONObject().put("mode", "transparent"))
-                                val resp = withContext(Dispatchers.IO) { api.submitGenerateJob(ownerId, body) }
+                                val resp = withContext(Dispatchers.IO) { submitApi.submitGenerateJob(ownerId, body) }
                                 val jobId = resp.optString("jobId", "").ifBlank { resp.optString("job_id", "") }
                                 if (jobId.isBlank()) {
                                     glowUpError = resp.optString("message", "")
