@@ -139,6 +139,8 @@ fun EazyResearchScreen(
     var loading by remember { mutableStateOf(true) }
     var analyzing by remember { mutableStateOf(false) }
     var searchId by remember { mutableStateOf("") }
+    var searchEmptyReason by remember { mutableStateOf("") }
+    var searchAmazonReturned by remember { mutableStateOf(0) }
     var pendingAnalyze by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var preview by remember { mutableStateOf(false) }
@@ -245,13 +247,19 @@ fun EazyResearchScreen(
                 if (data.optBoolean("ok", false)) {
                     products = parseProducts(data.optJSONArray("products"))
                     preview = false
+                    searchEmptyReason = data.optString("empty_reason")
+                    searchAmazonReturned = data.optInt("amazon_returned", 0)
                     val done = data.optBoolean("done", false) ||
                         data.optString("status") == "done" ||
                         data.optString("status") == "error"
                     if (done) {
                         analyzing = false
                         if (data.optString("status") == "error") {
+                            searchEmptyReason = "error"
                             status = tr("creator.research.analyze_error", "Live catalog search could not start.")
+                        } else if (products.isNotEmpty()) {
+                            status = tr("creator.research.analyze_found", "{n} products found")
+                                .replace("{n}", products.size.toString())
                         }
                         break
                     }
@@ -290,6 +298,14 @@ fun EazyResearchScreen(
                 analyzing = true
                 products = emptyList()
                 searchId = ""
+                searchEmptyReason = "running"
+                searchAmazonReturned = 0
+                selectedNiches = emptySet()
+                designType = ""
+                language = ""
+                personalization = ""
+                selectedAudiences = emptySet()
+                view = "opportunities"
                 pendingAnalyze = true
             },
             sort = sort,
@@ -415,17 +431,14 @@ fun EazyResearchScreen(
                         }
                         if (!showSkeleton && filtered.isEmpty()) {
                             Text(
-                                if (view == "watched") {
-                                    tr(
-                                        "creator.research.empty_watched",
-                                        "No watched products yet. Tap the heart on a product to start tracking it.",
-                                    )
-                                } else {
-                                    tr(
-                                        "creator.research.empty_search",
-                                        "No reprint-safe products match this search. Try a broader niche such as Coffee or Hiking.",
-                                    )
-                                },
+                                emptyGridCopy(
+                                    translationStore = translationStore,
+                                    view = view,
+                                    searchId = searchId,
+                                    analyzing = analyzing,
+                                    emptyReason = searchEmptyReason,
+                                    amazonReturned = searchAmazonReturned,
+                                ),
                                 color = TextDim,
                                 fontSize = 14.sp,
                                 modifier = Modifier.padding(top = 8.dp),
@@ -1051,6 +1064,40 @@ private fun formatBsrChange(
     return label to improved
 }
 
+private fun emptyGridCopy(
+    translationStore: TranslationStore,
+    view: String,
+    searchId: String,
+    analyzing: Boolean,
+    emptyReason: String,
+    amazonReturned: Int,
+): String {
+    fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    if (searchId.isNotBlank() && !analyzing) {
+        when (emptyReason) {
+            "catalog_empty" -> return tr(
+                "creator.research.analyze_no_amazon",
+                "Amazon catalog had no matches for this search. Try a more specific term such as vegan t-shirt.",
+            )
+            "filtered_reprint" -> return tr(
+                "creator.research.analyze_no_reprint",
+                "Amazon returned {n} products, but none are reprint-safe.",
+            ).replace("{n}", amazonReturned.toString())
+            "error" -> return tr("creator.research.analyze_error", "Live catalog search could not start.")
+        }
+    }
+    if (view == "watched") {
+        return tr(
+            "creator.research.empty_watched",
+            "No watched products yet. Tap the heart on a product to start tracking it.",
+        )
+    }
+    return tr(
+        "creator.research.empty_search",
+        "No reprint-safe products match this search. Try a broader niche such as Coffee or Hiking.",
+    )
+}
+
 private fun filterProducts(
     products: List<ResearchProduct>,
     query: String,
@@ -1065,16 +1112,16 @@ private fun filterProducts(
     sessionSearch: Boolean = false,
 ): List<ResearchProduct> {
     var rows = products.filter { it.reprintOk }
-    if (niches.isNotEmpty()) rows = rows.filter { it.nicheKey in niches }
-    if (designType.isNotBlank()) rows = rows.filter { it.designType.equals(designType, ignoreCase = true) }
-    if (language.isNotBlank()) rows = rows.filter { it.language.equals(language, ignoreCase = true) }
-    if (personalization.isNotBlank()) {
+    if (!sessionSearch && niches.isNotEmpty()) rows = rows.filter { it.nicheKey in niches }
+    if (!sessionSearch && designType.isNotBlank()) rows = rows.filter { it.designType.equals(designType, ignoreCase = true) }
+    if (!sessionSearch && language.isNotBlank()) rows = rows.filter { it.language.equals(language, ignoreCase = true) }
+    if (!sessionSearch && personalization.isNotBlank()) {
         rows = rows.filter { product ->
             val key = if (product.personalizable) "personalizable" else "standard"
             key.equals(personalization, ignoreCase = true)
         }
     }
-    if (audiences.isNotEmpty()) {
+    if (!sessionSearch && audiences.isNotEmpty()) {
         rows = rows.filter { it.audience in audiences }
     }
     val q = query.trim().lowercase(Locale.ROOT)
@@ -1084,11 +1131,13 @@ private fun filterProducts(
                 .joinToString(" ").lowercase(Locale.ROOT).contains(q)
         }
     }
-    rows = when (view) {
-        "rising" -> rows.filter { it.trend == "rising" || it.risingScore > 0 }
-        "review_growth" -> rows.filter { (it.reviewDelta ?: 0) > 0 }
-        "watched" -> rows.filter { isWatched(watched, it) }
-        else -> rows
+    if (!sessionSearch) {
+        rows = when (view) {
+            "rising" -> rows.filter { it.trend == "rising" || it.risingScore > 0 }
+            "review_growth" -> rows.filter { (it.reviewDelta ?: 0) > 0 }
+            "watched" -> rows.filter { isWatched(watched, it) }
+            else -> rows
+        }
     }
     return when (sort) {
         "reviews" -> rows.sortedByDescending { it.reviews ?: 0 }
