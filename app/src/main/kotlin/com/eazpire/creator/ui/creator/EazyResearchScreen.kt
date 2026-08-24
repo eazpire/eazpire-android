@@ -63,6 +63,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -303,7 +304,7 @@ fun EazyResearchScreen(
             designType = designType,
             onDesignType = { designType = if (designType == it) "" else it },
             language = language,
-            onLanguage = { language = if (language == it) "" else it },
+            onLanguage = { language = if (it.isEmpty() || language == it) "" else it },
             personalization = personalization,
             onPersonalization = { personalization = if (personalization == it) "" else it },
             selectedAudiences = selectedAudiences,
@@ -629,19 +630,19 @@ private fun ResearchFilterPanel(
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
     )
     if (selectedNiches.isEmpty()) {
         Text(
             tr("creator.research.topics_all_hint", "All topics"),
             color = TextDim,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 6.dp),
+            fontSize = 11.sp,
+            modifier = Modifier.padding(bottom = 4.dp),
         )
     }
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         FilterChip(
             label = tr("creator.research.niche_all", "All"),
@@ -657,125 +658,24 @@ private fun ResearchFilterPanel(
         }
     }
     Text(
-        tr("creator.research.design_type", "Design type"),
-        color = TextDim,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
-    )
-    if (designType.isEmpty()) {
-        Text(
-            tr("creator.research.design_type_all_hint", "All design types"),
-            color = TextDim,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 6.dp),
-        )
-    }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        listOf(
-            "design_only" to tr("creator.quick_inspirations.content_type_design_only", "Design Only"),
-            "text_only" to tr("creator.quick_inspirations.content_type_text_only", "Text Only"),
-            "design_text" to tr("creator.quick_inspirations.content_type_design_text", "Design + Text"),
-        ).forEach { (id, label) ->
-            FilterChip(
-                label = label,
-                selected = designType == id,
-                onClick = { onDesignType(id) },
-                radio = true,
-            )
-        }
-    }
-    Text(
-        tr("creator.research.language", "Language"),
-        color = TextDim,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
-    )
-    if (language.isEmpty()) {
-        Text(
-            tr("creator.research.language_all_hint", "All languages"),
-            color = TextDim,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 6.dp),
-        )
-    }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        listOf(
-            "none" to tr("creator.quick_inspirations.language_none", "None"),
-            "en" to tr("creator.research.lang_en", "English"),
-            "de" to tr("creator.research.lang_de", "German"),
-            "es" to tr("creator.research.lang_es", "Spanish"),
-            "fr" to tr("creator.research.lang_fr", "French"),
-            "it" to tr("creator.research.lang_it", "Italian"),
-        ).forEach { (id, label) ->
-            FilterChip(
-                label = label,
-                selected = language == id,
-                onClick = { onLanguage(id) },
-                radio = true,
-            )
-        }
-    }
-    Text(
-        tr("creator.research.personalization", "Personalization"),
-        color = TextDim,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
-    )
-    if (personalization.isEmpty()) {
-        Text(
-            tr("creator.research.personalization_all_hint", "Standard and personalizable"),
-            color = TextDim,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 6.dp),
-        )
-    }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        listOf(
-            "standard" to tr("creator.research.personalization_standard", "Standard"),
-            "personalizable" to tr("creator.research.personalization_personalizable", "Personalizable"),
-        ).forEach { (id, label) ->
-            FilterChip(
-                label = label,
-                selected = personalization == id,
-                onClick = { onPersonalization(id) },
-                radio = true,
-            )
-        }
-    }
-    Text(
         tr("creator.research.audience", "Audience"),
         color = TextDim,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
     )
     if (selectedAudiences.isEmpty()) {
         Text(
             tr("creator.research.audience_all_hint", "All audiences"),
             color = TextDim,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 6.dp),
+            fontSize = 11.sp,
+            modifier = Modifier.padding(bottom = 4.dp),
         )
     }
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         FilterChip(
             label = tr("creator.research.niche_all", "All"),
@@ -792,6 +692,142 @@ private fun ResearchFilterPanel(
                 label = label,
                 selected = id in selectedAudiences,
                 onClick = { onToggleAudience(id) },
+            )
+        }
+    }
+    Text(
+        tr("creator.research.custom_design", "Custom Design"),
+        color = TextDim,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
+        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+    )
+    if (personalization.isEmpty()) {
+        Text(
+            tr("creator.research.custom_design_all_hint", "All listings — tap Yes or No, tap again for all"),
+            color = TextDim,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+    }
+    CustomDesignSwitch(
+        yesLabel = tr("creator.research.custom_design_yes", "Yes"),
+        noLabel = tr("creator.research.custom_design_no", "No"),
+        value = personalization,
+        onValue = onPersonalization,
+    )
+    Text(
+        tr("creator.research.design_type", "Design type"),
+        color = TextDim,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+    )
+    if (designType.isEmpty()) {
+        Text(
+            tr("creator.research.design_type_all_hint", "All design types"),
+            color = TextDim,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        listOf(
+            "design_only" to tr("creator.quick_inspirations.content_type_design_only", "Design Only"),
+            "text_only" to tr("creator.quick_inspirations.content_type_text_only", "Text Only"),
+        ).forEach { (id, label) ->
+            FilterChip(
+                label = label,
+                selected = designType == id,
+                onClick = { onDesignType(id) },
+                radio = true,
+            )
+        }
+    }
+    Text(
+        tr("creator.research.language", "Language"),
+        color = TextDim,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+    )
+    if (language.isEmpty()) {
+        Text(
+            tr("creator.research.language_all_hint", "All languages"),
+            color = TextDim,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        FilterChip(
+            label = tr("creator.research.niche_all", "All"),
+            selected = language.isEmpty(),
+            onClick = { onLanguage("") },
+            radio = true,
+        )
+        listOf(
+            "none" to tr("creator.quick_inspirations.language_none", "None"),
+            "en" to tr("creator.research.lang_en", "English"),
+            "de" to tr("creator.research.lang_de", "German"),
+            "es" to tr("creator.research.lang_es", "Spanish"),
+            "fr" to tr("creator.research.lang_fr", "French"),
+            "it" to tr("creator.research.lang_it", "Italian"),
+        ).forEach { (id, label) ->
+            FilterChip(
+                label = label,
+                selected = language == id,
+                onClick = { onLanguage(id) },
+                radio = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CustomDesignSwitch(
+    yesLabel: String,
+    noLabel: String,
+    value: String,
+    onValue: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(999.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
+            .background(Color(0xB8080A1A)),
+    ) {
+        listOf(
+            "personalizable" to yesLabel,
+            "standard" to noLabel,
+        ).forEach { (id, label) ->
+            val on = value == id
+            Text(
+                label,
+                color = TextMain,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 28.dp)
+                    .background(if (on) Color(0x617C5CFF) else Color.Transparent)
+                    .semantics {
+                        selected = on
+                        role = Role.RadioButton
+                    }
+                    .clickable { onValue(id) }
+                    .padding(vertical = 6.dp),
+                textAlign = TextAlign.Center,
             )
         }
     }
