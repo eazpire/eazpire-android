@@ -147,8 +147,8 @@ class EazyChatStore(private val context: Context) {
         val seen = loadSeenUserFeed(ownerId)
         val jobsRes = runCatching { api.listJobs(ownerId, 50) }.getOrNull()
         val jobIds = mutableListOf<String>()
-        if (jobsRes?.optBoolean("ok", false) == true) {
-            val arr = jobsRes.optJSONArray("items") ?: org.json.JSONArray()
+        run {
+            val arr = jobsRes?.optJSONArray("items") ?: org.json.JSONArray()
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
                 val id = o.optString("job_id", o.optString("id", "")).trim()
@@ -166,12 +166,13 @@ class EazyChatStore(private val context: Context) {
         }
         val notifRes = runCatching { api.getNotifications(ownerId) }.getOrNull()
         val unseenNotifs = mutableListOf<String>()
-        if (notifRes?.optBoolean("ok", false) == true) {
-            val arr = notifRes.optJSONArray("notifications") ?: org.json.JSONArray()
+        run {
+            val arr = notifRes?.optJSONArray("notifications") ?: org.json.JSONArray()
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
                 val id = o.optString("notification_id", o.optString("id", "")).trim()
-                val read = o.optBoolean("is_read", false) || o.optInt("is_read", 0) == 1
+                val read = o.optBoolean("is_read", false) || o.optInt("is_read", 0) == 1 ||
+                    o.optString("is_read", "") == "1" || o.optString("is_read", "").equals("true", true)
                 if (id.isNotBlank() && !read && id !in seen.notifs) unseenNotifs += id
             }
         }

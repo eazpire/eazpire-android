@@ -332,7 +332,6 @@ private fun extractJobIdFromNotificationId(notificationId: String): String? {
 
 private fun pendingSaveJobIdsFromKv(jobsR: JSONObject): Set<String> {
     val pending = mutableSetOf<String>()
-    if (!jobsR.optBoolean("ok", false)) return pending
     (jobsR.optJSONArray("items") ?: JSONArray()).let { arr ->
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
@@ -357,6 +356,7 @@ private fun parseNotifications(
     systemAudience: String? = null
 ): List<EazyNotifRow> {
     return (0 until arr.length()).mapNotNull { i ->
+        try {
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val id = o.optString("notification_id", o.optString("id", "")).ifBlank { return@mapNotNull null }
         val cat = o.optString("category", o.optString("event_type", "")).takeIf { it.isNotBlank() }
@@ -388,11 +388,15 @@ private fun parseNotifications(
             opensCreatorCodes = isCreatorCode,
             opensPublishAssist = isPublishAssist,
         )
+        } catch (_: Exception) {
+            null
+        }
     }
 }
 
 private fun parseKvJobs(arr: JSONArray): List<EazyKvJobRow> {
     return (0 until arr.length()).mapNotNull { i ->
+        try {
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val id = o.optString("job_id", o.optString("id", "")).ifBlank { return@mapNotNull null }
         val saving = o.optBoolean("saving", false)
@@ -429,11 +433,15 @@ private fun parseKvJobs(arr: JSONArray): List<EazyKvJobRow> {
             thumbUrl = thumb,
             startedAt = started,
         )
+        } catch (_: Exception) {
+            null
+        }
     }.filter { !it.done || (it.saving && !it.saved) }
 }
 
 private fun parseSystemJobs(arr: JSONArray): List<EazySystemJobRow> {
     return (0 until arr.length()).mapNotNull { i ->
+        try {
         val o = arr.optJSONObject(i) ?: return@mapNotNull null
         val sid = o.optString("session_id", "").ifBlank { return@mapNotNull null }
         val productKey = o.optString("card_product_key", o.optString("product_key", "")).trim()
@@ -462,6 +470,9 @@ private fun parseSystemJobs(arr: JSONArray): List<EazySystemJobRow> {
             etaAt = o.optLongish("card_eta_at")?.asEpochMillis(),
             markets = o.optStringList("card_marketplace"),
         )
+        } catch (_: Exception) {
+            null
+        }
     }
 }
 
@@ -785,16 +796,10 @@ fun EazyChatModal(
                 val shR = withContext(Dispatchers.IO) { api.getSystemNotifications(oid, "shop") }
                 val jobsR = withContext(Dispatchers.IO) { api.listJobs(oid, 50) }
                 val pendingSave = pendingSaveJobIdsFromKv(jobsR)
-                notifsUser = if (userR.optBoolean("ok", false)) {
-                    parseNotifications(userR.optJSONArray("notifications") ?: JSONArray())
-                        .filter { !shouldHideGeneratedNotification(it, pendingSave) }
-                } else emptyList()
-                notifsSysCreator = if (crR.optBoolean("ok", false)) {
-                    parseNotifications(crR.optJSONArray("notifications") ?: JSONArray(), true, "creator")
-                } else emptyList()
-                notifsSysShop = if (shR.optBoolean("ok", false)) {
-                    parseNotifications(shR.optJSONArray("notifications") ?: JSONArray(), true, "shop")
-                } else emptyList()
+                notifsUser = parseNotifications(userR.optJSONArray("notifications") ?: JSONArray())
+                    .filter { !shouldHideGeneratedNotification(it, pendingSave) }
+                notifsSysCreator = parseNotifications(crR.optJSONArray("notifications") ?: JSONArray(), true, "creator")
+                notifsSysShop = parseNotifications(shR.optJSONArray("notifications") ?: JSONArray(), true, "shop")
             } catch (_: Exception) {
                 notifsUser = emptyList()
                 notifsSysCreator = emptyList()
@@ -864,17 +869,13 @@ fun EazyChatModal(
             if (selectedTab == EazySidebarTab.Jobs && jobsFeedScope == "system") {
                 val r1 = withContext(Dispatchers.IO) { api.listSystemJobs(oid, "creator", 50) }
                 val r2 = withContext(Dispatchers.IO) { api.listSystemJobs(oid, "shop", 50) }
-                val items1 = if (r1.optBoolean("ok", false)) parseSystemJobs(r1.optJSONArray("items") ?: JSONArray()) else emptyList()
-                val items2 = if (r2.optBoolean("ok", false)) parseSystemJobs(r2.optJSONArray("items") ?: JSONArray()) else emptyList()
+                val items1 = parseSystemJobs(r1.optJSONArray("items") ?: JSONArray())
+                val items2 = parseSystemJobs(r2.optJSONArray("items") ?: JSONArray())
                 systemJobs = mergeSystemJobRows(items1, items2)
                 userKvJobs = emptyList()
             } else {
                 val r = withContext(Dispatchers.IO) { api.listJobs(oid, 50) }
-                if (r.optBoolean("ok", false)) {
-                    userKvJobs = parseKvJobs(r.optJSONArray("items") ?: JSONArray())
-                } else {
-                    userKvJobs = emptyList()
-                }
+                userKvJobs = parseKvJobs(r.optJSONArray("items") ?: JSONArray())
                 systemJobs = emptyList()
             }
         }
@@ -1670,7 +1671,7 @@ private fun EazyNotificationsPanel(
             activeKey = notifFilter,
             onSelect = onFilterChange,
         )
-        if (unread.isNotEmpty() && onMarkAllRead != null) {
+        if (unread.isNotEmpty() && notifFilter == "unread" && onMarkAllRead != null) {
             TextButton(
                 onClick = onMarkAllRead,
                 modifier = Modifier
