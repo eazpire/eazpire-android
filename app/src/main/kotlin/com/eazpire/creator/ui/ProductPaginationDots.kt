@@ -25,8 +25,37 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 
-/** Page size for Creations products tab and hero product picker (shop collection uses server paging). */
+/** Page size for hero product picker; Creations products tab uses this as the scroll batch size. */
 const val CREATIONS_PRODUCTS_PER_PAGE = 24
+
+/** How close to the last composed product we append the next batch. */
+const val CREATIONS_PRODUCTS_PREFETCH = 4
+
+fun initialCreationsVisibleCount(total: Int, batch: Int = CREATIONS_PRODUCTS_PER_PAGE): Int {
+    if (total <= 0) return 0
+    return batch.coerceAtMost(total)
+}
+
+fun nextCreationsVisibleCount(
+    currentVisible: Int,
+    total: Int,
+    batch: Int = CREATIONS_PRODUCTS_PER_PAGE,
+): Int {
+    if (total <= 0) return 0
+    if (currentVisible >= total) return total
+    val grown = if (currentVisible <= 0) batch else currentVisible + batch
+    return grown.coerceAtMost(total)
+}
+
+fun shouldAppendCreationsBatch(
+    lastVisibleIndex: Int,
+    visibleCount: Int,
+    total: Int,
+    prefetch: Int = CREATIONS_PRODUCTS_PREFETCH,
+): Boolean {
+    if (visibleCount <= 0 || visibleCount >= total) return false
+    return lastVisibleIndex >= (visibleCount - prefetch).coerceAtLeast(0)
+}
 
 /** Public creator profile PLP — matches web collection-style dot pagination. */
 const val CREATOR_PROFILE_PRODUCTS_PER_PAGE = 100

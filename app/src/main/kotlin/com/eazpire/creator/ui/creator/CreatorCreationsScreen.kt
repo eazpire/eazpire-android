@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -83,16 +84,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.ShopifyProductsApi
-import com.eazpire.creator.ui.CREATIONS_PRODUCTS_PER_PAGE
-import com.eazpire.creator.ui.PaginationDotsStyle
-import com.eazpire.creator.ui.ProductPaginationDots
 import com.eazpire.creator.ui.ShopStyleProductImages
+import com.eazpire.creator.ui.initialCreationsVisibleCount
+import com.eazpire.creator.ui.nextCreationsVisibleCount
+import com.eazpire.creator.ui.shouldAppendCreationsBatch
 import com.eazpire.creator.auth.AuthConfig
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
@@ -511,22 +513,21 @@ fun CreatorCreationsScreen(
         sortCreationProducts(list, productsSort)
     }
 
-    var productsListPage by remember { mutableIntStateOf(1) }
     val filteredProductsPageKey = remember(filteredProducts) { filteredProducts.joinToString("\u0001") { it.id } }
+    var productsVisibleCount by remember { mutableIntStateOf(0) }
     LaunchedEffect(filteredProductsPageKey, currentTab) {
-        if (currentTab == "products") productsListPage = 1
+        if (currentTab != "products") return@LaunchedEffect
+        productsVisibleCount = initialCreationsVisibleCount(filteredProducts.size)
+        if (filteredProducts.isNotEmpty()) {
+            runCatching { productsListState.scrollToItem(0) }
+            runCatching { productsGridState.scrollToItem(0) }
+        }
     }
-    val productsTotalPages = remember(filteredProducts.size) {
-        maxOf(1, (filteredProducts.size + CREATIONS_PRODUCTS_PER_PAGE - 1) / CREATIONS_PRODUCTS_PER_PAGE)
+    val visibleProducts = remember(filteredProducts, productsVisibleCount) {
+        filteredProducts.take(productsVisibleCount.coerceIn(0, filteredProducts.size))
     }
-    LaunchedEffect(productsTotalPages) {
-        if (productsListPage > productsTotalPages) productsListPage = productsTotalPages
-    }
-    val pagedProducts = remember(filteredProducts, productsListPage, productsTotalPages) {
-        val idx = (productsListPage - 1).coerceIn(0, (productsTotalPages - 1).coerceAtLeast(0))
-        val start = idx * CREATIONS_PRODUCTS_PER_PAGE
-        filteredProducts.drop(start).take(CREATIONS_PRODUCTS_PER_PAGE)
-    }
+    val productsEndReached = filteredProducts.isNotEmpty() &&
+        productsVisibleCount >= filteredProducts.size
 
     val gridCols = when (VIEW_MODES.getOrElse(viewMode) { "grid2" }) {
         "grid2" -> 2
@@ -534,6 +535,20 @@ fun CreatorCreationsScreen(
         else -> 2
     }
     val isListMode = VIEW_MODES.getOrElse(viewMode) { "grid2" } == "list"
+    LaunchedEffect(currentTab, isListMode, productsVisibleCount, filteredProducts.size) {
+        if (currentTab != "products") return@LaunchedEffect
+        snapshotFlow {
+            if (isListMode) {
+                productsListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            } else {
+                productsGridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            }
+        }.collect { lastVisible ->
+            if (shouldAppendCreationsBatch(lastVisible, productsVisibleCount, filteredProducts.size)) {
+                productsVisibleCount = nextCreationsVisibleCount(productsVisibleCount, filteredProducts.size)
+            }
+        }
+    }
     val bulkCohort = remember(bulkSelectedKeys, designsActivityFilter) {
         resolveBulkCohort(bulkSelectedKeys, designsActivityFilter)
     }
@@ -886,100 +901,73 @@ fun CreatorCreationsScreen(
                         }
                     }
                 } else if (isListMode) {
-                    Column(
+                    LazyColumn(
+                        state = productsListState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
-                            .nestedScroll(chromeScrollConnection)
+                            .nestedScroll(chromeScrollConnection),
+                        contentPadding = PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        LazyColumn(
-                            state = productsListState,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .nestedScroll(chromeScrollConnection),
-                            contentPadding = PaddingValues(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(pagedProducts, key = { it.id }) { product ->
-                                CreationProductListItem(
-                                    product = product,
-                                    imageUrls = creationProductDisplayUrls(product, productImageOverrides),
-                                    translationStore = translationStore,
-                                    onClick = {
-                                        product.storefrontUrl?.let { url ->
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                        }
+                        items(visibleProducts, key = { it.id }) { product ->
+                            CreationProductListItem(
+                                product = product,
+                                imageUrls = creationProductDisplayUrls(product, productImageOverrides),
+                                translationStore = translationStore,
+                                onClick = {
+                                    product.storefrontUrl?.let { url ->
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                                     }
+                                }
+                            )
+                        }
+                        if (productsEndReached) {
+                            item(key = "creations-products-end") {
+                                CreationsListEndReached(
+                                    text = translationStore.t(
+                                        "creator.creations.end_reached_products",
+                                        "End of list — you have seen all products",
+                                    )
                                 )
                             }
-                        }
-                        if (productsTotalPages > 1) {
-                            ProductPaginationDots(
-                                totalPages = productsTotalPages,
-                                currentPage = productsListPage,
-                                onPageClick = { productsListPage = it },
-                                onSwipePrev = {
-                                    if (productsListPage > 1) productsListPage = productsListPage - 1
-                                },
-                                onSwipeNext = {
-                                    if (productsListPage < productsTotalPages) productsListPage = productsListPage + 1
-                                },
-                                style = PaginationDotsStyle.Dark,
-                                swipeHint = translationStore.t(
-                                    "creator.mobile.products_pagination_swipe_hint",
-                                    "Swipe left / right on the dots"
-                                )
-                            )
                         }
                     }
                 } else {
-                    Column(
+                    LazyVerticalGrid(
+                        state = productsGridState,
+                        columns = GridCells.Fixed(gridCols),
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxSize()
-                            .nestedScroll(chromeScrollConnection)
+                            .nestedScroll(chromeScrollConnection),
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        LazyVerticalGrid(
-                            state = productsGridState,
-                            columns = GridCells.Fixed(gridCols),
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .nestedScroll(chromeScrollConnection),
-                            contentPadding = PaddingValues(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(pagedProducts, key = { it.id }) { product ->
-                                CreationProductCard(
-                                    product = product,
-                                    imageUrls = creationProductDisplayUrls(product, productImageOverrides),
-                                    onClick = {
-                                        product.storefrontUrl?.let { url ->
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                        }
+                        items(visibleProducts, key = { it.id }) { product ->
+                            CreationProductCard(
+                                product = product,
+                                imageUrls = creationProductDisplayUrls(product, productImageOverrides),
+                                onClick = {
+                                    product.storefrontUrl?.let { url ->
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                                     }
+                                }
+                            )
+                        }
+                        if (productsEndReached) {
+                            item(
+                                key = "creations-products-end",
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                CreationsListEndReached(
+                                    text = translationStore.t(
+                                        "creator.creations.end_reached_products",
+                                        "End of list — you have seen all products",
+                                    )
                                 )
                             }
-                        }
-                        if (productsTotalPages > 1) {
-                            ProductPaginationDots(
-                                totalPages = productsTotalPages,
-                                currentPage = productsListPage,
-                                onPageClick = { productsListPage = it },
-                                onSwipePrev = {
-                                    if (productsListPage > 1) productsListPage = productsListPage - 1
-                                },
-                                onSwipeNext = {
-                                    if (productsListPage < productsTotalPages) productsListPage = productsListPage + 1
-                                },
-                                style = PaginationDotsStyle.Dark,
-                                swipeHint = translationStore.t(
-                                    "creator.mobile.products_pagination_swipe_hint",
-                                    "Swipe left / right on the dots"
-                                )
-                            )
                         }
                     }
                 }
@@ -1618,6 +1606,19 @@ private fun CreationDesignListItem(
             }
         }
     }
+}
+
+@Composable
+private fun CreationsListEndReached(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = Color.White.copy(alpha = 0.5f),
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 20.dp),
+    )
 }
 
 @Composable
