@@ -132,6 +132,102 @@ class CreationsDailyLimitsTest {
     }
 
     @Test
+    fun idlePublishSessionIdDoesNotMarkDesignPublishing() {
+        val obj = JSONObject(
+            """
+            {
+              "id": "88",
+              "library_status": "active",
+              "title": "Idle",
+              "preview_url": "https://cdn.example/d.webp",
+              "publish_active": false,
+              "publish_session_id": null
+            }
+            """.trimIndent()
+        )
+        val design = parseSavedCreationDesign(obj)
+        assertFalse(isCreationPublishActive(obj))
+        assertFalse(design!!.publishActive)
+        assertEquals(null, design.publishSessionId)
+    }
+
+    @Test
+    fun inactiveIdlePublishSessionIdDoesNotMarkDesignPublishing() {
+        val obj = JSONObject(
+            """
+            {
+              "id": "89",
+              "library_status": "inactive",
+              "title": "Idle inactive",
+              "publish_active": false,
+              "publish_session_id": null
+            }
+            """.trimIndent()
+        )
+        assertFalse(parseSavedCreationDesign(obj)!!.publishActive)
+    }
+
+    @Test
+    fun livePublishSessionMarksDesignPublishing() {
+        val obj = JSONObject(
+            """
+            {
+              "id": "90",
+              "library_status": "active",
+              "publish_active": true,
+              "publish_session_id": "sess-live"
+            }
+            """.trimIndent()
+        )
+        val design = parseSavedCreationDesign(obj)!!
+        assertTrue(design.publishActive)
+        assertEquals("sess-live", design.publishSessionId)
+    }
+
+    @Test
+    fun productParseUsesMockupAndPrintifyWhenFeaturedIsNull() {
+        val obj = JSONObject(
+            """
+            {
+              "product_key": "printify:1",
+              "product_name": "Softstyle",
+              "shopify_product_id": 555,
+              "shopify_handle": null,
+              "featured_image": null,
+              "image_url": null,
+              "mockup_image": "https://cdn.example/catalog-blank.webp",
+              "printify_images": ["https://images-api.printify.com/mock-with-design.jpg"],
+              "mockups_by_view": {
+                "front": { "White": "https://cdn.example/published-front.webp" }
+              }
+            }
+            """.trimIndent()
+        )
+        val product = parseCreationProduct(obj, 0)
+        assertEquals("555", product.id)
+        assertEquals(null, product.shopifyHandle)
+        assertTrue(product.imageUrls.contains("https://images-api.printify.com/mock-with-design.jpg"))
+        assertTrue(product.imageUrls.contains("https://cdn.example/published-front.webp"))
+        assertEquals("https://images-api.printify.com/mock-with-design.jpg", product.imageUrl)
+    }
+
+    @Test
+    fun productParsePrefersShopifyFeaturedImage() {
+        val obj = JSONObject(
+            """
+            {
+              "product_key": "printify:2",
+              "product_name": "Hoodie",
+              "featured_image": "https://cdn.shopify.com/s/files/real-preview.jpg",
+              "mockup_image": "https://cdn.example/catalog-blank.webp"
+            }
+            """.trimIndent()
+        )
+        val urls = parseCreationProductImageUrls(obj)
+        assertEquals("https://cdn.shopify.com/s/files/real-preview.jpg", urls.first())
+    }
+
+    @Test
     fun usableJwtSkipsExpiredToken() {
         val payload = java.util.Base64.getUrlEncoder().withoutPadding()
             .encodeToString("""{"exp":1}""".toByteArray())

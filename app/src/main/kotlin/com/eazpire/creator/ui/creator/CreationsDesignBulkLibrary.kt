@@ -223,6 +223,150 @@ fun setBulkSelectedKey(
     return next
 }
 
+/**
+ * List API always sends `publish_session_id: null` when idle. Android [JSONObject.optString]
+ * turns JSON null into the literal `"null"`, which previously marked every design as publishing.
+ */
+fun isCreationPublishActive(obj: JSONObject): Boolean {
+    val flag = when (val v = obj.opt("publish_active")) {
+        is Boolean -> v
+        is Number -> v.toInt() != 0
+        is String -> v.equals("true", ignoreCase = true) || v == "1"
+        else -> false
+    }
+    return flag || com.eazpire.creator.api.jsonCoercedString(obj, "publish_session_id").isNotBlank()
+}
+
+fun normalizeCreationImageUrl(url: String?): String? {
+    val raw = url?.trim().orEmpty()
+    if (raw.isBlank() || raw.equals("null", ignoreCase = true)) return null
+    return if (raw.startsWith("//")) "https:$raw" else raw
+}
+
+fun creationJsonImageString(value: Any?): String? {
+    if (value == null || value == JSONObject.NULL) return null
+    return when (value) {
+        is String -> normalizeCreationImageUrl(value)
+        is JSONObject -> creationJsonImageString(
+            sequenceOf("src", "url", "image_url", "preview_url")
+                .map { value.opt(it) }
+                .firstOrNull { it != null && it != JSONObject.NULL }
+        )
+        else -> null
+    }
+}
+
+private fun collectPrintifyImageUrls(arr: JSONArray?): List<String> {
+    if (arr == null) return emptyList()
+    val out = mutableListOf<String>()
+    for (i in 0 until arr.length()) {
+        creationJsonImageString(arr.opt(i))?.let { out.add(it) }
+    }
+    return out
+}
+
+/** Prefer front-view published mockups (design on product) when list thumbs are empty. */
+private fun collectMockupsByViewUrls(obj: JSONObject): List<String> {
+    val byView = obj.optJSONObject("mockups_by_view") ?: return emptyList()
+    val out = mutableListOf<String>()
+    val keys = byView.keys().asSequence().toList()
+    val ordered = keys.sortedWith { a, b ->
+        val af = a.equals("front", ignoreCase = true)
+        val bf = b.equals("front", ignoreCase = true)
+        when {
+            af && !bf -> -1
+            !af && bf -> 1
+            else -> a.compareTo(b, ignoreCase = true)
+        }
+    }
+    for (view in ordered) {
+        when (val colors = byView.opt(view)) {
+            is JSONObject -> {
+                val colorKeys = colors.keys().asSequence().toList()
+                for (color in colorKeys) {
+                    creationJsonImageString(colors.opt(color))?.let { out.add(it) }
+                }
+            }
+            is String -> creationJsonImageString(colors)?.let { out.add(it) }
+        }
+    }
+    return out
+}
+
+/**
+ * Same sources as web `getProductCarouselImages` / `resolveProductImageUrl`.
+ * Published Printify / mockups_by_view sit before catalog `mockup_image` so cards
+ * show the design-on-product thumb instead of an empty template.
+ */
+fun parseCreationProductImageUrls(obj: JSONObject): List<String> {
+    val seen = linkedSetOf<String>()
+    fun push(value: Any?) {
+        creationJsonImageString(value)?.let { seen.add(it) }
+    }
+    push(obj.opt("featured_image"))
+    push(obj.opt("image_url"))
+    collectPrintifyImageUrls(obj.optJSONArray("printify_images")).forEach { seen.add(it) }
+    collectMockupsByViewUrls(obj).forEach { seen.add(it) }
+    push(obj.opt("preview_image"))
+    push(obj.opt("mockup_image"))
+    push(obj.opt("preview_url"))
+    push(obj.opt("thumbnail_url"))
+    push(obj.opt("main_image"))
+    push(obj.opt("product_image"))
+    obj.optJSONArray("images")?.opt(0)?.let { push(it) }
+    obj.optJSONArray("variants")?.optJSONObject(0)?.let { v ->
+        push(v.opt("image"))
+        push(v.opt("image_url"))
+    }
+    return seen.toList()
+}
+
+fun parseCreationProduct(obj: JSONObject, index: Int = 0): CreationProduct {
+    val productKey = com.eazpire.creator.api.jsonCoercedString(obj, "product_key")
+    val storefront = com.eazpire.creator.api.jsonCoercedString(obj, "sample_url", "storefront_url")
+        .takeIf { it.isNotBlank() }
+    val imageUrls = parseCreationProductImageUrls(obj)
+    val title = obj.optString("product_name", "")
+        .ifBlank { obj.optString("title", "") }
+        .ifBlank { productKey.ifBlank { "Product" } }
+    val isSample = obj.optBoolean("is_sample", false) ||
+        com.eazpire.creator.api.jsonCoercedString(obj, "publish_intent") == "sample_publish"
+    val designIds = buildList {
+        val arr = obj.optJSONArray("design_ids")
+        if (arr != null) {
+            for (j in 0 until arr.length()) {
+                arr.opt(j)?.toString()?.trim()?.takeIf { it.isNotBlank() && !it.equals("null", true) }?.let { add(it) }
+            }
+        }
+    }
+    val shopifyId = com.eazpire.creator.api.jsonCoercedString(obj, "shopify_product_id")
+    val publishedDesignId = com.eazpire.creator.api.jsonCoercedString(obj, "published_design_id")
+    return CreationProduct(
+        id = shopifyId.ifBlank { publishedDesignId }
+            .ifBlank { productKey.takeIf { it.isNotBlank() }?.let { "$it-product" }.orEmpty() }
+            .ifBlank { "product-$index" },
+        title = title,
+        productName = title,
+        productKey = productKey,
+        imageUrl = imageUrls.firstOrNull(),
+        imageUrls = imageUrls,
+        storefrontUrl = storefront,
+        shopifyHandle = com.eazpire.creator.api.jsonCoercedString(obj, "shopify_handle").takeIf { it.isNotBlank() },
+        publishedAt = (obj.opt("last_published_at") as? Number)?.toLong()
+            ?: obj.optString("last_published_at").takeIf { it.isNotBlank() && !it.equals("null", true) }?.let {
+                try {
+                    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(it)?.time
+                } catch (_: Exception) {
+                    null
+                }
+            },
+        publishedCount = obj.optInt("published_count", 0),
+        isSample = isSample,
+        publishedDesignId = publishedDesignId.takeIf { it.isNotBlank() },
+        designIds = designIds,
+    )
+}
+
 fun firstCreationImageUrl(obj: JSONObject, meta: JSONObject = JSONObject()): String {
     val candidates = listOf(
         obj.optString("preview_url", ""),
@@ -233,7 +377,10 @@ fun firstCreationImageUrl(obj: JSONObject, meta: JSONObject = JSONObject()): Str
         meta.optString("user_image_url", ""),
         meta.optString("image_url", ""),
     )
-    return candidates.firstOrNull { it.isNotBlank() }.orEmpty()
+    return candidates
+        .map { it.trim() }
+        .firstOrNull { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+        .orEmpty()
 }
 
 fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
@@ -298,9 +445,9 @@ fun parseSavedCreationDesign(obj: JSONObject): CreationDesign? {
         contentType = ct,
         libraryStatus = ls,
         savingToLibrary = obj.optBoolean("saving_to_library", false),
-        publishActive = obj.optBoolean("publish_active", false) ||
-            obj.optString("publish_session_id", "").isNotBlank(),
-        publishSessionId = obj.optString("publish_session_id", "").takeIf { it.isNotBlank() },
+        publishActive = isCreationPublishActive(obj),
+        publishSessionId = com.eazpire.creator.api.jsonCoercedString(obj, "publish_session_id")
+            .takeIf { it.isNotBlank() },
         reviewStatus = obj.optString("review_status", "").takeIf { it.isNotBlank() },
         qualityRating = normalizeQualityRating(
             com.eazpire.creator.api.jsonCoercedString(obj, "quality_rating", "quality_rating")

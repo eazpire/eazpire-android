@@ -159,6 +159,7 @@ data class CreationProduct(
     val productName: String,
     val productKey: String,
     val imageUrl: String?,
+    val imageUrls: List<String> = emptyList(),
     val storefrontUrl: String?,
     val shopifyHandle: String?,
     val publishedAt: Long?,
@@ -206,13 +207,10 @@ internal fun matchesCreationsDesignFilter(d: CreationDesign, f: CreationsFilterS
 
 private val VIEW_MODES = listOf("grid2", "grid3", "list")
 
-private fun normalizeImageUrl(url: String?): String? {
-    if (url.isNullOrBlank()) return null
-    return if (url.startsWith("//")) "https:$url" else url
-}
+private fun normalizeImageUrl(url: String?): String? = normalizeCreationImageUrl(url)
 
 private fun extractShopifyHandle(product: CreationProduct): String? {
-    product.shopifyHandle?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    product.shopifyHandle?.trim()?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }?.let { return it }
     val storefront = product.storefrontUrl?.takeIf { it.isNotBlank() } ?: return null
     return try {
         val segments = Uri.parse(storefront).pathSegments
@@ -225,12 +223,13 @@ private fun extractShopifyHandle(product: CreationProduct): String? {
     }
 }
 
-/** Same URL list as shop cards: worker product-json → variantImages (or API fallback). */
+/** Shop product-json overrides when present; otherwise API featured/mockup/printify thumbs. */
 private fun creationProductDisplayUrls(
     product: CreationProduct,
     overrides: Map<String, List<String>>
 ): List<String> {
     overrides[product.id]?.takeIf { it.isNotEmpty() }?.let { return it }
+    if (product.imageUrls.isNotEmpty()) return product.imageUrls
     return listOfNotNull(normalizeImageUrl(product.imageUrl)).filter { it.isNotBlank() }.distinct()
 }
 
@@ -353,6 +352,7 @@ fun CreatorCreationsScreen(
             if (productFallbackRequestedIds.contains(p.id)) return@mapNotNull null
             if (!productImageOverrides[p.id].isNullOrEmpty()) return@mapNotNull null
             val handle = extractShopifyHandle(p) ?: return@mapNotNull null
+            if (handle.equals("null", ignoreCase = true)) return@mapNotNull null
             p to handle
         }
         if (needFetch.isEmpty()) return@LaunchedEffect
@@ -1399,73 +1399,10 @@ private suspend fun fetchPublishedCreationsProducts(
     val resp = api.getPublishedProducts(ownerId, shop)
     val arr = resp.optJSONArray("products") ?: resp.optJSONArray("items") ?: JSONArray()
     if (!resp.optBoolean("ok", false) && arr.length() == 0) return emptyList()
-    return run {
-        fun toImageStr(v: Any?): String? = when (v) {
-            is String -> v.takeIf { it.isNotBlank() }
-            is JSONObject -> (v.optString("src", "").takeIf { it.isNotBlank() }
-                ?: v.optString("url", "").takeIf { it.isNotBlank() }
-                ?: v.optString("image_url", "").takeIf { it.isNotBlank() }
-                ?: v.optString("preview_url", "").takeIf { it.isNotBlank() })
-            else -> null
-        }
-        fun resolveProductImageUrl(obj: JSONObject): String? {
-            val fi = obj.opt("featured_image")
-            val featuredStr = when (fi) {
-                is JSONObject -> toImageStr(fi) ?: fi.optString("src", "").takeIf { it.isNotBlank() }
-                else -> toImageStr(fi)
-            }
-            return toImageStr(obj.opt("image_url")) ?: featuredStr
-                ?: toImageStr(obj.opt("preview_url")) ?: toImageStr(obj.opt("thumbnail_url"))
-                ?: toImageStr(obj.opt("main_image")) ?: toImageStr(obj.opt("product_image"))
-                ?: obj.optJSONArray("images")?.opt(0)?.let { toImageStr(it) }
-                ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image")?.let { toImageStr(it) }
-                ?: obj.optJSONArray("variants")?.optJSONObject(0)?.opt("image_url")?.let { toImageStr(it) }
-        }
-        (0 until arr.length()).mapNotNull { i ->
-            val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-            val productKey = obj.optString("product_key", "")
-            val storefront = obj.optString("storefront_url").takeIf { it.isNotBlank() }
-            val img = normalizeImageUrl(resolveProductImageUrl(obj))
-            val title = obj.optString("product_name", "")
-                .ifBlank { obj.optString("title", "") }
-                .ifBlank { productKey.ifBlank { "Product" } }
-            val isSample = obj.optBoolean("is_sample", false) ||
-                obj.optString("publish_intent") == "sample_publish"
-            val sampleUrl = obj.optString("sample_url", "").takeIf { it.isNotBlank() }
-            val designIds = buildList {
-                val arr = obj.optJSONArray("design_ids")
-                if (arr != null) {
-                    for (j in 0 until arr.length()) {
-                        arr.opt(j)?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
-                    }
-                }
-            }
-            CreationProduct(
-                id = obj.optString("shopify_product_id", "")
-                    .ifBlank { obj.optString("published_design_id", "") }
-                    .ifBlank { obj.optString("product_key", "") + "-product" }
-                    .ifBlank { "product-$i" },
-                title = title,
-                productName = title,
-                productKey = productKey,
-                imageUrl = img,
-                storefrontUrl = sampleUrl ?: storefront,
-                shopifyHandle = obj.optString("shopify_handle").takeIf { it.isNotBlank() },
-                publishedAt = (obj.opt("last_published_at") as? Number)?.toLong()
-                    ?: (obj.optString("last_published_at").takeIf { it.isNotBlank() }?.let {
-                        try {
-                            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(it)?.time
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }),
-                publishedCount = obj.optInt("published_count", 0),
-                isSample = isSample,
-                publishedDesignId = obj.optString("published_design_id", "").takeIf { it.isNotBlank() },
-                designIds = designIds,
-            )
-        }.sortedByDescending { it.publishedAt ?: 0L }
-    }
+    return (0 until arr.length()).mapNotNull { i ->
+        val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+        parseCreationProduct(obj, i)
+    }.sortedByDescending { it.publishedAt ?: 0L }
 }
 
 @Composable
