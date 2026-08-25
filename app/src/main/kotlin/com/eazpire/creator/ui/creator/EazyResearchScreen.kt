@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -67,6 +68,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,6 +98,14 @@ private val RailBg = Color(0x8010122A)
 private const val WATCH_PREFS = "eazy-research"
 private const val WATCH_KEY = "eazy-research-watched"
 private const val FILTERS_COLLAPSE_KEY = "eazy-research-filters-collapsed"
+private const val FILTER_FOLDS_KEY = "eazy-research-filter-folds"
+private val FILTER_FOLD_DEFAULTS = mapOf(
+    "topics" to true,
+    "audience" to false,
+    "custom_design" to false,
+    "design_type" to false,
+    "language" to false,
+)
 
 private data class ResearchProduct(
     val asin: String,
@@ -705,6 +715,15 @@ private fun ResearchFilterPanel(
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
     fun countOf(group: String, key: String): Int =
         facets[group]?.firstOrNull { it.key == key }?.count ?: 0
+    val context = LocalContext.current
+    var folds by remember { mutableStateOf(loadFilterFolds(context)) }
+    fun foldOpen(id: String) = folds[id] ?: FILTER_FOLD_DEFAULTS[id] ?: false
+    fun toggleFold(id: String) {
+        val next = folds.toMutableMap()
+        next[id] = !foldOpen(id)
+        folds = next
+        saveFilterFolds(context, next)
+    }
     val hosts = marketplaces.ifEmpty {
         listOf("amazon.de", "amazon.co.uk", "amazon.fr", "amazon.it", "amazon.es", "amazon.com", "amazon.ca")
             .map { ResearchMarketplace(it, marketplaceTagFromHost(it)) }
@@ -852,136 +871,185 @@ private fun ResearchFilterPanel(
             )
         }
     }
-    Text(
-        tr("creator.research.topics", "Topics"),
-        color = TextDim,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
-    )
-    if (selectedNiches.isEmpty()) {
-        Text(
-            tr("creator.research.topics_all_hint", "All topics"),
-            color = TextDim,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
+    FilterFold(
+        title = tr("creator.research.topics", "Topics"),
+        open = foldOpen("topics"),
+        selectedCount = selectedNiches.size,
+        translationStore = translationStore,
+        onToggle = { toggleFold("topics") },
+    ) {
+        if (selectedNiches.isEmpty()) {
+            Text(
+                tr("creator.research.topics_all_hint", "All topics"),
+                color = TextDim,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        val topicRows = (facets["topics"] ?: emptyList()).ifEmpty {
+            niches.map { ResearchFacet(it.key, countOf("topics", it.key)) }
+        }.filter { it.key.isNotBlank() && it.key != "user_search" }
+        topicRows.forEach { item ->
+            val label = niches.firstOrNull { it.key == item.key }?.label ?: item.key
+            FilterCheckRow(label = label, count = item.count, checked = item.key in selectedNiches, onToggle = { onToggleNiche(item.key) })
+        }
     }
-    val topicRows = (facets["topics"] ?: emptyList()).ifEmpty {
-        niches.map { ResearchFacet(it.key, countOf("topics", it.key)) }
-    }.filter { it.key.isNotBlank() && it.key != "user_search" }
-    topicRows.forEach { item ->
-        val label = niches.firstOrNull { it.key == item.key }?.label ?: item.key
-        FilterCheckRow(label = label, count = item.count, checked = item.key in selectedNiches, onToggle = { onToggleNiche(item.key) })
+    FilterFold(
+        title = tr("creator.research.audience", "Audience"),
+        open = foldOpen("audience"),
+        selectedCount = selectedAudiences.size,
+        translationStore = translationStore,
+        onToggle = { toggleFold("audience") },
+    ) {
+        if (selectedAudiences.isEmpty()) {
+            Text(
+                tr("creator.research.audience_all_hint", "All audiences"),
+                color = TextDim,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        listOf(
+            "men" to tr("creator.research.audience_men", "Men"),
+            "women" to tr("creator.research.audience_women", "Women"),
+            "kids" to tr("creator.research.audience_kids", "Kids"),
+            "toddler" to tr("creator.research.audience_toddler", "Toddler"),
+        ).forEach { (id, label) ->
+            FilterCheckRow(label = label, count = countOf("audience", id), checked = id in selectedAudiences, onToggle = { onToggleAudience(id) })
+        }
     }
-    Text(
-        tr("creator.research.audience", "Audience"),
-        color = TextDim,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
-    )
-    if (selectedAudiences.isEmpty()) {
-        Text(
-            tr("creator.research.audience_all_hint", "All audiences"),
-            color = TextDim,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
-    }
-    listOf(
-        "men" to tr("creator.research.audience_men", "Men"),
-        "women" to tr("creator.research.audience_women", "Women"),
-        "kids" to tr("creator.research.audience_kids", "Kids"),
-        "toddler" to tr("creator.research.audience_toddler", "Toddler"),
-    ).forEach { (id, label) ->
-        FilterCheckRow(label = label, count = countOf("audience", id), checked = id in selectedAudiences, onToggle = { onToggleAudience(id) })
-    }
-    Text(
-        tr("creator.research.custom_design", "Custom Design"),
-        color = TextDim,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
-    )
-    if (personalizations.isEmpty() || personalizations.size == 2) {
-        Text(
-            tr("creator.research.custom_design_all_hint", "Neither or both = all listings"),
-            color = TextDim,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
-    }
-    FilterCheckRow(
-        label = tr("creator.research.custom_design_yes", "Yes"),
-        count = countOf("personalization", "personalizable"),
-        checked = "personalizable" in personalizations,
-        onToggle = { onTogglePersonalization("personalizable") },
-    )
-    FilterCheckRow(
-        label = tr("creator.research.custom_design_no", "No"),
-        count = countOf("personalization", "standard"),
-        checked = "standard" in personalizations,
-        onToggle = { onTogglePersonalization("standard") },
-    )
-    Text(
-        tr("creator.research.design_type", "Design type"),
-        color = TextDim,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
-    )
-    if (designTypes.isEmpty()) {
-        Text(
-            tr("creator.research.design_type_all_hint", "All design types"),
-            color = TextDim,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
-    }
-    listOf(
-        "design_only" to tr("creator.quick_inspirations.content_type_design_only", "Design Only"),
-        "text_only" to tr("creator.quick_inspirations.content_type_text_only", "Text Only"),
-        "design_text" to tr("creator.quick_inspirations.content_type_design_text", "Design + Text"),
-    ).forEach { (id, label) ->
-        FilterCheckRow(label = label, count = countOf("design_type", id), checked = id in designTypes, onToggle = { onToggleDesignType(id) })
-    }
-    Text(
-        tr("creator.research.language", "Language"),
-        color = TextDim,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
-    )
-    if (languages.isEmpty()) {
-        Text(
-            tr("creator.research.language_all_hint", "All languages"),
-            color = TextDim,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
-    }
-    listOf(
-        "none" to tr("creator.quick_inspirations.language_none", "None"),
-        "en" to tr("creator.research.lang_en", "English"),
-        "de" to tr("creator.research.lang_de", "German"),
-        "es" to tr("creator.research.lang_es", "Spanish"),
-        "fr" to tr("creator.research.lang_fr", "French"),
-        "it" to tr("creator.research.lang_it", "Italian"),
-    ).forEach { (id, label) ->
+    FilterFold(
+        title = tr("creator.research.custom_design", "Custom Design"),
+        open = foldOpen("custom_design"),
+        selectedCount = personalizations.size,
+        translationStore = translationStore,
+        onToggle = { toggleFold("custom_design") },
+    ) {
+        if (personalizations.isEmpty() || personalizations.size == 2) {
+            Text(
+                tr("creator.research.custom_design_all_hint", "Neither or both = all listings"),
+                color = TextDim,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
         FilterCheckRow(
-            label = label,
-            count = countOf("language", id),
-            checked = id in languages,
-            flagCode = flagCodeForLanguage(id),
-            onToggle = { onToggleLanguage(id) },
+            label = tr("creator.research.custom_design_yes", "Yes"),
+            count = countOf("personalization", "personalizable"),
+            checked = "personalizable" in personalizations,
+            onToggle = { onTogglePersonalization("personalizable") },
+        )
+        FilterCheckRow(
+            label = tr("creator.research.custom_design_no", "No"),
+            count = countOf("personalization", "standard"),
+            checked = "standard" in personalizations,
+            onToggle = { onTogglePersonalization("standard") },
         )
     }
+    FilterFold(
+        title = tr("creator.research.design_type", "Design type"),
+        open = foldOpen("design_type"),
+        selectedCount = designTypes.size,
+        translationStore = translationStore,
+        onToggle = { toggleFold("design_type") },
+    ) {
+        if (designTypes.isEmpty()) {
+            Text(
+                tr("creator.research.design_type_all_hint", "All design types"),
+                color = TextDim,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        listOf(
+            "design_only" to tr("creator.quick_inspirations.content_type_design_only", "Design Only"),
+            "text_only" to tr("creator.quick_inspirations.content_type_text_only", "Text Only"),
+            "design_text" to tr("creator.quick_inspirations.content_type_design_text", "Design + Text"),
+        ).forEach { (id, label) ->
+            FilterCheckRow(label = label, count = countOf("design_type", id), checked = id in designTypes, onToggle = { onToggleDesignType(id) })
+        }
+    }
+    FilterFold(
+        title = tr("creator.research.language", "Language"),
+        open = foldOpen("language"),
+        selectedCount = languages.size,
+        translationStore = translationStore,
+        onToggle = { toggleFold("language") },
+    ) {
+        if (languages.isEmpty()) {
+            Text(
+                tr("creator.research.language_all_hint", "All languages"),
+                color = TextDim,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        listOf(
+            "none" to tr("creator.quick_inspirations.language_none", "None"),
+            "en" to tr("creator.research.lang_en", "English"),
+            "de" to tr("creator.research.lang_de", "German"),
+            "es" to tr("creator.research.lang_es", "Spanish"),
+            "fr" to tr("creator.research.lang_fr", "French"),
+            "it" to tr("creator.research.lang_it", "Italian"),
+        ).forEach { (id, label) ->
+            FilterCheckRow(
+                label = label,
+                count = countOf("language", id),
+                checked = id in languages,
+                flagCode = flagCodeForLanguage(id),
+                onToggle = { onToggleLanguage(id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun FilterFold(
+    title: String,
+    open: Boolean,
+    selectedCount: Int,
+    translationStore: TranslationStore,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val hint = if (!open && selectedCount > 0) {
+        translationStore.t("creator.research.filter_selected", "{count} selected")
+            .replace("{count}", selectedCount.toString())
+    } else {
+        ""
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 36.dp)
+            .clickable(role = Role.Button, onClick = onToggle)
+            .padding(top = 10.dp, bottom = 4.dp)
+            .semantics {
+                role = Role.Button
+                stateDescription = if (open) "Expanded" else "Collapsed"
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            title,
+            color = TextDim,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.2.sp,
+            modifier = Modifier.weight(1f),
+        )
+        if (hint.isNotEmpty()) {
+            Text(hint, color = TextDim, fontSize = 11.sp, maxLines = 1)
+        }
+        Icon(
+            imageVector = if (open) Icons.Default.ExpandMore else Icons.Default.KeyboardArrowRight,
+            contentDescription = null,
+            tint = TextDim,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+    if (open) content()
 }
 
 @Composable
@@ -1692,6 +1760,32 @@ private fun saveFiltersCollapsed(context: Context, collapsed: Boolean) {
     context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
         .edit()
         .putBoolean(FILTERS_COLLAPSE_KEY, collapsed)
+        .apply()
+}
+
+private fun loadFilterFolds(context: Context): Map<String, Boolean> {
+    val out = FILTER_FOLD_DEFAULTS.toMutableMap()
+    val raw = context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+        .getString(FILTER_FOLDS_KEY, null) ?: return out
+    return try {
+        val obj = JSONObject(raw)
+        FILTER_FOLD_DEFAULTS.keys.forEach { key ->
+            if (obj.has(key)) out[key] = obj.optBoolean(key, FILTER_FOLD_DEFAULTS.getValue(key))
+        }
+        out
+    } catch (_: Exception) {
+        out
+    }
+}
+
+private fun saveFilterFolds(context: Context, folds: Map<String, Boolean>) {
+    val obj = JSONObject()
+    FILTER_FOLD_DEFAULTS.keys.forEach { key ->
+        obj.put(key, folds[key] ?: FILTER_FOLD_DEFAULTS.getValue(key))
+    }
+    context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString(FILTER_FOLDS_KEY, obj.toString())
         .apply()
 }
 
