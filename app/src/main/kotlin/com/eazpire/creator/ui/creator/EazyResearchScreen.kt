@@ -78,6 +78,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
@@ -114,6 +116,7 @@ private data class ResearchProduct(
     val title: String,
     val brand: String,
     val imageUrl: String,
+    val imageThumbUrl: String,
     val nicheKey: String,
     val topic: String,
     val subNiche: String,
@@ -210,7 +213,7 @@ fun EazyResearchScreen(
     fun researchListParams(offset: Int): Map<String, String> {
         val params = mutableMapOf(
             "reprint_ok" to "1",
-            "limit" to "80",
+            "limit" to "32",
             "offset" to offset.coerceAtLeast(0).toString(),
             "sort" to sort,
             "view" to if (view == "watched") "opportunities" else view,
@@ -237,9 +240,15 @@ fun EazyResearchScreen(
             }
         }
         hasMore = data.optBoolean("has_more", false)
-        niches = parseNiches(data.optJSONArray("niches"))
-        facets = parseFacets(data.optJSONObject("facets"))
-        marketplaces = parseMarketplaces(data.optJSONArray("marketplaces"))
+        if (data.has("niches") && !data.isNull("niches")) {
+            niches = parseNiches(data.optJSONArray("niches"))
+        }
+        if (data.has("facets") && !data.isNull("facets")) {
+            facets = parseFacets(data.optJSONObject("facets"))
+        }
+        if (data.has("marketplaces") && !data.isNull("marketplaces")) {
+            marketplaces = parseMarketplaces(data.optJSONArray("marketplaces"))
+        }
         analyzeLimits = parseAnalyzeLimits(data.optJSONObject("analyze_limits"))
         val last = data.optJSONObject("last_run")
         status = if (preview) {
@@ -1125,9 +1134,15 @@ private fun OpportunityCard(
             .clickable(onClick = onOpen),
     ) {
         Box {
-            if (product.imageUrl.isNotBlank()) {
+            val thumb = product.imageThumbUrl.ifBlank { product.imageUrl }
+            if (thumb.isNotBlank()) {
+                val context = LocalContext.current
                 AsyncImage(
-                    model = product.imageUrl,
+                    model = ImageRequest.Builder(context)
+                        .data(thumb)
+                        .size(Size(400, 400))
+                        .crossfade(true)
+                        .build(),
                     contentDescription = product.title,
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f),
                     contentScale = ContentScale.Crop,
@@ -1538,6 +1553,7 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             title = p.optString("title").ifBlank { p.optString("asin") },
             brand = p.optString("brand"),
             imageUrl = p.optString("image_url"),
+            imageThumbUrl = p.optString("image_thumb_url").ifBlank { p.optString("image_url") },
             nicheKey = p.optString("niche_key"),
             topic = p.optString("topic"),
             subNiche = p.optString("subtopic").ifBlank { p.optString("sub_niche") }.ifBlank { p.optString("sub_niche_key") },
