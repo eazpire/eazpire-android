@@ -32,6 +32,15 @@ object CreatorHttpClient {
             .build()
     }
 
+    /** Live generate NDJSON can run longer than a normal JSON call. */
+    val streamInstance: OkHttpClient by lazy {
+        instance.newBuilder()
+            .readTimeout(180, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
+            .build()
+    }
+
     /** Read-mostly home/catalog ops — skip cache-busting query param for HTTP/CDN reuse. */
     val cacheableGetOps: Set<String> = setOf(
         "list-home-carousel-products",

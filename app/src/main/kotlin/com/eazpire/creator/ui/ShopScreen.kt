@@ -77,6 +77,7 @@ import com.eazpire.creator.ui.footer.CollapsibleShopFooter
 import com.eazpire.creator.ui.footer.TermsModal
 import com.eazpire.creator.ui.creator.CreatorHeaderEazyStartBubble
 import com.eazpire.creator.ui.creator.CreatorMainScreen
+import com.eazpire.creator.ui.creator.GenerateLiveDockOverlay
 import com.eazpire.creator.ui.creator.PublishAssistPendingModal
 import com.eazpire.creator.ui.header.CollectionBreadcrumb
 import com.eazpire.creator.ui.home.CreatorsIndexScreen
@@ -895,6 +896,10 @@ fun ShopScreen(
                 eazyChatVisible = true
                 scope.launch { eazyChatStore.markSeen(tokenStore.getOwnerId().orEmpty(), emptyList(), listOf(id)) }
             },
+            onLiveGenerateStarted = { id, summary ->
+                eazyChatStore.startDesignJob(id, summary)
+                scope.launch { eazyChatStore.markSeen(tokenStore.getOwnerId().orEmpty(), emptyList(), listOf(id)) }
+            },
             onGeneratorEazyLookLeftChange = { creatorGenEazyLookLeft = it },
             eazyDocked = eazyDocked,
             eazySnapModeActive = eazySnapModeActive,
@@ -1625,6 +1630,12 @@ fun ShopScreen(
             }
         }
     }
+
+    GenerateLiveDockOverlay(
+        tokenStore = tokenStore,
+        translationStore = translationStore,
+        modifier = Modifier.fillMaxSize()
+    )
 
     }
 

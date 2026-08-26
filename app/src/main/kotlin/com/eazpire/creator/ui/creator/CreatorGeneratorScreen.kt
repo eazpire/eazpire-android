@@ -37,6 +37,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -192,6 +194,7 @@ fun CreatorGeneratorScreen(
     translationStore: TranslationStore,
     onOpenEazyChat: (EazySidebarTab?) -> Unit = {},
     onGeneratorJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onLiveGenerateStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onGeneratorEazyReadyChange: (Boolean) -> Unit = {},
     headerStartNonce: Int = 0,
     onGeneratorGeneratingChange: (Boolean) -> Unit = {},
@@ -239,6 +242,8 @@ fun CreatorGeneratorScreen(
     val editCanvasSession = remember(canvasEditIndex) { CanvasSessionState() }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showGenConfirmDialog by remember { mutableStateOf(false) }
+    var historyOpen by remember { mutableStateOf(false) }
+    var historyItems by remember { mutableStateOf<List<GenerateSettingsHistoryEntry>>(emptyList()) }
     var generatingGen by remember { mutableStateOf(false) }
     var confirmBalanceGenEaz by remember { mutableStateOf<Double?>(null) }
     var confirmGenerateCostEaz by remember { mutableStateOf(DEFAULT_GENERATE_COST_EAZ) }
@@ -583,10 +588,27 @@ fun CreatorGeneratorScreen(
         if (pTrim.isEmpty() && selectedImages.isEmpty()) return
         scope.launch {
             generatingGen = true
+            var pendingDockId: String? = null
             try {
+                GenerateSettingsHistoryStore.push(
+                    context = context,
+                    prompt = pTrim,
+                    designType = designType,
+                    targetProduct = targetProduct,
+                    ratio = ratio,
+                    contentType = contentType,
+                    styles = selectedStyles,
+                    designColors = colorState.designColors,
+                    backgroundTransparent = colorState.backgroundTransparent,
+                    languageMode = languageState.mode,
+                    languageCode = languageState.langCode,
+                    refs = selectedImages
+                )
+                pendingDockId = GenerateLiveDockStore.attachPending(pTrim)
                 ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
                 val freshJwt = tokenStore.getJwt()
                 if (usableJwt(freshJwt).isNullOrBlank()) {
+                    pendingDockId?.let { GenerateLiveDockStore.drop(it) }
                     errorMessage = translationStore.t(
                         "creator.generator_eazy.session_expired",
                         "Please sign in again to generate."
@@ -627,11 +649,18 @@ fun CreatorGeneratorScreen(
                             "${translationStore.t("creator.generator_eazy.job_summary_refs", "Reference images")}: ${selectedImages.size}"
                         )
                     }.trim()
-                    onGeneratorJobStarted(jobId, summary)
-                    onOpenEazyChat(EazySidebarTab.Jobs)
+                    if (resp.optBoolean("live_stream", false)) {
+                        pendingDockId?.let { GenerateLiveDockStore.promote(tokenStore, it, jobId, pTrim) }
+                        onLiveGenerateStarted(jobId, summary)
+                    } else {
+                        pendingDockId?.let { GenerateLiveDockStore.drop(it) }
+                        onGeneratorJobStarted(jobId, summary)
+                        onOpenEazyChat(EazySidebarTab.Jobs)
+                    }
                     showGenConfirmDialog = false
                     resetGeneratorInputsAfterStart()
                 } else {
+                    pendingDockId?.let { GenerateLiveDockStore.drop(it) }
                     errorMessage = resp.optString("message", "")
                         .ifBlank { resp.optString("error", "") }
                         .ifBlank {
@@ -642,6 +671,7 @@ fun CreatorGeneratorScreen(
                         }
                 }
             } catch (e: Exception) {
+                pendingDockId?.let { GenerateLiveDockStore.drop(it) }
                 errorMessage = e.message?.take(200)
                     ?: translationStore.t("creator.generator_eazy.network_error", "Network error.")
             } finally {
@@ -673,6 +703,61 @@ fun CreatorGeneratorScreen(
                 value = DESIGN_TYPE_OPTIONS.find { it.first == designType }?.second ?: "Classic",
                 onClick = { showDesignTypeModal = true }
             )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Box {
+            GenPill(
+                modifier = Modifier.fillMaxWidth(),
+                label = translationStore.t("creator.generator.history", "History"),
+                value = translationStore.t("creator.generator.history_pick", "Recent"),
+                onClick = {
+                    scope.launch {
+                        historyItems = GenerateSettingsHistoryStore.list(context)
+                        historyOpen = true
+                    }
+                }
+            )
+            DropdownMenu(expanded = historyOpen, onDismissRequest = { historyOpen = false }) {
+                if (historyItems.isEmpty()) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                translationStore.t(
+                                    "creator.generator.history_empty",
+                                    "No previous settings yet"
+                                )
+                            )
+                        },
+                        onClick = { historyOpen = false },
+                        enabled = false
+                    )
+                } else {
+                    historyItems.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(item.label()) },
+                            onClick = {
+                                prompt = item.prompt
+                                designType = item.designType
+                                targetProduct = item.targetProduct
+                                ratio = item.ratio
+                                contentType = item.contentType
+                                selectedStyles = item.styles
+                                colorState = colorState.copy(
+                                    designColors = item.designColors,
+                                    backgroundTransparent = item.backgroundTransparent
+                                )
+                                languageState = languageState.copy(
+                                    mode = item.languageMode,
+                                    langCode = item.languageCode
+                                )
+                                selectedImages = item.refs
+                                historyOpen = false
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(20.dp))

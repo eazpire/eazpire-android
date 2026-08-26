@@ -75,6 +75,7 @@ fun CreatorMainScreen(
     onHeroJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onVideoJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     onGeneratorJobStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
+    onLiveGenerateStarted: (jobId: String, summary: String) -> Unit = { _, _ -> },
     /** True while on Generator (screen 1) and prompt/refs ready – drives floating Eazy lookLeft in ShopScreen */
     onGeneratorEazyLookLeftChange: (Boolean) -> Unit = {},
     eazyDocked: Boolean = false,
@@ -449,6 +450,7 @@ fun CreatorMainScreen(
                             translationStore = translationStore,
                             onOpenEazyChat = onEazyChatOpen,
                             onGeneratorJobStarted = onGeneratorJobStarted,
+                            onLiveGenerateStarted = onLiveGenerateStarted,
                             onGeneratorEazyReadyChange = { generatorEazyReady = it },
                             headerStartNonce = genHeaderStartNonce,
                             onGeneratorGeneratingChange = { generatorGenerating = it },

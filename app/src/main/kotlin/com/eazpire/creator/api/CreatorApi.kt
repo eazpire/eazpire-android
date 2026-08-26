@@ -2755,6 +2755,48 @@ class CreatorApi(
         JSONObject(response.body?.string() ?: "{}")
     }
 
+    /** GET ?op=generate-live-stream — NDJSON partial/completed/error events. */
+    suspend fun generateLiveStream(
+        ownerId: String,
+        jobId: String,
+        onEvent: (JSONObject) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val url = buildString {
+            append("$baseUrl/apps/creator-dispatch?op=generate-live-stream")
+            append("&job_id=${java.net.URLEncoder.encode(jobId, "UTF-8")}")
+            append("&owner_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+            append("&logged_in_customer_id=${java.net.URLEncoder.encode(ownerId, "UTF-8")}")
+        }
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .addHeader("Accept", "application/x-ndjson")
+            .apply { usableJwt(jwt)?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        CreatorHttpClient.streamInstance.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("stream_http_${response.code}")
+            }
+            val source = response.body?.source() ?: return@use
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: break
+                if (line.isBlank()) continue
+                try {
+                    onEvent(JSONObject(line))
+                } catch (_: JSONException) {
+                }
+            }
+        }
+    }
+
+    /** POST ?op=discard-generated-job */
+    suspend fun discardGeneratedJob(ownerId: String, jobId: String): JSONObject {
+        val body = JSONObject()
+            .put("owner_id", ownerId)
+            .put("job_id", jobId)
+        return postJsonBodyOp("discard-generated-job", body, mapOf("owner_id" to ownerId))
+    }
+
     /** GET ?op=list-jobs&owner_id=xxx&limit=20 → { ok, items: [...] } */
     suspend fun listJobs(ownerId: String, limit: Int = 20): JSONObject = call(
         "list-jobs",
