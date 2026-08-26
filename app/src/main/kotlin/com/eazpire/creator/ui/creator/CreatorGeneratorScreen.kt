@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
+import coil.compose.AsyncImage
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.api.usableJwt
@@ -99,7 +100,18 @@ private val DESIGN_TYPE_OPTIONS = listOf(
 
 data class RefImage(
     val dataUrl: String,
-    val similarity: Float = 0.8f
+    val similarity: Float = 0.8f,
+    val originalDataUrl: String? = null,
+    val croppedDataUrl: String? = null,
+    val researchView: String = "cropped",
+    val researchMode: String = "i2i",
+    val skipAttach: Boolean = false,
+    val fromResearch: Boolean = false,
+    val analysisPrompt: String = "",
+    val analysisTopic: String = "",
+    val analysisTags: List<String> = emptyList(),
+    val analysisDesignType: String? = null,
+    val analysisLanguage: String? = null,
 )
 
 private val DEFAULT_UPLOAD_COST_EAZ = EazCostCatalog.defaultCost("design_upload")
@@ -118,7 +130,7 @@ private fun buildDesignGeneratePayload(
     selectedImages: List<RefImage>
 ): JSONObject {
     val refs = JSONArray()
-    selectedImages.forEachIndexed { i, ref ->
+    selectedImages.filter { !it.skipAttach && it.researchMode != "t2i" }.forEachIndexed { i, ref ->
         refs.put(
             JSONObject()
                 .put("label", ('A' + i).toString())
@@ -126,7 +138,7 @@ private fun buildDesignGeneratePayload(
                 .put("similarity", ref.similarity.toDouble())
         )
     }
-    val primaryUrl = selectedImages.firstOrNull()?.dataUrl
+    val primaryUrl = selectedImages.firstOrNull { !it.skipAttach && it.researchMode != "t2i" }?.dataUrl
     val bgMode = if (colorState.backgroundTransparent) "transparent" else "solid"
     val backgroundColorsJson = JSONArray().apply {
         if (bgMode == "solid") {
@@ -163,6 +175,16 @@ private fun DataUrlImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop
 ) {
+    val lower = dataUrl.trim().lowercase()
+    if (lower.startsWith("http://") || lower.startsWith("https://")) {
+        AsyncImage(
+            model = dataUrl,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = contentScale
+        )
+        return
+    }
     var bitmap by remember(dataUrl) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     LaunchedEffect(dataUrl) {
         if (dataUrl.isBlank()) bitmap = null
@@ -210,7 +232,9 @@ fun CreatorGeneratorScreen(
     maxHeight: Dp = Dp.Infinity,
     modifier: Modifier = Modifier,
     generatorPrefillRequest: GeneratorPrefillRequest? = null,
-    onGeneratorPrefillConsumed: () -> Unit = {}
+    onGeneratorPrefillConsumed: () -> Unit = {},
+    researchHandoff: ResearchGeneratorHandoff? = null,
+    onResearchHandoffConsumed: () -> Unit = {},
 ) {
     val boundedHeight = if (maxHeight == Dp.Infinity) 4000.dp else maxHeight
     val context = LocalContext.current
@@ -303,6 +327,17 @@ fun CreatorGeneratorScreen(
         }
     }
 
+    var researchInfluence by remember { mutableStateOf<ResearchGeneratorHandoff?>(null) }
+    LaunchedEffect(researchHandoff) {
+        val h = researchHandoff ?: return@LaunchedEffect
+        researchInfluence = h
+        if (prompt.isBlank()) {
+            val text = researchT2iPrompt(h)
+            if (text.isNotBlank()) prompt = text
+        }
+        onResearchHandoffConsumed()
+    }
+
     LaunchedEffect(headerStartNonce) {
         if (headerStartNonce == 0) return@LaunchedEffect
         if (generatingGen) return@LaunchedEffect
@@ -389,6 +424,37 @@ fun CreatorGeneratorScreen(
 
     fun removeImage(index: Int) {
         selectedImages = selectedImages.toMutableList().apply { removeAt(index) }
+    }
+
+    researchInfluence?.let { h ->
+        ResearchInfluenceSheet(
+            handoff = h,
+            translationStore = translationStore,
+            onApply = { result ->
+                if (prompt.isBlank()) {
+                    val text = researchT2iPrompt(h)
+                    if (text.isNotBlank()) prompt = text
+                }
+                selectedImages = selectedImages + RefImage(
+                    dataUrl = result.dataUrl,
+                    similarity = result.similarity,
+                    originalDataUrl = result.originalDataUrl,
+                    croppedDataUrl = result.croppedDataUrl,
+                    researchView = result.view,
+                    researchMode = result.mode,
+                    skipAttach = result.mode == "t2i",
+                    fromResearch = true,
+                    analysisPrompt = h.prompt,
+                    analysisTopic = h.topic,
+                    analysisTags = h.tags,
+                    analysisDesignType = h.designType,
+                    analysisLanguage = h.language,
+                )
+                if (result.mode == "t2i" && prompt.isBlank()) prompt = researchT2iPrompt(h)
+                researchInfluence = null
+            },
+            onCancel = { researchInfluence = null },
+        )
     }
 
     GenRefSourceModal(
@@ -584,8 +650,29 @@ fun CreatorGeneratorScreen(
 
     fun runDesignGenerate() {
         if (ownerId.isBlank() || generatingGen) return
-        val pTrim = prompt.trim()
-        if (pTrim.isEmpty() && selectedImages.isEmpty()) return
+        val t2i = selectedImages.firstOrNull { it.fromResearch && (it.skipAttach || it.researchMode == "t2i") }
+        var pTrim = prompt.trim()
+        if (pTrim.isEmpty() && t2i != null) {
+            val filled = researchT2iPrompt(
+                ResearchGeneratorHandoff(
+                    imageUrl = t2i.dataUrl,
+                    prompt = t2i.analysisPrompt,
+                    topic = t2i.analysisTopic,
+                    subtopic = "",
+                    tags = t2i.analysisTags,
+                    designType = t2i.analysisDesignType,
+                    language = t2i.analysisLanguage,
+                    asin = "",
+                    marketplace = "",
+                )
+            )
+            if (filled.isNotBlank()) {
+                pTrim = filled
+                prompt = filled
+            }
+        }
+        val attachable = selectedImages.filter { !it.skipAttach && it.researchMode != "t2i" }
+        if (pTrim.isEmpty() && attachable.isEmpty()) return
         scope.launch {
             generatingGen = true
             var pendingDockId: String? = null
@@ -602,7 +689,7 @@ fun CreatorGeneratorScreen(
                     backgroundTransparent = colorState.backgroundTransparent,
                     languageMode = languageState.mode,
                     languageCode = languageState.langCode,
-                    refs = selectedImages
+                    refs = selectedImages,
                 )
                 pendingDockId = GenerateLiveDockStore.attachPending(pTrim)
                 ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
@@ -719,7 +806,20 @@ fun CreatorGeneratorScreen(
                 }
             )
             DropdownMenu(expanded = historyOpen, onDismissRequest = { historyOpen = false }) {
-                if (historyItems.isEmpty()) {
+                if (ownerId.isBlank()) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                translationStore.t(
+                                    "creator.generator.history_login",
+                                    "Sign in to use settings history."
+                                )
+                            )
+                        },
+                        onClick = { historyOpen = false },
+                        enabled = false
+                    )
+                } else if (historyItems.isEmpty()) {
                     DropdownMenuItem(
                         text = {
                             Text(
@@ -775,7 +875,25 @@ fun CreatorGeneratorScreen(
             onDraw = { i ->
                 canvasEditIndex = i
                 showCanvasEditModal = true
-            }
+            },
+            onResearchView = { i, view ->
+                selectedImages = selectedImages.toMutableList().also { list ->
+                    val cur = list.getOrNull(i) ?: return@also
+                    val url = if (view == "original") cur.originalDataUrl ?: cur.dataUrl else cur.croppedDataUrl ?: cur.dataUrl
+                    list[i] = cur.copy(researchView = view, dataUrl = url)
+                }
+            },
+            onResearchMode = { i, mode ->
+                selectedImages = selectedImages.toMutableList().also { list ->
+                    val cur = list.getOrNull(i) ?: return@also
+                    list[i] = cur.copy(researchMode = mode, skipAttach = mode == "t2i")
+                    if (mode == "t2i" && prompt.isBlank()) {
+                        prompt = listOf(cur.analysisPrompt.takeIf { it.isNotBlank() }, cur.analysisTopic.takeIf { it.isNotBlank() }?.let { "Topic: $it" })
+                            .mapNotNull { it }
+                            .joinToString("\n")
+                    }
+                }
+            },
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -971,7 +1089,9 @@ private fun GenSelectedImagesBar(
     selectedImages: List<RefImage>,
     translationStore: TranslationStore,
     onRemove: (Int) -> Unit,
-    onDraw: (Int) -> Unit
+    onDraw: (Int) -> Unit,
+    onResearchView: (Int, String) -> Unit = { _, _ -> },
+    onResearchMode: (Int, String) -> Unit = { _, _ -> },
 ) {
     if (selectedImages.isEmpty()) return
     Spacer(modifier = Modifier.height(16.dp))
@@ -992,7 +1112,7 @@ private fun GenSelectedImagesBar(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .then(if (img.fromResearch) Modifier.size(160.dp) else Modifier.size(72.dp))
                             .clip(RoundedCornerShape(10.dp))
                             .background(Color.Black.copy(alpha = 0.3f))
                     ) {
@@ -1003,6 +1123,59 @@ private fun GenSelectedImagesBar(
                                 .clip(RoundedCornerShape(10.dp)),
                             contentScale = ContentScale.Crop
                         )
+                        if (img.fromResearch && img.researchMode == "t2i") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0x9E080618)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    translationStore.t("creator.generator.mode_text_to_image", "Text to Image"),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                        if (img.fromResearch) {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(4.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Color(0xB80A0618)),
+                            ) {
+                                ResearchSeg(
+                                    label = translationStore.t("creator.generator.view_original", "Original"),
+                                    on = img.researchView == "original",
+                                    onClick = { onResearchView(i, "original") },
+                                )
+                                ResearchSeg(
+                                    label = translationStore.t("creator.generator.view_cropped", "Cropped"),
+                                    on = img.researchView == "cropped",
+                                    onClick = { onResearchView(i, "cropped") },
+                                )
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 28.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Color(0xB80A0618)),
+                            ) {
+                                ResearchSeg(
+                                    label = translationStore.t("creator.generator.mode_image_to_image", "Image to Image"),
+                                    on = img.researchMode != "t2i",
+                                    onClick = { onResearchMode(i, "i2i") },
+                                )
+                                ResearchSeg(
+                                    label = translationStore.t("creator.generator.mode_text_to_image", "Text to Image"),
+                                    on = img.researchMode == "t2i",
+                                    onClick = { onResearchMode(i, "t2i") },
+                                )
+                            }
+                        }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
@@ -1047,6 +1220,20 @@ private fun GenSelectedImagesBar(
             }
         }
     }
+}
+
+@Composable
+private fun ResearchSeg(label: String, on: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        color = if (on) Color(0xFF0B1220) else Color.White,
+        fontSize = 9.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .background(if (on) EazColors.Orange else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

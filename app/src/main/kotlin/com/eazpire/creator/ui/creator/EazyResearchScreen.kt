@@ -34,9 +34,11 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -172,7 +174,7 @@ fun EazyResearchScreen(
     tokenStore: SecureTokenStore,
     translationStore: TranslationStore,
     maxHeight: Dp = Dp.Unspecified,
-    onSendToGenerator: () -> Unit = {},
+    onSendToGenerator: (ResearchGeneratorHandoff) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val cap = if (maxHeight == Dp.Unspecified) 4000.dp else maxHeight
@@ -617,6 +619,19 @@ fun EazyResearchScreen(
                                             watched = next
                                             saveWatchedAsins(context, next)
                                         },
+                                        onOpenAmazon = {
+                                            try {
+                                                context.startActivity(
+                                                    android.content.Intent(
+                                                        android.content.Intent.ACTION_VIEW,
+                                                        android.net.Uri.parse(amazonListingUrl(product.asin, product.marketplace)),
+                                                    )
+                                                )
+                                            } catch (_: Exception) {}
+                                        },
+                                        onSendToGenerator = {
+                                            onSendToGenerator(product.toGeneratorHandoff())
+                                        },
                                     )
                                 }
                             }
@@ -667,6 +682,20 @@ fun EazyResearchScreen(
                                     niches = niches,
                                     translationStore = translationStore,
                                     onClose = { selected = null },
+                                    onOpenAmazon = {
+                                        try {
+                                            context.startActivity(
+                                                android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse(amazonListingUrl(product.asin, product.marketplace)),
+                                                )
+                                            )
+                                        } catch (_: Exception) {}
+                                    },
+                                    onSendToGenerator = {
+                                        selected = null
+                                        onSendToGenerator(product.toGeneratorHandoff())
+                                    },
                                 )
                             }
                         }
@@ -1212,8 +1241,11 @@ private fun OpportunityCard(
     translationStore: TranslationStore,
     onOpen: () -> Unit,
     onToggleWatch: () -> Unit,
+    onOpenAmazon: () -> Unit,
+    onSendToGenerator: () -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    var menuOpen by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
@@ -1257,6 +1289,54 @@ private fun OpportunityCard(
                     modifier = Modifier.size(18.dp),
                 )
             }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp),
+            ) {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xB80A0618)),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = tr("creator.research.menu", "Product actions"),
+                        tint = TextMain,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(tr("creator.research.open_source", "Open on Amazon")) },
+                        onClick = {
+                            menuOpen = false
+                            onOpenAmazon()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (watched) tr("creator.research.watch_remove", "Remove from watchlist")
+                                else tr("creator.research.watch", "Watch")
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onToggleWatch()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(tr("creator.research.send_generator", "Send to Generator")) },
+                        onClick = {
+                            menuOpen = false
+                            onSendToGenerator()
+                        },
+                    )
+                }
+            }
         }
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(product.title, color = TextMain, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
@@ -1284,6 +1364,8 @@ private fun ProductDetailCard(
     niches: List<ResearchNiche>,
     translationStore: TranslationStore,
     onClose: () -> Unit,
+    onOpenAmazon: () -> Unit = {},
+    onSendToGenerator: () -> Unit = {},
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
     val topics = displayTopicLabels(product, niches)
@@ -1364,6 +1446,12 @@ private fun ProductDetailCard(
             color = TextDim,
             fontSize = 11.sp,
         )
+        TextButton(onClick = onOpenAmazon) {
+            Text(tr("creator.research.open_source", "Open on Amazon"), color = Accent)
+        }
+        TextButton(onClick = onSendToGenerator) {
+            Text(tr("creator.research.send_generator", "Send to Generator"), color = Accent)
+        }
     }
 }
 
@@ -1870,6 +1958,18 @@ private fun parseNiches(arr: JSONArray?): List<ResearchNiche> {
 
 private fun watchId(product: ResearchProduct): String =
     if (product.marketplace.isBlank()) product.asin else "${product.asin}:${product.marketplace}"
+
+private fun ResearchProduct.toGeneratorHandoff() = ResearchGeneratorHandoff(
+    imageUrl = imageUrl,
+    prompt = prompt,
+    topic = topic,
+    subtopic = subNiche,
+    tags = tags,
+    designType = designType,
+    language = language,
+    asin = asin,
+    marketplace = marketplace,
+)
 
 private fun isWatched(watched: Set<String>, product: ResearchProduct): Boolean =
     watched.contains(watchId(product)) || watched.contains(product.asin)

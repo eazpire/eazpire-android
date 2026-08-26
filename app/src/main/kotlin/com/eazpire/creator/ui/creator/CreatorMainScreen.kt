@@ -164,6 +164,7 @@ fun CreatorMainScreen(
 
     /** Open native generator with design prefill (Remix / Generate New from design detail sheet). */
     var generatorPrefillRequest by remember { mutableStateOf<GeneratorPrefillRequest?>(null) }
+    var researchGeneratorHandoff by remember { mutableStateOf<ResearchGeneratorHandoff?>(null) }
 
     var prevOverlayComposeKey by remember { mutableIntStateOf(-1) }
     LaunchedEffect(overlayComposeStartKey) {
@@ -442,7 +443,10 @@ fun CreatorMainScreen(
                             tokenStore = tokenStore,
                             translationStore = translationStore,
                             maxHeight = contentMaxHeight,
-                            onSendToGenerator = { currentScreen = 2 },
+                            onSendToGenerator = { handoff ->
+                                researchGeneratorHandoff = handoff
+                                currentScreen = 2
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                         2 -> CreatorGeneratorScreen(
@@ -463,7 +467,9 @@ fun CreatorMainScreen(
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize(),
                             generatorPrefillRequest = generatorPrefillRequest,
-                            onGeneratorPrefillConsumed = { generatorPrefillRequest = null }
+                            onGeneratorPrefillConsumed = { generatorPrefillRequest = null },
+                            researchHandoff = researchGeneratorHandoff,
+                            onResearchHandoffConsumed = { researchGeneratorHandoff = null },
                         )
                         3 -> CreatorCreationsScreen(
                             tokenStore = tokenStore,
