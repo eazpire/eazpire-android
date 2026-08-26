@@ -1112,6 +1112,25 @@ private fun GenSelectedImagesBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(vertical = 4.dp)
                 ) {
+                    if (img.fromResearch) {
+                        Row(
+                            modifier = Modifier
+                                .padding(bottom = 4.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color(0xB80A0618)),
+                        ) {
+                            ResearchSeg(
+                                label = translationStore.t("creator.generator.mode_image_to_image", "Image to Image"),
+                                on = img.researchMode != "t2i",
+                                onClick = { onResearchMode(i, "i2i") },
+                            )
+                            ResearchSeg(
+                                label = translationStore.t("creator.generator.mode_text_to_image", "Text to Image"),
+                                on = img.researchMode == "t2i",
+                                onClick = { onResearchMode(i, "t2i") },
+                            )
+                        }
+                    }
                     Box(
                         modifier = Modifier
                             .then(if (img.fromResearch) Modifier.size(160.dp) else Modifier.size(72.dp))
@@ -1157,24 +1176,6 @@ private fun GenSelectedImagesBar(
                                     label = translationStore.t("creator.generator.view_cropped", "Cropped"),
                                     on = img.researchView == "cropped",
                                     onClick = { onResearchView(i, "cropped") },
-                                )
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(top = 28.dp)
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(Color(0xB80A0618)),
-                            ) {
-                                ResearchSeg(
-                                    label = translationStore.t("creator.generator.mode_image_to_image", "Image to Image"),
-                                    on = img.researchMode != "t2i",
-                                    onClick = { onResearchMode(i, "i2i") },
-                                )
-                                ResearchSeg(
-                                    label = translationStore.t("creator.generator.mode_text_to_image", "Text to Image"),
-                                    on = img.researchMode == "t2i",
-                                    onClick = { onResearchMode(i, "t2i") },
                                 )
                             }
                         }

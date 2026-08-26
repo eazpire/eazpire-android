@@ -2,13 +2,17 @@ package com.eazpire.creator.ui.creator
 
 import android.graphics.Bitmap
 import android.graphics.Rect
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
  * Research → Generator handoff. Analysis fields only — never invented sales.
  *
- * Crop heuristic matches `src/features/eazyResearch/generatorHandoff.js`:
- * center-chest rectangle on Amazon garment mocks
- * (28% from left, 18% from top, 44% × 38%). Fail → original.
+ * Crop heuristic matches `src/features/eazyResearch/printAreaCrop.js`:
+ * Artwork-Bounding-Box auf dem Shirt-Mock (Kontrast zum Stoff, Rand ignorieren,
+ * ~10 % Padding). Fallback: größere Brustzone als das alte 28/18/44/38.
  */
 data class ResearchGeneratorHandoff(
     val imageUrl: String,
@@ -23,28 +27,154 @@ data class ResearchGeneratorHandoff(
 )
 
 object ResearchPrintArea {
-    const val X = 0.28f
-    const val Y = 0.18f
-    const val W = 0.44f
-    const val H = 0.38f
+    const val X = 0.2f
+    const val Y = 0.12f
+    const val W = 0.6f
+    const val H = 0.56f
+    const val ARTWORK_PAD = 0.1f
+    const val EDGE_MARGIN = 0.12f
+    const val GARMENT_THRESHOLD = 48.0
+    const val MIN_ARTWORK_FRAC = 0.0035
 
     fun rect(width: Int, height: Int): Rect? {
         if (width < 8 || height < 8) return null
-        val x = (width * X).toInt().coerceAtLeast(0)
-        val y = (height * Y).toInt().coerceAtLeast(0)
-        val w = (width * W).toInt().coerceAtLeast(2)
-        val h = (height * H).toInt().coerceAtLeast(2)
+        val x = (width * X).roundToInt().coerceAtLeast(0)
+        val y = (height * Y).roundToInt().coerceAtLeast(0)
+        val w = (width * W).roundToInt().coerceAtLeast(2)
+        val h = (height * H).roundToInt().coerceAtLeast(2)
         if (x + w > width || y + h > height) return null
         return Rect(x, y, x + w, y + h)
     }
 
+    /**
+     * ARGB packed pixels (same order as Bitmap.getPixels).
+     * Keep in sync with printAreaCrop.js detectArtworkRect.
+     */
+    fun detectArtworkRect(width: Int, height: Int, argb: IntArray): Rect? {
+        if (width < 8 || height < 8 || argb.size < width * height) return null
+        val x0 = (width * EDGE_MARGIN).roundToInt()
+        val x1 = (width * (1f - EDGE_MARGIN)).roundToInt()
+        val y0 = (height * 0.12f).roundToInt()
+        val y1 = (height * 0.78f).roundToInt()
+        if (x1 - x0 < 4 || y1 - y0 < 4) return null
+
+        val sampleR = ArrayList<Int>()
+        val sampleG = ArrayList<Int>()
+        val sampleB = ArrayList<Int>()
+        val leftXa = (width * 0.12f).roundToInt()
+        val leftXb = (width * 0.22f).roundToInt()
+        val rightXa = (width * 0.78f).roundToInt()
+        val rightXb = (width * 0.88f).roundToInt()
+        val sy0 = (height * 0.28f).roundToInt()
+        val sy1 = (height * 0.55f).roundToInt()
+        for (y in sy0 until sy1) {
+            for (x in leftXa until leftXb) {
+                val c = argb[y * width + x]
+                if (((c ushr 24) and 0xFF) < 16) continue
+                sampleR.add((c ushr 16) and 0xFF)
+                sampleG.add((c ushr 8) and 0xFF)
+                sampleB.add(c and 0xFF)
+            }
+            for (x in rightXa until rightXb) {
+                val c = argb[y * width + x]
+                if (((c ushr 24) and 0xFF) < 16) continue
+                sampleR.add((c ushr 16) and 0xFF)
+                sampleG.add((c ushr 8) and 0xFF)
+                sampleB.add(c and 0xFF)
+            }
+        }
+        if (sampleR.size < 20) return null
+        val gR = median(sampleR)
+        val gG = median(sampleG)
+        val gB = median(sampleB)
+
+        var minX = width
+        var minY = height
+        var maxX = 0
+        var maxY = 0
+        var count = 0
+        for (y in y0 until y1) {
+            for (x in x0 until x1) {
+                val c = argb[y * width + x]
+                if (((c ushr 24) and 0xFF) < 16) continue
+                val r = (c ushr 16) and 0xFF
+                val g = (c ushr 8) and 0xFF
+                val b = c and 0xFF
+                val dr = (r - gR).toDouble()
+                val dg = (g - gG).toDouble()
+                val db = (b - gB).toDouble()
+                if (sqrt(dr * dr + dg * dg + db * db) <= GARMENT_THRESHOLD) continue
+                count++
+                if (x < minX) minX = x
+                if (y < minY) minY = y
+                if (x > maxX) maxX = x
+                if (y > maxY) maxY = y
+            }
+        }
+        val searchArea = (x1 - x0) * (y1 - y0)
+        if (count < max(24, (searchArea * MIN_ARTWORK_FRAC).toInt())) return null
+        if (maxX < minX || maxY < minY) return null
+
+        val bw = maxX - minX + 1
+        val bh = maxY - minY + 1
+        val padX = (bw * ARTWORK_PAD).roundToInt()
+        val padY = (bh * ARTWORK_PAD).roundToInt()
+        val x = (minX - padX).coerceIn(0, width - 2)
+        val y = (minY - padY).coerceIn(0, height - 2)
+        val w = (bw + padX * 2).coerceIn(2, width - x)
+        val h = (bh + padY * 2).coerceIn(2, height - y)
+        return Rect(x, y, x + w, y + h)
+    }
+
     fun crop(src: Bitmap): Bitmap {
-        val r = rect(src.width, src.height) ?: return src
+        val detected = detectFromBitmap(src)
+        val r = detected ?: rect(src.width, src.height) ?: return src
         return try {
             Bitmap.createBitmap(src, r.left, r.top, r.width(), r.height())
         } catch (_: Exception) {
             src
         }
+    }
+
+    internal fun makeSyntheticShirtArgb(width: Int, height: Int, dx: Int, dy: Int, dw: Int, dh: Int): IntArray {
+        val gray = 0xFFB4B4B4.toInt()
+        val ink = 0xFF141414.toInt()
+        val pixels = IntArray(width * height) { gray }
+        for (y in dy until min(height, dy + dh)) {
+            for (x in dx until min(width, dx + dw)) {
+                if (x >= 0 && y >= 0) pixels[y * width + x] = ink
+            }
+        }
+        return pixels
+    }
+
+    private fun detectFromBitmap(src: Bitmap): Rect? {
+        val maxW = 160
+        val scale = min(1f, maxW / src.width.toFloat())
+        val sw = max(8, (src.width * scale).roundToInt())
+        val sh = max(8, (src.height * scale).roundToInt())
+        val scaled = if (scale < 1f) {
+            Bitmap.createScaledBitmap(src, sw, sh, true)
+        } else {
+            src
+        }
+        val pixels = IntArray(sw * sh)
+        scaled.getPixels(pixels, 0, sw, 0, 0, sw, sh)
+        val r = detectArtworkRect(sw, sh, pixels) ?: return null
+        if (scale >= 1f) return r
+        val invX = src.width.toFloat() / sw
+        val invY = src.height.toFloat() / sh
+        val x = (r.left * invX).roundToInt().coerceIn(0, src.width - 2)
+        val y = (r.top * invY).roundToInt().coerceIn(0, src.height - 2)
+        val w = (r.width() * invX).roundToInt().coerceIn(2, src.width - x)
+        val h = (r.height() * invY).roundToInt().coerceIn(2, src.height - y)
+        return Rect(x, y, x + w, y + h)
+    }
+
+    private fun median(values: List<Int>): Int {
+        if (values.isEmpty()) return 128
+        val s = values.sorted()
+        return s[s.size / 2]
     }
 }
 

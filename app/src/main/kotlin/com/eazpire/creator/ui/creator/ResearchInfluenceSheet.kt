@@ -105,6 +105,28 @@ fun ResearchInfluenceSheet(
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xB80A0618)),
+                ) {
+                    SegBtn(
+                        label = tr("creator.generator.mode_image_to_image", "Image to Image"),
+                        on = genMode == "i2i",
+                        onClick = { genMode = "i2i" },
+                    )
+                    SegBtn(
+                        label = tr("creator.generator.mode_text_to_image", "Text to Image"),
+                        on = genMode == "t2i",
+                        onClick = { genMode = "t2i" },
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -159,24 +181,6 @@ fun ResearchInfluenceSheet(
                         label = tr("creator.generator.view_cropped", "Cropped"),
                         on = view == "cropped",
                         onClick = { view = "cropped" },
-                    )
-                }
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 44.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0xB80A0618)),
-                ) {
-                    SegBtn(
-                        label = tr("creator.generator.mode_image_to_image", "Image to Image"),
-                        on = genMode == "i2i",
-                        onClick = { genMode = "i2i" },
-                    )
-                    SegBtn(
-                        label = tr("creator.generator.mode_text_to_image", "Text to Image"),
-                        on = genMode == "t2i",
-                        onClick = { genMode = "t2i" },
                     )
                 }
             }
