@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -39,6 +40,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -85,6 +87,8 @@ private data class ManagerDraft(
     val templateId: String?,
     val isNew: Boolean,
     val mode: String,
+    val selectedWidgetId: String = "quick-actions",
+    val previewingSystemDefault: Boolean = false,
 )
 
 private data class QuickActionSpec(
@@ -116,6 +120,8 @@ fun EazyDashboardGrid(
     var managerDraft by remember { mutableStateOf<ManagerDraft?>(null) }
     var dragId by remember { mutableStateOf<String?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    var dragPreview by remember { mutableStateOf<List<DashboardWidgetPos>?>(null) }
+    var dragOrigin by remember { mutableStateOf<DashboardWidgetPos?>(null) }
     val scope = rememberCoroutineScope()
     val t: (String, String) -> String = { k, f -> translationStore.t(k, f) }
 
@@ -142,6 +148,30 @@ fun EazyDashboardGrid(
         }
     }
 
+    fun runLayoutListAction(body: JSONObject, selectId: String? = null) {
+        val oid = ownerId ?: return
+        scope.launch {
+            val res = withContext(Dispatchers.IO) { api.mutateDashboardLayout(oid, body) }
+            val next = withContext(Dispatchers.IO) { parseDashboardV5(api.getDashboardV5(oid)) }
+            state = next
+            val snap2 = next ?: return@launch
+            val cur = managerDraft ?: return@launch
+            val prefer = selectId ?: res.optJSONObject("layout")?.optString("id")?.takeIf { it.isNotBlank() }
+            val pick = prefer?.let { id -> snap2.layouts.firstOrNull { it.id == id } }
+                ?: snap2.layouts.firstOrNull { it.id == cur.layout.id }
+                ?: snap2.layouts.firstOrNull()
+            if (pick != null) {
+                managerDraft = cur.copy(
+                    layout = pick,
+                    qa = pick.quickActionIds,
+                    isNew = false,
+                    previewingSystemDefault = false,
+                    templateId = null,
+                )
+            }
+        }
+    }
+
     LaunchedEffect(ownerId) {
         state = withContext(Dispatchers.IO) {
             parseDashboardV5(api.getDashboardV5(ownerId ?: ""))
@@ -163,7 +193,7 @@ fun EazyDashboardGrid(
             val cols = surface.columns.coerceAtLeast(1)
             val gap = 8.dp
             val colW = (maxWidth - gap * (cols - 1)) / cols
-            val visible = surface.widgets.filter { it.visible }
+            val visible = (dragPreview ?: surface.widgets).filter { it.visible }
             val maxRow = visible.maxOfOrNull { it.y + it.h } ?: 4
             Box(
                 modifier = Modifier
@@ -172,13 +202,13 @@ fun EazyDashboardGrid(
             ) {
                 visible.forEach { pos ->
                     val spec = snap.widgets.firstOrNull { it.id == pos.id }
-                    val extra = if (dragId == pos.id) dragOffset else Offset.Zero
+                    val extra = if (dragPreview != null) Offset.Zero else if (dragId == pos.id) dragOffset else Offset.Zero
                     val xDp = (colW + gap) * pos.x
                     val yDp = (RowH + gap) * pos.y
                     val w = colW * pos.w + gap * (pos.w - 1).coerceAtLeast(0)
                     val h = RowH * pos.h + gap * (pos.h - 1).coerceAtLeast(0)
                     DashboardWidgetCard(
-                        title = t(spec?.titleKey ?: pos.id, pos.id),
+                        title = dashboardTitleCase(t(spec?.titleKey ?: pos.id, pos.id)),
                         tracking = spec?.trackingRequired == true,
                         customizeLabel = t("creator.dashboard.widget_customize", "Customize"),
                         hideLabel = t("creator.dashboard.hide_widget", "Hide"),
@@ -191,34 +221,55 @@ fun EazyDashboardGrid(
                             }
                             persistLayout(layout.withSurface(surfaceName, surface.copy(widgets = nextWidgets)))
                         },
-                        handleModifier = Modifier.pointerInput(pos.id, colW, cols) {
+                        handleModifier = Modifier.pointerInput(pos.id, colW, cols, layout.id, surfaceName) {
+                            val startWidgets = surface.widgets
                             detectDragGestures(
                                 onDragStart = {
                                     dragId = pos.id
                                     dragOffset = Offset.Zero
+                                    dragOrigin = pos
+                                    dragPreview = null
                                 },
                                 onDrag = { _, amount ->
                                     dragOffset += amount
-                                },
-                                onDragEnd = {
+                                    val origin = dragOrigin ?: pos
                                     val cellW = with(density) { (colW + gap).toPx() }
                                     val cellH = with(density) { (RowH + gap).toPx() }
                                     val dx = (dragOffset.x / cellW).roundToInt()
                                     val dy = (dragOffset.y / cellH).roundToInt()
-                                    dragId = null
-                                    dragOffset = Offset.Zero
-                                    if (dx == 0 && dy == 0) return@detectDragGestures
-                                    val nextWidgets = surface.widgets.map { wdg ->
-                                        if (wdg.id != pos.id) wdg else wdg.copy(
-                                            x = (wdg.x + dx).coerceAtLeast(0).coerceAtMost((cols - wdg.w).coerceAtLeast(0)),
-                                            y = (wdg.y + dy).coerceAtLeast(0),
+                                    val tentative = startWidgets.map { wdg ->
+                                        if (wdg.id != origin.id) wdg else wdg.copy(
+                                            x = (origin.x + dx).coerceAtLeast(0).coerceAtMost((cols - origin.w).coerceAtLeast(0)),
+                                            y = (origin.y + dy).coerceAtLeast(0),
                                         )
                                     }
+                                    dragPreview = resolveWidgetCollisions(tentative, origin.id, cols)
+                                },
+                                onDragEnd = {
+                                    val origin = dragOrigin ?: pos
+                                    val cellW = with(density) { (colW + gap).toPx() }
+                                    val cellH = with(density) { (RowH + gap).toPx() }
+                                    val dx = (dragOffset.x / cellW).roundToInt()
+                                    val dy = (dragOffset.y / cellH).roundToInt()
+                                    val resolved = dragPreview
+                                    dragId = null
+                                    dragOffset = Offset.Zero
+                                    dragPreview = null
+                                    dragOrigin = null
+                                    if (dx == 0 && dy == 0) return@detectDragGestures
+                                    val nextWidgets = resolved ?: startWidgets.map { wdg ->
+                                        if (wdg.id != origin.id) wdg else wdg.copy(
+                                            x = (origin.x + dx).coerceAtLeast(0).coerceAtMost((cols - origin.w).coerceAtLeast(0)),
+                                            y = (origin.y + dy).coerceAtLeast(0),
+                                        )
+                                    }.let { resolveWidgetCollisions(it, origin.id, cols) }
                                     persistLayout(layout.withSurface(surfaceName, surface.copy(widgets = nextWidgets)))
                                 },
                                 onDragCancel = {
                                     dragId = null
                                     dragOffset = Offset.Zero
+                                    dragPreview = null
+                                    dragOrigin = null
                                 },
                             )
                         },
@@ -314,6 +365,28 @@ fun EazyDashboardGrid(
                         state = withContext(Dispatchers.IO) { parseDashboardV5(api.getDashboardV5(oid)) }
                         manager = false
                     }
+                },
+                onRenameLayout = { lay, title ->
+                    val qaArr = JSONArray()
+                    lay.quickActionIds.forEach { qaArr.put(it) }
+                    runLayoutListAction(
+                        JSONObject()
+                            .put("action", "update")
+                            .put("id", lay.id)
+                            .put("version", lay.version)
+                            .put("title", title)
+                            .put("desktop", lay.desktop.toJson())
+                            .put("tablet", lay.tablet.toJson())
+                            .put("mobile", lay.mobile.toJson())
+                            .put("widgetSettings", JSONObject().put("quick-actions", JSONObject().put("visibleIds", qaArr))),
+                        lay.id,
+                    )
+                },
+                onDuplicateLayout = { lay ->
+                    runLayoutListAction(JSONObject().put("action", "duplicate").put("id", lay.id))
+                },
+                onRemoveLayout = { lay ->
+                    runLayoutListAction(JSONObject().put("action", "delete").put("id", lay.id))
                 },
             )
         }
@@ -627,6 +700,9 @@ private fun LayoutManagerSheet(
     onDraftChange: (ManagerDraft) -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit,
+    onRenameLayout: (DashboardLayout, String) -> Unit,
+    onDuplicateLayout: (DashboardLayout) -> Unit,
+    onRemoveLayout: (DashboardLayout) -> Unit,
 ) {
     val qaCatalog = listOf(
         QuickActionSpec("generator", t("creator.overview.action_generator_title", "Design Generator"), Icons.Outlined.AutoAwesome),
@@ -636,6 +712,17 @@ private fun LayoutManagerSheet(
         QuickActionSpec("automations", t("creator.overview.action_automations_title", "Automations"), Icons.Outlined.Bolt),
         QuickActionSpec("research", t("creator.research.nav", "Research"), Icons.Outlined.Search),
     )
+    val widgetIds = linkedSetOf<String>().apply {
+        (draft.layout.desktop.widgets + draft.layout.tablet.widgets + draft.layout.mobile.widgets).forEach { add(it.id) }
+        if (isEmpty()) snap.widgets.forEach { add(it.id) }
+    }.toList()
+    val selectedWidget = draft.selectedWidgetId.takeIf { it in widgetIds }
+        ?: widgetIds.firstOrNull { it == "quick-actions" }
+        ?: widgetIds.firstOrNull().orEmpty()
+    var menuForId by remember { mutableStateOf<String?>(null) }
+    var renameFor by remember { mutableStateOf<DashboardLayout?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    val canRemove = snap.layouts.size > 1
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -649,49 +736,40 @@ private fun LayoutManagerSheet(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(t("creator.dashboard.customize", "Customize dashboard"), color = Color.White, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onDraftChange(draft.copy(mode = "layout")) }) {
-                Text(
-                    t("creator.dashboard.layout_tab", "Dashboard Layout"),
-                    color = if (draft.mode == "layout") Accent else Color.White.copy(alpha = 0.68f),
-                )
-            }
-            TextButton(onClick = { onDraftChange(draft.copy(mode = "settings")) }) {
-                Text(
-                    t("creator.dashboard.widget_settings_tab", "Widget Settings"),
-                    color = if (draft.mode == "settings") Accent else Color.White.copy(alpha = 0.68f),
-                )
-            }
         }
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        ) {
-            items(snap.templates, key = { it.id }) { tpl ->
-                val on = tpl.id == draft.templateId
-                Text(
-                    tpl.title,
-                    color = if (on) Accent else Color.White.copy(alpha = 0.68f),
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .border(1.dp, if (on) Accent else GlassBorder, RoundedCornerShape(999.dp))
-                        .background(if (on) Accent.copy(alpha = 0.16f) else Color.Transparent)
-                        .clickable {
-                            onDraftChange(
-                                draft.copy(
-                                    templateId = tpl.id,
-                                    layout = draft.layout.copy(
-                                        desktop = tpl.desktop,
-                                        tablet = tpl.tablet,
-                                        mobile = tpl.mobile,
+        if (draft.mode == "layout") {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                items(snap.templates, key = { it.id }) { tpl ->
+                    val on = tpl.id == draft.templateId
+                    Text(
+                        tpl.title,
+                        color = if (on) Accent else Color.White.copy(alpha = 0.68f),
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .border(1.dp, if (on) Accent else GlassBorder, RoundedCornerShape(999.dp))
+                            .background(if (on) Accent.copy(alpha = 0.16f) else Color.Transparent)
+                            .clickable {
+                                onDraftChange(
+                                    draft.copy(
+                                        templateId = tpl.id,
+                                        previewingSystemDefault = false,
+                                        layout = draft.layout.copy(
+                                            desktop = tpl.desktop,
+                                            tablet = tpl.tablet,
+                                            mobile = tpl.mobile,
+                                        ),
                                     ),
-                                ),
-                            )
-                        }
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                )
+                                )
+                            }
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                }
             }
         }
         Row(
@@ -701,84 +779,211 @@ private fun LayoutManagerSheet(
         ) {
             Column(
                 modifier = Modifier
-                    .width(160.dp)
+                    .width(168.dp)
                     .fillMaxHeight()
-                    .background(Chrome)
-                    .padding(vertical = 8.dp),
+                    .background(Chrome),
             ) {
-                Text(
-                    t("creator.dashboard.my_layouts", "My layouts"),
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = { onDraftChange(draft.copy(mode = "layout")) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            t("creator.dashboard.layout_tab", "Layout"),
+                            color = if (draft.mode == "layout") Accent else Color.White.copy(alpha = 0.68f),
+                            fontSize = 13.sp,
+                        )
+                    }
+                    TextButton(
+                        onClick = { onDraftChange(draft.copy(mode = "widgets")) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            t("creator.dashboard.widget_settings_tab", "Widgets"),
+                            color = if (draft.mode == "widgets") Accent else Color.White.copy(alpha = 0.68f),
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState()),
                 ) {
-                    snap.layouts.forEach { lay ->
-                        val on = !draft.isNew && lay.id == draft.layout.id
+                    if (draft.mode == "widgets") {
+                        widgetIds.forEach { id ->
+                            val spec = snap.widgets.firstOrNull { it.id == id }
+                            val label = dashboardTitleCase(t(spec?.titleKey ?: id, id))
+                            val on = id == selectedWidget
+                            Text(
+                                label,
+                                color = if (on) Accent else Color.White,
+                                fontSize = 13.sp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onDraftChange(draft.copy(selectedWidgetId = id)) }
+                                    .background(if (on) Accent.copy(alpha = 0.12f) else Color.Transparent)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                            )
+                        }
+                    } else {
                         Text(
-                            lay.title + if (lay.id == snap.activeLayoutId) " · " + t("creator.dashboard.active", "Active") else "",
-                            color = if (on) Accent else Color.White,
+                            t("creator.dashboard.system_layouts", "System"),
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                        Text(
+                            t("creator.dashboard.default_layout", "Default"),
+                            color = if (draft.previewingSystemDefault) Accent else Color.White,
                             fontSize = 13.sp,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
+                                    val seed = snap.templates.firstOrNull { it.id == "mission-control" }
+                                        ?: snap.templates.firstOrNull()
+                                    if (seed == null) return@clickable
                                     onDraftChange(
-                                        ManagerDraft(
-                                            layout = lay,
-                                            qa = lay.quickActionIds,
-                                            templateId = null,
-                                            isNew = false,
-                                            mode = draft.mode,
+                                        draft.copy(
+                                            templateId = seed.id,
+                                            previewingSystemDefault = true,
+                                            layout = draft.layout.copy(
+                                                desktop = seed.desktop,
+                                                tablet = seed.tablet,
+                                                mobile = seed.mobile,
+                                            ),
                                         ),
                                     )
                                 }
-                                .background(if (on) Accent.copy(alpha = 0.12f) else Color.Transparent)
+                                .background(if (draft.previewingSystemDefault) Accent.copy(alpha = 0.12f) else Color.Transparent)
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                         )
-                    }
-                    if (draft.isNew) {
                         Text(
-                            draft.layout.title,
-                            color = Accent,
-                            fontSize = 13.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Accent.copy(alpha = 0.12f))
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            t("creator.dashboard.my_layouts", "My layouts"),
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         )
+                        snap.layouts.forEach { lay ->
+                            val on = !draft.isNew && !draft.previewingSystemDefault && lay.id == draft.layout.id
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(if (on) Accent.copy(alpha = 0.12f) else Color.Transparent),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    lay.title + if (lay.id == snap.activeLayoutId) " · " + t("creator.dashboard.active", "Active") else "",
+                                    color = if (on) Accent else Color.White,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            onDraftChange(
+                                                ManagerDraft(
+                                                    layout = lay,
+                                                    qa = lay.quickActionIds,
+                                                    templateId = null,
+                                                    isNew = false,
+                                                    mode = draft.mode,
+                                                    selectedWidgetId = draft.selectedWidgetId,
+                                                    previewingSystemDefault = false,
+                                                ),
+                                            )
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                )
+                                Box {
+                                    IconButton(
+                                        onClick = { menuForId = lay.id },
+                                        modifier = Modifier.size(32.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.MoreHoriz,
+                                            contentDescription = t("creator.dashboard.layout_menu", "Layout menu"),
+                                            tint = Color.White.copy(alpha = 0.7f),
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = menuForId == lay.id,
+                                        onDismissRequest = { menuForId = null },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(t("creator.dashboard.edit", "Edit"), color = Color.White) },
+                                            onClick = {
+                                                menuForId = null
+                                                renameFor = lay
+                                                renameText = lay.title
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(t("creator.dashboard.duplicate", "Duplicate"), color = Color.White) },
+                                            onClick = {
+                                                menuForId = null
+                                                onDuplicateLayout(lay)
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            enabled = canRemove,
+                                            text = { Text(t("creator.dashboard.remove", "Remove"), color = Color.White) },
+                                            onClick = {
+                                                menuForId = null
+                                                if (canRemove) onRemoveLayout(lay)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (draft.isNew) {
+                            Text(
+                                draft.layout.title,
+                                color = Accent,
+                                fontSize = 13.sp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Accent.copy(alpha = 0.12f))
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                            )
+                        }
                     }
                 }
-                TextButton(
-                    onClick = {
-                        val seed = snap.templates.firstOrNull { it.id == (draft.templateId ?: "mission-control") }
-                            ?: snap.templates.firstOrNull()
-                        if (seed == null) return@TextButton
-                        onDraftChange(
-                            ManagerDraft(
-                                layout = DashboardLayout(
-                                    id = "__draft__",
-                                    title = t("creator.dashboard.new_layout", "New layout"),
-                                    description = seed.description,
-                                    version = 1,
-                                    desktop = seed.desktop,
-                                    tablet = seed.tablet,
-                                    mobile = seed.mobile,
-                                    quickActionIds = draft.qa,
+                if (draft.mode == "layout") {
+                    TextButton(
+                        onClick = {
+                            val seed = snap.templates.firstOrNull { it.id == (draft.templateId ?: "mission-control") }
+                                ?: snap.templates.firstOrNull()
+                            if (seed == null) return@TextButton
+                            onDraftChange(
+                                ManagerDraft(
+                                    layout = DashboardLayout(
+                                        id = "__draft__",
+                                        title = t("creator.dashboard.new_layout", "New layout"),
+                                        description = seed.description,
+                                        version = 1,
+                                        desktop = seed.desktop,
+                                        tablet = seed.tablet,
+                                        mobile = seed.mobile,
+                                        quickActionIds = draft.qa,
+                                    ),
+                                    qa = draft.qa,
+                                    templateId = seed.id,
+                                    isNew = true,
+                                    mode = draft.mode,
+                                    selectedWidgetId = draft.selectedWidgetId,
+                                    previewingSystemDefault = false,
                                 ),
-                                qa = draft.qa,
-                                templateId = seed.id,
-                                isNew = true,
-                                mode = draft.mode,
-                            ),
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("+ " + t("creator.dashboard.new_layout", "New layout"), color = Accent)
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("+ " + t("creator.dashboard.new_layout", "New layout"), color = Accent)
+                    }
                 }
             }
             Column(
@@ -788,19 +993,37 @@ private fun LayoutManagerSheet(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
             ) {
-                if (draft.mode == "settings") {
-                    Text(t("creator.dashboard.quick_action_items", "Quick Actions items"), color = Color.White, fontSize = 12.sp)
-                    Spacer(Modifier.height(8.dp))
-                    QuickActionCarousel(
-                        items = qaCatalog,
-                        selectedIds = draft.qa,
-                        onToggle = { id ->
-                            val next = if (id in draft.qa) draft.qa.filter { it != id } else (draft.qa + id).distinct()
-                            onDraftChange(draft.copy(qa = next))
-                        },
-                    )
+                if (draft.mode == "widgets") {
+                    if (selectedWidget == "quick-actions") {
+                        Text(t("creator.dashboard.quick_action_items", "Quick Actions items"), color = Color.White, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        QuickActionCarousel(
+                            items = qaCatalog,
+                            selectedIds = draft.qa,
+                            onToggle = { id ->
+                                val next = if (id in draft.qa) draft.qa.filter { it != id } else (draft.qa + id).distinct()
+                                onDraftChange(draft.copy(qa = next))
+                            },
+                        )
+                    } else {
+                        val spec = snap.widgets.firstOrNull { it.id == selectedWidget }
+                        Text(
+                            dashboardTitleCase(t(spec?.titleKey ?: selectedWidget, selectedWidget)),
+                            color = Color.White,
+                            fontSize = 12.sp,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            t("creator.dashboard.widget_settings_placeholder", "Settings for this widget come later."),
+                            color = Color.White.copy(alpha = 0.68f),
+                            fontSize = 13.sp,
+                        )
+                    }
                 } else {
-                    Text(draft.layout.title, color = Color.White)
+                    Text(
+                        if (draft.previewingSystemDefault) t("creator.dashboard.default_layout", "Default") else draft.layout.title,
+                        color = Color.White,
+                    )
                     if (draft.layout.description.isNotBlank()) {
                         Text(draft.layout.description, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
                     }
@@ -823,6 +1046,37 @@ private fun LayoutManagerSheet(
                 Text(t("creator.common.save", "Save"))
             }
         }
+    }
+    val renameTarget = renameFor
+    if (renameTarget != null) {
+        AlertDialog(
+            onDismissRequest = { renameFor = null },
+            title = { Text(t("creator.dashboard.edit", "Edit")) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text(t("creator.dashboard.layout_title", "Layout title")) },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val next = renameText.trim()
+                        renameFor = null
+                        if (next.isNotEmpty()) onRenameLayout(renameTarget, next)
+                    },
+                ) {
+                    Text(t("creator.common.save", "Save"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameFor = null }) {
+                    Text(t("creator.common.cancel", "Cancel"))
+                }
+            },
+        )
     }
 }
 

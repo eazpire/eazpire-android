@@ -1,5 +1,6 @@
 package com.eazpire.creator.ui.creator
 
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -205,3 +206,88 @@ fun DashboardSurface.toJson(): JSONObject {
     }
     return JSONObject().put("columns", columns).put("widgets", arr)
 }
+
+fun widgetsOverlap(a: DashboardWidgetPos, b: DashboardWidgetPos): Boolean {
+    if (!a.visible || !b.visible || a.id == b.id) return false
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
+fun compactWidgetsVertical(
+    widgets: List<DashboardWidgetPos>,
+    columns: Int,
+    freezeId: String? = null,
+): List<DashboardWidgetPos> {
+    val visible = widgets.filter { it.visible }.map { it.copy() }
+    val hidden = widgets.filter { !it.visible }.map { it.copy() }
+    val frozen = if (freezeId != null) visible.filter { it.id == freezeId } else emptyList()
+    val movable = (if (freezeId != null) visible.filter { it.id != freezeId } else visible)
+        .sortedWith(compareBy<DashboardWidgetPos> { it.y }.thenBy { it.x })
+    val placed = frozen.map { item ->
+        item.copy(
+            x = item.x.coerceIn(0, (columns - item.w).coerceAtLeast(0)),
+            y = item.y.coerceAtLeast(0),
+        )
+    }.toMutableList()
+    for (raw in movable) {
+        var y = 0
+        var placedItem = false
+        while (!placedItem) {
+            val probe = raw.copy(
+                x = raw.x.coerceIn(0, (columns - raw.w).coerceAtLeast(0)),
+                y = y,
+            )
+            if (placed.none { widgetsOverlap(probe, it) }) {
+                placed.add(probe)
+                placedItem = true
+            } else {
+                y += 1
+                if (y > 200) {
+                    placed.add(probe.copy(y = y))
+                    placedItem = true
+                }
+            }
+        }
+    }
+    return placed + hidden
+}
+
+fun resolveWidgetCollisions(
+    widgets: List<DashboardWidgetPos>,
+    movedId: String,
+    columns: Int,
+): List<DashboardWidgetPos> {
+    val items = widgets.map { it.copy() }.toMutableList()
+    val idx = items.indexOfFirst { it.id == movedId }
+    if (idx < 0) return items
+    val moved = items[idx]
+    items[idx] = moved.copy(
+        x = moved.x.coerceIn(0, (columns - moved.w).coerceAtLeast(0)),
+        y = moved.y.coerceAtLeast(0),
+    )
+    var guard = 0
+    var changed = true
+    while (changed && guard++ < 200) {
+        changed = false
+        for (i in items.indices) {
+            val item = items[i]
+            if (item.id == movedId || !item.visible) continue
+            val blockers = items.filter { widgetsOverlap(item, it) }
+            if (blockers.isNotEmpty()) {
+                val nextY = blockers.maxOf { it.y + it.h }
+                if (item.y != nextY) {
+                    items[i] = item.copy(y = nextY)
+                    changed = true
+                }
+            }
+        }
+    }
+    return compactWidgetsVertical(items, columns, movedId)
+}
+
+fun dashboardTitleCase(raw: String): String =
+    raw.split(Regex("\\s+")).joinToString(" ") { word ->
+        if (word.isEmpty()) word
+        else word.replaceFirstChar { ch ->
+            if (ch.isLowerCase()) ch.titlecase(Locale.getDefault()) else ch.toString()
+        }
+    }
