@@ -457,9 +457,7 @@ fun EazyResearchScreen(
     val filterPanel: @Composable () -> Unit = {
         if (researchTab == "trends") {
             TrendsFilterPanel(translationStore = translationStore, trends = trendsState)
-            return@filterPanel
-        }
-        ResearchFilterPanel(
+        } else ResearchFilterPanel(
             translationStore = translationStore,
             query = query,
             onQuery = { query = it },
