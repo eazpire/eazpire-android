@@ -1,7 +1,6 @@
 package com.eazpire.creator.ui.creator
 
 import android.graphics.Bitmap
-import android.graphics.Rect
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -36,21 +35,27 @@ object ResearchPrintArea {
     const val GARMENT_THRESHOLD = 48.0
     const val MIN_ARTWORK_FRAC = 0.0035
 
-    fun rect(width: Int, height: Int): Rect? {
+    /** JVM-safe box (android.graphics.Rect fields are stubs in unit tests). */
+    data class PixelBox(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        fun width(): Int = right - left
+        fun height(): Int = bottom - top
+    }
+
+    fun rect(width: Int, height: Int): PixelBox? {
         if (width < 8 || height < 8) return null
         val x = (width * X).roundToInt().coerceAtLeast(0)
         val y = (height * Y).roundToInt().coerceAtLeast(0)
         val w = (width * W).roundToInt().coerceAtLeast(2)
         val h = (height * H).roundToInt().coerceAtLeast(2)
         if (x + w > width || y + h > height) return null
-        return Rect(x, y, x + w, y + h)
+        return PixelBox(x, y, x + w, y + h)
     }
 
     /**
      * ARGB packed pixels (same order as Bitmap.getPixels).
      * Keep in sync with printAreaCrop.js detectArtworkRect.
      */
-    fun detectArtworkRect(width: Int, height: Int, argb: IntArray): Rect? {
+    fun detectArtworkRect(width: Int, height: Int, argb: IntArray): PixelBox? {
         if (width < 8 || height < 8 || argb.size < width * height) return null
         val x0 = (width * EDGE_MARGIN).roundToInt()
         val x1 = (width * (1f - EDGE_MARGIN)).roundToInt()
@@ -123,7 +128,7 @@ object ResearchPrintArea {
         val y = (minY - padY).coerceIn(0, height - 2)
         val w = (bw + padX * 2).coerceIn(2, width - x)
         val h = (bh + padY * 2).coerceIn(2, height - y)
-        return Rect(x, y, x + w, y + h)
+        return PixelBox(x, y, x + w, y + h)
     }
 
     fun crop(src: Bitmap): Bitmap {
@@ -134,6 +139,28 @@ object ResearchPrintArea {
         } catch (_: Exception) {
             src
         }
+    }
+
+    /** Normalized 0..1 crop for the influence overlay (artwork detect, else chest fallback). */
+    fun defaultCropRect(src: Bitmap): CropRect {
+        val r = detectFromBitmap(src) ?: rect(src.width, src.height) ?: return CropRect.FULL
+        return fromPixelBox(r, src.width, src.height)
+    }
+
+    fun defaultCropRect(width: Int, height: Int, argb: IntArray): CropRect {
+        val r = detectArtworkRect(width, height, argb) ?: rect(width, height) ?: return CropRect.FULL
+        return fromPixelBox(r, width, height)
+    }
+
+    private fun fromPixelBox(r: PixelBox, width: Int, height: Int): CropRect {
+        val iw = width.toFloat().coerceAtLeast(1f)
+        val ih = height.toFloat().coerceAtLeast(1f)
+        return CropRect(
+            left = (r.left / iw).coerceIn(0f, 1f),
+            top = (r.top / ih).coerceIn(0f, 1f),
+            width = (r.width() / iw).coerceIn(0.02f, 1f),
+            height = (r.height() / ih).coerceIn(0.02f, 1f),
+        )
     }
 
     internal fun makeSyntheticShirtArgb(width: Int, height: Int, dx: Int, dy: Int, dw: Int, dh: Int): IntArray {
@@ -148,7 +175,7 @@ object ResearchPrintArea {
         return pixels
     }
 
-    private fun detectFromBitmap(src: Bitmap): Rect? {
+    private fun detectFromBitmap(src: Bitmap): PixelBox? {
         val maxW = 160
         val scale = min(1f, maxW / src.width.toFloat())
         val sw = max(8, (src.width * scale).roundToInt())
@@ -168,7 +195,7 @@ object ResearchPrintArea {
         val y = (r.top * invY).roundToInt().coerceIn(0, src.height - 2)
         val w = (r.width() * invX).roundToInt().coerceIn(2, src.width - x)
         val h = (r.height() * invY).roundToInt().coerceIn(2, src.height - y)
-        return Rect(x, y, x + w, y + h)
+        return PixelBox(x, y, x + w, y + h)
     }
 
     private fun median(values: List<Int>): Int {

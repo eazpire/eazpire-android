@@ -48,4 +48,23 @@ class ResearchPrintAreaTest {
         val pixels = ResearchPrintArea.makeSyntheticShirtArgb(200, 200, 0, 0, 0, 0)
         assertNull(ResearchPrintArea.detectArtworkRect(200, 200, pixels))
     }
+
+    @Test
+    fun defaultCropRectUsesArtworkThenChestFallback() {
+        val w = 200
+        val h = 200
+        val ink = ResearchPrintArea.makeSyntheticShirtArgb(w, h, 70, 45, 60, 100)
+        val detected = ResearchPrintArea.defaultCropRect(w, h, ink)
+        assertTrue(detected.left < 0.4f)
+        assertTrue(detected.top < 0.3f)
+        assertTrue(detected.left + detected.width > 0.6f)
+        assertTrue(detected.top + detected.height > 0.7f)
+
+        val uniform = ResearchPrintArea.makeSyntheticShirtArgb(w, h, 0, 0, 0, 0)
+        val fallback = ResearchPrintArea.defaultCropRect(w, h, uniform)
+        assertEquals(ResearchPrintArea.X, fallback.left, 0.02f)
+        assertEquals(ResearchPrintArea.Y, fallback.top, 0.02f)
+        assertEquals(ResearchPrintArea.W, fallback.width, 0.02f)
+        assertEquals(ResearchPrintArea.H, fallback.height, 0.02f)
+    }
 }

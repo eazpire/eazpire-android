@@ -33,8 +33,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -48,6 +50,7 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.i18n.TranslationStore
 import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
+import kotlin.math.min
 
 data class ResearchInfluenceResult(
     val dataUrl: String,
@@ -70,8 +73,10 @@ fun ResearchInfluenceSheet(
     var view by remember { mutableStateOf("cropped") }
     var genMode by remember { mutableStateOf("i2i") }
     var originalBmp by remember { mutableStateOf<Bitmap?>(null) }
-    var croppedBmp by remember { mutableStateOf<Bitmap?>(null) }
+    var defaultCrop by remember { mutableStateOf(CropRect.FULL) }
+    var cropRect by remember { mutableStateOf(CropRect.FULL) }
     var loadFailed by remember { mutableStateOf(false) }
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(handoff.imageUrl) {
         if (handoff.imageUrl.isBlank()) {
@@ -80,12 +85,32 @@ fun ResearchInfluenceSheet(
         }
         val bmp = loadResearchBitmap(context, handoff.imageUrl)
         originalBmp = bmp
-        croppedBmp = if (bmp != null) ResearchPrintArea.crop(bmp) else null
         loadFailed = bmp == null
-        if (bmp != null && croppedBmp === bmp) view = "original"
+        if (bmp != null) {
+            val def = ResearchPrintArea.defaultCropRect(bmp)
+            defaultCrop = def
+            if (ResearchPrintArea.rect(bmp.width, bmp.height) == null) {
+                view = "original"
+                cropRect = CropRect.FULL
+            } else {
+                cropRect = if (view == "original") CropRect.FULL else def
+            }
+        }
     }
 
-    val shown = if (view == "original") originalBmp else (croppedBmp ?: originalBmp)
+    val imageDisplayRect = remember(containerSize, originalBmp?.width, originalBmp?.height) {
+        val bmp = originalBmp
+        if (bmp != null && containerSize.width > 0 && containerSize.height > 0) {
+            InfluenceCropMath.containedFit(
+                containerSize.width,
+                containerSize.height,
+                bmp.width,
+                bmp.height,
+            ).toComposeRect()
+        } else {
+            null
+        }
+    }
 
     Dialog(
         onDismissRequest = onCancel,
@@ -132,23 +157,35 @@ fun ResearchInfluenceSheet(
                     .fillMaxWidth()
                     .heightIn(min = 240.dp, max = 420.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1B1430)),
+                    .background(Color(0xFF1B1430))
+                    .onSizeChanged { containerSize = it },
                 contentAlignment = Alignment.Center,
             ) {
                 when {
-                    shown != null -> Image(
-                        bitmap = shown.asImageBitmap(),
+                    originalBmp != null -> Image(
+                        bitmap = originalBmp!!.asImageBitmap(),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                     )
                     !loadFailed && handoff.imageUrl.isNotBlank() -> AsyncImage(
                         model = handoff.imageUrl,
                         contentDescription = null,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                     )
                     else -> Text(tr("creator.research.unknown", "Unknown"), color = Color.White.copy(alpha = 0.6f))
+                }
+                if (imageDisplayRect != null) {
+                    InfluenceCropOverlay(
+                        imageDisplayRect = imageDisplayRect,
+                        cropRect = cropRect,
+                        onCropRectChange = { cropRect = it },
+                        frameDescription = tr(
+                            "creator.reference_influence.crop_frame",
+                            "Crop frame. Drag to move, or use the orange handles to resize.",
+                        ),
+                    )
                 }
                 if (genMode == "t2i") {
                     Box(
@@ -175,12 +212,18 @@ fun ResearchInfluenceSheet(
                     SegBtn(
                         label = tr("creator.generator.view_original", "Original"),
                         on = view == "original",
-                        onClick = { view = "original" },
+                        onClick = {
+                            view = "original"
+                            cropRect = CropRect.FULL
+                        },
                     )
                     SegBtn(
                         label = tr("creator.generator.view_cropped", "Cropped"),
                         on = view == "cropped",
-                        onClick = { view = "cropped" },
+                        onClick = {
+                            view = "cropped"
+                            cropRect = defaultCrop
+                        },
                     )
                 }
             }
@@ -195,7 +238,7 @@ fun ResearchInfluenceSheet(
                 TextButton(
                     onClick = {
                         val origUrl = originalBmp?.toDataUrl() ?: handoff.imageUrl
-                        val cropUrl = croppedBmp?.toDataUrl() ?: origUrl
+                        val cropUrl = originalBmp?.croppedTo(cropRect)?.toDataUrl() ?: origUrl
                         val shownUrl = if (view == "original") origUrl else cropUrl
                         onApply(
                             ResearchInfluenceResult(
@@ -256,4 +299,16 @@ private fun Bitmap.toDataUrl(): String {
     compress(Bitmap.CompressFormat.PNG, 90, out)
     val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     return "data:image/png;base64,$b64"
+}
+
+private fun Bitmap.croppedTo(rect: CropRect): Bitmap {
+    val px = rect.toPixelRect(width, height)
+    val w = (px.right - px.left).coerceAtLeast(2).coerceAtMost(this.width - px.left)
+    val h = (px.bottom - px.top).coerceAtLeast(2).coerceAtMost(this.height - px.top)
+    if (px.left <= 0 && px.top <= 0 && w >= this.width && h >= this.height) return this
+    return try {
+        Bitmap.createBitmap(this, px.left, px.top, min(w, this.width - px.left), min(h, this.height - px.top))
+    } catch (_: Exception) {
+        this
+    }
 }
