@@ -543,6 +543,20 @@ class CreatorApi(
         mapOf("owner_id" to ownerId, "days" to days.toString())
     )
 
+    /** GET ?op=get-dashboard-v5&owner_id=xxx */
+    suspend fun getDashboardV5(ownerId: String): JSONObject = call(
+        "get-dashboard-v5",
+        mapOf("owner_id" to ownerId)
+    )
+
+    /** POST ?op=mutate-dashboard-layout */
+    suspend fun mutateDashboardLayout(ownerId: String, body: JSONObject): JSONObject =
+        postDispatchJson(
+            op = "mutate-dashboard-layout",
+            queryParams = mapOf("owner_id" to ownerId),
+            body = body.put("owner_id", ownerId)
+        )
+
     /** GET ?op=get-onboarding-progress&owner_id=xxx – Creator Journey todos */
     suspend fun getOnboardingProgress(ownerId: String): JSONObject = call(
         "get-onboarding-progress",

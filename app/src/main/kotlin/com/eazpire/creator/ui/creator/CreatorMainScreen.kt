@@ -433,6 +433,7 @@ fun CreatorMainScreen(
                                 currentScreen = 4
                             },
                             onNavigateToAutomations = { currentScreen = 5 },
+                            onNavigateToResearch = { currentScreen = 1 },
                             maxHeight = contentMaxHeight,
                             modifier = Modifier.fillMaxSize()
                         )
