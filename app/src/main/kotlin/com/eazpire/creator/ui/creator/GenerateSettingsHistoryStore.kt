@@ -1,20 +1,8 @@
 package com.eazpire.creator.ui.creator
 
-import android.content.Context
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.first
+import com.eazpire.creator.api.CreatorApi
 import org.json.JSONArray
 import org.json.JSONObject
-
-private val Context.genSettingsHistoryStore: DataStore<Preferences> by preferencesDataStore(
-    name = "eaz_gen_settings_history_v1"
-)
-
-private val BLOB_KEY = stringPreferencesKey("entries")
 
 data class GenerateSettingsHistoryEntry(
     val id: String,
@@ -22,6 +10,7 @@ data class GenerateSettingsHistoryEntry(
     val prompt: String,
     val designType: String,
     val targetProduct: String,
+    val generatorMode: String,
     val ratio: String,
     val contentType: String,
     val styles: List<String>,
@@ -29,6 +18,7 @@ data class GenerateSettingsHistoryEntry(
     val backgroundTransparent: Boolean,
     val languageMode: String,
     val languageCode: String,
+    val origin: String,
     val refs: List<RefImage>,
 ) {
     fun label(): String {
@@ -39,21 +29,43 @@ data class GenerateSettingsHistoryEntry(
 }
 
 object GenerateSettingsHistoryStore {
-    private const val MAX = 12
+    private const val MAX = 16
+    private var cacheOwner: String = ""
+    private var cache: List<GenerateSettingsHistoryEntry> = emptyList()
 
-    suspend fun list(context: Context): List<GenerateSettingsHistoryEntry> {
-        val raw = context.applicationContext.genSettingsHistoryStore.data.first()[BLOB_KEY].orEmpty()
-        if (raw.isBlank()) return emptyList()
+    fun cached(ownerId: String): List<GenerateSettingsHistoryEntry> {
+        return if (ownerId.isNotBlank() && ownerId == cacheOwner) cache else emptyList()
+    }
+
+    suspend fun list(api: CreatorApi, ownerId: String): List<GenerateSettingsHistoryEntry> {
+        if (ownerId.isBlank()) {
+            cacheOwner = ""
+            cache = emptyList()
+            return emptyList()
+        }
         return try {
-            val arr = JSONArray(raw)
-            (0 until arr.length()).mapNotNull { i -> parse(arr.optJSONObject(i)) }
+            val res = api.listGenerateSettingsHistory(ownerId, MAX)
+            if (!res.optBoolean("ok", false)) {
+                if (res.optString("error") == "unauthorized") {
+                    cacheOwner = ownerId
+                    cache = emptyList()
+                    return emptyList()
+                }
+                return cached(ownerId)
+            }
+            val arr = res.optJSONArray("items") ?: JSONArray()
+            val items = (0 until arr.length()).mapNotNull { i -> parse(arr.optJSONObject(i)) }
+            cacheOwner = ownerId
+            cache = items
+            items
         } catch (_: Exception) {
-            emptyList()
+            cached(ownerId)
         }
     }
 
     suspend fun push(
-        context: Context,
+        api: CreatorApi,
+        ownerId: String,
         prompt: String,
         designType: String,
         targetProduct: String,
@@ -65,39 +77,53 @@ object GenerateSettingsHistoryStore {
         languageMode: String,
         languageCode: String,
         refs: List<RefImage>,
+        generatorMode: String = "design",
+        origin: String = "android",
     ) {
+        if (ownerId.isBlank()) return
         val slimRefs = JSONArray()
-        var used = 0
         refs.take(4).forEach { r ->
-            var url = r.dataUrl
-            if (url.isNotBlank() && used + url.length > 400_000) url = ""
-            used += url.length
+            val url = slimRefUrl(r.dataUrl)
             slimRefs.put(
                 JSONObject()
                     .put("url", url)
                     .put("similarity", r.similarity.toDouble())
             )
         }
-        val item = JSONObject()
-            .put("id", "h_${System.currentTimeMillis()}_${(Math.random() * 1_000_000).toInt()}")
-            .put("ts", System.currentTimeMillis())
+        val language = JSONObject().put("mode", languageMode)
+        if (languageCode.isNotBlank()) language.put("language", languageCode)
+        val body = JSONObject()
             .put("prompt", prompt.trim())
             .put("designType", designType)
             .put("targetProduct", targetProduct)
+            .put("generatorMode", generatorMode)
             .put("ratio", ratio)
             .put("contentType", contentType)
             .put("styles", JSONArray(styles.take(12)))
             .put("designColors", JSONArray(designColors.take(12)))
-            .put("backgroundTransparent", backgroundTransparent)
-            .put("languageMode", languageMode)
-            .put("languageCode", languageCode)
+            .put("background", JSONObject().put("mode", if (backgroundTransparent) "transparent" else "solid"))
+            .put("language", language)
+            .put("origin", origin)
             .put("refs", slimRefs)
-        val current = list(context)
-        val next = JSONArray().put(item)
-        current.take(MAX - 1).forEach { next.put(it.toJson()) }
-        context.applicationContext.genSettingsHistoryStore.edit {
-            it[BLOB_KEY] = next.toString()
+        try {
+            val res = api.pushGenerateSettingsHistory(ownerId, body)
+            val saved = if (res.optBoolean("ok", false)) parse(res.optJSONObject("item")) else null
+            if (saved != null) {
+                cacheOwner = ownerId
+                cache = listOf(saved) + cache.filter { it.id != saved.id }.take(MAX - 1)
+            }
+        } catch (_: Exception) {
         }
+    }
+
+    private fun slimRefUrl(raw: String): String {
+        val url = raw.trim()
+        if (url.isBlank()) return ""
+        val lower = url.lowercase()
+        if (lower.startsWith("data:") || lower.startsWith("blob:")) return ""
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) return ""
+        if (url.length > 2048) return ""
+        return url
     }
 
     private fun parse(o: JSONObject?): GenerateSettingsHistoryEntry? {
@@ -113,41 +139,24 @@ object GenerateSettingsHistoryStore {
             val a = o.optJSONArray(key) ?: return emptyList()
             return (0 until a.length()).mapNotNull { i -> a.optString(i).takeIf { it.isNotBlank() } }
         }
+        val language = o.optJSONObject("language")
+        val background = o.optJSONObject("background")
         return GenerateSettingsHistoryEntry(
             id = o.optString("id"),
             ts = o.optLong("ts"),
             prompt = o.optString("prompt"),
             designType = o.optString("designType", "classic"),
             targetProduct = o.optString("targetProduct", "all"),
+            generatorMode = o.optString("generatorMode", "design"),
             ratio = o.optString("ratio", "portrait"),
             contentType = o.optString("contentType", "design-text"),
             styles = strList("styles"),
             designColors = strList("designColors"),
-            backgroundTransparent = o.optBoolean("backgroundTransparent", true),
-            languageMode = o.optString("languageMode", "as-design"),
-            languageCode = o.optString("languageCode"),
+            backgroundTransparent = background == null || background.optString("mode", "transparent") != "solid",
+            languageMode = language?.optString("mode", "as-design") ?: o.optString("languageMode", "as-design"),
+            languageCode = language?.optString("language", "") ?: o.optString("languageCode"),
+            origin = o.optString("origin"),
             refs = refs,
         )
-    }
-
-    private fun GenerateSettingsHistoryEntry.toJson(): JSONObject {
-        val refsArr = JSONArray()
-        refs.forEach { r ->
-            refsArr.put(JSONObject().put("url", r.dataUrl).put("similarity", r.similarity.toDouble()))
-        }
-        return JSONObject()
-            .put("id", id)
-            .put("ts", ts)
-            .put("prompt", prompt)
-            .put("designType", designType)
-            .put("targetProduct", targetProduct)
-            .put("ratio", ratio)
-            .put("contentType", contentType)
-            .put("styles", JSONArray(styles))
-            .put("designColors", JSONArray(designColors))
-            .put("backgroundTransparent", backgroundTransparent)
-            .put("languageMode", languageMode)
-            .put("languageCode", languageCode)
-            .put("refs", refsArr)
     }
 }

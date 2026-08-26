@@ -2797,6 +2797,26 @@ class CreatorApi(
         return postJsonBodyOp("discard-generated-job", body, mapOf("owner_id" to ownerId))
     }
 
+    /** POST ?op=generate-settings-history-push */
+    suspend fun pushGenerateSettingsHistory(ownerId: String, snapshot: JSONObject): JSONObject {
+        val body = JSONObject(snapshot.toString()).put("owner_id", ownerId)
+        return postJsonBodyOp(
+            "generate-settings-history-push",
+            body,
+            mapOf("owner_id" to ownerId),
+        )
+    }
+
+    /** GET ?op=generate-settings-history-list */
+    suspend fun listGenerateSettingsHistory(ownerId: String, limit: Int = 16): JSONObject = call(
+        "generate-settings-history-list",
+        mapOf(
+            "owner_id" to ownerId,
+            "logged_in_customer_id" to ownerId,
+            "limit" to limit.coerceIn(1, 20).toString(),
+        )
+    )
+
     /** GET ?op=list-jobs&owner_id=xxx&limit=20 → { ok, items: [...] } */
     suspend fun listJobs(ownerId: String, limit: Int = 20): JSONObject = call(
         "list-jobs",

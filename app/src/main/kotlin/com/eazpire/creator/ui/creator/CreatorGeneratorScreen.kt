@@ -678,7 +678,8 @@ fun CreatorGeneratorScreen(
             var pendingDockId: String? = null
             try {
                 GenerateSettingsHistoryStore.push(
-                    context = context,
+                    api = api,
+                    ownerId = ownerId,
                     prompt = pTrim,
                     designType = designType,
                     targetProduct = targetProduct,
@@ -690,6 +691,7 @@ fun CreatorGeneratorScreen(
                     languageMode = languageState.mode,
                     languageCode = languageState.langCode,
                     refs = selectedImages,
+                    origin = "android"
                 )
                 pendingDockId = GenerateLiveDockStore.attachPending(pTrim)
                 ShopSessionGuard.refreshAccessTokenIfNeeded(context, tokenStore)
@@ -800,7 +802,7 @@ fun CreatorGeneratorScreen(
                 value = translationStore.t("creator.generator.history_pick", "Recent"),
                 onClick = {
                     scope.launch {
-                        historyItems = GenerateSettingsHistoryStore.list(context)
+                        historyItems = GenerateSettingsHistoryStore.list(api, ownerId)
                         historyOpen = true
                     }
                 }
