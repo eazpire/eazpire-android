@@ -104,13 +104,17 @@ private const val WATCH_PREFS = "eazy-research"
 private const val WATCH_KEY = "eazy-research-watched"
 private const val FILTERS_COLLAPSE_KEY = "eazy-research-filters-collapsed"
 private const val FILTER_FOLDS_KEY = "eazy-research-filter-folds"
-private val FILTER_FOLD_DEFAULTS = mapOf(
+internal val FILTER_FOLD_DEFAULTS = mapOf(
     "topics" to true,
     "audience" to false,
     "custom_design" to false,
     "design_type" to false,
-            "language" to false,
+    "language" to false,
     "opportunity" to false,
+    "trends_topics" to true,
+    "trends_type" to false,
+    "trends_time" to false,
+    "trends_volume" to false,
 )
 
 private data class ResearchProduct(
@@ -208,6 +212,7 @@ fun EazyResearchScreen(
     var selectedAudiences by remember { mutableStateOf(setOf<String>()) }
     var selectedOpportunity by remember { mutableStateOf(setOf<String>()) }
     var researchTab by remember { mutableStateOf("ideas") }
+    val trendsState = remember { TrendsUiState() }
     var sort by remember { mutableStateOf("review_growth") }
     var sortDir by remember { mutableStateOf("desc") }
     var view by remember { mutableStateOf("opportunities") }
@@ -450,6 +455,10 @@ fun EazyResearchScreen(
     }
 
     val filterPanel: @Composable () -> Unit = {
+        if (researchTab == "trends") {
+            TrendsFilterPanel(translationStore = translationStore, trends = trendsState)
+            return@filterPanel
+        }
         ResearchFilterPanel(
             translationStore = translationStore,
             query = query,
@@ -525,8 +534,54 @@ fun EazyResearchScreen(
             .heightIn(max = cap),
     ) {
         val compact = maxWidth < 600.dp
-        Row(Modifier.fillMaxSize()) {
-            if (!compact && researchTab == "ideas") {
+        Column(Modifier.fillMaxSize()) {
+            ResearchPageHeader(
+                selected = researchTab,
+                translationStore = translationStore,
+                onSelect = { researchTab = it },
+            ) {
+                if (researchTab == "trends") {
+                    TrendsSearchCluster(
+                        trends = trendsState,
+                        translationStore = translationStore,
+                        loggedIn = tokenStore.isLoggedIn(),
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    ResearchAnalyzeCluster(
+                        translationStore = translationStore,
+                        query = query,
+                        onQuery = { query = it },
+                        analyzeEnabled = tokenStore.isLoggedIn() && !analyzing,
+                        analyzing = analyzing,
+                        onAnalyze = {
+                            analyzing = true
+                            products = emptyList()
+                            searchId = ""
+                            searchEmptyReason = "running"
+                            searchAmazonReturned = 0
+                            selectedNiches = emptySet()
+                            designTypes = emptySet()
+                            languages = emptySet()
+                            personalizations = emptySet()
+                            selectedAudiences = emptySet()
+                            view = "opportunities"
+                            pendingAnalyze = true
+                        },
+                        marketplaces = marketplaces,
+                        analyzeMarketplace = analyzeMarketplace,
+                        onAnalyzeMarketplace = { analyzeMarketplace = it },
+                        analyzeLanguage = analyzeLanguage,
+                        onAnalyzeLanguage = { analyzeLanguage = it },
+                        analyzeResolvedMarketplace = analyzeResolvedMarketplace,
+                        analyzeResolvedLanguage = analyzeResolvedLanguage,
+                        analyzeLimits = analyzeLimits,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            if (!compact) {
                 if (!filtersCollapsed) {
                     Column(
                         modifier = Modifier
@@ -554,12 +609,7 @@ fun EazyResearchScreen(
                     .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                ResearchTabRow(
-                    selected = researchTab,
-                    translationStore = translationStore,
-                    onSelect = { researchTab = it },
-                )
-                if (compact && researchTab == "ideas") {
+                if (compact) {
                     Text(
                         tr("creator.research.filter_open", "Open filters"),
                         color = TextMain,
@@ -577,7 +627,7 @@ fun EazyResearchScreen(
                     EazyResearchTrendsPane(
                         api = api,
                         translationStore = translationStore,
-                        loggedIn = tokenStore.isLoggedIn(),
+                        trends = trendsState,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
                 } else when {
@@ -703,6 +753,7 @@ fun EazyResearchScreen(
                 }
                 Text(status, color = TextDim, fontSize = 11.sp)
             }
+        }
         }
         if (compact && filtersSheetOpen) {
             ModalBottomSheet(
@@ -1070,12 +1121,44 @@ private fun ResearchFilterPanel(
         }
     }
     }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
+    }
+}
+
+@Composable
+private fun ResearchAnalyzeCluster(
+    translationStore: TranslationStore,
+    query: String,
+    onQuery: (String) -> Unit,
+    analyzeEnabled: Boolean,
+    analyzing: Boolean,
+    onAnalyze: () -> Unit,
+    marketplaces: List<ResearchMarketplace>,
+    analyzeMarketplace: String,
+    onAnalyzeMarketplace: (String) -> Unit,
+    analyzeLanguage: String,
+    onAnalyzeLanguage: (String) -> Unit,
+    analyzeResolvedMarketplace: String,
+    analyzeResolvedLanguage: String,
+    analyzeLimits: AnalyzeLimits,
+    modifier: Modifier = Modifier,
+) {
+    fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    val hosts = marketplaces.ifEmpty {
+        listOf("amazon.de", "amazon.co.uk", "amazon.fr", "amazon.it", "amazon.es", "amazon.com", "amazon.ca")
+            .map { ResearchMarketplace(it, marketplaceTagFromHost(it)) }
+    }
+    val platformOptions = listOf("all" to tr("creator.research.analyze_all", "All")) +
+        hosts.map { it.host to countryLabel(it.host, translationStore) }
+    val analyzeLangOptions = listOf("all" to tr("creator.research.analyze_all", "All")) + listOf(
+        "en" to tr("creator.research.lang_en", "English"),
+        "de" to tr("creator.research.lang_de", "German"),
+        "es" to tr("creator.research.lang_es", "Spanish"),
+        "fr" to tr("creator.research.lang_fr", "French"),
+        "it" to tr("creator.research.lang_it", "Italian"),
+    )
+    val platformLabelText = platformOptions.firstOrNull { it.first == analyzeMarketplace }?.second ?: platformOptions.first().second
+    val analyzeLangLabel = analyzeLangOptions.firstOrNull { it.first == analyzeLanguage }?.second ?: analyzeLangOptions.first().second
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1130,7 +1213,7 @@ private fun ResearchFilterPanel(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = TextMain,
                     unfocusedTextColor = TextMain,
-                    focusedBorderColor = Accent,
+                    focusedBorderColor = Color(0xFFF97316),
                     unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
                 ),
             )
@@ -1154,11 +1237,10 @@ private fun ResearchFilterPanel(
             )
         }
     }
-    }
 }
 
 @Composable
-private fun FilterFold(
+internal fun FilterFold(
     title: String,
     open: Boolean,
     selectedCount: Int,
@@ -1207,7 +1289,7 @@ private fun FilterFold(
 }
 
 @Composable
-private fun FilterCheckRow(
+internal fun FilterCheckRow(
     label: String,
     count: Int,
     checked: Boolean,
@@ -2018,7 +2100,7 @@ private fun saveFiltersCollapsed(context: Context, collapsed: Boolean) {
         .apply()
 }
 
-private fun loadFilterFolds(context: Context): Map<String, Boolean> {
+internal fun loadFilterFolds(context: Context): Map<String, Boolean> {
     val out = FILTER_FOLD_DEFAULTS.toMutableMap()
     val raw = context.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
         .getString(FILTER_FOLDS_KEY, null) ?: return out
@@ -2033,7 +2115,7 @@ private fun loadFilterFolds(context: Context): Map<String, Boolean> {
     }
 }
 
-private fun saveFilterFolds(context: Context, folds: Map<String, Boolean>) {
+internal fun saveFilterFolds(context: Context, folds: Map<String, Boolean>) {
     val obj = JSONObject()
     FILTER_FOLD_DEFAULTS.keys.forEach { key ->
         obj.put(key, folds[key] ?: FILTER_FOLD_DEFAULTS.getValue(key))

@@ -220,6 +220,17 @@ fun researchT2iPrompt(h: ResearchGeneratorHandoff): String {
     return parts.joinToString("\n")
 }
 
+data class T2iDesignEntry(val label: String, val text: String)
+
+fun t2iSlotLabel(index: Int): String = ('A' + index.coerceIn(0, 25)).toString()
+
+fun t2iDesignEntryOrNull(index: Int, t2i: Boolean, h: ResearchGeneratorHandoff): T2iDesignEntry? {
+    if (!t2i) return null
+    val text = researchT2iPrompt(h)
+    if (text.isBlank()) return null
+    return T2iDesignEntry(t2iSlotLabel(index), text)
+}
+
 fun amazonListingUrl(asin: String, marketplace: String): String {
     val host = marketplace.trim().ifBlank { "amazon.de" }
     return "https://www.$host/dp/${asin.trim()}"

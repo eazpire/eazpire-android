@@ -109,6 +109,7 @@ data class RefImage(
     val fromResearch: Boolean = false,
     val analysisPrompt: String = "",
     val analysisTopic: String = "",
+    val analysisSubtopic: String = "",
     val analysisTags: List<String> = emptyList(),
     val analysisDesignType: String? = null,
     val analysisLanguage: String? = null,
@@ -116,6 +117,20 @@ data class RefImage(
 
 private val DEFAULT_UPLOAD_COST_EAZ = EazCostCatalog.defaultCost("design_upload")
 private val DEFAULT_GENERATE_COST_EAZ = EazCostCatalog.defaultCost("design_generate")
+
+private fun isT2iImage(ref: RefImage) = ref.skipAttach || ref.researchMode.equals("t2i", ignoreCase = true)
+
+private fun analysisHandoff(ref: RefImage) = ResearchGeneratorHandoff(
+    imageUrl = ref.dataUrl,
+    prompt = ref.analysisPrompt,
+    topic = ref.analysisTopic,
+    subtopic = ref.analysisSubtopic,
+    tags = ref.analysisTags,
+    designType = ref.analysisDesignType,
+    language = ref.analysisLanguage,
+    asin = "",
+    marketplace = "",
+)
 
 private fun buildDesignGeneratePayload(
     ownerId: String,
@@ -130,15 +145,25 @@ private fun buildDesignGeneratePayload(
     selectedImages: List<RefImage>
 ): JSONObject {
     val refs = JSONArray()
-    selectedImages.filter { !it.skipAttach && it.researchMode != "t2i" }.forEachIndexed { i, ref ->
+    selectedImages.forEachIndexed { i, ref ->
+        if (isT2iImage(ref)) return@forEachIndexed
         refs.put(
             JSONObject()
-                .put("label", ('A' + i).toString())
+                .put("label", t2iSlotLabel(i))
                 .put("url", ref.dataUrl)
                 .put("similarity", ref.similarity.toDouble())
         )
     }
-    val primaryUrl = selectedImages.firstOrNull { !it.skipAttach && it.researchMode != "t2i" }?.dataUrl
+    val designs = JSONArray()
+    selectedImages.forEachIndexed { i, ref ->
+        val entry = t2iDesignEntryOrNull(i, isT2iImage(ref), analysisHandoff(ref)) ?: return@forEachIndexed
+        designs.put(
+            JSONObject()
+                .put("label", entry.label)
+                .put("text", entry.text)
+        )
+    }
+    val primaryUrl = selectedImages.firstOrNull { !isT2iImage(it) }?.dataUrl
     val bgMode = if (colorState.backgroundTransparent) "transparent" else "solid"
     val backgroundColorsJson = JSONArray().apply {
         if (bgMode == "solid") {
@@ -164,6 +189,7 @@ private fun buildDesignGeneratePayload(
         .put("reference_images", refs)
         .put("owner_id", ownerId)
         .apply {
+            if (designs.length() > 0) put("design_descriptions", designs)
             if (primaryUrl != null) put("image_url", primaryUrl)
             else put("image_url", JSONObject.NULL)
         }
@@ -331,10 +357,6 @@ fun CreatorGeneratorScreen(
     LaunchedEffect(researchHandoff) {
         val h = researchHandoff ?: return@LaunchedEffect
         researchInfluence = h
-        if (prompt.isBlank()) {
-            val text = researchT2iPrompt(h)
-            if (text.isNotBlank()) prompt = text
-        }
         onResearchHandoffConsumed()
     }
 
@@ -431,10 +453,6 @@ fun CreatorGeneratorScreen(
             handoff = h,
             translationStore = translationStore,
             onApply = { result ->
-                if (prompt.isBlank()) {
-                    val text = researchT2iPrompt(h)
-                    if (text.isNotBlank()) prompt = text
-                }
                 selectedImages = selectedImages + RefImage(
                     dataUrl = result.dataUrl,
                     similarity = result.similarity,
@@ -446,11 +464,11 @@ fun CreatorGeneratorScreen(
                     fromResearch = true,
                     analysisPrompt = h.prompt,
                     analysisTopic = h.topic,
+                    analysisSubtopic = h.subtopic,
                     analysisTags = h.tags,
                     analysisDesignType = h.designType,
                     analysisLanguage = h.language,
                 )
-                if (result.mode == "t2i" && prompt.isBlank()) prompt = researchT2iPrompt(h)
                 researchInfluence = null
             },
             onCancel = { researchInfluence = null },
@@ -578,7 +596,8 @@ fun CreatorGeneratorScreen(
                     } catch (_: Exception) {}
                 }
                 selectedImages = selectedImages.toMutableList().apply {
-                    set(canvasEditIndex, RefImage(dataUrl))
+                    val cur = this[canvasEditIndex]
+                    set(canvasEditIndex, cur.copy(dataUrl = dataUrl))
                 }
             }
             showCanvasEditModal = false
@@ -650,29 +669,12 @@ fun CreatorGeneratorScreen(
 
     fun runDesignGenerate() {
         if (ownerId.isBlank() || generatingGen) return
-        val t2i = selectedImages.firstOrNull { it.fromResearch && (it.skipAttach || it.researchMode == "t2i") }
-        var pTrim = prompt.trim()
-        if (pTrim.isEmpty() && t2i != null) {
-            val filled = researchT2iPrompt(
-                ResearchGeneratorHandoff(
-                    imageUrl = t2i.dataUrl,
-                    prompt = t2i.analysisPrompt,
-                    topic = t2i.analysisTopic,
-                    subtopic = "",
-                    tags = t2i.analysisTags,
-                    designType = t2i.analysisDesignType,
-                    language = t2i.analysisLanguage,
-                    asin = "",
-                    marketplace = "",
-                )
-            )
-            if (filled.isNotBlank()) {
-                pTrim = filled
-                prompt = filled
-            }
+        val pTrim = prompt.trim()
+        val attachable = selectedImages.filter { !isT2iImage(it) }
+        val hasT2iDesign = selectedImages.any {
+            isT2iImage(it) && researchT2iPrompt(analysisHandoff(it)).isNotBlank()
         }
-        val attachable = selectedImages.filter { !it.skipAttach && it.researchMode != "t2i" }
-        if (pTrim.isEmpty() && attachable.isEmpty()) return
+        if (pTrim.isEmpty() && attachable.isEmpty() && !hasT2iDesign) return
         scope.launch {
             generatingGen = true
             var pendingDockId: String? = null
@@ -889,11 +891,6 @@ fun CreatorGeneratorScreen(
                 selectedImages = selectedImages.toMutableList().also { list ->
                     val cur = list.getOrNull(i) ?: return@also
                     list[i] = cur.copy(researchMode = mode, skipAttach = mode == "t2i")
-                    if (mode == "t2i" && prompt.isBlank()) {
-                        prompt = listOf(cur.analysisPrompt.takeIf { it.isNotBlank() }, cur.analysisTopic.takeIf { it.isNotBlank() }?.let { "Topic: $it" })
-                            .mapNotNull { it }
-                            .joinToString("\n")
-                    }
                 }
             },
         )
