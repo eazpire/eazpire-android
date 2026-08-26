@@ -1,25 +1,43 @@
 package com.eazpire.creator.ui.creator
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Collections
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,8 +52,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,15 +66,33 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-private val Glass = Color(0xFF0B1220).copy(alpha = 0.72f)
-private val GlassBorder = Color.White.copy(alpha = 0.12f)
+private val Glass = Color(0xFF0B0E14).copy(alpha = 0.78f)
+private val GlassBorder = Color(0xFFFF9D00).copy(alpha = 0.18f)
+private val Chrome = Color(0xFF0D1118)
+private val Accent = Color(0xFFFF9D00)
 private val RowH = 56.dp
+
+private data class ManagerDraft(
+    val layout: DashboardLayout,
+    val qa: List<String>,
+    val templateId: String?,
+    val isNew: Boolean,
+    val mode: String,
+)
+
+private data class QuickActionSpec(
+    val id: String,
+    val label: String,
+    val icon: ImageVector,
+    val onClick: (() -> Unit)? = null,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,11 +112,35 @@ fun EazyDashboardGrid(
     val ownerId = tokenStore.getOwnerId()
     val api = remember { CreatorApi(jwt = tokenStore.getJwt()) }
     var state by remember { mutableStateOf<DashboardV5State?>(null) }
-    var editing by remember { mutableStateOf(false) }
     var manager by remember { mutableStateOf(false) }
-    var draftQa by remember { mutableStateOf<List<String>>(emptyList()) }
+    var managerDraft by remember { mutableStateOf<ManagerDraft?>(null) }
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
     val scope = rememberCoroutineScope()
     val t: (String, String) -> String = { k, f -> translationStore.t(k, f) }
+
+    fun openManagerSheet() {
+        val snap = state ?: return
+        val active = snap.layouts.firstOrNull { it.id == snap.activeLayoutId } ?: snap.layouts.firstOrNull() ?: return
+        managerDraft = ManagerDraft(
+            layout = active,
+            qa = active.quickActionIds,
+            templateId = null,
+            isNew = false,
+            mode = "layout",
+        )
+        manager = true
+    }
+
+    fun persistLayout(next: DashboardLayout) {
+        val oid = ownerId ?: return
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                persistLayoutUpdate(api, oid, next)
+            }
+            state = withContext(Dispatchers.IO) { parseDashboardV5(api.getDashboardV5(oid)) }
+        }
+    }
 
     LaunchedEffect(ownerId) {
         state = withContext(Dispatchers.IO) {
@@ -85,21 +150,6 @@ fun EazyDashboardGrid(
 
     val snap = state
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-            TextButton(onClick = { editing = !editing }) {
-                Text(
-                    t("creator.dashboard.edit_layout", "Edit layout"),
-                    color = if (editing) EazColors.Orange else Color.White
-                )
-            }
-            TextButton(onClick = {
-                val active = snap?.layouts?.firstOrNull { it.id == snap.activeLayoutId }
-                draftQa = active?.quickActionIds ?: emptyList()
-                manager = true
-            }) {
-                Text(t("creator.dashboard.customize", "Customize dashboard"), color = Color.White)
-            }
-        }
         if (snap == null) {
             Text(t("creator.overview.loading", "Loading..."), color = Color.White.copy(alpha = 0.7f))
             return@Column
@@ -108,11 +158,7 @@ fun EazyDashboardGrid(
         if (layout == null) return@Column
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val surfaceName = surfaceForWidth(maxWidth.value)
-            val surface = when (surfaceName) {
-                "mobile" -> layout.mobile
-                "tablet" -> layout.tablet
-                else -> layout.desktop
-            }
+            val surface = layout.surfaceNamed(surfaceName)
             val density = LocalDensity.current
             val cols = surface.columns.coerceAtLeast(1)
             val gap = 8.dp
@@ -126,6 +172,7 @@ fun EazyDashboardGrid(
             ) {
                 visible.forEach { pos ->
                     val spec = snap.widgets.firstOrNull { it.id == pos.id }
+                    val extra = if (dragId == pos.id) dragOffset else Offset.Zero
                     val xDp = (colW + gap) * pos.x
                     val yDp = (RowH + gap) * pos.y
                     val w = colW * pos.w + gap * (pos.w - 1).coerceAtLeast(0)
@@ -133,11 +180,53 @@ fun EazyDashboardGrid(
                     DashboardWidgetCard(
                         title = t(spec?.titleKey ?: pos.id, pos.id),
                         tracking = spec?.trackingRequired == true,
+                        customizeLabel = t("creator.dashboard.widget_customize", "Customize"),
+                        hideLabel = t("creator.dashboard.hide_widget", "Hide"),
+                        menuLabel = t("creator.dashboard.widget_menu", "Widget menu"),
+                        moveLabel = t("creator.dashboard.move_widget", "Move widget"),
+                        onCustomize = { openManagerSheet() },
+                        onHide = {
+                            val nextWidgets = surface.widgets.map { wdg ->
+                                if (wdg.id == pos.id) wdg.copy(visible = false) else wdg
+                            }
+                            persistLayout(layout.withSurface(surfaceName, surface.copy(widgets = nextWidgets)))
+                        },
+                        handleModifier = Modifier.pointerInput(pos.id, colW, cols) {
+                            detectDragGestures(
+                                onDragStart = {
+                                    dragId = pos.id
+                                    dragOffset = Offset.Zero
+                                },
+                                onDrag = { _, amount ->
+                                    dragOffset += amount
+                                },
+                                onDragEnd = {
+                                    val cellW = with(density) { (colW + gap).toPx() }
+                                    val cellH = with(density) { (RowH + gap).toPx() }
+                                    val dx = (dragOffset.x / cellW).roundToInt()
+                                    val dy = (dragOffset.y / cellH).roundToInt()
+                                    dragId = null
+                                    dragOffset = Offset.Zero
+                                    if (dx == 0 && dy == 0) return@detectDragGestures
+                                    val nextWidgets = surface.widgets.map { wdg ->
+                                        if (wdg.id != pos.id) wdg else wdg.copy(
+                                            x = (wdg.x + dx).coerceAtLeast(0).coerceAtMost((cols - wdg.w).coerceAtLeast(0)),
+                                            y = (wdg.y + dy).coerceAtLeast(0),
+                                        )
+                                    }
+                                    persistLayout(layout.withSurface(surfaceName, surface.copy(widgets = nextWidgets)))
+                                },
+                                onDragCancel = {
+                                    dragId = null
+                                    dragOffset = Offset.Zero
+                                },
+                            )
+                        },
                         modifier = Modifier
                             .offset {
                                 IntOffset(
-                                    with(density) { xDp.roundToPx() },
-                                    with(density) { yDp.roundToPx() },
+                                    with(density) { xDp.roundToPx() } + extra.x.roundToInt(),
+                                    with(density) { yDp.roundToPx() } + extra.y.roundToInt(),
                                 )
                             }
                             .width(w)
@@ -164,148 +253,108 @@ fun EazyDashboardGrid(
         }
     }
 
-    if (manager && snap != null) {
+    val draft = managerDraft
+    if (manager && snap != null && draft != null) {
         ModalBottomSheet(
             onDismissRequest = { manager = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = Color(0xFF0B1220),
+            containerColor = Color(0xFF0B0E14),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
-            ) {
-                Text(t("creator.dashboard.layout_manager", "Dashboard layouts"), color = Color.White)
-                Spacer(Modifier.height(8.dp))
-                Text(t("creator.dashboard.templates", "Templates"), color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                snap.templates.forEach { (id, title) ->
-                    Text(
-                        title,
-                        color = Color.White,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val oid = ownerId ?: return@clickable
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        api.mutateDashboardLayout(
-                                            oid,
-                                            JSONObject()
-                                                .put("action", "create")
-                                                .put("templateId", id)
-                                                .put("title", title),
-                                        )
-                                    }
-                                    state = withContext(Dispatchers.IO) { parseDashboardV5(api.getDashboardV5(oid)) }
-                                }
-                            }
-                            .padding(vertical = 8.dp),
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(t("creator.dashboard.my_layouts", "My layouts"), color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                snap.layouts.forEach { lay ->
-                    val active = lay.id == snap.activeLayoutId
-                    Text(
-                        lay.title + if (active) " · " + t("creator.dashboard.active", "Active") else "",
-                        color = if (active) EazColors.Orange else Color.White,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val oid = ownerId ?: return@clickable
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        api.mutateDashboardLayout(
-                                            oid,
-                                            JSONObject().put("action", "set-active").put("id", lay.id),
-                                        )
-                                    }
-                                    state = withContext(Dispatchers.IO) { parseDashboardV5(api.getDashboardV5(oid)) }
-                                }
-                            }
-                            .padding(vertical = 8.dp),
-                    )
-                }
-                val active = snap.layouts.firstOrNull { it.id == snap.activeLayoutId }
-                if (active != null) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(t("creator.dashboard.quick_action_items", "Quick Actions items"), color = Color.White)
-                    val options = listOf(
-                        "generator" to t("creator.overview.action_generator_title", "Design Generator"),
-                        "designs" to t("creator.overview.action_designs_title", "My Designs"),
-                        "products" to t("creator.overview.action_products_title", "My Products"),
-                        "content" to t("creator.overview.action_content_title", "Content Creation"),
-                        "automations" to t("creator.overview.action_automations_title", "Automations"),
-                        "research" to t("creator.research.nav", "Research"),
-                    )
-                    options.forEach { (id, label) ->
-                        val on = id in draftQa
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    draftQa = if (on) draftQa.filter { it != id } else (draftQa + id).distinct()
-                                }
-                                .padding(vertical = 4.dp),
-                        ) {
-                            Checkbox(
-                                checked = on,
-                                onCheckedChange = { checked ->
-                                    draftQa = if (checked) (draftQa + id).distinct() else draftQa.filter { it != id }
-                                },
-                            )
-                            Text(label, color = Color.White, modifier = Modifier.padding(start = 8.dp))
-                        }
+            LayoutManagerSheet(
+                snap = snap,
+                draft = draft,
+                t = t,
+                onDraftChange = { managerDraft = it },
+                onCancel = { manager = false },
+                onSave = {
+                    val oid = ownerId
+                    if (oid.isNullOrBlank()) {
+                        manager = false
+                        return@LayoutManagerSheet
                     }
-                }
-                Button(
-                    onClick = {
-                        val oid = ownerId
-                        val activeLay = snap.layouts.firstOrNull { it.id == snap.activeLayoutId }
-                        if (oid.isNullOrBlank() || activeLay == null) {
-                            manager = false
-                            return@Button
-                        }
-                        scope.launch {
-                            val qaArr = JSONArray()
-                            draftQa.forEach { qaArr.put(it) }
-                            val settings = JSONObject().put(
-                                "quick-actions",
-                                JSONObject().put("visibleIds", qaArr),
-                            )
-                            withContext(Dispatchers.IO) {
+                    scope.launch {
+                        val qaArr = JSONArray()
+                        draft.qa.forEach { qaArr.put(it) }
+                        val settings = JSONObject().put(
+                            "quick-actions",
+                            JSONObject().put("visibleIds", qaArr),
+                        )
+                        withContext(Dispatchers.IO) {
+                            if (draft.isNew) {
+                                api.mutateDashboardLayout(
+                                    oid,
+                                    JSONObject()
+                                        .put("action", "create")
+                                        .put("title", draft.layout.title)
+                                        .put("templateId", draft.templateId ?: "mission-control")
+                                        .put("setActive", true)
+                                        .put("desktop", draft.layout.desktop.toJson())
+                                        .put("tablet", draft.layout.tablet.toJson())
+                                        .put("mobile", draft.layout.mobile.toJson())
+                                        .put("widgetSettings", settings),
+                                )
+                            } else {
                                 api.mutateDashboardLayout(
                                     oid,
                                     JSONObject()
                                         .put("action", "update")
-                                        .put("id", activeLay.id)
-                                        .put("version", activeLay.version)
+                                        .put("id", draft.layout.id)
+                                        .put("version", draft.layout.version)
+                                        .put("desktop", draft.layout.desktop.toJson())
+                                        .put("tablet", draft.layout.tablet.toJson())
+                                        .put("mobile", draft.layout.mobile.toJson())
                                         .put("widgetSettings", settings),
                                 )
+                                api.mutateDashboardLayout(
+                                    oid,
+                                    JSONObject().put("action", "set-active").put("id", draft.layout.id),
+                                )
                             }
-                            state = withContext(Dispatchers.IO) { parseDashboardV5(api.getDashboardV5(oid)) }
-                            manager = false
                         }
-                    },
-                    modifier = Modifier.padding(top = 12.dp),
-                ) {
-                    Text(t("creator.common.save", "Save"))
-                }
-            }
+                        state = withContext(Dispatchers.IO) { parseDashboardV5(api.getDashboardV5(oid)) }
+                        manager = false
+                    }
+                },
+            )
         }
     }
+}
+
+private suspend fun persistLayoutUpdate(api: CreatorApi, ownerId: String, layout: DashboardLayout) {
+    val qaArr = JSONArray()
+    layout.quickActionIds.forEach { qaArr.put(it) }
+    api.mutateDashboardLayout(
+        ownerId,
+        JSONObject()
+            .put("action", "update")
+            .put("id", layout.id)
+            .put("version", layout.version)
+            .put("desktop", layout.desktop.toJson())
+            .put("tablet", layout.tablet.toJson())
+            .put("mobile", layout.mobile.toJson())
+            .put(
+                "widgetSettings",
+                JSONObject().put("quick-actions", JSONObject().put("visibleIds", qaArr)),
+            ),
+    )
 }
 
 @Composable
 private fun DashboardWidgetCard(
     title: String,
     tracking: Boolean,
+    customizeLabel: String,
+    hideLabel: String,
+    menuLabel: String,
+    moveLabel: String,
+    onCustomize: () -> Unit,
+    onHide: () -> Unit,
+    handleModifier: Modifier,
     modifier: Modifier,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(16.dp)
+    var menuOpen by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
             .clip(shape)
@@ -313,16 +362,71 @@ private fun DashboardWidgetCard(
             .border(1.dp, GlassBorder, shape)
             .padding(10.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Text("⋮⋮", color = Color.White.copy(alpha = 0.45f), fontSize = 12.sp)
-            Text(title, color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NineDotHandle(moveLabel, handleModifier)
+            Text(title, color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
             if (tracking) {
-                Spacer(Modifier.weight(1f))
-                Text("Tracking", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
+                Text(
+                    "Tracking",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(end = 4.dp),
+                )
+            }
+            Box {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(Icons.Outlined.MoreHoriz, contentDescription = menuLabel, tint = Color.White.copy(alpha = 0.7f))
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(customizeLabel, color = Accent) },
+                        onClick = {
+                            menuOpen = false
+                            onCustomize()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(hideLabel, color = Color.White) },
+                        onClick = {
+                            menuOpen = false
+                            onHide()
+                        },
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
         content()
+    }
+}
+
+@Composable
+private fun NineDotHandle(moveLabel: String, modifier: Modifier) {
+    Canvas(
+        modifier = modifier
+            .size(28.dp)
+            .semantics { contentDescription = moveLabel },
+    ) {
+        val step = size.minDimension / 4f
+        val r = 1.6.dp.toPx()
+        for (y in 0..2) {
+            for (x in 0..2) {
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.55f),
+                    radius = r,
+                    center = Offset(step * (x + 1), step * (y + 1)),
+                )
+            }
+        }
     }
 }
 
@@ -374,27 +478,14 @@ private fun WidgetBody(
         )
         "quick-actions" -> {
             val actions = listOf(
-                "generator" to (t("creator.overview.action_generator_title", "Design Generator") to onNavigateToGenerator),
-                "designs" to (t("creator.overview.action_designs_title", "My Designs") to onNavigateToDesigns),
-                "products" to (t("creator.overview.action_products_title", "My Products") to onNavigateToProducts),
-                "content" to (t("creator.overview.action_content_title", "Content Creation") to onNavigateToMarketingHero),
-                "automations" to (t("creator.overview.action_automations_title", "Automations") to onNavigateToAutomations),
-                "research" to (t("creator.research.nav", "Research") to onNavigateToResearch),
+                QuickActionSpec("generator", t("creator.overview.action_generator_title", "Design Generator"), Icons.Outlined.AutoAwesome, onNavigateToGenerator),
+                QuickActionSpec("designs", t("creator.overview.action_designs_title", "My Designs"), Icons.Outlined.Palette, onNavigateToDesigns),
+                QuickActionSpec("products", t("creator.overview.action_products_title", "My Products"), Icons.Outlined.Inventory2, onNavigateToProducts),
+                QuickActionSpec("content", t("creator.overview.action_content_title", "Content Creation"), Icons.Outlined.Collections, onNavigateToMarketingHero),
+                QuickActionSpec("automations", t("creator.overview.action_automations_title", "Automations"), Icons.Outlined.Bolt, onNavigateToAutomations),
+                QuickActionSpec("research", t("creator.research.nav", "Research"), Icons.Outlined.Search, onNavigateToResearch),
             )
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                actions.filter { it.first in quickIds }.forEach { (_, pair) ->
-                    Text(
-                        pair.first,
-                        color = Color.White,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.06f))
-                            .clickable(onClick = pair.second)
-                            .padding(12.dp),
-                    )
-                }
-            }
+            QuickActionCarousel(items = actions.filter { it.id in quickIds }, selectedIds = quickIds, onToggle = null)
         }
         "hero-impressions" -> Text(snap.heroImpressions ?: t("creator.dashboard.tracking_required", "Tracking required"), color = Color.White)
         "hero-clicks" -> Text(snap.heroClicks ?: t("creator.dashboard.tracking_required", "Tracking required"), color = Color.White)
@@ -486,3 +577,293 @@ private fun CompactJourneyBody(
     }
 }
 
+@Composable
+private fun QuickActionCarousel(
+    items: List<QuickActionSpec>,
+    selectedIds: List<String>,
+    onToggle: ((String) -> Unit)?,
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(items, key = { it.id }) { item ->
+            val on = item.id in selectedIds
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .width(76.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (on && onToggle != null) Accent.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.04f))
+                    .border(1.dp, if (on && onToggle != null) Accent else GlassBorder, RoundedCornerShape(12.dp))
+                    .clickable {
+                        if (onToggle != null) onToggle(item.id) else item.onClick?.invoke()
+                    }
+                    .padding(vertical = 8.dp, horizontal = 6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Accent.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(item.icon, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))
+                }
+                Text(
+                    item.label,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                    maxLines = 2,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LayoutManagerSheet(
+    snap: DashboardV5State,
+    draft: ManagerDraft,
+    t: (String, String) -> String,
+    onDraftChange: (ManagerDraft) -> Unit,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+) {
+    val qaCatalog = listOf(
+        QuickActionSpec("generator", t("creator.overview.action_generator_title", "Design Generator"), Icons.Outlined.AutoAwesome),
+        QuickActionSpec("designs", t("creator.overview.action_designs_title", "My Designs"), Icons.Outlined.Palette),
+        QuickActionSpec("products", t("creator.overview.action_products_title", "My Products"), Icons.Outlined.Inventory2),
+        QuickActionSpec("content", t("creator.overview.action_content_title", "Content Creation"), Icons.Outlined.Collections),
+        QuickActionSpec("automations", t("creator.overview.action_automations_title", "Automations"), Icons.Outlined.Bolt),
+        QuickActionSpec("research", t("creator.research.nav", "Research"), Icons.Outlined.Search),
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 640.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Chrome)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(t("creator.dashboard.customize", "Customize dashboard"), color = Color.White, modifier = Modifier.weight(1f))
+            TextButton(onClick = { onDraftChange(draft.copy(mode = "layout")) }) {
+                Text(
+                    t("creator.dashboard.layout_tab", "Dashboard Layout"),
+                    color = if (draft.mode == "layout") Accent else Color.White.copy(alpha = 0.68f),
+                )
+            }
+            TextButton(onClick = { onDraftChange(draft.copy(mode = "settings")) }) {
+                Text(
+                    t("creator.dashboard.widget_settings_tab", "Widget Settings"),
+                    color = if (draft.mode == "settings") Accent else Color.White.copy(alpha = 0.68f),
+                )
+            }
+        }
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            items(snap.templates, key = { it.id }) { tpl ->
+                val on = tpl.id == draft.templateId
+                Text(
+                    tpl.title,
+                    color = if (on) Accent else Color.White.copy(alpha = 0.68f),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .border(1.dp, if (on) Accent else GlassBorder, RoundedCornerShape(999.dp))
+                        .background(if (on) Accent.copy(alpha = 0.16f) else Color.Transparent)
+                        .clickable {
+                            onDraftChange(
+                                draft.copy(
+                                    templateId = tpl.id,
+                                    layout = draft.layout.copy(
+                                        desktop = tpl.desktop,
+                                        tablet = tpl.tablet,
+                                        mobile = tpl.mobile,
+                                    ),
+                                ),
+                            )
+                        }
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = true),
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(160.dp)
+                    .fillMaxHeight()
+                    .background(Chrome)
+                    .padding(vertical = 8.dp),
+            ) {
+                Text(
+                    t("creator.dashboard.my_layouts", "My layouts"),
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    snap.layouts.forEach { lay ->
+                        val on = !draft.isNew && lay.id == draft.layout.id
+                        Text(
+                            lay.title + if (lay.id == snap.activeLayoutId) " · " + t("creator.dashboard.active", "Active") else "",
+                            color = if (on) Accent else Color.White,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onDraftChange(
+                                        ManagerDraft(
+                                            layout = lay,
+                                            qa = lay.quickActionIds,
+                                            templateId = null,
+                                            isNew = false,
+                                            mode = draft.mode,
+                                        ),
+                                    )
+                                }
+                                .background(if (on) Accent.copy(alpha = 0.12f) else Color.Transparent)
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
+                    if (draft.isNew) {
+                        Text(
+                            draft.layout.title,
+                            color = Accent,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Accent.copy(alpha = 0.12f))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
+                }
+                TextButton(
+                    onClick = {
+                        val seed = snap.templates.firstOrNull { it.id == (draft.templateId ?: "mission-control") }
+                            ?: snap.templates.firstOrNull()
+                        if (seed == null) return@TextButton
+                        onDraftChange(
+                            ManagerDraft(
+                                layout = DashboardLayout(
+                                    id = "__draft__",
+                                    title = t("creator.dashboard.new_layout", "New layout"),
+                                    description = seed.description,
+                                    version = 1,
+                                    desktop = seed.desktop,
+                                    tablet = seed.tablet,
+                                    mobile = seed.mobile,
+                                    quickActionIds = draft.qa,
+                                ),
+                                qa = draft.qa,
+                                templateId = seed.id,
+                                isNew = true,
+                                mode = draft.mode,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("+ " + t("creator.dashboard.new_layout", "New layout"), color = Accent)
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+            ) {
+                if (draft.mode == "settings") {
+                    Text(t("creator.dashboard.quick_action_items", "Quick Actions items"), color = Color.White, fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    QuickActionCarousel(
+                        items = qaCatalog,
+                        selectedIds = draft.qa,
+                        onToggle = { id ->
+                            val next = if (id in draft.qa) draft.qa.filter { it != id } else (draft.qa + id).distinct()
+                            onDraftChange(draft.copy(qa = next))
+                        },
+                    )
+                } else {
+                    Text(draft.layout.title, color = Color.White)
+                    if (draft.layout.description.isNotBlank()) {
+                        Text(draft.layout.description, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    MiniLayoutPreview(draft.layout.desktop)
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Chrome)
+                .padding(10.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(onClick = onCancel) {
+                Text(t("creator.common.cancel", "Cancel"), color = Color.White)
+            }
+            Button(onClick = onSave, modifier = Modifier.padding(start = 8.dp)) {
+                Text(t("creator.common.save", "Save"))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniLayoutPreview(surface: DashboardSurface) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val cols = surface.columns.coerceAtLeast(1)
+        val gap = 6.dp
+        val colW = (maxWidth - gap * (cols - 1)) / cols
+        val rowH = 28.dp
+        val visible = surface.widgets.filter { it.visible }
+        val maxRow = visible.maxOfOrNull { it.y + it.h } ?: 2
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(rowH * maxRow + gap * (maxRow - 1).coerceAtLeast(0))
+        ) {
+            val density = LocalDensity.current
+            visible.forEach { pos ->
+                val xDp = (colW + gap) * pos.x
+                val yDp = (rowH + gap) * pos.y
+                val w = colW * pos.w + gap * (pos.w - 1).coerceAtLeast(0)
+                val h = rowH * pos.h + gap * (pos.h - 1).coerceAtLeast(0)
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                with(density) { xDp.roundToPx() },
+                                with(density) { yDp.roundToPx() },
+                            )
+                        }
+                        .width(w)
+                        .height(h)
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.04f))
+                        .padding(6.dp),
+                ) {
+                    Text(pos.id, color = Color.White.copy(alpha = 0.55f), fontSize = 10.sp)
+                }
+            }
+        }
+    }
+}

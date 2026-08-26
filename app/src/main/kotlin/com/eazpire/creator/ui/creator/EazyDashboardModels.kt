@@ -35,11 +35,20 @@ data class DashboardLayout(
     val quickActionIds: List<String>,
 )
 
+data class DashboardTemplate(
+    val id: String,
+    val title: String,
+    val description: String,
+    val desktop: DashboardSurface,
+    val tablet: DashboardSurface,
+    val mobile: DashboardSurface,
+)
+
 data class DashboardV5State(
     val activeLayoutId: String,
     val layouts: List<DashboardLayout>,
     val widgets: List<DashboardWidgetSpec>,
-    val templates: List<Pair<String, String>>,
+    val templates: List<DashboardTemplate>,
     val designsGenerated: String,
     val designsUploaded: String,
     val productsOnline: String,
@@ -91,10 +100,19 @@ fun parseDashboardV5(raw: JSONObject): DashboardV5State? {
         )
     }
     val tplArr = registry.optJSONArray("templates") ?: JSONArray()
-    val templates = ArrayList<Pair<String, String>>(tplArr.length())
+    val templates = ArrayList<DashboardTemplate>(tplArr.length())
     for (i in 0 until tplArr.length()) {
         val t = tplArr.optJSONObject(i) ?: continue
-        templates.add(t.optString("id") to t.optString("title"))
+        templates.add(
+            DashboardTemplate(
+                id = t.optString("id"),
+                title = t.optString("title"),
+                description = t.optString("description"),
+                desktop = t.optSurface("desktop", 12),
+                tablet = t.optSurface("tablet", 8),
+                mobile = t.optSurface("mobile", 4),
+            )
+        )
     }
     val layoutsArr = raw.optJSONArray("layouts") ?: JSONArray()
     val layouts = ArrayList<DashboardLayout>(layoutsArr.length())
@@ -158,4 +176,32 @@ fun surfaceForWidth(widthDp: Float): String = when {
     widthDp < 700f -> "mobile"
     widthDp < 1100f -> "tablet"
     else -> "desktop"
+}
+
+fun DashboardLayout.surfaceNamed(name: String): DashboardSurface = when (name) {
+    "mobile" -> mobile
+    "tablet" -> tablet
+    else -> desktop
+}
+
+fun DashboardLayout.withSurface(name: String, surface: DashboardSurface): DashboardLayout = when (name) {
+    "mobile" -> copy(mobile = surface)
+    "tablet" -> copy(tablet = surface)
+    else -> copy(desktop = surface)
+}
+
+fun DashboardSurface.toJson(): JSONObject {
+    val arr = JSONArray()
+    widgets.forEach { w ->
+        arr.put(
+            JSONObject()
+                .put("id", w.id)
+                .put("visible", w.visible)
+                .put("x", w.x)
+                .put("y", w.y)
+                .put("w", w.w)
+                .put("h", w.h),
+        )
+    }
+    return JSONObject().put("columns", columns).put("widgets", arr)
 }
