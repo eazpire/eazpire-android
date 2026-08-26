@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -31,11 +29,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -163,7 +164,7 @@ private data class AnalyzeLimits(
     val busy: Boolean = false,
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EazyResearchScreen(
     tokenStore: SecureTokenStore,
@@ -202,12 +203,16 @@ fun EazyResearchScreen(
     var personalizations by remember { mutableStateOf(setOf<String>()) }
     var selectedAudiences by remember { mutableStateOf(setOf<String>()) }
     var sort by remember { mutableStateOf("review_growth") }
+    var sortDir by remember { mutableStateOf("desc") }
     var view by remember { mutableStateOf("opportunities") }
+    var analyzeMarketplace by remember { mutableStateOf("all") }
+    var analyzeLanguage by remember { mutableStateOf("all") }
+    var analyzeResolvedMarketplace by remember { mutableStateOf("") }
+    var analyzeResolvedLanguage by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf<ResearchProduct?>(null) }
     var watched by remember { mutableStateOf(loadWatchedAsins(context)) }
     var filtersCollapsed by remember { mutableStateOf(loadFiltersCollapsed(context)) }
     var filtersSheetOpen by remember { mutableStateOf(false) }
-    val filterScroll = rememberScrollState()
     val gridState = rememberLazyGridState()
 
     fun researchListParams(offset: Int): Map<String, String> {
@@ -216,6 +221,7 @@ fun EazyResearchScreen(
             "limit" to "32",
             "offset" to offset.coerceAtLeast(0).toString(),
             "sort" to sort,
+            "dir" to sortDir,
             "view" to if (view == "watched") "opportunities" else view,
         )
         if (marketplace.isNotBlank() && marketplace != "all") params["marketplace"] = marketplace
@@ -347,7 +353,12 @@ fun EazyResearchScreen(
         }
         try {
             val payload = JSONObject().put("q", q)
-            if (marketplace.isNotBlank() && marketplace != "all") payload.put("marketplace", marketplace)
+            if (analyzeMarketplace.isNotBlank() && analyzeMarketplace != "all") {
+                payload.put("marketplace", analyzeMarketplace)
+            }
+            if (analyzeLanguage.isNotBlank() && analyzeLanguage != "all") {
+                payload.put("language", analyzeLanguage)
+            }
             val data = api.postDispatchJson(
                 "eazy-research-analyze-search",
                 payload,
@@ -366,6 +377,8 @@ fun EazyResearchScreen(
                 return@LaunchedEffect
             }
             searchId = data.optString("search_id")
+            analyzeResolvedMarketplace = data.optString("marketplace")
+            analyzeResolvedLanguage = data.optString("language")
             analyzeLimits = parseAnalyzeLimits(data.optJSONObject("daily"))
         } catch (_: Exception) {
             analyzing = false
@@ -406,7 +419,7 @@ fun EazyResearchScreen(
         }
     }
 
-    val displayed = remember(products, query, selectedNiches, designTypes, languages, personalizations, selectedAudiences, sort, view, watched, searchId, marketplace) {
+    val displayed = remember(products, query, selectedNiches, designTypes, languages, personalizations, selectedAudiences, sort, sortDir, view, watched, searchId, marketplace) {
         if (searchId.isNotBlank() || view == "watched") {
             filterProducts(
                 products,
@@ -417,6 +430,7 @@ fun EazyResearchScreen(
                 personalizations,
                 selectedAudiences,
                 sort,
+                sortDir,
                 view,
                 watched,
                 marketplace,
@@ -449,10 +463,24 @@ fun EazyResearchScreen(
                 pendingAnalyze = true
             },
             sort = sort,
-            onSort = { sort = it },
+            sortDir = sortDir,
+            onSort = { id ->
+                if (sort == id) {
+                    sortDir = if (sortDir == "asc") "desc" else "asc"
+                } else {
+                    sort = id
+                    sortDir = defaultSortDir(id)
+                }
+            },
             marketplace = marketplace,
             marketplaces = marketplaces,
             onMarketplace = { marketplace = it },
+            analyzeMarketplace = analyzeMarketplace,
+            onAnalyzeMarketplace = { analyzeMarketplace = it },
+            analyzeLanguage = analyzeLanguage,
+            onAnalyzeLanguage = { analyzeLanguage = it },
+            analyzeResolvedMarketplace = analyzeResolvedMarketplace,
+            analyzeResolvedLanguage = analyzeResolvedLanguage,
             niches = niches,
             selectedNiches = selectedNiches,
             onToggleNiche = { key ->
@@ -476,8 +504,6 @@ fun EazyResearchScreen(
             },
             facets = facets,
             analyzeLimits = analyzeLimits,
-            view = view,
-            onView = { view = it },
         )
     }
 
@@ -495,7 +521,6 @@ fun EazyResearchScreen(
                             .width(248.dp)
                             .fillMaxHeight()
                             .background(RailBg)
-                            .verticalScroll(filterScroll)
                             .padding(10.dp),
                     ) {
                         filterPanel()
@@ -637,8 +662,7 @@ fun EazyResearchScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 520.dp)
-                        .verticalScroll(filterScroll)
+                        .heightIn(min = 360.dp, max = 520.dp)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
                     filterPanel()
@@ -691,7 +715,7 @@ private fun FilterCollapseRail(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ResearchFilterPanel(
     translationStore: TranslationStore,
@@ -701,10 +725,17 @@ private fun ResearchFilterPanel(
     analyzing: Boolean,
     onAnalyze: () -> Unit,
     sort: String,
+    sortDir: String,
     onSort: (String) -> Unit,
     marketplace: String,
     marketplaces: List<ResearchMarketplace>,
     onMarketplace: (String) -> Unit,
+    analyzeMarketplace: String,
+    onAnalyzeMarketplace: (String) -> Unit,
+    analyzeLanguage: String,
+    onAnalyzeLanguage: (String) -> Unit,
+    analyzeResolvedMarketplace: String,
+    analyzeResolvedLanguage: String,
     niches: List<ResearchNiche>,
     selectedNiches: Set<String>,
     onToggleNiche: (String) -> Unit,
@@ -718,13 +749,12 @@ private fun ResearchFilterPanel(
     onToggleAudience: (String) -> Unit,
     facets: Map<String, List<ResearchFacet>>,
     analyzeLimits: AnalyzeLimits,
-    view: String,
-    onView: (String) -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
     fun countOf(group: String, key: String): Int =
         facets[group]?.firstOrNull { it.key == key }?.count ?: 0
     val context = LocalContext.current
+    val panelScroll = rememberScrollState()
     var folds by remember { mutableStateOf(loadFilterFolds(context)) }
     fun foldOpen(id: String) = folds[id] ?: FILTER_FOLD_DEFAULTS[id] ?: false
     fun toggleFold(id: String) {
@@ -739,22 +769,36 @@ private fun ResearchFilterPanel(
     }
     val countryOptions = listOf("all" to tr("creator.research.country_all", "All countries")) +
         hosts.map { it.host to countryLabel(it.host, translationStore) }
+    val platformOptions = listOf("all" to tr("creator.research.analyze_all", "All")) +
+        hosts.map { it.host to countryLabel(it.host, translationStore) }
+    val analyzeLangOptions = listOf("all" to tr("creator.research.analyze_all", "All")) + listOf(
+        "en" to tr("creator.research.lang_en", "English"),
+        "de" to tr("creator.research.lang_de", "German"),
+        "es" to tr("creator.research.lang_es", "Spanish"),
+        "fr" to tr("creator.research.lang_fr", "French"),
+        "it" to tr("creator.research.lang_it", "Italian"),
+    )
     val sorts = listOf(
         "review_growth" to tr("creator.research.sort_review_growth", "Review growth"),
         "reviews" to tr("creator.research.sort_reviews", "Reviews"),
         "bsr" to tr("creator.research.sort_bsr", "BSR"),
         "newest" to tr("creator.research.sort_newest", "Newest snapshot"),
     )
-    val views = listOf(
-        "opportunities" to tr("creator.research.tab_opportunities", "Opportunities"),
-        "rising" to tr("creator.research.tab_rising", "Rising"),
-        "review_growth" to tr("creator.research.tab_review_growth", "Review growth"),
-        "watched" to tr("creator.research.tab_watched", "Watched"),
-    )
     var countryOpen by remember { mutableStateOf(false) }
-    var viewsOpen by remember { mutableStateOf(false) }
+    var platformOpen by remember { mutableStateOf(false) }
+    var analyzeLangOpen by remember { mutableStateOf(false) }
+    var sortOpen by remember { mutableStateOf(false) }
     val countryLabelText = countryOptions.firstOrNull { it.first == marketplace }?.second ?: countryOptions.first().second
-    val viewLabel = views.firstOrNull { it.first == view }?.second ?: views.first().second
+    val platformLabelText = platformOptions.firstOrNull { it.first == analyzeMarketplace }?.second ?: platformOptions.first().second
+    val analyzeLangLabel = analyzeLangOptions.firstOrNull { it.first == analyzeLanguage }?.second ?: analyzeLangOptions.first().second
+    val sortLabel = sortDisplayLabel(sort, sortDir, translationStore)
+    Column(modifier = Modifier.fillMaxHeight()) {
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth()
+            .verticalScroll(panelScroll),
+    ) {
     ExposedDropdownMenuBox(expanded = countryOpen, onExpandedChange = { countryOpen = it }) {
         OutlinedTextField(
             value = countryLabelText,
@@ -799,13 +843,26 @@ private fun ResearchFilterPanel(
             }
         }
     }
-    ExposedDropdownMenuBox(expanded = viewsOpen, onExpandedChange = { viewsOpen = it }) {
+    ExposedDropdownMenuBox(
+        expanded = sortOpen,
+        onExpandedChange = { sortOpen = it },
+        modifier = Modifier.padding(top = 8.dp),
+    ) {
         OutlinedTextField(
-            value = viewLabel,
+            value = sortLabel,
             onValueChange = {},
             readOnly = true,
-            label = { Text(tr("creator.research.views", "Views"), color = TextDim) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(viewsOpen) },
+            label = { Text(tr("creator.research.sort_label", "Sort"), color = TextDim) },
+            leadingIcon = {
+                Icon(Icons.Filled.Sort, contentDescription = null, tint = TextDim)
+            },
+            trailingIcon = {
+                Icon(
+                    imageVector = if (sortDir == "asc") Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
+                    contentDescription = sortLabel,
+                    tint = TextDim,
+                )
+            },
             modifier = Modifier.menuAnchor().fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = TextMain,
@@ -816,68 +873,32 @@ private fun ResearchFilterPanel(
                 unfocusedLabelColor = TextDim,
             ),
         )
-        ExposedDropdownMenu(expanded = viewsOpen, onDismissRequest = { viewsOpen = false }) {
-            views.forEach { (id, label) ->
+        ExposedDropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+            sorts.forEach { (id, label) ->
+                val selected = sort == id
+                val rowDir = if (selected) sortDir else defaultSortDir(id)
                 DropdownMenuItem(
-                    text = { Text(label) },
+                    text = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(label, color = if (selected) HeartOn else TextMain)
+                            Icon(
+                                imageVector = if (rowDir == "asc") Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
+                                contentDescription = null,
+                                tint = if (selected) HeartOn else TextDim,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    },
                     onClick = {
-                        onView(id)
-                        viewsOpen = false
+                        onSort(id)
+                        sortOpen = false
                     },
                 )
             }
-        }
-    }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQuery,
-            modifier = Modifier.weight(1f),
-            singleLine = true,
-            placeholder = {
-                Text(tr("creator.research.search_placeholder", "Search reprint-safe products"), color = TextDim)
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = TextMain,
-                unfocusedTextColor = TextMain,
-                focusedBorderColor = Accent,
-                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-            ),
-        )
-        Text(
-            if (analyzing) {
-                tr("creator.research.analyze_loading", "Analyzing…")
-            } else {
-                tr("creator.research.analyze_remaining", "Analyze ({remaining}/{limit})")
-                    .replace("{remaining}", analyzeLimits.remaining.toString())
-                    .replace("{limit}", analyzeLimits.limit.toString())
-            },
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .heightIn(min = 36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (analyzeEnabled) Color(0xFFF97316) else Color.White.copy(alpha = 0.12f))
-                .clickable(enabled = analyzeEnabled, onClick = onAnalyze)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        )
-    }
-    FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        sorts.forEach { (id, label) ->
-            FilterChip(
-                label = label,
-                selected = sort == id,
-                onClick = { onSort(id) },
-            )
         }
     }
     FilterFold(
@@ -1010,6 +1031,172 @@ private fun ResearchFilterPanel(
             )
         }
     }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ExposedDropdownMenuBox(
+                expanded = platformOpen,
+                onExpandedChange = { platformOpen = it },
+                modifier = Modifier.weight(1f),
+            ) {
+                OutlinedTextField(
+                    value = platformLabelText,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(tr("creator.research.platform", "Platform"), color = TextDim, maxLines = 1) },
+                    leadingIcon = {
+                        flagCodeForMarketplace(analyzeMarketplace)?.let { code ->
+                            GlassCircularFlag(countryCode = code, size = 16.dp)
+                        }
+                    },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(platformOpen) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextMain,
+                        unfocusedTextColor = TextMain,
+                        focusedBorderColor = Accent,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                        focusedLabelColor = TextDim,
+                        unfocusedLabelColor = TextDim,
+                    ),
+                )
+                ExposedDropdownMenu(expanded = platformOpen, onDismissRequest = { platformOpen = false }) {
+                    platformOptions.forEach { (id, label) ->
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    flagCodeForMarketplace(id)?.let { code ->
+                                        GlassCircularFlag(countryCode = code, size = 16.dp)
+                                    }
+                                    Text(label)
+                                }
+                            },
+                            onClick = {
+                                onAnalyzeMarketplace(id)
+                                platformOpen = false
+                            },
+                        )
+                    }
+                }
+            }
+            ExposedDropdownMenuBox(
+                expanded = analyzeLangOpen,
+                onExpandedChange = { analyzeLangOpen = it },
+                modifier = Modifier.weight(1f),
+            ) {
+                OutlinedTextField(
+                    value = analyzeLangLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(tr("creator.research.language", "Language"), color = TextDim, maxLines = 1) },
+                    leadingIcon = {
+                        flagCodeForLanguage(analyzeLanguage)?.let { code ->
+                            GlassCircularFlag(countryCode = code, size = 16.dp)
+                        }
+                    },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(analyzeLangOpen) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextMain,
+                        unfocusedTextColor = TextMain,
+                        focusedBorderColor = Accent,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                        focusedLabelColor = TextDim,
+                        unfocusedLabelColor = TextDim,
+                    ),
+                )
+                ExposedDropdownMenu(expanded = analyzeLangOpen, onDismissRequest = { analyzeLangOpen = false }) {
+                    analyzeLangOptions.forEach { (id, label) ->
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    flagCodeForLanguage(id)?.let { code ->
+                                        GlassCircularFlag(countryCode = code, size = 16.dp)
+                                    }
+                                    Text(label)
+                                }
+                            },
+                            onClick = {
+                                onAnalyzeLanguage(id)
+                                analyzeLangOpen = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (analyzeResolvedMarketplace.isNotBlank() || analyzeResolvedLanguage.isNotBlank()) {
+            val usedPlatform = if (analyzeResolvedMarketplace.isNotBlank() && analyzeResolvedMarketplace != "all") {
+                countryLabel(analyzeResolvedMarketplace, translationStore)
+            } else {
+                tr("creator.research.analyze_all", "All")
+            }
+            val usedLang = analyzeLangOptions.firstOrNull { it.first == analyzeResolvedLanguage }?.second
+                ?: tr("creator.research.analyze_all", "All")
+            Text(
+                tr("creator.research.analyze_used", "{platform} · {language}")
+                    .replace("{platform}", usedPlatform)
+                    .replace("{language}", usedLang),
+                color = TextDim,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQuery,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                placeholder = {
+                    Text(tr("creator.research.search_placeholder", "Search reprint-safe products"), color = TextDim)
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextMain,
+                    unfocusedTextColor = TextMain,
+                    focusedBorderColor = Accent,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                ),
+            )
+            Text(
+                if (analyzing) {
+                    tr("creator.research.analyze_loading", "Analyzing…")
+                } else {
+                    tr("creator.research.analyze_remaining", "Analyze ({remaining}/{limit})")
+                        .replace("{remaining}", analyzeLimits.remaining.toString())
+                        .replace("{limit}", analyzeLimits.limit.toString())
+                },
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .heightIn(min = 36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (analyzeEnabled) Color(0xFFF97316) else Color.White.copy(alpha = 0.12f))
+                    .clickable(enabled = analyzeEnabled, onClick = onAnalyze)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+    }
+    }
 }
 
 @Composable
@@ -1086,35 +1273,6 @@ private fun FilterCheckRow(
         Text(label, color = TextMain, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(count.toString(), color = TextDim, fontSize = 11.sp)
     }
-}
-
-@Composable
-private fun FilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    radio: Boolean = false,
-) {
-    Text(
-        label,
-        color = TextMain,
-        fontSize = 11.sp,
-        modifier = Modifier
-            .heightIn(min = 28.dp)
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) Color(0xFFF97316).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.06f))
-            .border(
-                width = 1.dp,
-                color = if (selected) Color(0xB3FB923C) else Color.White.copy(alpha = 0.14f),
-                shape = RoundedCornerShape(999.dp),
-            )
-            .semantics {
-                this.selected = selected
-                role = if (radio) Role.RadioButton else Role.Checkbox
-            }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 5.dp),
-    )
 }
 
 @Composable
@@ -1460,6 +1618,7 @@ private fun filterProducts(
     personalizations: Set<String>,
     audiences: Set<String>,
     sort: String,
+    sortDir: String,
     view: String,
     watched: Set<String>,
     marketplace: String,
@@ -1500,12 +1659,13 @@ private fun filterProducts(
             else -> rows
         }
     }
-    return when (sort) {
-        "reviews" -> rows.sortedByDescending { it.reviews ?: 0 }
+    val base = when (sort) {
+        "reviews" -> rows.sortedBy { it.reviews ?: 0 }
         "bsr" -> rows.sortedBy { it.bsr ?: Int.MAX_VALUE }
-        "newest" -> rows.sortedByDescending { it.capturedAt ?: 0L }
-        else -> rows.sortedByDescending { it.reviewDelta ?: 0 }
+        "newest" -> rows.sortedBy { it.capturedAt ?: 0L }
+        else -> rows.sortedBy { it.reviewDelta ?: 0 }
     }
+    return if (resolveSortDir(sort, sortDir) == "asc") base else base.reversed()
 }
 
 private val ToddlerRe =
@@ -1687,6 +1847,39 @@ private fun flagCodeForMarketplace(host: String): String? = when (host.trim().lo
     "amazon.co.jp" -> "JP"
     "amazon.com.au" -> "AU"
     else -> null
+}
+
+private fun defaultSortDir(sort: String): String = if (sort == "bsr") "asc" else "desc"
+
+private fun resolveSortDir(sort: String, dir: String): String {
+    val raw = dir.trim().lowercase(Locale.ROOT)
+    return if (raw == "asc" || raw == "desc") raw else defaultSortDir(sort)
+}
+
+private fun sortDisplayLabel(sort: String, dir: String, translationStore: TranslationStore): String {
+    val d = resolveSortDir(sort, dir)
+    return when (sort) {
+        "newest" -> if (d == "asc") {
+            translationStore.t("creator.research.sort_oldest_first", "Oldest first")
+        } else {
+            translationStore.t("creator.research.sort_newest_first", "Newest first")
+        }
+        "reviews" -> if (d == "asc") {
+            translationStore.t("creator.research.sort_reviews_low", "Fewest reviews")
+        } else {
+            translationStore.t("creator.research.sort_reviews_high", "Most reviews")
+        }
+        "bsr" -> if (d == "asc") {
+            translationStore.t("creator.research.sort_bsr_best", "Best BSR")
+        } else {
+            translationStore.t("creator.research.sort_bsr_worst", "Highest BSR")
+        }
+        else -> if (d == "asc") {
+            translationStore.t("creator.research.sort_growth_low", "Lowest growth")
+        } else {
+            translationStore.t("creator.research.sort_growth_high", "Highest growth")
+        }
+    }
 }
 
 private fun countryLabel(host: String, translationStore: TranslationStore): String {
