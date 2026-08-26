@@ -332,6 +332,8 @@ fun CreatorCreationsScreen(
 
     var uploadInProgress by remember { mutableStateOf(false) }
     var uploadModalVisible by remember { mutableStateOf(false) }
+    var showUploadSource by remember { mutableStateOf(false) }
+    var showDesignCanvas by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var productImageOverrides by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var productFallbackRequestedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -675,7 +677,7 @@ fun CreatorCreationsScreen(
                     onDesignsSearchChange = { designsSearch = it },
                     onFilterClick = { filterModalVisible = true },
                     onUploadClick = {
-                        if (!uploadInProgress) imagePicker.launch("image/*")
+                        if (!uploadInProgress) showUploadSource = true
                     },
                     designsActivityFilter = designsActivityFilter,
                     onDesignsActivityChange = { key ->
@@ -1161,6 +1163,38 @@ fun CreatorCreationsScreen(
             onApply = { creationsFilter = it },
             designs = designs,
             products = products
+        )
+    }
+
+    if (showUploadSource) {
+        CreatorDesignUploadSourceSheet(
+            visible = true,
+            onDismiss = { showUploadSource = false },
+            onDevice = {
+                showUploadSource = false
+                imagePicker.launch("image/*")
+            },
+            onCanvas = {
+                showUploadSource = false
+                showDesignCanvas = true
+            },
+            translationStore = translationStore,
+        )
+    }
+
+    if (showDesignCanvas) {
+        CreatorDesignCanvasModal(
+            visible = true,
+            onDismiss = {
+                showDesignCanvas = false
+                showUploadSource = true
+            },
+            onUseDesign = { uri ->
+                showDesignCanvas = false
+                selectedImageUri = uri
+                uploadModalVisible = true
+            },
+            translationStore = translationStore,
         )
     }
 
