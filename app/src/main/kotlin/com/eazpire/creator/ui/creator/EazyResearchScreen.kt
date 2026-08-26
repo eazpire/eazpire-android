@@ -107,7 +107,8 @@ private val FILTER_FOLD_DEFAULTS = mapOf(
     "audience" to false,
     "custom_design" to false,
     "design_type" to false,
-    "language" to false,
+            "language" to false,
+    "opportunity" to false,
 )
 
 private data class ResearchProduct(
@@ -140,6 +141,7 @@ private data class ResearchProduct(
     val capturedAt: Long?,
     val trend: String,
     val risingScore: Int,
+    val opportunityBucket: String?,
 )
 
 private data class ResearchNiche(
@@ -202,6 +204,8 @@ fun EazyResearchScreen(
     var languages by remember { mutableStateOf(setOf<String>()) }
     var personalizations by remember { mutableStateOf(setOf<String>()) }
     var selectedAudiences by remember { mutableStateOf(setOf<String>()) }
+    var selectedOpportunity by remember { mutableStateOf(setOf<String>()) }
+    var researchTab by remember { mutableStateOf("ideas") }
     var sort by remember { mutableStateOf("review_growth") }
     var sortDir by remember { mutableStateOf("desc") }
     var view by remember { mutableStateOf("opportunities") }
@@ -231,6 +235,7 @@ fun EazyResearchScreen(
         if (languages.isNotEmpty()) params["language"] = languages.joinToString(",")
         if (personalizations.isNotEmpty()) params["personalization"] = personalizations.joinToString(",")
         if (selectedAudiences.isNotEmpty()) params["audience"] = selectedAudiences.joinToString(",")
+        if (selectedOpportunity.isNotEmpty()) params["opportunity"] = selectedOpportunity.joinToString(",")
         return params
     }
 
@@ -284,6 +289,7 @@ fun EazyResearchScreen(
         languages,
         personalizations,
         selectedAudiences,
+        selectedOpportunity,
         sort,
         view,
         debouncedQuery,
@@ -502,6 +508,10 @@ fun EazyResearchScreen(
             onToggleAudience = { key ->
                 selectedAudiences = if (key in selectedAudiences) selectedAudiences - key else selectedAudiences + key
             },
+            selectedOpportunity = selectedOpportunity,
+            onToggleOpportunity = { key ->
+                selectedOpportunity = if (key in selectedOpportunity) selectedOpportunity - key else selectedOpportunity + key
+            },
             facets = facets,
             analyzeLimits = analyzeLimits,
         )
@@ -514,7 +524,7 @@ fun EazyResearchScreen(
     ) {
         val compact = maxWidth < 600.dp
         Row(Modifier.fillMaxSize()) {
-            if (!compact) {
+            if (!compact && researchTab == "ideas") {
                 if (!filtersCollapsed) {
                     Column(
                         modifier = Modifier
@@ -542,7 +552,12 @@ fun EazyResearchScreen(
                     .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (compact) {
+                ResearchTabRow(
+                    selected = researchTab,
+                    translationStore = translationStore,
+                    onSelect = { researchTab = it },
+                )
+                if (compact && researchTab == "ideas") {
                     Text(
                         tr("creator.research.filter_open", "Open filters"),
                         color = TextMain,
@@ -556,7 +571,14 @@ fun EazyResearchScreen(
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                     )
                 }
-                when {
+                if (researchTab == "trends") {
+                    EazyResearchTrendsPane(
+                        api = api,
+                        translationStore = translationStore,
+                        loggedIn = tokenStore.isLoggedIn(),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
+                } else when {
                     error != null && products.isEmpty() && !analyzing -> Text(error ?: "", color = TextDim, fontSize = 14.sp)
                     else -> Box(Modifier.weight(1f).fillMaxWidth()) {
                         val showSkeleton = (loading && products.isEmpty()) || (analyzing && displayed.isEmpty())
@@ -747,6 +769,8 @@ private fun ResearchFilterPanel(
     onTogglePersonalization: (String) -> Unit,
     selectedAudiences: Set<String>,
     onToggleAudience: (String) -> Unit,
+    selectedOpportunity: Set<String>,
+    onToggleOpportunity: (String) -> Unit,
     facets: Map<String, List<ResearchFacet>>,
     analyzeLimits: AnalyzeLimits,
 ) {
@@ -784,9 +808,6 @@ private fun ResearchFilterPanel(
         "bsr" to tr("creator.research.sort_bsr", "BSR"),
         "newest" to tr("creator.research.sort_newest", "Newest snapshot"),
     )
-    var countryOpen by remember { mutableStateOf(false) }
-    var platformOpen by remember { mutableStateOf(false) }
-    var analyzeLangOpen by remember { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
     val countryLabelText = countryOptions.firstOrNull { it.first == marketplace }?.second ?: countryOptions.first().second
     val platformLabelText = platformOptions.firstOrNull { it.first == analyzeMarketplace }?.second ?: platformOptions.first().second
@@ -799,50 +820,13 @@ private fun ResearchFilterPanel(
             .fillMaxWidth()
             .verticalScroll(panelScroll),
     ) {
-    ExposedDropdownMenuBox(expanded = countryOpen, onExpandedChange = { countryOpen = it }) {
-        OutlinedTextField(
-            value = countryLabelText,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(tr("creator.research.country", "Country"), color = TextDim) },
-            leadingIcon = {
-                flagCodeForMarketplace(marketplace)?.let { code ->
-                    GlassCircularFlag(countryCode = code, size = 20.dp)
-                }
-            },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(countryOpen) },
-            modifier = Modifier.menuAnchor().fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = TextMain,
-                unfocusedTextColor = TextMain,
-                focusedBorderColor = Accent,
-                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                focusedLabelColor = TextDim,
-                unfocusedLabelColor = TextDim,
-            ),
-        )
-        ExposedDropdownMenu(expanded = countryOpen, onDismissRequest = { countryOpen = false }) {
-            countryOptions.forEach { (id, label) ->
-                DropdownMenuItem(
-                    text = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            flagCodeForMarketplace(id)?.let { code ->
-                                GlassCircularFlag(countryCode = code, size = 18.dp)
-                            }
-                            Text(label)
-                        }
-                    },
-                    onClick = {
-                        onMarketplace(id)
-                        countryOpen = false
-                    },
-                )
-            }
-        }
-    }
+    CenterChoiceField(
+        label = tr("creator.research.country", "Country"),
+        value = countryLabelText,
+        flagCode = flagCodeForMarketplace(marketplace),
+        options = countryOptions.map { (id, label) -> Triple(id, label, flagCodeForMarketplace(id)) },
+        onPick = onMarketplace,
+    )
     ExposedDropdownMenuBox(
         expanded = sortOpen,
         onExpandedChange = { sortOpen = it },
@@ -1031,6 +1015,31 @@ private fun ResearchFilterPanel(
             )
         }
     }
+    FilterFold(
+        title = tr("creator.research.opportunity", "Opportunity"),
+        open = foldOpen("opportunity"),
+        selectedCount = selectedOpportunity.size,
+        translationStore = translationStore,
+        onToggle = { toggleFold("opportunity") },
+    ) {
+        if (selectedOpportunity.isEmpty()) {
+            Text(
+                tr("creator.research.opportunity_all_hint", "All opportunity ratings. Empty when Google has no data — never invented."),
+                color = TextDim,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        listOf(
+            "very_high" to tr("creator.research.opportunity_very_high", "Very high"),
+            "high" to tr("creator.research.opportunity_high", "High"),
+            "medium" to tr("creator.research.opportunity_medium", "Medium"),
+            "low" to tr("creator.research.opportunity_low", "Low"),
+            "very_low" to tr("creator.research.opportunity_very_low", "Very low"),
+        ).forEach { (id, label) ->
+            FilterCheckRow(label = label, count = countOf("opportunity", id), checked = id in selectedOpportunity, onToggle = { onToggleOpportunity(id) })
+        }
+    }
     }
     Column(
         modifier = Modifier
@@ -1042,102 +1051,22 @@ private fun ResearchFilterPanel(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            ExposedDropdownMenuBox(
-                expanded = platformOpen,
-                onExpandedChange = { platformOpen = it },
+            CenterChoiceField(
+                label = tr("creator.research.platform", "Platform"),
+                value = platformLabelText,
+                flagCode = flagCodeForMarketplace(analyzeMarketplace),
+                options = platformOptions.map { (id, label) -> Triple(id, label, flagCodeForMarketplace(id)) },
                 modifier = Modifier.weight(1f),
-            ) {
-                OutlinedTextField(
-                    value = platformLabelText,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(tr("creator.research.platform", "Platform"), color = TextDim, maxLines = 1) },
-                    leadingIcon = {
-                        flagCodeForMarketplace(analyzeMarketplace)?.let { code ->
-                            GlassCircularFlag(countryCode = code, size = 16.dp)
-                        }
-                    },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(platformOpen) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextMain,
-                        unfocusedTextColor = TextMain,
-                        focusedBorderColor = Accent,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                        focusedLabelColor = TextDim,
-                        unfocusedLabelColor = TextDim,
-                    ),
-                )
-                ExposedDropdownMenu(expanded = platformOpen, onDismissRequest = { platformOpen = false }) {
-                    platformOptions.forEach { (id, label) ->
-                        DropdownMenuItem(
-                            text = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    flagCodeForMarketplace(id)?.let { code ->
-                                        GlassCircularFlag(countryCode = code, size = 16.dp)
-                                    }
-                                    Text(label)
-                                }
-                            },
-                            onClick = {
-                                onAnalyzeMarketplace(id)
-                                platformOpen = false
-                            },
-                        )
-                    }
-                }
-            }
-            ExposedDropdownMenuBox(
-                expanded = analyzeLangOpen,
-                onExpandedChange = { analyzeLangOpen = it },
+                onPick = onAnalyzeMarketplace,
+            )
+            CenterChoiceField(
+                label = tr("creator.research.language", "Language"),
+                value = analyzeLangLabel,
+                flagCode = flagCodeForLanguage(analyzeLanguage),
+                options = analyzeLangOptions.map { (id, label) -> Triple(id, label, flagCodeForLanguage(id)) },
                 modifier = Modifier.weight(1f),
-            ) {
-                OutlinedTextField(
-                    value = analyzeLangLabel,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(tr("creator.research.language", "Language"), color = TextDim, maxLines = 1) },
-                    leadingIcon = {
-                        flagCodeForLanguage(analyzeLanguage)?.let { code ->
-                            GlassCircularFlag(countryCode = code, size = 16.dp)
-                        }
-                    },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(analyzeLangOpen) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextMain,
-                        unfocusedTextColor = TextMain,
-                        focusedBorderColor = Accent,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                        focusedLabelColor = TextDim,
-                        unfocusedLabelColor = TextDim,
-                    ),
-                )
-                ExposedDropdownMenu(expanded = analyzeLangOpen, onDismissRequest = { analyzeLangOpen = false }) {
-                    analyzeLangOptions.forEach { (id, label) ->
-                        DropdownMenuItem(
-                            text = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    flagCodeForLanguage(id)?.let { code ->
-                                        GlassCircularFlag(countryCode = code, size = 16.dp)
-                                    }
-                                    Text(label)
-                                }
-                            },
-                            onClick = {
-                                onAnalyzeLanguage(id)
-                                analyzeLangOpen = false
-                            },
-                        )
-                    }
-                }
-            }
+                onPick = onAnalyzeLanguage,
+            )
         }
         if (analyzeResolvedMarketplace.isNotBlank() || analyzeResolvedLanguage.isNotBlank()) {
             val usedPlatform = if (analyzeResolvedMarketplace.isNotBlank() && analyzeResolvedMarketplace != "all") {
@@ -1539,6 +1468,22 @@ private fun ResearchStatsBox(product: ResearchProduct, translationStore: Transla
                 )
             }
         }
+        product.opportunityBucket?.takeIf { it.isNotBlank() }?.let { bucket ->
+            val label = when (bucket) {
+                "very_low" -> tr("creator.research.opportunity_very_low", "Very low")
+                "low" -> tr("creator.research.opportunity_low", "Low")
+                "medium" -> tr("creator.research.opportunity_medium", "Medium")
+                "high" -> tr("creator.research.opportunity_high", "High")
+                "very_high" -> tr("creator.research.opportunity_very_high", "Very high")
+                else -> bucket
+            }
+            Text(
+                tr("creator.research.opportunity", "Opportunity") + " · " + label,
+                color = Color(0xFFFFD7B0),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -1748,6 +1693,7 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             capturedAt = latest.optLongOrNull("captured_at"),
             trend = p.optString("trend"),
             risingScore = p.optInt("rising_score", 0),
+            opportunityBucket = p.optString("opportunity_bucket").ifBlank { null },
         )
     }
     return out
@@ -1756,7 +1702,7 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
 private fun parseFacets(obj: JSONObject?): Map<String, List<ResearchFacet>> {
     if (obj == null) return emptyMap()
     val out = mutableMapOf<String, List<ResearchFacet>>()
-    listOf("topics", "audience", "personalization", "design_type", "language").forEach { group ->
+    listOf("topics", "audience", "personalization", "design_type", "language", "opportunity").forEach { group ->
         val arr = obj.optJSONArray(group) ?: return@forEach
         val rows = ArrayList<ResearchFacet>(arr.length())
         for (i in 0 until arr.length()) {
