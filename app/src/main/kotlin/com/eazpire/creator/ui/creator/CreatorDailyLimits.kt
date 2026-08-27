@@ -1,6 +1,7 @@
 package com.eazpire.creator.ui.creator
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -177,7 +178,8 @@ private fun CosmicUsageBar(
             .width(barWidth.dp)
             .height(barHeight.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(Color(0xEB050810)),
+            .background(Color(0xEB050810))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(999.dp)),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -224,7 +226,15 @@ fun CreatorDailyLimitsSubheader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 10.dp),
+            .padding(top = 8.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xE1080512), Color(0xB8080512))
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

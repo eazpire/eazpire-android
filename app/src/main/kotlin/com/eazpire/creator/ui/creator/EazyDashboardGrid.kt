@@ -4,7 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -56,9 +57,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
@@ -68,8 +73,10 @@ import com.eazpire.creator.EazColors
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.i18n.TranslationStore
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -80,6 +87,8 @@ private val GlassBorder = Color(0xFFFF9D00).copy(alpha = 0.18f)
 private val Chrome = Color(0xFF0D1118)
 private val Accent = Color(0xFFFF9D00)
 private val RowH = 56.dp
+private const val WIDGET_LONG_PRESS_MS = 300L
+private const val WIDGET_DRAG_SLOP_PX = 18f
 
 private data class ManagerDraft(
     val layout: DashboardLayout,
@@ -190,6 +199,7 @@ fun EazyDashboardGrid(
             val surfaceName = surfaceForWidth(maxWidth.value)
             val surface = layout.surfaceNamed(surfaceName)
             val density = LocalDensity.current
+            val haptic = LocalHapticFeedback.current
             val cols = surface.columns.coerceAtLeast(1)
             val gap = 8.dp
             val colW = (maxWidth - gap * (cols - 1)) / cols
@@ -207,13 +217,14 @@ fun EazyDashboardGrid(
                     val yDp = (RowH + gap) * pos.y
                     val w = colW * pos.w + gap * (pos.w - 1).coerceAtLeast(0)
                     val h = RowH * pos.h + gap * (pos.h - 1).coerceAtLeast(0)
-                    DashboardWidgetCard(
+                        DashboardWidgetCard(
                         title = dashboardTitleCase(t(spec?.titleKey ?: pos.id, pos.id)),
                         tracking = spec?.trackingRequired == true,
                         customizeLabel = t("creator.dashboard.widget_customize", "Customize"),
                         hideLabel = t("creator.dashboard.hide_widget", "Hide"),
                         menuLabel = t("creator.dashboard.widget_menu", "Widget menu"),
                         moveLabel = t("creator.dashboard.move_widget", "Move widget"),
+                        lifted = dragId == pos.id,
                         onCustomize = { openManagerSheet() },
                         onHide = {
                             val nextWidgets = surface.widgets.map { wdg ->
@@ -223,55 +234,71 @@ fun EazyDashboardGrid(
                         },
                         handleModifier = Modifier.pointerInput(pos.id, colW, cols, layout.id, surfaceName) {
                             val startWidgets = surface.widgets
-                            detectDragGestures(
-                                onDragStart = {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                var armed = false
+                                val lpJob = launch {
+                                    delay(WIDGET_LONG_PRESS_MS)
+                                    armed = true
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     dragId = pos.id
                                     dragOffset = Offset.Zero
                                     dragOrigin = pos
                                     dragPreview = null
-                                },
-                                onDrag = { _, amount ->
-                                    dragOffset += amount
-                                    val origin = dragOrigin ?: pos
-                                    val cellW = with(density) { (colW + gap).toPx() }
-                                    val cellH = with(density) { (RowH + gap).toPx() }
-                                    val dx = (dragOffset.x / cellW).roundToInt()
-                                    val dy = (dragOffset.y / cellH).roundToInt()
-                                    val tentative = startWidgets.map { wdg ->
-                                        if (wdg.id != origin.id) wdg else wdg.copy(
-                                            x = (origin.x + dx).coerceAtLeast(0).coerceAtMost((cols - origin.w).coerceAtLeast(0)),
-                                            y = (origin.y + dy).coerceAtLeast(0),
-                                        )
+                                }
+                                try {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                                        val delta = change.position - down.position
+                                        if (change.changedToUp() || !change.pressed) break
+                                        if (!armed) {
+                                            if (hypot(delta.x, delta.y) >= WIDGET_DRAG_SLOP_PX) {
+                                                lpJob.cancel()
+                                                return@awaitEachGesture
+                                            }
+                                        } else {
+                                            change.consume()
+                                            dragOffset = delta
+                                            val origin = dragOrigin ?: pos
+                                            val cellW = with(density) { (colW + gap).toPx() }
+                                            val cellH = with(density) { (RowH + gap).toPx() }
+                                            val dx = (delta.x / cellW).roundToInt()
+                                            val dy = (delta.y / cellH).roundToInt()
+                                            val tentative = startWidgets.map { wdg ->
+                                                if (wdg.id != origin.id) wdg else wdg.copy(
+                                                    x = (origin.x + dx).coerceAtLeast(0).coerceAtMost((cols - origin.w).coerceAtLeast(0)),
+                                                    y = (origin.y + dy).coerceAtLeast(0),
+                                                )
+                                            }
+                                            dragPreview = resolveWidgetCollisions(tentative, origin.id, cols)
+                                        }
                                     }
-                                    dragPreview = resolveWidgetCollisions(tentative, origin.id, cols)
-                                },
-                                onDragEnd = {
-                                    val origin = dragOrigin ?: pos
-                                    val cellW = with(density) { (colW + gap).toPx() }
-                                    val cellH = with(density) { (RowH + gap).toPx() }
-                                    val dx = (dragOffset.x / cellW).roundToInt()
-                                    val dy = (dragOffset.y / cellH).roundToInt()
-                                    val resolved = dragPreview
+                                    if (armed) {
+                                        val origin = dragOrigin ?: pos
+                                        val cellW = with(density) { (colW + gap).toPx() }
+                                        val cellH = with(density) { (RowH + gap).toPx() }
+                                        val dx = (dragOffset.x / cellW).roundToInt()
+                                        val dy = (dragOffset.y / cellH).roundToInt()
+                                        val resolved = dragPreview
+                                        if (dx != 0 || dy != 0) {
+                                            val nextWidgets = resolved ?: startWidgets.map { wdg ->
+                                                if (wdg.id != origin.id) wdg else wdg.copy(
+                                                    x = (origin.x + dx).coerceAtLeast(0).coerceAtMost((cols - origin.w).coerceAtLeast(0)),
+                                                    y = (origin.y + dy).coerceAtLeast(0),
+                                                )
+                                            }.let { resolveWidgetCollisions(it, origin.id, cols) }
+                                            persistLayout(layout.withSurface(surfaceName, surface.copy(widgets = nextWidgets)))
+                                        }
+                                    }
+                                } finally {
+                                    lpJob.cancel()
                                     dragId = null
                                     dragOffset = Offset.Zero
                                     dragPreview = null
                                     dragOrigin = null
-                                    if (dx == 0 && dy == 0) return@detectDragGestures
-                                    val nextWidgets = resolved ?: startWidgets.map { wdg ->
-                                        if (wdg.id != origin.id) wdg else wdg.copy(
-                                            x = (origin.x + dx).coerceAtLeast(0).coerceAtMost((cols - origin.w).coerceAtLeast(0)),
-                                            y = (origin.y + dy).coerceAtLeast(0),
-                                        )
-                                    }.let { resolveWidgetCollisions(it, origin.id, cols) }
-                                    persistLayout(layout.withSurface(surfaceName, surface.copy(widgets = nextWidgets)))
-                                },
-                                onDragCancel = {
-                                    dragId = null
-                                    dragOffset = Offset.Zero
-                                    dragPreview = null
-                                    dragOrigin = null
-                                },
-                            )
+                                }
+                            }
                         },
                         modifier = Modifier
                             .offset {
@@ -420,6 +447,7 @@ private fun DashboardWidgetCard(
     hideLabel: String,
     menuLabel: String,
     moveLabel: String,
+    lifted: Boolean = false,
     onCustomize: () -> Unit,
     onHide: () -> Unit,
     handleModifier: Modifier,
@@ -430,16 +458,20 @@ private fun DashboardWidgetCard(
     var menuOpen by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = if (lifted) 1.04f else 1f
+                scaleY = if (lifted) 1.04f else 1f
+            }
             .clip(shape)
             .background(Glass)
-            .border(1.dp, GlassBorder, shape)
+            .border(1.dp, if (lifted) Accent.copy(alpha = 0.78f) else GlassBorder, shape)
             .padding(10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NineDotHandle(moveLabel, handleModifier)
+            NineDotHandle(moveLabel, handleModifier, armed = lifted)
             Text(title, color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
             if (tracking) {
                 Text(
@@ -483,18 +515,19 @@ private fun DashboardWidgetCard(
 }
 
 @Composable
-private fun NineDotHandle(moveLabel: String, modifier: Modifier) {
+private fun NineDotHandle(moveLabel: String, modifier: Modifier, armed: Boolean = false) {
     Canvas(
         modifier = modifier
             .size(28.dp)
             .semantics { contentDescription = moveLabel },
     ) {
         val step = size.minDimension / 4f
-        val r = 1.6.dp.toPx()
+        val r = if (armed) 2.1.dp.toPx() else 1.6.dp.toPx()
+        val color = if (armed) Accent else Color.White.copy(alpha = 0.55f)
         for (y in 0..2) {
             for (x in 0..2) {
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = color,
                     radius = r,
                     center = Offset(step * (x + 1), step * (y + 1)),
                 )

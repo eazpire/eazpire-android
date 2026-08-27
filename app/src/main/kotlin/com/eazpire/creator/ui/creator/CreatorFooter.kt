@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.brand.BrandAssetSlots
@@ -139,38 +144,30 @@ fun CreatorFooter(
                     )
                 )
             )
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .heightIn(min = 36.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left: © YEAR eazpire • Terms
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = "© ${java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)} ",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                color = Color.White
-            )
-            Text(
-                text = "eazpire",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                ),
-                color = EazColors.Orange
-            )
-            Text(
-                text = " • ",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                color = Color.White.copy(alpha = 0.72f)
-            )
-            Text(
-                text = "Terms & Policies",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                color = Color.White,
-                modifier = Modifier.clickable(
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        Text(
+            text = buildAnnotatedString {
+                append("© $year ")
+                withStyle(SpanStyle(color = EazColors.Orange, fontWeight = FontWeight.SemiBold)) {
+                    append("eazpire")
+                }
+                withStyle(SpanStyle(color = Color.White.copy(alpha = 0.72f))) {
+                    append(" · ")
+                }
+                append("Terms & Policies")
+            },
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+            color = Color.White,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) {
@@ -182,13 +179,11 @@ fun CreatorFooter(
                         } catch (_: Exception) {}
                     }
                 }
-            )
-        }
-        // Right: LANG (flag only, clickable) + starter slots or EAZ balance
+        )
         Row(
             modifier = Modifier.padding(start = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             val flagCode = localeStore.getFlagCountryForLanguage(langCode)
             Box(
@@ -198,7 +193,7 @@ fun CreatorFooter(
                         interactionSource = remember { MutableInteractionSource() }
                     ) { onLanguageClick() }
             ) {
-                GlassCircularFlag(countryCode = flagCode, size = 24.dp)
+                GlassCircularFlag(countryCode = flagCode, size = 20.dp)
             }
             Row(
                 modifier = Modifier

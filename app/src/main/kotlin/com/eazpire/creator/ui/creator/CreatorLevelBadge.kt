@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
@@ -206,6 +209,7 @@ fun CreatorLevelBadge(
         )
     }
 
+    val badgeShape = RoundedCornerShape(28.dp)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -213,17 +217,16 @@ fun CreatorLevelBadge(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // creator-level-badge: icon | info | xp (wie Web)
+        // Compact pill like web mobile — never a circle when the XP hint is long.
         Row(
             modifier = Modifier
                 .weight(1f)
-                .background(
-                    Color(0xFF0B1220).copy(alpha = 0.55f),
-                    RoundedCornerShape(percent = 50)
-                )
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(percent = 50))
-                .padding(start = 12.dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .heightIn(min = 68.dp, max = 88.dp)
+                .clip(badgeShape)
+                .background(Color(0xFF0B1220).copy(alpha = 0.55f), badgeShape)
+                .border(1.dp, Color.White.copy(alpha = 0.12f), badgeShape)
+                .padding(start = 12.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // __icon: 44x44, gradient, star
@@ -249,8 +252,8 @@ fun CreatorLevelBadge(
                     modifier = Modifier.size(24.dp)
                 )
             }
-            // __info: label + value (number + name)
             Column(
+                modifier = Modifier.widthIn(max = 118.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
@@ -259,9 +262,12 @@ fun CreatorLevelBadge(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     ),
-                    color = Color(0xFF9CA3AF)
+                    color = Color(0xFF9CA3AF),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
@@ -279,16 +285,19 @@ fun CreatorLevelBadge(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold
                         ),
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                 }
             }
-            // __xp: bar (8x48 vertical) + info
             Row(
                 modifier = Modifier
+                    .weight(1f)
                     .background(Color.Black.copy(alpha = 0.2f), RoundedCornerShape(48.dp))
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -311,6 +320,7 @@ fun CreatorLevelBadge(
                     )
                 }
                 Column(
+                    modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                     Text(
@@ -319,7 +329,8 @@ fun CreatorLevelBadge(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium
                         ),
-                        color = Color(0xFF9CA3AF)
+                        color = Color(0xFF9CA3AF),
+                        maxLines = 1
                     )
                     Text(
                         text = xpValue,
@@ -327,14 +338,19 @@ fun CreatorLevelBadge(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = EazColors.Orange
+                        color = EazColors.Orange,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = xpHint,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 9.sp
+                            fontSize = 9.sp,
+                            lineHeight = 11.sp
                         ),
-                        color = Color(0xFF6B7280)
+                        color = Color(0xFF6B7280),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
