@@ -91,6 +91,10 @@ object EazNotificationDisplay {
                     putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
                     putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.Games.name)
                 }
+                "design_requests", "eazy_design_requests" -> {
+                    putExtra(MainActivity.EXTRA_OPEN_EAZY_CHAT, true)
+                    putExtra(MainActivity.EXTRA_EAZY_TAB, EazySidebarTab.DesignRequests.name)
+                }
                 "creator_settings_codes", "creator_codes", "creator-codes" -> {
                     putExtra(MainActivity.EXTRA_OPEN_CREATOR_CODES, true)
                     extras["code"]?.trim()?.takeIf { it.isNotBlank() }?.let {

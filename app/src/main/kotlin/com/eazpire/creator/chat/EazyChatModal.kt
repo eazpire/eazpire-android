@@ -122,7 +122,7 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class EazySidebarTab { Chat, Notifications, Jobs, Settings, Games, Artifacts, QuickInspirations, Verify, Functions, Mascot }
+enum class EazySidebarTab { Chat, Notifications, Jobs, Settings, Games, Artifacts, QuickInspirations, DesignRequests, Verify, Functions, Mascot }
 
 enum class EazyChatContext { Shop, Creator }
 
@@ -138,6 +138,7 @@ private fun sidebarTabLabel(tab: EazySidebarTab, t: (String, String) -> String):
     EazySidebarTab.Games -> t("eazy_chat.ui_games_tab", "Games")
     EazySidebarTab.Artifacts -> t("eazy_chat.ui_artifacts_tab", "Artifacts")
     EazySidebarTab.QuickInspirations -> t("eazy_chat.ui_quick_inspirations_tab", "Quick Inspirations")
+    EazySidebarTab.DesignRequests -> t("eazy_chat.ui_design_requests_tab", "Design Requests")
     EazySidebarTab.Verify -> t("eazy_chat.ui_verify_tab", "Verify")
     EazySidebarTab.Functions -> t("eazy_chat.ui_functions_tab", "Functions")
     EazySidebarTab.Mascot -> t("eazy_chat.ui_mascot_tab", "Mascot")
@@ -667,6 +668,7 @@ fun EazyChatModal(
             EazySidebarTab.Games to Icons.Default.SportsEsports,
             EazySidebarTab.Artifacts to Icons.Default.Star,
             EazySidebarTab.QuickInspirations to Icons.Default.Image,
+            EazySidebarTab.DesignRequests to Icons.Default.Brush,
             EazySidebarTab.Verify to Icons.Default.Verified,
             EazySidebarTab.Functions to Icons.Default.Build,
             EazySidebarTab.Mascot to Icons.Default.Pets
@@ -1367,6 +1369,12 @@ fun EazyChatModal(
                                 t = t,
                             )
                             EazySidebarTab.QuickInspirations -> EazyQuickInspirationsPanel(
+                                api = api,
+                                ownerId = ownerId,
+                                t = t,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            EazySidebarTab.DesignRequests -> EazyDesignRequestsPanel(
                                 api = api,
                                 ownerId = ownerId,
                                 t = t,

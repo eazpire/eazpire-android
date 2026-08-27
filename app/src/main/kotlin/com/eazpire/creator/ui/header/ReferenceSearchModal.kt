@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -30,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -164,6 +166,7 @@ fun ReferenceSearchModal(
     var banner by remember { mutableStateOf<String?>(null) }
     var previewCreation by remember { mutableStateOf<RefCreationItem?>(null) }
     var previewBusy by remember { mutableStateOf(false) }
+    var menuSpec by remember { mutableStateOf<Triple<String, String?, Boolean>?>(null) }
 
     fun refreshList() {
         if (ownerId.isBlank()) {
@@ -440,6 +443,13 @@ fun ReferenceSearchModal(
                         it.saveStatus == "saving" || it.saveStatus == "saved"
                     }
                     val creationCount = available.size + saved.size
+                    val matchCta = when {
+                        saved.isNotEmpty() || available.any { it.previewUrl.isNotBlank() } ->
+                            t("eaz.reference_search.match_cta_ready", "Nothing a match? We created designs for you.")
+                        status in setOf("queued", "analyzing", "matching", "generating") ->
+                            t("eaz.reference_search.match_cta_generating", "Nothing a match? We are creating designs for you.")
+                        else -> null
+                    }
 
                     Column(Modifier.fillMaxSize()) {
                         Text(
@@ -512,6 +522,7 @@ fun ReferenceSearchModal(
                                         modifier = Modifier.fillMaxSize(),
                                     ) {
                                         items(creationItems, key = { "c${it.slot}-${it.saveStatus}" }) { c ->
+                                            Box {
                                             Column(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(10.dp))
@@ -544,6 +555,21 @@ fun ReferenceSearchModal(
                                                     color = EazColors.TextPrimary,
                                                 )
                                             }
+                                            if (c.previewUrl.isNotBlank()) {
+                                                IconButton(
+                                                    onClick = {
+                                                        menuSpec = Triple(
+                                                            c.previewUrl,
+                                                            c.designId.takeIf { it.isNotBlank() },
+                                                            c.saveStatus == "available" || c.saveStatus == "save_failed"
+                                                        )
+                                                    },
+                                                    modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                                                }
+                                            }
+                                            }
                                         }
                                     }
                                 }
@@ -552,12 +578,16 @@ fun ReferenceSearchModal(
                                 val items = if (tab == 1) designs else products
                                 val empty = if (tab == 1) emptyDesigns else emptyProducts
                                 if (items.isEmpty()) {
-                                    Text(
-                                        empty,
-                                        modifier = Modifier.padding(24.dp),
-                                        color = EazColors.TextSecondary,
-                                        fontSize = 14.sp,
-                                    )
+                                    Column(Modifier.padding(24.dp)) {
+                                        Text(
+                                            empty,
+                                            color = EazColors.TextSecondary,
+                                            fontSize = 14.sp,
+                                        )
+                                        if (matchCta != null) {
+                                            TextButton(onClick = { tab = 2 }) { Text(matchCta) }
+                                        }
+                                    }
                                 } else {
                                     LazyVerticalGrid(
                                         columns = GridCells.Fixed(2),
@@ -567,6 +597,7 @@ fun ReferenceSearchModal(
                                         modifier = Modifier.fillMaxSize(),
                                     ) {
                                         items(items, key = { it.designId + it.previewUrl }) { m ->
+                                            Box {
                                             Column(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(10.dp))
@@ -605,6 +636,20 @@ fun ReferenceSearchModal(
                                                     overflow = TextOverflow.Ellipsis,
                                                     color = EazColors.TextPrimary,
                                                 )
+                                            }
+                                            if (tab == 1 && m.previewUrl.isNotBlank()) {
+                                                IconButton(
+                                                    onClick = { menuSpec = Triple(m.previewUrl, m.designId.takeIf { it.isNotBlank() }, false) },
+                                                    modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
+                                                ) {
+                                                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                                                }
+                                            }
+                                            }
+                                        }
+                                        if (matchCta != null) {
+                                            item(span = { GridItemSpan(2) }, key = "match-cta") {
+                                                TextButton(onClick = { tab = 2 }) { Text(matchCta) }
                                             }
                                         }
                                     }
@@ -725,6 +770,23 @@ fun ReferenceSearchModal(
                 }
             }
         }
+    }
+
+    val menu = menuSpec
+    if (menu != null) {
+        com.eazpire.creator.ui.designrequest.DesignActionMenu(
+            visible = true,
+            imageUrl = menu.first,
+            designId = menu.second,
+            canOpenStudio = false,
+            canDelete = menu.third,
+            onDismiss = { menuSpec = null },
+            onDelete = null,
+            onUseOnProduct = { url, id ->
+                onCreateProduct(RefSearchCreateProductRequest(designUrl = url, designId = id))
+                onDismiss()
+            },
+        )
     }
 }
 

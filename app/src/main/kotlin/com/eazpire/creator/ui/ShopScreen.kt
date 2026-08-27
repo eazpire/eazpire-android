@@ -94,6 +94,9 @@ import com.eazpire.creator.ui.header.SHOP_MENU_CREATE_HANDLE
 import com.eazpire.creator.ui.header.SHOP_MENU_THANKYOU_HANDLE
 import com.eazpire.creator.ui.header.SHOP_THANKYOU_PAGE_URL
 import com.eazpire.creator.ui.header.ShopMenuBar
+import com.eazpire.creator.ui.designrequest.DesignRequestPendingStore
+import com.eazpire.creator.ui.designrequest.DesignRequestSheet
+import com.eazpire.creator.ui.designrequest.DesignRequestUiTrigger
 import androidx.browser.customtabs.CustomTabsIntent
 import com.eazpire.creator.ui.vouchers.VoucherGiftSubTab
 import com.eazpire.creator.ui.vouchers.VoucherModal
@@ -384,6 +387,17 @@ fun ShopScreen(
         shopCreateSeedDesignUrl = seedDesignUrl
         shopCreateSeedDesignId = seedDesignId
         shopCreateActive = true
+    }
+
+    val designRequestOpen by DesignRequestUiTrigger.open.collectAsState()
+    val designGenerateTick by DesignRequestUiTrigger.generateTick.collectAsState()
+    LaunchedEffect(designGenerateTick) {
+        if (designGenerateTick > 0) openShopCreate()
+    }
+    LaunchedEffect(authSessionTick) {
+        if (tokenStore.isLoggedIn()) {
+            DesignRequestPendingStore.take(context)?.let { DesignRequestUiTrigger.openSheet(it) }
+        }
     }
 
     fun openShopCollection(title: String, handle: String, productType: String? = null) {
@@ -1241,6 +1255,15 @@ fun ShopScreen(
                 shopCreateActive = false
                 showLoginOptions = true
             }
+        )
+    }
+    if (!isCreatorMode && designRequestOpen != null) {
+        DesignRequestSheet(
+            spec = designRequestOpen!!,
+            ownerId = tokenStore.getOwnerId(),
+            api = creatorPollApi,
+            onDismiss = { DesignRequestUiTrigger.close() },
+            onRequireLogin = { showLoginOptions = true },
         )
     }
     val showGenOverlay = isCreatorMode && eazyGenerationOverlay

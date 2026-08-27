@@ -3970,10 +3970,13 @@ class CreatorApi(
             JSONObject(response.body?.string() ?: "{}")
         }
 
-    /** GET ?op=get-favorites&customer_id=xxx → { ok, items: [...], count } */
-    suspend fun getFavorites(customerId: String): JSONObject = call(
+    /** GET ?op=get-favorites&customer_id=xxx → { ok, items: [...], count, designs_count, products_count } */
+    suspend fun getFavorites(customerId: String, itemType: String? = null): JSONObject = call(
         "get-favorites",
-        mapOf("customer_id" to customerId)
+        buildMap {
+            put("customer_id", customerId)
+            if (!itemType.isNullOrBlank()) put("item_type", itemType)
+        }
     )
 
     /** POST ?op=add-favorite Body: { customer_id, product_id, variant_id?, product_title?, product_image? } → { ok, added, count } */
@@ -3983,7 +3986,12 @@ class CreatorApi(
         variantId: String? = null,
         variantTitle: String? = null,
         productTitle: String? = null,
-        productImage: String? = null
+        productImage: String? = null,
+        itemType: String = "product",
+        designId: String? = null,
+        isOwn: Boolean = false,
+        libraryStatus: String? = null,
+        ownerLabel: String? = null,
     ): JSONObject = postJson(
         "add-favorite",
         mapOf(
@@ -3992,7 +4000,12 @@ class CreatorApi(
             "variant_id" to variantId,
             "variant_title" to variantTitle,
             "product_title" to productTitle,
-            "product_image" to productImage
+            "product_image" to productImage,
+            "item_type" to itemType,
+            "design_id" to designId,
+            "is_own" to if (isOwn) 1 else 0,
+            "library_status" to libraryStatus,
+            "owner_label" to ownerLabel,
         )
     )
 
@@ -4030,9 +4043,12 @@ class CreatorApi(
         )
 
     /** GET ?op=get-favorite-lists&customer_id=xxx → { ok, lists: [{ id, name, items_count }] } */
-    suspend fun getFavoriteLists(customerId: String): JSONObject = call(
+    suspend fun getFavoriteLists(customerId: String, listType: String? = null): JSONObject = call(
         "get-favorite-lists",
-        mapOf("customer_id" to customerId)
+        buildMap {
+            put("customer_id", customerId)
+            if (!listType.isNullOrBlank()) put("list_type", listType)
+        }
     )
 
     /** GET ?op=get-favorite-list-items&customer_id=xxx&list_id=123 → { ok, list, items } */
@@ -4042,8 +4058,16 @@ class CreatorApi(
     )
 
     /** POST create-favorite-list Body: { customer_id, name, description? } */
-    suspend fun createFavoriteList(customerId: String, name: String, description: String? = null): JSONObject =
-        postJson("create-favorite-list", mapOf("customer_id" to customerId, "name" to name, "description" to description))
+    suspend fun createFavoriteList(
+        customerId: String,
+        name: String,
+        description: String? = null,
+        listType: String = "product",
+    ): JSONObject =
+        postJson(
+            "create-favorite-list",
+            mapOf("customer_id" to customerId, "name" to name, "description" to description, "list_type" to listType)
+        )
 
     /** POST delete-favorite-list Body: { customer_id, list_id } */
     suspend fun deleteFavoriteList(customerId: String, listId: Long): JSONObject =
@@ -4074,8 +4098,16 @@ class CreatorApi(
         postJson("remove-from-favorite-list", mapOf("customer_id" to customerId, "list_id" to listId, "item_id" to itemId))
 
     /** POST save-favorites-as-list Body: { customer_id, name, description? } – moves pool to new list */
-    suspend fun saveFavoritesAsList(customerId: String, name: String, description: String? = null): JSONObject =
-        postJson("save-favorites-as-list", mapOf("customer_id" to customerId, "name" to name, "description" to description))
+    suspend fun saveFavoritesAsList(
+        customerId: String,
+        name: String,
+        description: String? = null,
+        listType: String = "product",
+    ): JSONObject =
+        postJson(
+            "save-favorites-as-list",
+            mapOf("customer_id" to customerId, "name" to name, "description" to description, "list_type" to listType)
+        )
 
     /** POST clear-favorites Body: { customer_id } – removes all from pool */
     suspend fun clearFavorites(customerId: String): JSONObject =
@@ -4092,6 +4124,33 @@ class CreatorApi(
     /** POST ensure-favorite-list-share-token Body: { customer_id, list_id } → { ok, share_token } */
     suspend fun ensureFavoriteListShareToken(customerId: String, listId: Long): JSONObject =
         postJson("ensure-favorite-list-share-token", mapOf("customer_id" to customerId, "list_id" to listId))
+
+    suspend fun listDesignRequests(ownerId: String): JSONObject = call(
+        "design-request-list",
+        mapOf("logged_in_customer_id" to ownerId, "owner_id" to ownerId)
+    )
+
+    suspend fun createDesignRequest(body: Map<String, Any?>): JSONObject {
+        val owner = body["owner_id"]?.toString().orEmpty().ifBlank {
+            body["logged_in_customer_id"]?.toString().orEmpty()
+        }
+        return postJson(
+            "design-request-create",
+            body,
+            queryParams = if (owner.isNotBlank()) mapOf("logged_in_customer_id" to owner, "owner_id" to owner) else emptyMap()
+        )
+    }
+
+    suspend fun deleteDesignRequest(ownerId: String, requestId: String, draftId: String? = null): JSONObject =
+        postJson(
+            "design-request-delete",
+            mapOf(
+                "id" to requestId,
+                "draft_id" to draftId,
+                "owner_id" to ownerId,
+            ),
+            queryParams = mapOf("logged_in_customer_id" to ownerId, "owner_id" to ownerId)
+        )
 
     // ── Eazy Chat ─────────────────────────────────────────
     /**

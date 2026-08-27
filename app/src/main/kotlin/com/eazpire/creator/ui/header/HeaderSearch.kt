@@ -339,7 +339,8 @@ fun HeaderSearch(
                     ownerId = ownerId,
                     creatorApi = creatorApi,
                     mockPreviewRevision = mockPreviewRevision,
-                    fillHeight = fullscreen
+                    fillHeight = fullscreen,
+                    searchQuery = query,
                 )
             }
         }
@@ -374,6 +375,7 @@ private fun PredictiveSearchResultsBody(
     creatorApi: CreatorApi?,
     mockPreviewRevision: Int,
     fillHeight: Boolean,
+    searchQuery: String = "",
 ) {
     when {
         searchError && !loading -> {
@@ -431,14 +433,14 @@ private fun PredictiveSearchResultsBody(
             result.queries.isEmpty() &&
             result.products.isEmpty() &&
             !result.sectionStillLoading -> {
-            Text(
-                text = noResultsText,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                style = TextStyle(fontSize = 14.sp, color = EazColors.TextSecondary),
-                textAlign = TextAlign.Center
-            )
+            Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = noResultsText,
+                    style = TextStyle(fontSize = 14.sp, color = EazColors.TextSecondary),
+                    textAlign = TextAlign.Center
+                )
+                com.eazpire.creator.ui.designrequest.ShopDesignRequestCta(query = searchQuery)
+            }
         }
         result != null -> {
             val r = result
@@ -513,6 +515,9 @@ private fun PredictiveSearchResultsBody(
                             mockPreviewRevision = mockPreviewRevision
                         )
                     }
+                }
+                item(span = { GridItemSpan(2) }, key = "design-request-cta") {
+                    com.eazpire.creator.ui.designrequest.ShopDesignRequestCta(query = searchQuery)
                 }
             }
         }

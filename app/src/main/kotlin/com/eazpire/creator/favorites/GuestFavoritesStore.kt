@@ -25,7 +25,9 @@ class GuestFavoritesStore(context: Context) {
                     productId = productId,
                     variantId = o.optString("variant_id", "").trim().ifBlank { null },
                     productTitle = o.optString("product_title", "").trim().ifBlank { null },
-                    productImage = o.optString("product_image", "").trim().ifBlank { null }
+                    productImage = o.optString("product_image", "").trim().ifBlank { null },
+                    itemType = o.optString("item_type", "product").ifBlank { "product" },
+                    designId = o.optString("design_id", "").trim().ifBlank { null },
                 )
             }
         } catch (_: Exception) {
@@ -44,11 +46,22 @@ class GuestFavoritesStore(context: Context) {
         }
     }
 
+    fun poolCounts(): Pair<Int, Int> {
+        var designs = 0
+        var products = 0
+        list().forEach {
+            if (it.itemType == "design") designs += 1 else products += 1
+        }
+        return designs to products
+    }
+
     fun add(
         productId: String,
         variantId: String? = null,
         productTitle: String? = null,
-        productImage: String? = null
+        productImage: String? = null,
+        itemType: String = "product",
+        designId: String? = null,
     ): Boolean {
         val pid = productId.trim()
         if (pid.isEmpty()) return false
@@ -62,7 +75,9 @@ class GuestFavoritesStore(context: Context) {
                 productId = pid,
                 variantId = variantId?.trim()?.takeIf { it.isNotBlank() },
                 productTitle = productTitle?.trim()?.takeIf { it.isNotBlank() },
-                productImage = productImage?.trim()?.takeIf { it.isNotBlank() }
+                productImage = productImage?.trim()?.takeIf { it.isNotBlank() },
+                itemType = if (itemType == "design") "design" else "product",
+                designId = designId?.trim()?.takeIf { it.isNotBlank() },
             )
         )
         persist(items)
@@ -91,6 +106,8 @@ class GuestFavoritesStore(context: Context) {
                     item.variantId?.let { put("variant_id", it) }
                     item.productTitle?.let { put("product_title", it) }
                     item.productImage?.let { put("product_image", it) }
+                    put("item_type", item.itemType)
+                    item.designId?.let { put("design_id", it) }
                 }
             )
         }
@@ -104,7 +121,9 @@ class GuestFavoritesStore(context: Context) {
         val productId: String,
         val variantId: String? = null,
         val productTitle: String? = null,
-        val productImage: String? = null
+        val productImage: String? = null,
+        val itemType: String = "product",
+        val designId: String? = null,
     )
 
     companion object {

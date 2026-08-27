@@ -109,7 +109,13 @@ data class FavoriteItem(
     val productTitle: String,
     val productImage: String?,
     val variantTitle: String?,
-    val isSample: Boolean = false
+    val isSample: Boolean = false,
+    val itemType: String = "product",
+    val designId: String? = null,
+    val isOwn: Boolean = false,
+    val libraryStatus: String? = null,
+    val ownerLabel: String? = null,
+    val studioPending: Boolean = false,
 )
 
 data class FavoriteListInfo(val id: Long, val name: String, val description: String, val itemsCount: Int)
@@ -166,6 +172,20 @@ fun FavoritesModal(
     var showProductPicker by remember { mutableStateOf(false) }
     var shopProducts by remember { mutableStateOf<List<ShopPickerProduct>>(emptyList()) }
     var shopProductsLoading by remember { mutableStateOf(false) }
+    var itemType by remember { mutableStateOf("product") }
+    val prefs = remember { context.getSharedPreferences("eaz_fav_ui", android.content.Context.MODE_PRIVATE) }
+
+    fun persistView() {
+        prefs.edit().putString("last_view", itemType).putLong("last_view_at", System.currentTimeMillis()).apply()
+    }
+
+    fun restoreType() {
+        val lastAddType = prefs.getString("last_add_type", null)
+        val lastAddAt = prefs.getLong("last_add_at", 0L)
+        val lastView = prefs.getString("last_view", "product") ?: "product"
+        val lastViewAt = prefs.getLong("last_view_at", 0L)
+        itemType = if (!lastAddType.isNullOrBlank() && lastAddAt >= lastViewAt) lastAddType else lastView
+    }
 
     fun mapFavoriteItem(obj: JSONObject, isPool: Boolean): FavoriteItem {
         val img = jsonOptString(obj, "product_image")
@@ -188,7 +208,13 @@ fun FavoritesModal(
             productTitle = jsonOptString(obj, "product_title") ?: "Product",
             productImage = normalizeImageUrl(img),
             variantTitle = displayVariantTitle(jsonOptString(obj, "variant_title")),
-            isSample = sample
+            isSample = sample,
+            itemType = obj.optString("item_type", "product").ifBlank { "product" },
+            designId = jsonOptString(obj, "design_id"),
+            isOwn = obj.optInt("is_own", 0) == 1 || obj.optBoolean("is_own", false),
+            libraryStatus = jsonOptString(obj, "library_status"),
+            ownerLabel = jsonOptString(obj, "owner_label"),
+            studioPending = obj.optInt("studio_pending", 0) == 1 || obj.optBoolean("studio_pending", false),
         )
     }
 
@@ -233,7 +259,7 @@ fun FavoritesModal(
         scope.launch {
             if (customerId.isNullOrBlank()) return@launch
             try {
-                val resp = withContext(Dispatchers.IO) { api.getFavorites(customerId) }
+                val resp = withContext(Dispatchers.IO) { api.getFavorites(customerId, itemType = itemType) }
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("items") ?: org.json.JSONArray()
                     poolItems = (0 until arr.length()).map { i ->
@@ -249,7 +275,7 @@ fun FavoritesModal(
         scope.launch {
             if (customerId.isNullOrBlank()) return@launch
             try {
-                val resp = withContext(Dispatchers.IO) { api.getFavoriteLists(customerId) }
+                val resp = withContext(Dispatchers.IO) { api.getFavoriteLists(customerId, listType = itemType) }
                 if (resp.optBoolean("ok", false)) {
                     val arr = resp.optJSONArray("lists") ?: org.json.JSONArray()
                     lists = (0 until arr.length()).map { i ->
@@ -301,7 +327,10 @@ fun FavoritesModal(
         }
     }
 
-    LaunchedEffect(visible, customerId) {
+    LaunchedEffect(visible) {
+        if (visible) restoreType()
+    }
+    LaunchedEffect(visible, customerId, itemType) {
         if (!visible || customerId.isNullOrBlank()) {
             poolItems = emptyList()
             lists = emptyList()
@@ -313,7 +342,7 @@ fun FavoritesModal(
         try {
             withContext(Dispatchers.IO) {
                 val cid = customerId!!
-                val poolResp = api.getFavorites(cid)
+                val poolResp = api.getFavorites(cid, itemType = itemType)
                 if (poolResp.optBoolean("ok", false)) {
                     val arr = poolResp.optJSONArray("items") ?: org.json.JSONArray()
                     val pool = (0 until arr.length()).map { i ->
@@ -324,7 +353,7 @@ fun FavoritesModal(
                         onCountChange(pool.size)
                     }
                 }
-                val listsResp = api.getFavoriteLists(cid)
+                val listsResp = api.getFavoriteLists(cid, listType = itemType)
                 if (listsResp.optBoolean("ok", false)) {
                     val arr = listsResp.optJSONArray("lists") ?: org.json.JSONArray()
                     val loaded = (0 until arr.length()).map { i ->
@@ -433,6 +462,31 @@ fun FavoritesModal(
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = EazColors.TextPrimary)
                     }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        "Products",
+                        modifier = Modifier.clickable {
+                            itemType = "product"
+                            persistView()
+                            activeView = "pool"
+                        },
+                        color = if (itemType == "product") EazColors.Orange else EazColors.TextSecondary,
+                        fontWeight = if (itemType == "product") FontWeight.SemiBold else FontWeight.Normal
+                    )
+                    Text(
+                        "Designs",
+                        modifier = Modifier.clickable {
+                            itemType = "design"
+                            persistView()
+                            activeView = "pool"
+                        },
+                        color = if (itemType == "design") Color(0xFF7C3AED) else EazColors.TextSecondary,
+                        fontWeight = if (itemType == "design") FontWeight.SemiBold else FontWeight.Normal
+                    )
                 }
 
                 Box(
@@ -589,7 +643,7 @@ fun FavoritesModal(
                 onDescriptionChange = { newListDescription = it },
                 onConfirm = {
                     scope.launch {
-                        api.createFavoriteList(customerId!!, newListName.trim(), newListDescription.trim().takeIf { it.isNotBlank() })
+                        api.createFavoriteList(customerId!!, newListName.trim(), newListDescription.trim().takeIf { it.isNotBlank() }, listType = itemType)
                         loadLists()
                         newListName = ""
                         newListDescription = ""
@@ -607,7 +661,7 @@ fun FavoritesModal(
                 onDescriptionChange = { newListDescription = it },
                 onConfirm = {
                     scope.launch {
-                        api.saveFavoritesAsList(customerId!!, newListName.trim(), newListDescription.trim().takeIf { it.isNotBlank() })
+                        api.saveFavoritesAsList(customerId!!, newListName.trim(), newListDescription.trim().takeIf { it.isNotBlank() }, listType = itemType)
                         loadPool()
                         loadLists()
                         newListName = ""
@@ -866,6 +920,23 @@ private fun FavoriteGridCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                val bits = mutableListOf<String>()
+                if (item.itemType == "design") {
+                    bits += if (item.libraryStatus == "saved") "Saved" else "Draft"
+                } else if (item.studioPending) {
+                    bits += "Draft"
+                }
+                if (item.isOwn) bits += "Yours"
+                else if (!item.ownerLabel.isNullOrBlank()) bits += item.ownerLabel!!
+                if (bits.isNotEmpty()) {
+                    Text(
+                        bits.joinToString(" · "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = EazColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 item.variantTitle?.let { vt ->
                     Text(
                         vt,

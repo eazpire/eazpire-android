@@ -4,9 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -30,6 +31,8 @@ import com.eazpire.creator.creatorcodes.creatorCodeHintPulse
 fun HeaderActions(
     cartCount: Int = 0,
     favoritesCount: Int = 0,
+    favoriteDesignsCount: Int = 0,
+    favoriteProductsCount: Int = 0,
     onAccountClick: () -> Unit = {},
     onFavoritesClick: () -> Unit = {},
     onCartClick: () -> Unit = {},
@@ -65,26 +68,36 @@ fun HeaderActions(
                 },
                 modifier = Modifier.size(actionSize)
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.FavoriteBorder,
-                    contentDescription = "Favorites",
-                    tint = EazColors.TextPrimary
-                )
-            }
-            if (favoritesCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(20.dp)
-                        .background(EazColors.Orange, CircleShape)
-                        .padding(2.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (favoritesCount < 100) "$favoritesCount" else "99+",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Outlined.FavoriteBorder,
+                        contentDescription = "Favorites",
+                        tint = EazColors.TextPrimary
                     )
+                    val designs = favoriteDesignsCount
+                    val products = favoriteProductsCount
+                    if (designs > 0) {
+                        Text(
+                            text = if (designs < 100) "$designs" else "99+",
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .offset(x = (-6).dp, y = (-6).dp),
+                            color = Color(0xFFC4B5FD),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    if (products > 0) {
+                        Text(
+                            text = if (products < 100) "$products" else "99+",
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 6.dp, y = (-6).dp),
+                            color = Color(0xFFFB923C),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

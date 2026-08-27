@@ -50,6 +50,7 @@ import com.eazpire.creator.auth.SecureTokenStore
 import com.eazpire.creator.cart.AppCartStore
 import com.eazpire.creator.cart.StorefrontCartStore
 import com.eazpire.creator.favorites.FavoritesRefreshTrigger
+import com.eazpire.creator.favorites.GuestFavoritesStore
 import com.eazpire.creator.ui.share.getActiveRefUrl
 import com.eazpire.creator.ui.share.prefetchShareUrl
 import com.eazpire.creator.ui.share.sharePageLink
@@ -130,6 +131,8 @@ fun MainHeader(
     val favoritesModalVisible = favoritesModalVisibleControl ?: internalFavoritesModalVisible
     val onFavoritesModalChangeActual = onFavoritesModalChange ?: { internalFavoritesModalVisible = it }
     var favoritesCount by remember { mutableStateOf(0) }
+    var favoriteDesignsCount by remember { mutableStateOf(0) }
+    var favoriteProductsCount by remember { mutableStateOf(0) }
     val jwt = tokenStore?.getJwt()
     val ownerId = tokenStore?.getOwnerId().orEmpty()
     val api = remember(jwt, ownerId) { CreatorApi(jwt = jwt) }
@@ -172,13 +175,19 @@ fun MainHeader(
 
     LaunchedEffect(ownerId, favoritesRefreshTick) {
         if (ownerId.isBlank()) {
-            favoritesCount = 0
+            val guest = GuestFavoritesStore(context)
+            val dual = guest.poolCounts()
+            favoriteDesignsCount = dual.first
+            favoriteProductsCount = dual.second
+            favoritesCount = dual.first + dual.second
             return@LaunchedEffect
         }
         try {
             val resp = withContext(Dispatchers.IO) { api.getFavorites(ownerId) }
             if (resp.optBoolean("ok", false)) {
                 val arr = resp.optJSONArray("items")
+                favoriteDesignsCount = resp.optInt("designs_count", 0)
+                favoriteProductsCount = resp.optInt("products_count", arr?.length() ?: 0)
                 val n = resp.optInt("count", arr?.length() ?: 0)
                 favoritesCount = if (n >= 0) n else (arr?.length() ?: 0)
             }
@@ -364,6 +373,8 @@ fun MainHeader(
             HeaderActions(
                 cartCount = AppCartStore.itemCount,
                 favoritesCount = favoritesCount,
+                favoriteDesignsCount = favoriteDesignsCount,
+                favoriteProductsCount = favoriteProductsCount,
                 onAccountClick = onAccountClick,
                 onFavoritesClick = { onFavoritesModalChangeActual(true) },
                 onCartClick = { onCartDrawerChangeActual(true) },
