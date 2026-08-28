@@ -936,7 +936,7 @@
   },
   "chrome.share": {
     "title": "Share",
-    "summary": "Shares your creator link via the device share sheet or a fallback.",
+    "summary": "Shares your creator link and copies it so you can paste it anywhere.",
     "tips": [
       "Great for inviting fans and partners.",
       "Works best when you are logged in."
@@ -944,7 +944,7 @@
     "pages": [
       {
         "category": "Overview",
-        "body": "Shares your creator link via the device share sheet or a fallback."
+        "body": "Shares your creator link and copies it so you can paste it anywhere."
       },
       {
         "category": "How to use",
@@ -1381,6 +1381,31 @@
       {
         "category": "Good to know",
         "body": "Dashboard is the best place to check progress before starting a longer creative session."
+      }
+    ]
+  },
+  "chrome.nav-research": {
+    "title": "Research",
+    "summary": "Reprint-safe Amazon demand signals from catalog snapshots — reviews and BSR, never invented sales.",
+    "tips": [
+      "Use this page to spot rising reprint-safe products before you generate."
+    ],
+    "pages": [
+      {
+        "category": "Overview",
+        "body": "Research ranks reprint-safe Amazon.de catalog snapshots by reviews, ratings, and BSR over time. Missing values stay empty. The UI never invents unit sales."
+      },
+      {
+        "category": "How to use",
+        "body": "Open Research from the sidebar between Dashboard and Generator. Browse rising products, review growth, and niches, then tap a product for snapshot history."
+      },
+      {
+        "category": "Tip",
+        "body": "Use this page to spot rising reprint-safe products before you generate."
+      },
+      {
+        "category": "Good to know",
+        "body": "Review counts stay empty until Amazon returns them. Rankings hide trademark-blocked products by default."
       }
     ]
   },

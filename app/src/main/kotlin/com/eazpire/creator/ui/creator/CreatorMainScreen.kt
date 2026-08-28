@@ -420,6 +420,10 @@ fun CreatorMainScreen(
                             translationStore = translationStore,
                             onOpenSalesModal = { salesModalVisible = true },
                             onOpenJourney = { creatorJourneyInitialTab = 0; creatorJourneyVisible = true },
+                            onOpenCreatorCodes = {
+                                creatorSettingsInitialTab = 2
+                                creatorSettingsVisible = true
+                            },
                             onLoginClick = onAccountClick,
                             onNavigateToGenerator = { currentScreen = 2 },
                             onNavigateToDesigns = {

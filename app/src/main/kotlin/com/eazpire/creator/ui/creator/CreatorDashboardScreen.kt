@@ -19,6 +19,7 @@ fun CreatorDashboardScreen(
     translationStore: TranslationStore,
     onOpenSalesModal: () -> Unit,
     onOpenJourney: () -> Unit = {},
+    onOpenCreatorCodes: () -> Unit = {},
     onLoginClick: () -> Unit = {},
     onNavigateToGenerator: () -> Unit = {},
     onNavigateToDesigns: () -> Unit = {},
@@ -43,6 +44,7 @@ fun CreatorDashboardScreen(
             ownerId = tokenStore.getOwnerId(),
             isLoggedIn = tokenStore.isLoggedIn(),
             onJourneyClick = onOpenJourney,
+            onOpenCreatorCodes = onOpenCreatorCodes,
         )
         EazyDashboardGrid(
             tokenStore = tokenStore,
