@@ -232,14 +232,14 @@ fun EazyDashboardGrid(
                             }
                             persistLayout(layout.withSurface(surfaceName, surface.copy(widgets = nextWidgets)))
                         },
-                        handleModifier = Modifier.pointerInput(pos.id, colW, cols, layout.id, surfaceName) {
-                            val gestureScope = this
+                        handleModifier = Modifier.pointerInput(pos.id, colW, cols, layout.id, surfaceName, scope) {
                             val startWidgets = surface.widgets
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 var armed = false
-                                // AwaitPointerEventScope is not a CoroutineScope — launch from pointerInput.
-                                val lpJob = gestureScope.launch {
+                                // PointerInputScope/AwaitPointerEventScope are not CoroutineScope in this
+                                // Compose version — same pattern as EazyMascot (rememberCoroutineScope).
+                                val lpJob = scope.launch {
                                     delay(WIDGET_LONG_PRESS_MS)
                                     armed = true
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
