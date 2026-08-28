@@ -249,16 +249,24 @@ fun CreatorHeader(
         Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xEB080512),
-                        Color(0x99080512),
-                        Color.Transparent
+            .then(
+                if (currentScreen == 1) Modifier.background(Color(0xF2080512))
+                else Modifier.background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xEB080512),
+                            Color(0x99080512),
+                            Color.Transparent
+                        )
                     )
                 )
             )
-            .padding(top = 12.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
+            .padding(
+                top = 12.dp,
+                start = 16.dp,
+                end = 16.dp,
+                bottom = if (currentScreen == 1) 0.dp else 12.dp,
+            )
         ) {
         // Top row: logo (zentriert) | balance + account
         Row(
@@ -549,6 +557,7 @@ fun CreatorHeader(
             CreatorDailyLimitsSubheader(
                 snapshot = dailyLimits,
                 translationStore = translationStore,
+                docked = currentScreen == 1,
             )
         }
     }

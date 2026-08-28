@@ -683,7 +683,12 @@ fun EazyResearchScreen(
 
     val filterPanel: @Composable () -> Unit = {
         if (researchTab == "trends") {
-            TrendsFilterPanel(translationStore = translationStore, trends = trendsState)
+            TrendsFilterPanel(
+                translationStore = translationStore,
+                trends = trendsState,
+                scrollable = false,
+                showCountryField = false,
+            )
         } else ResearchFilterPanel(
             translationStore = translationStore,
             query = query,
@@ -737,6 +742,8 @@ fun EazyResearchScreen(
             },
             facets = facets,
             analyzeLimits = analyzeLimits,
+            scrollable = false,
+            showCountryField = false,
         )
     }
 
@@ -800,7 +807,7 @@ fun EazyResearchScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
+                    .padding(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (researchTab == "trends") {
@@ -822,11 +829,11 @@ fun EazyResearchScreen(
                             else -> 0
                         }
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(160.dp),
+                            columns = GridCells.Fixed(2),
                             state = gridState,
                             modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(bottom = 8.dp),
                         ) {
                             items(displayed, key = { watchId(it) }) { product ->
@@ -940,7 +947,11 @@ fun EazyResearchScreen(
                 Text(status, color = TextDim, fontSize = 11.sp)
             }
         }
-        ResearchRightDrawer(open = filtersSheetOpen, onDismiss = { filtersSheetOpen = false }) {
+        ResearchFilterSheet(
+            open = filtersSheetOpen,
+            onDismiss = { filtersSheetOpen = false },
+            translationStore = translationStore,
+        ) {
             val headLang = if (researchTab == "trends") trendsState.language else languages.firstOrNull() ?: "all"
             val headCountry = if (researchTab == "trends") trendsState.geo else marketplace
             val headCountryLabel = if (researchTab == "trends") {
@@ -951,7 +962,11 @@ fun EazyResearchScreen(
             val selectedCount = if (researchTab == "trends") trendsChips.size else ideasChips.size
             Column(Modifier.fillMaxSize()) {
                 Column(
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1038,13 +1053,6 @@ fun EazyResearchScreen(
                             .clickable { clearActiveFilters() }
                             .padding(vertical = 8.dp),
                     )
-                }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
-                ) {
                     filterPanel()
                 }
                 ResearchDrawerFooter(
@@ -1205,6 +1213,8 @@ private fun ResearchFilterPanel(
     onToggleOpportunity: (String) -> Unit,
     facets: Map<String, List<ResearchFacet>>,
     analyzeLimits: AnalyzeLimits,
+    scrollable: Boolean = true,
+    showCountryField: Boolean = true,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
     fun countOf(group: String, key: String): Int =
@@ -1245,14 +1255,18 @@ private fun ResearchFilterPanel(
     val platformLabelText = platformOptions.firstOrNull { it.first == analyzeMarketplace }?.second ?: platformOptions.first().second
     val analyzeLangLabel = analyzeLangOptions.firstOrNull { it.first == analyzeLanguage }?.second ?: analyzeLangOptions.first().second
     val sortLabel = sortDisplayLabel(sort, sortDir, translationStore)
-    Column(modifier = Modifier.fillMaxHeight()) {
+    Column(modifier = if (scrollable) Modifier.fillMaxHeight() else Modifier.fillMaxWidth()) {
     Column(
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxWidth()
-            .verticalScroll(panelScroll),
+        modifier = if (scrollable) {
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(panelScroll)
+        } else {
+            Modifier.fillMaxWidth()
+        },
     ) {
-    CenterChoiceField(
+    if (showCountryField) CenterChoiceField(
         label = tr("creator.research.country", "Country"),
         value = countryLabelText,
         flagCode = flagCodeForMarketplace(marketplace),

@@ -132,13 +132,13 @@ internal fun ResearchPageHeader(
         modifier = Modifier
             .fillMaxWidth()
             .background(HeadBg)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        ResearchFunnelButton(translationStore = translationStore, onClick = onOpenFilters)
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.weight(1f),
         ) {
             listOf(
                 "ideas" to tr("creator.research.tab_design_ideas", "Design Ideas"),
@@ -159,7 +159,6 @@ internal fun ResearchPageHeader(
                 )
             }
         }
-        ResearchFunnelButton(translationStore = translationStore, onClick = onOpenFilters)
     }
 }
 
@@ -326,6 +325,8 @@ internal fun TrendsSearchCluster(
 internal fun TrendsFilterPanel(
     translationStore: TranslationStore,
     trends: TrendsUiState,
+    scrollable: Boolean = true,
+    showCountryField: Boolean = true,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
     val context = LocalContext.current
@@ -371,12 +372,16 @@ internal fun TrendsFilterPanel(
         "very_low" to tr("creator.research.volume_very_low", "Very low"),
     )
     Column(
-        modifier = Modifier
-            .fillMaxHeight()
-            .fillMaxWidth()
-            .verticalScroll(panelScroll),
+        modifier = if (scrollable) {
+            Modifier
+                .fillMaxHeight()
+                .fillMaxWidth()
+                .verticalScroll(panelScroll)
+        } else {
+            Modifier.fillMaxWidth()
+        },
     ) {
-        CenterChoiceField(
+        if (showCountryField) CenterChoiceField(
             label = tr("creator.research.country", "Country"),
             value = geoOptions.firstOrNull { it.first == trends.geo }?.second ?: trends.geo,
             flagCode = geoOptions.firstOrNull { it.first == trends.geo }?.third,

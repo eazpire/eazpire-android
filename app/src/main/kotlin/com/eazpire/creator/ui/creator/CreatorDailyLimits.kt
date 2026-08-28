@@ -204,6 +204,7 @@ fun CreatorDailyLimitsSubheader(
     snapshot: DailyLimitsSnapshot,
     translationStore: TranslationStore,
     modifier: Modifier = Modifier,
+    docked: Boolean = false,
 ) {
     val context = LocalContext.current
     val lockedLabel = translationStore.t("creator.daily_limits_subheader.locked", "Locked")
@@ -226,14 +227,21 @@ fun CreatorDailyLimitsSubheader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 8.dp)
-            .clip(RoundedCornerShape(999.dp))
+            .padding(top = if (docked) 4.dp else 8.dp)
+            .then(
+                if (docked) Modifier
+                else Modifier.clip(RoundedCornerShape(999.dp))
+            )
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xE1080512), Color(0xB8080512))
+                    listOf(Color(0xF2080512), Color(0xF210122A))
                 )
             )
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
+            .border(
+                1.dp,
+                Color.White.copy(alpha = 0.08f),
+                if (docked) RoundedCornerShape(0.dp) else RoundedCornerShape(999.dp),
+            )
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
