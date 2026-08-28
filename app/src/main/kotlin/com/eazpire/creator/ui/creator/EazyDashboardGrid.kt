@@ -233,11 +233,13 @@ fun EazyDashboardGrid(
                             persistLayout(layout.withSurface(surfaceName, surface.copy(widgets = nextWidgets)))
                         },
                         handleModifier = Modifier.pointerInput(pos.id, colW, cols, layout.id, surfaceName) {
+                            val gestureScope = this
                             val startWidgets = surface.widgets
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 var armed = false
-                                val lpJob = launch {
+                                // AwaitPointerEventScope is not a CoroutineScope — launch from pointerInput.
+                                val lpJob = gestureScope.launch {
                                     delay(WIDGET_LONG_PRESS_MS)
                                     armed = true
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
