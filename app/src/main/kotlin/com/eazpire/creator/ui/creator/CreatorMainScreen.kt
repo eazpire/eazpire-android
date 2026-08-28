@@ -150,6 +150,18 @@ fun CreatorMainScreen(
         val screen = initialScreen?.coerceIn(0, 5) ?: return@LaunchedEffect
         currentScreen = screen
     }
+    LaunchedEffect(Unit) {
+        ResearchAnalyzeStore.restore(appContext)
+    }
+    LaunchedEffect(currentScreen, tokenStore.getJwt()) {
+        val jobApi = CreatorApi(jwt = tokenStore.getJwt())
+        while (true) {
+            if (currentScreen != 1 && (ResearchAnalyzeStore.ideas.running || ResearchAnalyzeStore.trends.running)) {
+                ResearchAnalyzeStore.tick(jobApi)
+            }
+            delay(900)
+        }
+    }
     var generatorEazyReady by remember { mutableStateOf(false) }
     var heroEazyReady by remember { mutableStateOf(false) }
     var videoEazyReady by remember { mutableStateOf(false) }
@@ -541,6 +553,20 @@ fun CreatorMainScreen(
                         CreatorGuestLockOverlay(
                             translationStore = translationStore,
                             onLoginClick = onAccountClick,
+                        )
+                    }
+                    val researchToast = ResearchAnalyzeStore.doneToast
+                    if (researchToast != null && currentScreen != 1) {
+                        ResearchDoneToast(
+                            translationStore = translationStore,
+                            query = researchToast.query,
+                            count = researchToast.count,
+                            showGoToResearch = true,
+                            onGoToResearch = {
+                                ResearchAnalyzeStore.clearToast()
+                                currentScreen = 1
+                            },
+                            onDismiss = { ResearchAnalyzeStore.clearToast() },
                         )
                     }
                     }

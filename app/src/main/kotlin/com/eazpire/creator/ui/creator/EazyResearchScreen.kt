@@ -145,6 +145,7 @@ private data class ResearchProduct(
     val bsrImproved: Boolean?,
     val relevanceScore: Int?,
     val capturedAt: Long?,
+    val searchIngestedAt: Long?,
     val trend: String,
     val risingScore: Int,
     val opportunityBucket: String?,
@@ -199,22 +200,29 @@ fun EazyResearchScreen(
     var niches by remember { mutableStateOf(listOf<ResearchNiche>()) }
     var facets by remember { mutableStateOf(mapOf<String, List<ResearchFacet>>()) }
     var marketplaces by remember { mutableStateOf(listOf<ResearchMarketplace>()) }
-    var marketplace by remember { mutableStateOf("all") }
     var analyzeLimits by remember { mutableStateOf(AnalyzeLimits()) }
-    var query by remember { mutableStateOf("") }
-    var debouncedQuery by remember { mutableStateOf("") }
+    val savedIdeas = remember { ResearchFilterPrefs.loadIdeas(context) }
+    var marketplace by remember { mutableStateOf(savedIdeas.marketplace) }
+    var query by remember { mutableStateOf(savedIdeas.query) }
+    var draftQuery by remember { mutableStateOf(savedIdeas.query) }
+    var analyzeQuery by remember { mutableStateOf("") }
+    var analyzeModalOpen by remember { mutableStateOf(false) }
+    var justAddedIds by remember { mutableStateOf(setOf<String>()) }
+    var justAddedUntil by remember { mutableStateOf(0L) }
+    var seenAnalyzeIds by remember { mutableStateOf(setOf<String>()) }
+    var debouncedQuery by remember { mutableStateOf(savedIdeas.query) }
     var hasMore by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
-    var selectedNiches by remember { mutableStateOf(setOf<String>()) }
-    var designTypes by remember { mutableStateOf(setOf<String>()) }
-    var languages by remember { mutableStateOf(setOf<String>()) }
-    var personalizations by remember { mutableStateOf(setOf<String>()) }
-    var selectedAudiences by remember { mutableStateOf(setOf<String>()) }
-    var selectedOpportunity by remember { mutableStateOf(setOf<String>()) }
+    var selectedNiches by remember { mutableStateOf(savedIdeas.niches) }
+    var designTypes by remember { mutableStateOf(savedIdeas.designTypes) }
+    var languages by remember { mutableStateOf(savedIdeas.languages) }
+    var personalizations by remember { mutableStateOf(savedIdeas.personalizations) }
+    var selectedAudiences by remember { mutableStateOf(savedIdeas.audiences) }
+    var selectedOpportunity by remember { mutableStateOf(savedIdeas.opportunity) }
     var researchTab by remember { mutableStateOf("ideas") }
     val trendsState = remember { TrendsUiState() }
-    var sort by remember { mutableStateOf("review_growth") }
-    var sortDir by remember { mutableStateOf("desc") }
+    var sort by remember { mutableStateOf(savedIdeas.sort) }
+    var sortDir by remember { mutableStateOf(savedIdeas.sortDir) }
     var view by remember { mutableStateOf("opportunities") }
     var analyzeMarketplace by remember { mutableStateOf("all") }
     var analyzeLanguage by remember { mutableStateOf("all") }
@@ -284,8 +292,97 @@ fun EazyResearchScreen(
     }
 
     LaunchedEffect(query) {
-        delay(180)
         debouncedQuery = query.trim()
+    }
+
+    LaunchedEffect(
+        query,
+        selectedNiches,
+        designTypes,
+        languages,
+        personalizations,
+        selectedAudiences,
+        selectedOpportunity,
+        marketplace,
+        sort,
+        sortDir,
+    ) {
+        ResearchFilterPrefs.saveIdeas(
+            context,
+            ResearchFilterSnapshot(
+                query = query,
+                niches = selectedNiches,
+                designTypes = designTypes,
+                languages = languages,
+                personalizations = personalizations,
+                audiences = selectedAudiences,
+                opportunity = selectedOpportunity,
+                marketplace = marketplace,
+                sort = sort,
+                sortDir = sortDir,
+            ),
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        ResearchAnalyzeStore.restore(context)
+        val savedTrends = ResearchFilterPrefs.loadTrends(context)
+        trendsState.geo = savedTrends.geo
+        trendsState.language = savedTrends.language
+        trendsState.query = savedTrends.query
+        trendsState.draftQuery = savedTrends.query
+        trendsState.selectedTopics = savedTrends.selectedTopics
+        trendsState.productTypes = savedTrends.productTypes
+        trendsState.volume = savedTrends.volume
+        trendsState.time = savedTrends.time
+        trendsState.sort = savedTrends.sort
+        trendsState.sortDir = savedTrends.sortDir
+        val job = ResearchAnalyzeStore.ideas
+        if (job.running && job.searchId.isNotBlank()) {
+            searchId = job.searchId
+            analyzing = true
+            if (job.query.isNotBlank()) analyzeQuery = job.query
+        } else {
+            try {
+                val data = api.call("eazy-research-search-status", emptyMap())
+                val sid = data.optString("search_id")
+                val done = data.optBoolean("done", false) ||
+                    data.optString("status") == "done" ||
+                    data.optString("status") == "error" ||
+                    data.optString("status") == "idle" ||
+                    sid.isBlank()
+                if (!done) {
+                    searchId = sid
+                    analyzing = true
+                    analyzeQuery = data.optString("query").ifBlank { analyzeQuery }
+                    ResearchAnalyzeStore.saveIdeas(
+                        context,
+                        ResearchJobSnapshot(searchId = sid, query = analyzeQuery, running = true),
+                    )
+                }
+            } catch (_: Exception) {
+            }
+        }
+        val tJob = ResearchAnalyzeStore.trends
+        if (tJob.running && tJob.searchId.isNotBlank()) {
+            trendsState.searchId = tJob.searchId
+            trendsState.searching = true
+            if (tJob.query.isNotBlank()) trendsState.analyzeQuery = tJob.query
+        }
+    }
+
+    LaunchedEffect(justAddedUntil) {
+        if (justAddedUntil <= 0L) return@LaunchedEffect
+        val wait = justAddedUntil - System.currentTimeMillis()
+        if (wait > 0) delay(wait)
+        justAddedIds = emptySet()
+    }
+
+    val ideasToast = ResearchAnalyzeStore.doneToast
+    LaunchedEffect(ideasToast) {
+        if (ideasToast == null) return@LaunchedEffect
+        delay(RESEARCH_DONE_TOAST_MS)
+        ResearchAnalyzeStore.clearToast()
     }
 
     LaunchedEffect(
@@ -351,7 +448,7 @@ fun EazyResearchScreen(
 
     LaunchedEffect(pendingAnalyze) {
         if (!pendingAnalyze) return@LaunchedEffect
-        val q = query.trim()
+        val q = analyzeQuery.trim()
         if (q.isEmpty()) {
             analyzing = false
             pendingAnalyze = false
@@ -393,6 +490,12 @@ fun EazyResearchScreen(
             analyzeResolvedMarketplace = data.optString("marketplace")
             analyzeResolvedLanguage = data.optString("language")
             analyzeLimits = parseAnalyzeLimits(data.optJSONObject("daily"))
+            seenAnalyzeIds = emptySet()
+            justAddedIds = emptySet()
+            ResearchAnalyzeStore.saveIdeas(
+                context,
+                ResearchJobSnapshot(searchId = searchId, query = q, running = true),
+            )
         } catch (_: Exception) {
             analyzing = false
             status = tr("creator.research.analyze_error", "Live catalog search could not start.")
@@ -410,11 +513,37 @@ fun EazyResearchScreen(
                     preview = false
                     searchEmptyReason = data.optString("empty_reason")
                     searchAmazonReturned = data.optInt("amazon_returned", 0)
+                    val incoming = products.map { watchId(it) }.toSet()
+                    val fresh = incoming - seenAnalyzeIds
+                    if (fresh.isNotEmpty()) {
+                        seenAnalyzeIds = incoming
+                        justAddedIds = justAddedIds + fresh
+                        justAddedUntil = System.currentTimeMillis() + RESEARCH_JUST_ADDED_MS
+                    }
+                    ResearchAnalyzeStore.saveIdeas(
+                        context,
+                        ResearchJobSnapshot(
+                            searchId = searchId,
+                            query = analyzeQuery,
+                            running = true,
+                            resultCount = products.size,
+                        ),
+                    )
                     val done = data.optBoolean("done", false) ||
                         data.optString("status") == "done" ||
                         data.optString("status") == "error"
                     if (done) {
                         analyzing = false
+                        ResearchAnalyzeStore.saveIdeas(
+                            context,
+                            ResearchJobSnapshot(
+                                searchId = searchId,
+                                query = analyzeQuery,
+                                running = false,
+                                resultCount = products.size,
+                            ),
+                        )
+                        ResearchAnalyzeStore.showDone(analyzeQuery, products.size, "ideas")
                         if (data.optString("status") == "error") {
                             searchEmptyReason = "error"
                             status = tr("creator.research.analyze_error", "Live catalog search could not start.")
@@ -432,7 +561,7 @@ fun EazyResearchScreen(
         }
     }
 
-    val displayed = remember(products, query, selectedNiches, designTypes, languages, personalizations, selectedAudiences, sort, sortDir, view, watched, searchId, marketplace) {
+    val displayed = remember(products, query, selectedNiches, designTypes, languages, personalizations, selectedAudiences, selectedOpportunity, sort, sortDir, view, watched, searchId, marketplace) {
         if (searchId.isNotBlank() || view == "watched") {
             filterProducts(
                 products,
@@ -442,6 +571,7 @@ fun EazyResearchScreen(
                 languages,
                 personalizations,
                 selectedAudiences,
+                selectedOpportunity,
                 sort,
                 sortDir,
                 view,
@@ -454,29 +584,113 @@ fun EazyResearchScreen(
         }
     }
 
+    fun persistTrendsFilters() {
+        ResearchFilterPrefs.saveTrends(
+            context,
+            TrendsFilterSnapshot(
+                geo = trendsState.geo,
+                language = trendsState.language,
+                query = trendsState.query,
+                selectedTopics = trendsState.selectedTopics,
+                productTypes = trendsState.productTypes,
+                volume = trendsState.volume,
+                time = trendsState.time,
+                sort = trendsState.sort,
+                sortDir = trendsState.sortDir,
+            ),
+        )
+    }
+
+    fun clearActiveFilters() {
+        if (researchTab == "trends") {
+            trendsState.selectedTopics = emptySet()
+            trendsState.productTypes = emptySet()
+            trendsState.volume = emptySet()
+            trendsState.time = "avg_12m"
+            trendsState.draftQuery = ""
+            trendsState.query = ""
+            persistTrendsFilters()
+        } else {
+            selectedNiches = emptySet()
+            designTypes = emptySet()
+            languages = emptySet()
+            personalizations = emptySet()
+            selectedAudiences = emptySet()
+            selectedOpportunity = emptySet()
+            draftQuery = ""
+            query = ""
+            marketplace = "all"
+        }
+    }
+
+    fun applyDrawerSearch() {
+        if (researchTab == "trends") {
+            trendsState.query = trendsState.draftQuery.trim()
+            persistTrendsFilters()
+        } else {
+            query = draftQuery.trim()
+        }
+        filtersSheetOpen = false
+    }
+
+    fun startLiveAnalyze() {
+        analyzeModalOpen = false
+        filtersSheetOpen = false
+        if (researchTab == "trends") {
+            trendsState.searching = true
+        } else {
+            analyzing = true
+            products = emptyList()
+            searchId = ""
+            searchEmptyReason = "running"
+            searchAmazonReturned = 0
+            view = "opportunities"
+            pendingAnalyze = true
+        }
+    }
+
+    val ideasChips = remember(query, selectedNiches, designTypes, languages, personalizations, selectedAudiences, selectedOpportunity, marketplace, niches) {
+        buildList {
+            if (query.isNotBlank()) add(ResearchChip("q", query))
+            if (marketplace.isNotBlank() && marketplace != "all") add(ResearchChip("market", marketplaceTagFromHost(marketplace)))
+            selectedNiches.forEach { key ->
+                add(ResearchChip("niche:$key", niches.firstOrNull { it.key == key }?.label ?: key))
+            }
+            designTypes.forEach { add(ResearchChip("dt:$it", it.replace('_', ' '))) }
+            languages.forEach { add(ResearchChip("lang:$it", it)) }
+            personalizations.forEach { add(ResearchChip("pers:$it", it)) }
+            selectedAudiences.forEach { add(ResearchChip("aud:$it", it)) }
+            selectedOpportunity.forEach { add(ResearchChip("opp:$it", it.replace('_', ' '))) }
+        }
+    }
+    val trendsChips = remember(
+        trendsState.query,
+        trendsState.selectedTopics,
+        trendsState.productTypes,
+        trendsState.volume,
+        trendsState.time,
+        trendsState.geo,
+    ) {
+        buildList {
+            if (trendsState.query.isNotBlank()) add(ResearchChip("q", trendsState.query))
+            if (trendsState.geo != "ALL") add(ResearchChip("geo", trendsState.geo))
+            trendsState.selectedTopics.forEach { add(ResearchChip("topic:$it", it.replace('_', ' '))) }
+            trendsState.productTypes.forEach { add(ResearchChip("type:$it", it)) }
+            trendsState.volume.forEach { add(ResearchChip("vol:$it", it.replace('_', ' '))) }
+            if (trendsState.time != "avg_12m") add(ResearchChip("time", trendsState.time.replace('_', ' ')))
+        }
+    }
+
     val filterPanel: @Composable () -> Unit = {
         if (researchTab == "trends") {
             TrendsFilterPanel(translationStore = translationStore, trends = trendsState)
         } else ResearchFilterPanel(
             translationStore = translationStore,
             query = query,
-            onQuery = { query = it },
+            onQuery = { draftQuery = it },
             analyzeEnabled = tokenStore.isLoggedIn() && !analyzing,
             analyzing = analyzing,
-            onAnalyze = {
-                analyzing = true
-                products = emptyList()
-                searchId = ""
-                searchEmptyReason = "running"
-                searchAmazonReturned = 0
-                selectedNiches = emptySet()
-                designTypes = emptySet()
-                languages = emptySet()
-                personalizations = emptySet()
-                selectedAudiences = emptySet()
-                view = "opportunities"
-                pendingAnalyze = true
-            },
+            onAnalyze = { analyzeModalOpen = true },
             sort = sort,
             sortDir = sortDir,
             onSort = { id ->
@@ -526,112 +740,87 @@ fun EazyResearchScreen(
         )
     }
 
+    val hosts = marketplaces.ifEmpty {
+        listOf("amazon.de", "amazon.co.uk", "amazon.fr", "amazon.it", "amazon.es", "amazon.com", "amazon.ca")
+            .map { ResearchMarketplace(it, marketplaceTagFromHost(it)) }
+    }
+    val countryOptions = listOf("all" to tr("creator.research.country_all", "All countries")) +
+        hosts.map { it.host to countryLabel(it.host, translationStore) }
+    val langOptions = listOf("all" to tr("creator.research.analyze_all", "All")) + listOf(
+        "en" to tr("creator.research.lang_en", "English"),
+        "de" to tr("creator.research.lang_de", "German"),
+        "es" to tr("creator.research.lang_es", "Spanish"),
+        "fr" to tr("creator.research.lang_fr", "French"),
+        "it" to tr("creator.research.lang_it", "Italian"),
+        "none" to tr("creator.quick_inspirations.language_none", "None"),
+    )
+    val analyzeLangOptions = langOptions.filter { it.first != "none" }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .heightIn(max = cap),
     ) {
-        val compact = maxWidth < 600.dp
+        Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             ResearchPageHeader(
                 selected = researchTab,
                 translationStore = translationStore,
                 onSelect = { researchTab = it },
-            ) {
-                if (researchTab == "trends") {
-                    TrendsSearchCluster(
-                        trends = trendsState,
-                        translationStore = translationStore,
-                        loggedIn = tokenStore.isLoggedIn(),
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
-                    ResearchAnalyzeCluster(
-                        translationStore = translationStore,
-                        query = query,
-                        onQuery = { query = it },
-                        analyzeEnabled = tokenStore.isLoggedIn() && !analyzing,
-                        analyzing = analyzing,
-                        onAnalyze = {
-                            analyzing = true
-                            products = emptyList()
-                            searchId = ""
-                            searchEmptyReason = "running"
-                            searchAmazonReturned = 0
-                            selectedNiches = emptySet()
-                            designTypes = emptySet()
-                            languages = emptySet()
-                            personalizations = emptySet()
-                            selectedAudiences = emptySet()
-                            view = "opportunities"
-                            pendingAnalyze = true
-                        },
-                        marketplaces = marketplaces,
-                        analyzeMarketplace = analyzeMarketplace,
-                        onAnalyzeMarketplace = { analyzeMarketplace = it },
-                        analyzeLanguage = analyzeLanguage,
-                        onAnalyzeLanguage = { analyzeLanguage = it },
-                        analyzeResolvedMarketplace = analyzeResolvedMarketplace,
-                        analyzeResolvedLanguage = analyzeResolvedLanguage,
-                        analyzeLimits = analyzeLimits,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            if (!compact) {
-                if (!filtersCollapsed) {
-                    Column(
-                        modifier = Modifier
-                            .width(248.dp)
-                            .fillMaxHeight()
-                            .background(RailBg)
-                            .padding(10.dp),
-                    ) {
-                        filterPanel()
+                onOpenFilters = { filtersSheetOpen = true },
+            )
+            ResearchActiveChips(
+                chips = if (researchTab == "trends") trendsChips else ideasChips,
+                onRemove = { id ->
+                    when {
+                        id == "q" && researchTab == "trends" -> {
+                            trendsState.query = ""
+                            trendsState.draftQuery = ""
+                        }
+                        id == "q" -> {
+                            query = ""
+                            draftQuery = ""
+                        }
+                        id == "market" -> marketplace = "all"
+                        id == "geo" -> trendsState.geo = "ALL"
+                        id == "time" -> trendsState.time = "avg_12m"
+                        id.startsWith("niche:") -> selectedNiches = selectedNiches - id.removePrefix("niche:")
+                        id.startsWith("dt:") -> designTypes = designTypes - id.removePrefix("dt:")
+                        id.startsWith("lang:") -> languages = languages - id.removePrefix("lang:")
+                        id.startsWith("pers:") -> personalizations = personalizations - id.removePrefix("pers:")
+                        id.startsWith("aud:") -> selectedAudiences = selectedAudiences - id.removePrefix("aud:")
+                        id.startsWith("opp:") -> selectedOpportunity = selectedOpportunity - id.removePrefix("opp:")
+                        id.startsWith("topic:") -> trendsState.selectedTopics = trendsState.selectedTopics - id.removePrefix("topic:")
+                        id.startsWith("type:") -> trendsState.productTypes = trendsState.productTypes - id.removePrefix("type:")
+                        id.startsWith("vol:") -> trendsState.volume = trendsState.volume - id.removePrefix("vol:")
                     }
-                }
-                FilterCollapseRail(
-                    collapsed = filtersCollapsed,
-                    translationStore = translationStore,
-                    onToggle = {
-                        filtersCollapsed = !filtersCollapsed
-                        saveFiltersCollapsed(context, filtersCollapsed)
-                    },
-                )
-            }
+                },
+            )
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight()
-                    .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (compact) {
-                    Text(
-                        tr("creator.research.filter_open", "Open filters"),
-                        color = TextMain,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Accent.copy(alpha = 0.28f))
-                            .clickable { filtersSheetOpen = true }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                    )
-                }
                 if (researchTab == "trends") {
-                    EazyResearchTrendsPane(
-                        api = api,
-                        translationStore = translationStore,
-                        trends = trendsState,
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        EazyResearchTrendsPane(
+                            api = api,
+                            translationStore = translationStore,
+                            trends = trendsState,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        ResearchLockOverlay(translationStore, trendsState.searching)
+                    }
                 } else when {
                     error != null && products.isEmpty() && !analyzing -> Text(error ?: "", color = TextDim, fontSize = 14.sp)
                     else -> Box(Modifier.weight(1f).fillMaxWidth()) {
-                        val showSkeleton = (loading && products.isEmpty()) || (analyzing && displayed.isEmpty())
+                        val placeholderCount = when {
+                            analyzing -> (RESEARCH_ANALYZE_SLOT_CAP - displayed.size).coerceAtLeast(0)
+                            loading && displayed.isEmpty() -> 8
+                            else -> 0
+                        }
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(160.dp),
                             state = gridState,
@@ -640,51 +829,49 @@ fun EazyResearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(bottom = 8.dp),
                         ) {
-                            if (showSkeleton) {
-                                items(8) {
-                                    Box(
-                                        modifier = Modifier
-                                            .aspectRatio(0.72f)
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(Color.White.copy(alpha = 0.08f)),
-                                    )
-                                }
-                            } else {
-                                items(displayed, key = { watchId(it) }) { product ->
-                                    OpportunityCard(
-                                        product = product,
-                                        nicheLabels = displayTopicLabels(product, niches),
-                                        watched = isWatched(watched, product),
-                                        translationStore = translationStore,
-                                        onOpen = { selected = product },
-                                        onToggleWatch = {
-                                            val id = watchId(product)
-                                            val next = if (isWatched(watched, product)) {
-                                                watched - id - product.asin
-                                            } else {
-                                                watched + id
-                                            }
-                                            watched = next
-                                            saveWatchedAsins(context, next)
-                                        },
-                                        onOpenAmazon = {
-                                            try {
-                                                context.startActivity(
-                                                    android.content.Intent(
-                                                        android.content.Intent.ACTION_VIEW,
-                                                        android.net.Uri.parse(amazonListingUrl(product.asin, product.marketplace)),
-                                                    )
+                            items(displayed, key = { watchId(it) }) { product ->
+                                OpportunityCard(
+                                    product = product,
+                                    nicheLabels = displayTopicLabels(product, niches),
+                                    watched = isWatched(watched, product),
+                                    justAdded = watchId(product) in justAddedIds,
+                                    translationStore = translationStore,
+                                    onOpen = { selected = product },
+                                    onToggleWatch = {
+                                        val id = watchId(product)
+                                        val next = if (isWatched(watched, product)) {
+                                            watched - id - product.asin
+                                        } else {
+                                            watched + id
+                                        }
+                                        watched = next
+                                        saveWatchedAsins(context, next)
+                                    },
+                                    onOpenAmazon = {
+                                        try {
+                                            context.startActivity(
+                                                android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse(amazonListingUrl(product.asin, product.marketplace)),
                                                 )
-                                            } catch (_: Exception) {}
-                                        },
-                                        onSendToGenerator = {
-                                            onSendToGenerator(product.toGeneratorHandoff())
-                                        },
-                                    )
-                                }
+                                            )
+                                        } catch (_: Exception) {}
+                                    },
+                                    onSendToGenerator = {
+                                        onSendToGenerator(product.toGeneratorHandoff())
+                                    },
+                                )
+                            }
+                            items(placeholderCount, key = { "ph-$it" }) {
+                                Box(
+                                    modifier = Modifier
+                                        .aspectRatio(0.72f)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color.White.copy(alpha = 0.08f)),
+                                )
                             }
                         }
-                        if (!showSkeleton && displayed.isEmpty()) {
+                        if (!analyzing && !loading && displayed.isEmpty()) {
                             Text(
                                 emptyGridCopy(
                                     translationStore = translationStore,
@@ -699,6 +886,7 @@ fun EazyResearchScreen(
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                         }
+                        ResearchLockOverlay(translationStore, analyzing)
                     }
                 }
                 selected?.let { product ->
@@ -752,22 +940,188 @@ fun EazyResearchScreen(
                 Text(status, color = TextDim, fontSize = 11.sp)
             }
         }
-        }
-        if (compact && filtersSheetOpen) {
-            ModalBottomSheet(
-                onDismissRequest = { filtersSheetOpen = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = Color(0xFF120C22),
-            ) {
+        ResearchRightDrawer(open = filtersSheetOpen, onDismiss = { filtersSheetOpen = false }) {
+            val headLang = if (researchTab == "trends") trendsState.language else languages.firstOrNull() ?: "all"
+            val headCountry = if (researchTab == "trends") trendsState.geo else marketplace
+            val headCountryLabel = if (researchTab == "trends") {
+                headCountry
+            } else {
+                countryOptions.firstOrNull { it.first == marketplace }?.second ?: countryOptions.first().second
+            }
+            val selectedCount = if (researchTab == "trends") trendsChips.size else ideasChips.size
+            Column(Modifier.fillMaxSize()) {
                 Column(
-                    Modifier
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        CenterChoiceField(
+                            label = tr("creator.research.country", "Country"),
+                            value = if (researchTab == "trends") {
+                                if (trendsState.geo == "ALL") tr("creator.research.country_all", "All countries") else trendsState.geo
+                            } else headCountryLabel,
+                            flagCode = if (researchTab == "trends") {
+                                if (trendsState.geo == "ALL") null else trendsState.geo
+                            } else flagCodeForMarketplace(marketplace),
+                            options = if (researchTab == "trends") {
+                                listOf(
+                                    Triple("ALL", tr("creator.research.country_all", "All countries"), null),
+                                    Triple("DE", tr("creator.research.geo_DE", "Germany"), "DE"),
+                                    Triple("US", tr("creator.research.geo_US", "United States"), "US"),
+                                    Triple("GB", tr("creator.research.geo_GB", "United Kingdom"), "GB"),
+                                    Triple("FR", tr("creator.research.geo_FR", "France"), "FR"),
+                                    Triple("IT", tr("creator.research.geo_IT", "Italy"), "IT"),
+                                    Triple("ES", tr("creator.research.geo_ES", "Spain"), "ES"),
+                                    Triple("CA", tr("creator.research.geo_CA", "Canada"), "CA"),
+                                    Triple("AU", tr("creator.research.geo_AU", "Australia"), "AU"),
+                                )
+                            } else countryOptions.map { (id, label) -> Triple(id, label, flagCodeForMarketplace(id)) },
+                            modifier = Modifier.weight(1f),
+                            onPick = { id ->
+                                if (researchTab == "trends") trendsState.geo = id else marketplace = id
+                            },
+                        )
+                        CenterChoiceField(
+                            label = tr("creator.research.language", "Language"),
+                            value = langOptions.firstOrNull { it.first == headLang }?.second ?: langOptions.first().second,
+                            flagCode = flagCodeForLanguage(headLang),
+                            options = langOptions.map { (id, label) -> Triple(id, label, flagCodeForLanguage(id)) },
+                            modifier = Modifier.weight(1f),
+                            onPick = { id ->
+                                if (researchTab == "trends") {
+                                    trendsState.language = id
+                                } else {
+                                    languages = if (id == "all") emptySet() else setOf(id)
+                                }
+                            },
+                        )
+                    }
+                    OutlinedTextField(
+                        value = if (researchTab == "trends") trendsState.draftQuery else draftQuery,
+                        onValueChange = {
+                            if (researchTab == "trends") trendsState.draftQuery = it else draftQuery = it
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = {
+                            Text(
+                                if (researchTab == "trends") {
+                                    tr("creator.research.trends_search_placeholder", "Search a topic or keyword")
+                                } else {
+                                    tr("creator.research.search_placeholder", "Search reprint-safe products")
+                                },
+                                color = TextDim,
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextMain,
+                            unfocusedTextColor = TextMain,
+                            focusedBorderColor = Color(0xFFF97316),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                        ),
+                    )
+                    if (selectedCount > 0) {
+                        Text(
+                            tr("creator.research.filter_selected", "{count} selected")
+                                .replace("{count}", selectedCount.toString()),
+                            color = TextDim,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Text(
+                        tr("creator.research.filter_clear", "Clear all filters"),
+                        color = TextMain,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .clickable { clearActiveFilters() }
+                            .padding(vertical = 8.dp),
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .heightIn(min = 360.dp, max = 520.dp)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp),
                 ) {
                     filterPanel()
                 }
+                ResearchDrawerFooter(
+                    translationStore = translationStore,
+                    onApply = { applyDrawerSearch() },
+                    onAnalyze = { analyzeModalOpen = true },
+                    analyzeEnabled = tokenStore.isLoggedIn() && !(if (researchTab == "trends") trendsState.searching else analyzing),
+                    remaining = if (researchTab == "trends") trendsState.remaining else analyzeLimits.remaining,
+                    limit = if (researchTab == "trends") trendsState.limit else analyzeLimits.limit,
+                    analyzing = if (researchTab == "trends") trendsState.searching else analyzing,
+                )
             }
+        }
+        if (analyzeModalOpen) {
+            val modalCountry = if (researchTab == "trends") trendsState.searchGeo else analyzeMarketplace
+            val modalLang = if (researchTab == "trends") trendsState.searchLang else analyzeLanguage
+            ResearchAnalyzeModal(
+                translationStore = translationStore,
+                query = if (researchTab == "trends") trendsState.analyzeQuery else analyzeQuery,
+                onQuery = {
+                    if (researchTab == "trends") trendsState.analyzeQuery = it else analyzeQuery = it
+                },
+                countryLabel = if (researchTab == "trends") {
+                    if (modalCountry == "ALL") tr("creator.research.country_all", "All countries") else modalCountry
+                } else {
+                    countryOptions.firstOrNull { it.first == analyzeMarketplace }?.second
+                        ?: tr("creator.research.analyze_all", "All")
+                },
+                countryFlag = if (researchTab == "trends") {
+                    if (modalCountry == "ALL") null else modalCountry
+                } else flagCodeForMarketplace(analyzeMarketplace),
+                countryOptions = if (researchTab == "trends") {
+                    listOf(
+                        Triple("ALL", tr("creator.research.country_all", "All countries"), null),
+                        Triple("DE", tr("creator.research.geo_DE", "Germany"), "DE"),
+                        Triple("US", tr("creator.research.geo_US", "United States"), "US"),
+                        Triple("GB", tr("creator.research.geo_GB", "United Kingdom"), "GB"),
+                        Triple("FR", tr("creator.research.geo_FR", "France"), "FR"),
+                        Triple("IT", tr("creator.research.geo_IT", "Italy"), "IT"),
+                        Triple("ES", tr("creator.research.geo_ES", "Spain"), "ES"),
+                        Triple("CA", tr("creator.research.geo_CA", "Canada"), "CA"),
+                        Triple("AU", tr("creator.research.geo_AU", "Australia"), "AU"),
+                    )
+                } else countryOptions.map { (id, label) -> Triple(id, label, flagCodeForMarketplace(id)) },
+                onCountry = {
+                    if (researchTab == "trends") trendsState.searchGeo = it else analyzeMarketplace = it
+                },
+                languageLabel = analyzeLangOptions.firstOrNull { it.first == modalLang }?.second
+                    ?: tr("creator.research.analyze_all", "All"),
+                languageFlag = flagCodeForLanguage(modalLang),
+                languageOptions = analyzeLangOptions.map { (id, label) -> Triple(id, label, flagCodeForLanguage(id)) },
+                onLanguage = {
+                    if (researchTab == "trends") trendsState.searchLang = it else analyzeLanguage = it
+                },
+                remaining = if (researchTab == "trends") trendsState.remaining else analyzeLimits.remaining,
+                limit = if (researchTab == "trends") trendsState.limit else analyzeLimits.limit,
+                analyzeEnabled = tokenStore.isLoggedIn() &&
+                    (if (researchTab == "trends") trendsState.analyzeQuery.isNotBlank() else analyzeQuery.isNotBlank()),
+                onCancel = { analyzeModalOpen = false },
+                onAnalyze = { startLiveAnalyze() },
+                searchPlaceholder = if (researchTab == "trends") {
+                    tr("creator.research.trends_search_placeholder", "Search a topic or keyword")
+                } else {
+                    tr("creator.research.search_placeholder", "Search reprint-safe products")
+                },
+            )
+        }
+        ideasToast?.let { toast ->
+            ResearchDoneToast(
+                translationStore = translationStore,
+                query = toast.query,
+                count = toast.count,
+                showGoToResearch = false,
+                onGoToResearch = {},
+                onDismiss = { ResearchAnalyzeStore.clearToast() },
+            )
+        }
         }
     }
 }
@@ -1318,6 +1672,7 @@ private fun OpportunityCard(
     product: ResearchProduct,
     nicheLabels: List<String>,
     watched: Boolean,
+    justAdded: Boolean = false,
     translationStore: TranslationStore,
     onOpen: () -> Unit,
     onToggleWatch: () -> Unit,
@@ -1348,6 +1703,20 @@ private fun OpportunityCard(
                 )
             } else {
                 Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Color(0xFF1B1430)))
+            }
+            if (justAdded) {
+                Text(
+                    tr("creator.research.just_added", "Just added"),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF97316))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
             }
             IconButton(
                 onClick = onToggleWatch,
@@ -1730,6 +2099,7 @@ private fun filterProducts(
     languages: Set<String>,
     personalizations: Set<String>,
     audiences: Set<String>,
+    opportunity: Set<String>,
     sort: String,
     sortDir: String,
     view: String,
@@ -1741,24 +2111,27 @@ private fun filterProducts(
     if (marketplace.isNotBlank() && marketplace != "all") {
         rows = rows.filter { it.marketplace.equals(marketplace, ignoreCase = true) }
     }
-    if (!sessionSearch && niches.isNotEmpty()) rows = rows.filter { topicKeyOf(it) in niches }
-    if (!sessionSearch && designTypes.isNotEmpty()) {
+    if (niches.isNotEmpty()) rows = rows.filter { topicKeyOf(it) in niches }
+    if (designTypes.isNotEmpty()) {
         rows = rows.filter { (it.designType ?: "").lowercase(Locale.ROOT) in designTypes }
     }
-    if (!sessionSearch && languages.isNotEmpty()) {
+    if (languages.isNotEmpty()) {
         rows = rows.filter { (it.language ?: "").lowercase(Locale.ROOT) in languages }
     }
-    if (!sessionSearch && personalizations.size == 1) {
+    if (personalizations.size == 1) {
         rows = rows.filter { product ->
             val key = if (product.personalizable) "personalizable" else "standard"
             key in personalizations
         }
     }
-    if (!sessionSearch && audiences.isNotEmpty()) {
+    if (audiences.isNotEmpty()) {
         rows = rows.filter { it.audience in audiences }
     }
+    if (opportunity.isNotEmpty()) {
+        rows = rows.filter { (it.opportunityBucket ?: "") in opportunity }
+    }
     val q = query.trim().lowercase(Locale.ROOT)
-    if (q.isNotEmpty() && !sessionSearch) {
+    if (q.isNotEmpty()) {
         rows = rows.filter {
             listOf(it.title, it.brand, it.asin, it.nicheKey, it.marketplace, it.marketplaceTag)
                 .joinToString(" ").lowercase(Locale.ROOT).contains(q)
@@ -1771,6 +2144,9 @@ private fun filterProducts(
             "watched" -> rows.filter { isWatched(watched, it) }
             else -> rows
         }
+    }
+    if (sessionSearch) {
+        return rows.sortedByDescending { it.searchIngestedAt ?: it.capturedAt ?: 0L }
     }
     val base = when (sort) {
         "reviews" -> rows.sortedBy { it.reviews ?: 0 }
@@ -1859,6 +2235,7 @@ private fun parseProducts(arr: JSONArray?): List<ResearchProduct> {
             bsrImproved = p.optBooleanOrNull("bsr_improved"),
             relevanceScore = p.optIntOrNull("relevance_score"),
             capturedAt = latest.optLongOrNull("captured_at"),
+            searchIngestedAt = p.optLongOrNull("search_ingested_at") ?: p.optLongOrNull("ingested_at"),
             trend = p.optString("trend"),
             risingScore = p.optInt("rising_score", 0),
             opportunityBucket = p.optString("opportunity_bucket").ifBlank { null },

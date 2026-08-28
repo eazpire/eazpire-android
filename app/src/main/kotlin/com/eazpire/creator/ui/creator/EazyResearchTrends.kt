@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,6 +51,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.eazpire.creator.api.CreatorApi
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.creator.ui.components.GlassCircularFlag
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 
 private val TextMain = Color(0xFFF4F1FF)
@@ -82,6 +82,8 @@ internal class TrendsUiState {
     var searchGeo by mutableStateOf("ALL")
     var searchLang by mutableStateOf("all")
     var query by mutableStateOf("")
+    var draftQuery by mutableStateOf("")
+    var analyzeQuery by mutableStateOf("")
     var keywords by mutableStateOf(listOf<TrendKeyword>())
     var topics by mutableStateOf(listOf<TrendTopic>())
     var selectedTopics by mutableStateOf(setOf<String>())
@@ -93,7 +95,10 @@ internal class TrendsUiState {
     var loading by mutableStateOf(true)
     var configured by mutableStateOf(true)
     var remaining by mutableStateOf(5)
+    var limit by mutableStateOf(5)
     var searching by mutableStateOf(false)
+    var searchId by mutableStateOf("")
+    var justAdded by mutableStateOf(setOf<String>())
 }
 
 private fun Modifier.orangeVerticalScrollbar(scroll: androidx.compose.foundation.ScrollState): Modifier =
@@ -120,7 +125,7 @@ internal fun ResearchPageHeader(
     selected: String,
     translationStore: TranslationStore,
     onSelect: (String) -> Unit,
-    actions: @Composable RowScope.() -> Unit,
+    onOpenFilters: () -> Unit,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
     Row(
@@ -131,7 +136,10 @@ internal fun ResearchPageHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.weight(1f),
+        ) {
             listOf(
                 "ideas" to tr("creator.research.tab_design_ideas", "Design Ideas"),
                 "trends" to tr("creator.research.tab_trends", "Trends"),
@@ -151,7 +159,7 @@ internal fun ResearchPageHeader(
                 )
             }
         }
-        actions()
+        ResearchFunnelButton(translationStore = translationStore, onClick = onOpenFilters)
     }
 }
 
@@ -521,6 +529,7 @@ internal fun EazyResearchTrendsPane(
     modifier: Modifier = Modifier,
 ) {
     fun tr(key: String, fallback: String) = translationStore.t(key, fallback)
+    val context = LocalContext.current
     fun bucketLabel(key: String) = when (key) {
         "very_low" -> tr("creator.research.volume_very_low", "Very low")
         "low" -> tr("creator.research.volume_low", "Low")
@@ -602,37 +611,68 @@ internal fun EazyResearchTrendsPane(
     ) { refresh() }
 
     LaunchedEffect(trends.searching) {
-        if (!trends.searching || trends.query.isBlank()) return@LaunchedEffect
+        if (!trends.searching) return@LaunchedEffect
+        val q = trends.analyzeQuery.trim().ifBlank { trends.query.trim() }
+        if (q.isBlank() && trends.searchId.isBlank()) {
+            trends.searching = false
+            return@LaunchedEffect
+        }
         try {
-            val payload = JSONObject()
-            payload.put("q", trends.query)
-            payload.put("geo", trends.searchGeo)
-            payload.put("language", trends.searchLang)
-            val started = api.postDispatchJson("eazy-research-trends-search", payload)
-            started.optJSONObject("analyze_limits")?.let { trends.remaining = it.optInt("remaining", trends.remaining) }
-            val searchId = started.optString("search_id")
+            var searchId = trends.searchId
+            if (searchId.isBlank()) {
+                val payload = JSONObject()
+                payload.put("q", q)
+                payload.put("geo", trends.searchGeo)
+                payload.put("language", trends.searchLang)
+                val started = api.postDispatchJson("eazy-research-trends-search", payload)
+                started.optJSONObject("analyze_limits")?.let {
+                    trends.remaining = it.optInt("remaining", trends.remaining)
+                    trends.limit = it.optInt("limit", trends.limit)
+                }
+                searchId = started.optString("search_id")
+                trends.searchId = searchId
+            }
             if (searchId.isNotBlank()) {
+                ResearchAnalyzeStore.saveTrends(
+                    context,
+                    ResearchJobSnapshot(searchId = searchId, query = q, running = true, tab = "trends"),
+                )
+                val seen = trends.keywords.map { it.keyword + it.topicKey }.toMutableSet()
                 for (i in 0 until 20) {
                     kotlinx.coroutines.delay(700)
                     val st = api.call("eazy-research-trends-search-status", mapOf("search_id" to searchId))
-                    st.optJSONObject("analyze_limits")?.let { trends.remaining = it.optInt("remaining", trends.remaining) }
-                    if (st.optBoolean("done", false)) {
-                        val arr = st.optJSONArray("keywords")
-                        val next = ArrayList<TrendKeyword>()
-                        if (arr != null) {
-                            for (j in 0 until arr.length()) {
-                                val row = arr.optJSONObject(j) ?: continue
-                                next += TrendKeyword(
-                                    row.optString("keyword"),
-                                    row.optString("topic_key"),
-                                    row.optString("volume_bucket"),
-                                    row.optString("trend"),
-                                    row.optString("competition"),
-                                    row.optString("product_type"),
-                                )
-                            }
+                    st.optJSONObject("analyze_limits")?.let {
+                        trends.remaining = it.optInt("remaining", trends.remaining)
+                        trends.limit = it.optInt("limit", trends.limit)
+                    }
+                    val arr = st.optJSONArray("keywords")
+                    val next = ArrayList<TrendKeyword>()
+                    if (arr != null) {
+                        for (j in 0 until arr.length()) {
+                            val row = arr.optJSONObject(j) ?: continue
+                            next += TrendKeyword(
+                                row.optString("keyword"),
+                                row.optString("topic_key"),
+                                row.optString("volume_bucket"),
+                                row.optString("trend"),
+                                row.optString("competition"),
+                                row.optString("product_type"),
+                            )
                         }
-                        trends.keywords = next
+                    }
+                    val fresh = next.map { it.keyword + it.topicKey }.filter { it !in seen }.toSet()
+                    if (fresh.isNotEmpty()) {
+                        trends.justAdded = trends.justAdded + fresh
+                        seen.addAll(fresh)
+                    }
+                    if (next.isNotEmpty()) trends.keywords = next
+                    if (st.optBoolean("done", false) || st.optString("status") == "done" || st.optString("status") == "error") {
+                        if (next.isNotEmpty()) trends.keywords = next
+                        ResearchAnalyzeStore.saveTrends(
+                            context,
+                            ResearchJobSnapshot(searchId = searchId, query = q, running = false, tab = "trends", resultCount = next.size),
+                        )
+                        ResearchAnalyzeStore.showDone(q, next.size, "trends")
                         break
                     }
                 }
@@ -643,6 +683,39 @@ internal fun EazyResearchTrendsPane(
         }
     }
 
+    val shownKeywords = remember(
+        trends.keywords,
+        trends.query,
+        trends.selectedTopics,
+        trends.productTypes,
+        trends.volume,
+    ) {
+        var rows = trends.keywords
+        if (trends.selectedTopics.isNotEmpty()) {
+            rows = rows.filter { it.topicKey in trends.selectedTopics }
+        }
+        if (trends.productTypes.isNotEmpty()) {
+            rows = rows.filter { it.productType in trends.productTypes }
+        }
+        if (trends.volume.isNotEmpty()) {
+            rows = rows.filter { it.volumeBucket in trends.volume }
+        }
+        val q = trends.query.trim().lowercase()
+        if (q.isNotEmpty()) {
+            rows = rows.filter {
+                it.keyword.lowercase().contains(q) || it.topicKey.lowercase().contains(q)
+            }
+        }
+        rows
+    }
+    val placeholderCount = if (trends.searching) (RESEARCH_ANALYZE_SLOT_CAP - shownKeywords.size).coerceAtLeast(0) else 0
+
+    LaunchedEffect(trends.justAdded) {
+        if (trends.justAdded.isEmpty()) return@LaunchedEffect
+        delay(RESEARCH_JUST_ADDED_MS)
+        trends.justAdded = emptySet()
+    }
+
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             tr("creator.research.trends_note", "Estimated monthly searches from Google Keyword Planner. Not Amazon unit sales."),
@@ -650,14 +723,15 @@ internal fun EazyResearchTrendsPane(
             fontSize = 11.sp,
         )
         when {
-            trends.loading -> Text(tr("creator.research.loading", "Loading..."), color = TextDim)
-            trends.keywords.isEmpty() -> Text(
+            trends.loading && shownKeywords.isEmpty() && !trends.searching -> Text(tr("creator.research.loading", "Loading..."), color = TextDim)
+            shownKeywords.isEmpty() && !trends.searching -> Text(
                 if (!trends.configured) tr("creator.research.trends_unconfigured", "Google Keyword Planner is not connected yet.")
                 else tr("creator.research.trends_empty", "No Keyword Planner rows yet. Official Google Ads cache fills in the background."),
                 color = TextDim,
             )
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
-                items(trends.keywords, key = { it.keyword + it.topicKey }) { row ->
+                items(shownKeywords, key = { it.keyword + it.topicKey }) { row ->
+                    val added = (row.keyword + row.topicKey) in trends.justAdded
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -665,7 +739,25 @@ internal fun EazyResearchTrendsPane(
                             .background(Color(0xE6120C24))
                             .padding(10.dp),
                     ) {
-                        Text(row.keyword, color = TextMain, fontWeight = FontWeight.SemiBold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(row.keyword, color = TextMain, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            if (added) {
+                                Text(
+                                    tr("creator.research.just_added", "Just added"),
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(AccentOrange)
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
                         Text(
                             listOf(
                                 row.topicKey.replace('_', ' '),
@@ -678,6 +770,15 @@ internal fun EazyResearchTrendsPane(
                             fontSize = 12.sp,
                         )
                     }
+                }
+                items(placeholderCount, key = { "kw-ph-$it" }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.08f)),
+                    )
                 }
             }
         }
