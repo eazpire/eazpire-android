@@ -53,13 +53,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="shop.73952035098.eazpire" android:host="callback" />
             </intent-filter>
-            <!-- App Links: www.eazpire.com + join.eazpire.com → App öffnen, sonst Web -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="www.eazpire.com" android:pathPrefix="/" />
-            </intent-filter>
+            <!--
+              App Links only for dedicated app-entry hosts/paths.
+              Do NOT claim www.eazpire.com or creator.eazpire.com — Shop ↔ Creator
+              in the mobile browser must stay in web (never auto-open the app).
+              Open-app entry: join.eazpire.com, Play widget, notifications, QR/claim.
+            -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
