@@ -47,10 +47,13 @@ android {
     buildTypes {
         debug {
             buildConfigField("boolean", "EAZ_PERF_TRACE", "true")
+            // IDEA-093: keep in-process Shop↔Creator until dual APK soft-launch.
+            buildConfigField("boolean", "USE_EXTERNAL_APP_SWITCH", "false")
         }
         release {
             isMinifyEnabled = false
             buildConfigField("boolean", "EAZ_PERF_TRACE", "false")
+            buildConfigField("boolean", "USE_EXTERNAL_APP_SWITCH", "false")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -95,6 +98,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":android-shared"))
+
     // Must match or exceed arsceneview's Compose needs; exclude its transitive BOM below
     // so compile + runtime resolve the same material3 (avoids rememberModalBottomSheetState NoSuchMethodError).
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))

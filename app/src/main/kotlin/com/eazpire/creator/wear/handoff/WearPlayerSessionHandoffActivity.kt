@@ -15,7 +15,7 @@ class WearPlayerSessionHandoffActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!WearPlayerSessionHandoffGuard.isTrustedCaller(callingPackage)) {
+        if (!WearPlayerSessionHandoffGuard.isTrustedCaller(this, callingPackage)) {
             setResult(Activity.RESULT_CANCELED)
             finish()
             return

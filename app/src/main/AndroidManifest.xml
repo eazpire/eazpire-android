@@ -13,6 +13,12 @@
 
     <queries>
         <package android:name="com.google.ar.core" />
+        <package android:name="com.eazpire.shop" />
+        <package android:name="com.eazpire.wear" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="market" />
+        </intent>
     </queries>
 
     <application

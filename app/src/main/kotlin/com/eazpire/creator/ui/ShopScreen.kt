@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.eazpire.creator.MainActivity
+import com.eazpire.creator.BuildConfig
 import com.eazpire.creator.ar.poster.PosterArSessionConfig
 import com.eazpire.creator.auth.AuthLoginMethod
 import com.eazpire.creator.auth.OAuthPkceStore
@@ -59,6 +60,8 @@ import com.eazpire.creator.debug.langDebug
 import com.eazpire.creator.brand.BrandAssetsRepository
 import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
+import com.eazpire.shared.EazpireApps
+import com.eazpire.shared.switcher.AppSwitchHelper
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.api.CreatorApi
@@ -374,6 +377,12 @@ fun ShopScreen(
     var isCreatorMode by rememberSaveable { mutableStateOf(false) }
 
     fun switchCreatorMode(toCreator: Boolean, @Suppress("UNUSED_PARAMETER") animate: Boolean = false) {
+        // IDEA-093 soft-launch: when enabled, leave this APK and open sibling / Play Store.
+        if (BuildConfig.USE_EXTERNAL_APP_SWITCH) {
+            val target = if (toCreator) EazpireApps.Target.CREATOR else EazpireApps.Target.SHOP
+            AppSwitchHelper.openSiblingOrStore(context, target)
+            return
+        }
         if (toCreator == isCreatorMode) return
         isCreatorMode = toCreator
     }

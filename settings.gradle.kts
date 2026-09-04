@@ -28,6 +28,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "eazpire"
 include(":app")
+include(":android-shared")
+// Monorepo: ../android-shared. Mirror sync: ./android-shared (same root as :app).
+project(":android-shared").projectDir =
+    listOf(file("android-shared"), file("../android-shared")).first { it.isDirectory }
 // Macrobenchmark is local-only; CI builds :app only (see build.yml).
 if (System.getenv("CI") != "true") {
     include(":benchmark")
