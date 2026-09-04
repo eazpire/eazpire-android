@@ -103,11 +103,6 @@ fun ShopSearchScreen(
     val scope = rememberCoroutineScope()
     val gridState = rememberLazyGridState()
     val nearEnd = rememberProductListNearEnd(gridState)
-    var expandedCardId by remember { mutableStateOf<Long?>(null) }
-    LaunchedEffect(gridState.isScrollInProgress) {
-        if (gridState.isScrollInProgress) expandedCardId = null
-    }
-
     fun loadMore() {
         if (loadingMore || searchQuery.isBlank()) return
         if (autoLoadPaused) return
@@ -275,10 +270,6 @@ fun ShopSearchScreen(
                             ownerId = ownerId,
                             creatorApi = creatorApi,
                             mockPreviewRevision = mockPreviewRevision,
-                            expanded = expandedCardId == p.id,
-                            onExpandedChange = { open ->
-                                expandedCardId = if (open) p.id else null
-                            },
                             onClick = { onProductClick(p) },
                             onCartClick = { onCartClick(p) }
                         )
@@ -301,8 +292,6 @@ private fun ShopSearchProductCard(
     ownerId: String = "",
     creatorApi: CreatorApi? = null,
     mockPreviewRevision: Int = 0,
-    expanded: Boolean = false,
-    onExpandedChange: (Boolean) -> Unit = {},
     onClick: () -> Unit,
     onCartClick: () -> Unit = onClick,
     modifier: Modifier = Modifier
@@ -365,8 +354,6 @@ private fun ShopSearchProductCard(
             rotateIntervalMs = 5400L,
             autoRotate = display.autoRotate,
             fullResolution = display.isPersonalizedMock,
-            expanded = expanded,
-            onExpandedChange = onExpandedChange,
             onDetailClick = onClick,
             showTryOn = showManualTryOn,
             isTryOnActive = tryOnActive,

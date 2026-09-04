@@ -267,8 +267,9 @@ class ShopifyProductsApi(
             val body = response.body?.string() ?: "{}"
             val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val productsArr = json.optJSONArray("products") ?: JSONArray()
+            val lifeView = PlpRotationUrls.preferredLifestyleViewForCollection(collectionHandle)
             val products = (0 until productsArr.length()).mapNotNull { i ->
-                parseProductFromJson(productsArr.optJSONObject(i))
+                parseProductFromJson(productsArr.optJSONObject(i), preferredLifestyleView = lifeView)
             }
             ProductsResult(
                 products = products,
@@ -316,7 +317,10 @@ class ShopifyProductsApi(
         }
     }
 
-    private fun parseProductFromJson(obj: JSONObject?): ProductItem? {
+    private fun parseProductFromJson(
+        obj: JSONObject?,
+        preferredLifestyleView: String? = null,
+    ): ProductItem? {
         if (obj == null) return null
         val id = obj.optLong("id", 0L)
         val title = obj.optString("title", "").takeIf { it.isNotBlank() } ?: return null
@@ -342,7 +346,11 @@ class ShopifyProductsApi(
         if (images.isEmpty()) return null
 
         val rotation = if (imagesArr != null) {
-            PlpRotationUrls.fromProductJsonImages(imagesArr, obj.optString("product_key", null).takeIf { it.isNotBlank() })
+            PlpRotationUrls.fromProductJsonImages(
+                imagesArr,
+                obj.optString("product_key", null).takeIf { it.isNotBlank() },
+                preferredLifestyleView,
+            )
         } else {
             PlpRotationUrls.fromProductImages(
                 images.map { src -> ProductImage(src = src, variantIds = emptyList()) }

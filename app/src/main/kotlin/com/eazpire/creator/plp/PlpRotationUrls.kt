@@ -42,7 +42,11 @@ object PlpRotationUrls {
         return map
     }
 
-    fun fromProductJsonImages(imagesArr: JSONArray?, productKey: String? = null): PlpRotationBuild {
+    fun fromProductJsonImages(
+        imagesArr: JSONArray?,
+        productKey: String? = null,
+        preferredLifestyleView: String? = null,
+    ): PlpRotationBuild {
         if (imagesArr == null || imagesArr.length() == 0) return PlpRotationBuild(emptyList(), emptyList())
         val images = (0 until imagesArr.length()).mapNotNull { i ->
             val img = imagesArr.optJSONObject(i) ?: return@mapNotNull null
@@ -50,7 +54,7 @@ object PlpRotationUrls {
             val alt = img.optString("alt", "").trim()
             ShopifyProductsApi.ProductImage(src = src, variantIds = emptyList(), alt = alt.ifBlank { null })
         }
-        return fromProductImages(images, productKey)
+        return fromProductImages(images, productKey, preferredLifestyleView)
     }
 
     fun isPhotopaperLikeProductKey(productKey: String?): Boolean {
@@ -142,9 +146,20 @@ object PlpRotationUrls {
         return PlpRotationBuild(urls, colorNames, viewsByColorFromImages(images))
     }
 
+    /**
+     * Collection handle → preferred lifestyle alt view (parity with web data-eaz-lifestyle-audience).
+     */
+    fun preferredLifestyleViewForCollection(collectionHandle: String?): String? =
+        when (collectionHandle?.trim()?.lowercase()) {
+            "women", "woman" -> "lifestyle-female"
+            "men", "man" -> "lifestyle-male"
+            else -> null
+        }
+
     fun fromProductImages(
         images: List<ShopifyProductsApi.ProductImage>,
         productKey: String? = null,
+        preferredLifestyleView: String? = null,
     ): PlpRotationBuild {
         if (images.isEmpty()) return PlpRotationBuild(emptyList(), emptyList())
         val views = viewsByColorFromImages(images)
@@ -160,6 +175,7 @@ object PlpRotationUrls {
         var primaryColor = ""
         var hasPreviewDefault = false
         val distinctColors = linkedSetOf<String>()
+        val lifestyleViewsPresent = linkedSetOf<String>()
 
         for (pi in images) {
             val alt = (pi.alt ?: "").trim()
@@ -167,15 +183,37 @@ object PlpRotationUrls {
             val parts = alt.split("|")
             if (parts.size >= 2) {
                 val color = parts[0].trim().lowercase()
+                val view = parts[1].trim().lowercase()
                 if (color.isNotBlank()) distinctColors.add(color)
-                if (primaryView.isEmpty()) primaryView = parts[1].trim().lowercase()
+                if (view == "lifestyle" || view.startsWith("lifestyle-")) {
+                    lifestyleViewsPresent.add(view)
+                }
+                if (primaryView.isEmpty()) primaryView = view
                 if (primaryColor.isEmpty() && alt.contains("preview-default", ignoreCase = true)) {
                     primaryColor = color
+                    primaryView = view
                 }
             }
         }
         if (primaryColor.isEmpty() && distinctColors.size == 1) {
             primaryColor = distinctColors.first()
+        }
+
+        val pref = preferredLifestyleView?.trim()?.lowercase().orEmpty()
+        if (pref.isNotBlank() && lifestyleViewsPresent.contains(pref)) {
+            primaryView = pref
+        } else if (lifestyleViewsPresent.size > 1) {
+            val female = "lifestyle-female"
+            val male = "lifestyle-male"
+            when {
+                lifestyleViewsPresent.contains(female) && lifestyleViewsPresent.contains(male) -> {
+                    val seed = (productKey ?: primaryColor).hashCode()
+                    primaryView = if (seed and 1 == 0) female else male
+                }
+                lifestyleViewsPresent.contains(female) -> primaryView = female
+                lifestyleViewsPresent.contains(male) -> primaryView = male
+                lifestyleViewsPresent.contains("lifestyle") -> primaryView = "lifestyle"
+            }
         }
 
         val isSingleColor = distinctColors.size <= 1
