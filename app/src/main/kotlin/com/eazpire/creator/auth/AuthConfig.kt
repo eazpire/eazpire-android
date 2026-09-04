@@ -7,8 +7,9 @@ import android.net.Uri
  * Sync: creator-worker → eazpire-android (GitHub Actions)
  *
  * WICHTIG: In Shopify Admin → Settings → Customer accounts → Customer Account API
- * einen "Public mobile client" mit Callback-URL registrieren:
- *   shop.73952035098.eazpire://callback (shop_id numerisch — Pflichtformat)
+ * einen "Public mobile client" mit Callback-URLs registrieren:
+ *   shop.73952035098.eazpire://callback (Creator app)
+ *   shop.73952035098.eazpire.wear://callback (Wear Player phone app)
  *
  * Die Client ID des Mobile Clients ggf. hier eintragen (falls anders als Admin-App).
  */

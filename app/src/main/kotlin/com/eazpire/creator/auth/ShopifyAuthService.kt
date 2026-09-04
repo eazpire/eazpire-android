@@ -67,15 +67,14 @@ class ShopifyAuthService {
     }
 
     /**
-     * Google login: clear Shopify browser session first (normal Chrome keeps Google account picker),
-     * then continue to the Google social OAuth URL in the same tab.
+     * Clears the Shopify browser session (Custom Tab cookies) before OAuth so the user can pick
+     * a different account — applies to email, shop, and Google login.
      */
     fun buildBrowserLoginUrl(
         oauthTargetUrl: String,
-        loginMethod: AuthLoginMethod,
+        @Suppress("UNUSED_PARAMETER") loginMethod: AuthLoginMethod,
         endSessionEndpoint: String?,
     ): String {
-        if (loginMethod != AuthLoginMethod.GOOGLE) return oauthTargetUrl
         val logoutBase = endSessionEndpoint?.takeIf { it.isNotBlank() }
             ?: "https://shopify.com/authentication/${AuthConfig.SHOP_ID}/logout"
         val encodedTarget = java.net.URLEncoder.encode(oauthTargetUrl, "UTF-8")

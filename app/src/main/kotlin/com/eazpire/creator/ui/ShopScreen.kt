@@ -770,6 +770,7 @@ fun ShopScreen(
         authAutoStartOAuth = false
         showAuthScreen = false
         showLoginOptions = false
+        accountModalVisible = false
         favoriteEditContext = null
         productModalHandleState.value = null
         menuDrawerVisible = false
@@ -778,12 +779,13 @@ fun ShopScreen(
         eazyChatVisible = false
         voucherModalVisible = false
         termsModalVisible = false
+        // Clear tokens immediately so a Compose teardown crash cannot leave the user logged in.
+        ShopSessionGuard.performFullLogout(context, tokenStore)
         // Account / creator settings modals dismiss via animated sheet hide, then onDismiss + onLogout.
         scope.launch {
             withFrameNanos { }
             withFrameNanos { }
-            delay(350)
-            ShopSessionGuard.performFullLogout(context, tokenStore)
+            delay(400)
             refreshShopContent()
             authSessionTick++
         }

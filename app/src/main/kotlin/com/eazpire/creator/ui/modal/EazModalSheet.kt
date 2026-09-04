@@ -97,9 +97,12 @@ fun Modifier.eazModalBody(): Modifier = fillMaxWidth()
 @OptIn(ExperimentalMaterial3Api::class)
 fun CoroutineScope.dismissBottomSheetThen(sheetState: SheetState, onComplete: () -> Unit) {
     launch {
-        sheetState.hide()
-    }.invokeOnCompletion {
-        if (!sheetState.isVisible) onComplete()
+        try {
+            sheetState.hide()
+        } catch (_: Exception) {
+            // Sheet may already be hidden during logout — still run cleanup.
+        }
+        onComplete()
     }
 }
 

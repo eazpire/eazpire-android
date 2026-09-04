@@ -304,7 +304,11 @@ fun AccountModalSheet(
                         )
                         AccountTab.Mockups -> AccountMockupsTab(tokenStore = tokenStore, modifier = tabModifier)
                         AccountTab.Creations -> AccountCreationsTab(tokenStore = tokenStore, modifier = tabModifier)
-                        AccountTab.Community -> AccountCommunityTab(tokenStore = tokenStore, modifier = tabModifier)
+                        AccountTab.Community -> AccountCommunityTab(
+                            tokenStore = tokenStore,
+                            modifier = tabModifier,
+                            scrollable = false,
+                        )
                         AccountTab.Balance -> AccountBalanceTab(tokenStore = tokenStore, modifier = tabModifier)
                     }
                 }

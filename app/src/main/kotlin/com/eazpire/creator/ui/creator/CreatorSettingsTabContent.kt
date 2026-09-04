@@ -91,7 +91,7 @@ fun CreatorSettingsTabContent(
     Box(modifier = modifier) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(20.dp)
