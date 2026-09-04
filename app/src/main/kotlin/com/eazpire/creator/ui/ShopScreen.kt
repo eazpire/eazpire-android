@@ -62,6 +62,8 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.shared.EazpireApps
 import com.eazpire.shared.switcher.AppSwitchHelper
+import com.eazpire.shared.switcher.AppSwitchSession
+import com.eazpire.creator.ui.switcher.SiblingAppPromoBanner
 import com.eazpire.creator.locale.LocaleStore
 import com.eazpire.creator.mockup.CustomerMockPreviewStore
 import com.eazpire.creator.api.CreatorApi
@@ -128,6 +130,7 @@ fun ShopScreen(
     pendingEazyTab: MutableState<EazySidebarTab?>? = null,
     pendingOpenCart: MutableState<Boolean>? = null,
     pendingOpenShop: MutableState<Boolean>? = null,
+    pendingOpenAuth: MutableState<Boolean>? = null,
     pendingWearPairToken: MutableState<String?>? = null,
     pendingArtifactClaimToken: MutableState<String?>? = null,
     pendingCreatorInactiveDesigns: MutableState<Boolean>? = null,
@@ -188,6 +191,20 @@ fun ShopScreen(
         var authAutoStartOAuth by remember { mutableStateOf(false) }
         var authLoginMethod by remember { mutableStateOf(AuthLoginMethod.EMAIL) }
         val oauthCallbackForAuth = remember { mutableStateOf<String?>(null) }
+        var siblingPromoDismissed by rememberSaveable { mutableStateOf(false) }
+        val shopAppInstalled = remember {
+            AppSwitchHelper.isInstalled(context, EazpireApps.Target.SHOP)
+        }
+        val showSiblingShopPromo = !siblingPromoDismissed && !shopAppInstalled
+
+        LaunchedEffect(pendingOpenAuth?.value) {
+            if (pendingOpenAuth?.value == true) {
+                pendingOpenAuth.value = false
+                authAutoStartOAuth = false
+                authLoginMethod = AuthLoginMethod.EMAIL
+                showAuthScreen = true
+            }
+        }
 
         // OAuth return must be handled before/without losing state to [key(sessionEpoch)] re-key.
         LaunchedEffect(pendingDeepLink?.value) {
@@ -380,7 +397,19 @@ fun ShopScreen(
         // IDEA-093 soft-launch: when enabled, leave this APK and open sibling / Play Store.
         if (BuildConfig.USE_EXTERNAL_APP_SWITCH) {
             val target = if (toCreator) EazpireApps.Target.CREATOR else EazpireApps.Target.SHOP
-            AppSwitchHelper.openSiblingOrStore(context, target)
+            scope.launch {
+                AppSwitchSession.openSiblingWithOptionalExchange(
+                    context = context,
+                    target = target,
+                    session = AppSwitchSession.SessionSnapshot(
+                        jwt = tokenStore.getJwt(),
+                        sourcePackage = EazpireApps.CREATOR,
+                        shopifyAccessToken = tokenStore.getAccessToken(),
+                        shopifyRefreshToken = tokenStore.getRefreshToken(),
+                        shopifyExpiresAt = tokenStore.getShopifyAccessExpiresAtEpochMs().takeIf { it > 0L },
+                    ),
+                )
+            }
             return
         }
         if (toCreator == isCreatorMode) return
@@ -879,6 +908,16 @@ fun ShopScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
     if (isCreatorMode) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (showSiblingShopPromo) {
+                SiblingAppPromoBanner(
+                    target = EazpireApps.Target.SHOP,
+                    onOpenStore = {
+                        AppSwitchHelper.openSiblingOrStore(context, EazpireApps.Target.SHOP)
+                    },
+                    onDismiss = { siblingPromoDismissed = true },
+                )
+            }
         key("creator", authSessionTick) {
         CreatorMainScreen(
             tokenStore = tokenStore,
@@ -942,7 +981,9 @@ fun ShopScreen(
             onWearPairTokenConsumed = { pendingWearPairToken?.value = null },
             pendingCreatorCodesNav = pendingCreatorCodesSettings,
             onPendingCreatorCodesConsumed = { pendingCreatorCodesSettings = null },
+            modifier = Modifier.weight(1f),
         )
+        }
         }
     } else {
     Scaffold(
@@ -950,6 +991,15 @@ fun ShopScreen(
         topBar = {
             key(languageCode, authSessionTick) {
             Column(modifier = Modifier.fillMaxWidth()) {
+                if (showSiblingShopPromo) {
+                    SiblingAppPromoBanner(
+                        target = EazpireApps.Target.SHOP,
+                        onOpenStore = {
+                            AppSwitchHelper.openSiblingOrStore(context, EazpireApps.Target.SHOP)
+                        },
+                        onDismiss = { siblingPromoDismissed = true },
+                    )
+                }
                 MainHeader(
                     localeStore = localeStore,
                     tokenStore = tokenStore,

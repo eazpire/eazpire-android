@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Receives `eazpire-creator://auth/handoff?exchange_token=…` (IDEA-093 dual-app SSO).
+ * On failure, opens [MainActivity] with [MainActivity.EXTRA_OPEN_AUTH] so the user can sign in locally.
  */
 class AppAuthHandoffActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,11 +52,13 @@ class AppAuthHandoffActivity : ComponentActivity() {
             if (ok) "Signed in via Shop handoff" else "Could not complete sign-in handoff",
             Toast.LENGTH_SHORT,
         ).show()
-        startActivity(
-            Intent(this, MainActivity::class.java).addFlags(
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
-            ),
+        val intent = Intent(this, MainActivity::class.java).addFlags(
+            Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
         )
+        if (!ok) {
+            intent.putExtra(MainActivity.EXTRA_OPEN_AUTH, true)
+        }
+        startActivity(intent)
         setResult(if (ok) Activity.RESULT_OK else Activity.RESULT_CANCELED)
         finish()
     }

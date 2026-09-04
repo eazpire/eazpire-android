@@ -6,6 +6,10 @@ plugins {
 android {
     namespace = "com.eazpire.shared"
     compileSdk = 36
+    if (System.getenv("CI") != "true") {
+        // Avoid Windows MAX_PATH failures under deep .transforms paths.
+        buildDir = file("${System.getProperty("java.io.tmpdir")}/eazpire-android-shared-build")
+    }
 
     defaultConfig {
         minSdk = 26

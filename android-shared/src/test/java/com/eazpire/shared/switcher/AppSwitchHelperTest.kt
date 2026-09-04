@@ -34,4 +34,10 @@ class AppSwitchHelperTest {
         assertTrue(uri.contains("exchange_token=a+b") || uri.contains("exchange_token=a%20b"))
         assertFalse(uri.contains("exchange_token=a b"))
     }
+
+    @Test
+    fun siblingPromo_hasDistinctTitles() {
+        assertTrue(SiblingAppPromo.title(EazpireApps.Target.SHOP).contains("Shop"))
+        assertTrue(SiblingAppPromo.title(EazpireApps.Target.CREATOR).contains("Creator"))
+    }
 }

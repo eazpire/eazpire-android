@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPEN_NOTIFICATIONS = "eaz_open_notifications"
         const val EXTRA_OPEN_CART = "eaz_open_cart"
         const val EXTRA_OPEN_SHOP = "eaz_open_shop"
+        const val EXTRA_OPEN_AUTH = "eaz_open_auth"
         const val EXTRA_OPEN_EAZY_CHAT = "eaz_open_eazy_chat"
         const val EXTRA_EAZY_TAB = "eaz_eazy_tab"
         const val EXTRA_GAMES_SECTION = "eaz_games_section"
@@ -78,6 +79,8 @@ class MainActivity : ComponentActivity() {
     val pendingOpenCart = mutableStateOf(false)
     /** From FCM open_target=shop — opens main shop (no Eazy overlay). */
     val pendingOpenShop = mutableStateOf(false)
+    /** From failed dual-app auth handoff — open AuthScreen as OAuth fallback. */
+    val pendingOpenAuth = mutableStateOf(false)
     /** From eazpire://wear-pair or /wear-pair deep link — opens Creator Settings → Wear + claim. */
     val pendingWearPairToken = mutableStateOf<String?>(null)
     /** Incremented when Social Media Manager OAuth returns via eazpire://smm-oauth-callback. */
@@ -174,6 +177,7 @@ class MainActivity : ComponentActivity() {
                             pendingEazyTab = pendingEazyTab,
                             pendingOpenCart = pendingOpenCart,
                             pendingOpenShop = pendingOpenShop,
+                            pendingOpenAuth = pendingOpenAuth,
                             pendingWearPairToken = pendingWearPairToken,
                             pendingArtifactClaimToken = pendingArtifactClaimToken,
                             pendingGamesSection = pendingGamesSection,
@@ -333,6 +337,9 @@ class MainActivity : ComponentActivity() {
         }
         if (intent.getBooleanExtra(EXTRA_OPEN_SHOP, false)) {
             pendingOpenShop.value = true
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_AUTH, false)) {
+            pendingOpenAuth.value = true
         }
         val tabName = intent.getStringExtra(EXTRA_EAZY_TAB)
         if (tabName != null) {
