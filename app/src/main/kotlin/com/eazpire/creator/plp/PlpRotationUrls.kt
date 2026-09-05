@@ -27,8 +27,21 @@ object PlpRotationUrls {
         for (pi in images) {
             val alt = (pi.alt ?: "").trim()
             if (!alt.contains("|")) continue
-            val color = alt.split("|").firstOrNull()?.trim()?.lowercase().orEmpty()
+            val parts = alt.split("|")
+            val color = parts.firstOrNull()?.trim()?.lowercase().orEmpty()
+            val view = parts.getOrNull(1)?.trim()?.lowercase().orEmpty()
             if (color.isBlank()) continue
+            // Skip folded for PLP thumbs — prefer lifestyle/front/back only.
+            if (view == "folded" || view == "folded_2" || view.startsWith("folded")) continue
+            if (view.isNotBlank() &&
+                view != "front" &&
+                !view.startsWith("front") &&
+                view != "lifestyle" &&
+                !view.startsWith("lifestyle") &&
+                view != "back"
+            ) {
+                continue
+            }
             val list = map[color]
             if (list == null) {
                 if (map.size >= MAX_VIEW_COLORS) continue
@@ -174,6 +187,7 @@ object PlpRotationUrls {
         var primaryView = ""
         var primaryColor = ""
         var hasPreviewDefault = false
+        var hasFront = false
         val distinctColors = linkedSetOf<String>()
         val lifestyleViewsPresent = linkedSetOf<String>()
 
@@ -188,8 +202,11 @@ object PlpRotationUrls {
                 if (view == "lifestyle" || view.startsWith("lifestyle-")) {
                     lifestyleViewsPresent.add(view)
                 }
-                if (primaryView.isEmpty()) primaryView = view
-                if (primaryColor.isEmpty() && alt.contains("preview-default", ignoreCase = true)) {
+                if (view == "front" || view.startsWith("front")) hasFront = true
+                if (primaryColor.isEmpty() &&
+                    alt.contains("preview-default", ignoreCase = true) &&
+                    !isApparelNonCardView(view)
+                ) {
                     primaryColor = color
                     primaryView = view
                 }
@@ -199,21 +216,20 @@ object PlpRotationUrls {
             primaryColor = distinctColors.first()
         }
 
+        // Prefer lifestyle → front; never keep folded/back as card primary when better exists.
         val pref = preferredLifestyleView?.trim()?.lowercase().orEmpty()
-        if (pref.isNotBlank() && lifestyleViewsPresent.contains(pref)) {
-            primaryView = pref
-        } else if (lifestyleViewsPresent.size > 1) {
-            val female = "lifestyle-female"
-            val male = "lifestyle-male"
-            when {
-                lifestyleViewsPresent.contains(female) && lifestyleViewsPresent.contains(male) -> {
-                    val seed = (productKey ?: primaryColor).hashCode()
-                    primaryView = if (seed and 1 == 0) female else male
-                }
-                lifestyleViewsPresent.contains(female) -> primaryView = female
-                lifestyleViewsPresent.contains(male) -> primaryView = male
-                lifestyleViewsPresent.contains("lifestyle") -> primaryView = "lifestyle"
+        when {
+            pref.isNotBlank() && lifestyleViewsPresent.contains(pref) -> primaryView = pref
+            lifestyleViewsPresent.contains("lifestyle-female") &&
+                lifestyleViewsPresent.contains("lifestyle-male") -> {
+                val seed = (productKey ?: primaryColor).hashCode()
+                primaryView = if (seed and 1 == 0) "lifestyle-female" else "lifestyle-male"
             }
+            lifestyleViewsPresent.contains("lifestyle-female") -> primaryView = "lifestyle-female"
+            lifestyleViewsPresent.contains("lifestyle-male") -> primaryView = "lifestyle-male"
+            lifestyleViewsPresent.contains("lifestyle") -> primaryView = "lifestyle"
+            hasFront -> primaryView = "front"
+            isApparelNonCardView(primaryView) -> primaryView = if (hasFront) "front" else ""
         }
 
         val isSingleColor = distinctColors.size <= 1
@@ -233,10 +249,18 @@ object PlpRotationUrls {
             val mediaView = parts.getOrNull(1)?.trim()?.lowercase().orEmpty()
             if (colorKey.isEmpty()) continue
 
+            // Variants only: one preferred view per color — never cycle folded/back.
+            if (primaryView.isNotBlank() && mediaView != primaryView) continue
+            if (isApparelNonCardView(mediaView) && mediaView != primaryView) continue
+
             val include = when {
-                isSingleColor -> primaryColor.isBlank() || colorKey == primaryColor
+                isSingleColor -> {
+                    (primaryColor.isBlank() || colorKey == primaryColor) &&
+                        (primaryView.isBlank() || mediaView == primaryView)
+                }
                 hasPreviewDefault -> alt.contains("preview-default", ignoreCase = true) &&
-                    (primaryView.isBlank() || mediaView == primaryView)
+                    (primaryView.isBlank() || mediaView == primaryView) &&
+                    colorKey !in usedColors
                 else -> (primaryView.isBlank() || mediaView == primaryView) && colorKey !in usedColors
             }
             if (!include) continue
@@ -244,11 +268,12 @@ object PlpRotationUrls {
             if (!seenUrls.add(src)) continue
             urls.add(src)
             colorNames.add(parts[0].trim())
+            // Single color: stop after preferred mock (no view rotation).
+            if (isSingleColor) break
         }
 
-        if (urls.size >= 2) return PlpRotationBuild(urls, colorNames, views)
-
-        if (!isSingleColor) {
+        // Fallback: lifestyle preferred but missing for some colors → front per color.
+        if (!isSingleColor && urls.size < 2 && primaryView.startsWith("lifestyle")) {
             for (pi in images) {
                 if (urls.size >= MAX_SLOTS) break
                 val src = pi.src.trim()
@@ -256,23 +281,63 @@ object PlpRotationUrls {
                 val alt = (pi.alt ?: "").trim()
                 if (!alt.contains("|")) continue
                 val parts = alt.split("|")
+                val colorKey = parts.getOrNull(0)?.trim()?.lowercase().orEmpty()
                 val mediaView = parts.getOrNull(1)?.trim()?.lowercase().orEmpty()
-                if (primaryView.isNotBlank() && mediaView != primaryView) continue
+                if (colorKey.isEmpty() || mediaView != "front") continue
+                if (hasPreviewDefault && !alt.contains("preview-default", ignoreCase = true)) continue
+                if (colorKey in usedColors) continue
+                usedColors.add(colorKey)
                 if (!seenUrls.add(src)) continue
                 urls.add(src)
-                colorNames.add(parts.getOrNull(0)?.trim().orEmpty())
+                colorNames.add(parts[0].trim())
             }
         }
 
+        if (urls.size >= 1) return PlpRotationBuild(urls, colorNames, views)
+
         if (urls.isEmpty()) {
-            val fallback = images.map { it.src.trim() }.filter { it.isNotBlank() }.distinct().take(MAX_SLOTS)
+            // Last resort: first front, else any non-folded.
+            for (pi in images) {
+                val alt = (pi.alt ?: "").trim()
+                val view = alt.split("|").getOrNull(1)?.trim()?.lowercase().orEmpty()
+                if (view == "front" || view.startsWith("front")) {
+                    val src = pi.src.trim()
+                    if (src.isNotBlank()) {
+                        return PlpRotationBuild(listOf(src), listOf(alt.split("|").firstOrNull()?.trim().orEmpty()), views)
+                    }
+                }
+            }
+            val fallback = images
+                .filter { pi ->
+                    val view = (pi.alt ?: "").split("|").getOrNull(1)?.trim()?.lowercase().orEmpty()
+                    !isApparelNonCardView(view)
+                }
+                .map { it.src.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(MAX_SLOTS)
+            if (fallback.isNotEmpty()) {
+                return PlpRotationBuild(
+                    urls = fallback,
+                    colorNames = List(fallback.size) { "" },
+                    viewsByColor = views,
+                )
+            }
+            val any = images.map { it.src.trim() }.filter { it.isNotBlank() }.distinct().take(MAX_SLOTS)
             return PlpRotationBuild(
-                urls = fallback,
-                colorNames = List(fallback.size) { "" },
+                urls = any,
+                colorNames = List(any.size) { "" },
                 viewsByColor = views,
             )
         }
 
         return PlpRotationBuild(urls, colorNames, views)
+    }
+
+    private fun isApparelNonCardView(view: String): Boolean {
+        val v = view.trim().lowercase()
+        if (v.isEmpty()) return false
+        return APPAREL_VIEW_HINTS.any { h -> v == h || v.startsWith("$h-") || v.startsWith("${h}_") } ||
+            v == "folded_2" || v.startsWith("folded")
     }
 }

@@ -22,16 +22,34 @@ class PlpRotationUrlsTest {
     }
 
     @Test
-    fun singleColor_includesAllViewsForPrimaryColor() {
+    fun singleColor_prefersFrontOnly_noViewCycling() {
         val build = PlpRotationUrls.fromProductImages(
             listOf(
+                img("https://shop/folded.jpg", "White|folded"),
                 img("https://shop/front.jpg", "White|front|preview-default"),
                 img("https://shop/back.jpg", "White|back"),
-                img("https://shop/right.jpg", "White|right"),
             )
         )
-        assertEquals(3, build.urls.size)
-        assertEquals(listOf("White", "White", "White"), build.colorNames)
+        assertEquals(1, build.urls.size)
+        assertEquals("https://shop/front.jpg", build.urls[0])
+    }
+
+    @Test
+    fun multiColor_prefersLifestyleOverFolded() {
+        val build = PlpRotationUrls.fromProductImages(
+            listOf(
+                img("https://shop/w-folded.jpg", "White|folded"),
+                img("https://shop/w-front.jpg", "White|front|preview-default"),
+                img("https://shop/w-life.jpg", "White|lifestyle-female|preview-default"),
+                img("https://shop/b-life.jpg", "Black|lifestyle-female|preview-default"),
+                img("https://shop/b-front.jpg", "Black|front|preview-default"),
+            ),
+            productKey = "unisex-softstyle-cotton-tee",
+            preferredLifestyleView = "lifestyle-female",
+        )
+        assertEquals(2, build.urls.size)
+        assertTrue(build.urls.contains("https://shop/w-life.jpg"))
+        assertTrue(build.urls.contains("https://shop/b-life.jpg"))
     }
 
     @Test
