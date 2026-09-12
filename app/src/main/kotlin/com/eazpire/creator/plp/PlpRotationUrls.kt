@@ -161,13 +161,15 @@ object PlpRotationUrls {
 
     /**
      * Collection handle → preferred lifestyle alt view (parity with web data-eaz-lifestyle-audience).
+     * Returns null for auto (profile / stable random among available).
      */
-    fun preferredLifestyleViewForCollection(collectionHandle: String?): String? =
-        when (collectionHandle?.trim()?.lowercase()) {
-            "women", "woman" -> "lifestyle-female"
-            "men", "man" -> "lifestyle-male"
-            else -> null
-        }
+    fun preferredLifestyleViewForCollection(collectionHandle: String?): String? {
+        val h = collectionHandle?.trim()?.lowercase().orEmpty()
+        if (h.isEmpty()) return null
+        if (h == "women" || h == "woman" || h.contains("women")) return "lifestyle-female"
+        if (h == "men" || h == "man" || (h.contains("men") && !h.contains("women"))) return "lifestyle-male"
+        return null
+    }
 
     fun fromProductImages(
         images: List<ShopifyProductsApi.ProductImage>,
@@ -217,9 +219,18 @@ object PlpRotationUrls {
         }
 
         // Prefer lifestyle → front; never keep folded/back as card primary when better exists.
+        // Collection-forced gender missing → front (never opposite gender).
         val pref = preferredLifestyleView?.trim()?.lowercase().orEmpty()
         when {
             pref.isNotBlank() && lifestyleViewsPresent.contains(pref) -> primaryView = pref
+            pref.isNotBlank() -> {
+                // Forced audience gender missing — never opposite gender.
+                primaryView = when {
+                    hasFront -> "front"
+                    lifestyleViewsPresent.contains("lifestyle") -> "lifestyle"
+                    else -> ""
+                }
+            }
             lifestyleViewsPresent.contains("lifestyle-female") &&
                 lifestyleViewsPresent.contains("lifestyle-male") -> {
                 val seed = (productKey ?: primaryColor).hashCode()
@@ -273,7 +284,7 @@ object PlpRotationUrls {
         }
 
         // Fallback: lifestyle preferred but missing for some colors → front per color.
-        if (!isSingleColor && urls.size < 2 && primaryView.startsWith("lifestyle")) {
+        if (!isSingleColor && primaryView.startsWith("lifestyle")) {
             for (pi in images) {
                 if (urls.size >= MAX_SLOTS) break
                 val src = pi.src.trim()

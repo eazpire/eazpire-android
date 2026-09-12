@@ -53,6 +53,45 @@ class PlpRotationUrlsTest {
     }
 
     @Test
+    fun menCollection_missingMale_usesFrontNotFemale() {
+        val build = PlpRotationUrls.fromProductImages(
+            listOf(
+                img("https://shop/w-front.jpg", "White|front|preview-default"),
+                img("https://shop/w-f.jpg", "White|lifestyle-female|preview-default"),
+                img("https://shop/b-f.jpg", "Black|lifestyle-female|preview-default"),
+                img("https://shop/b-front.jpg", "Black|front|preview-default"),
+            ),
+            productKey = "unisex-softstyle-cotton-tee",
+            preferredLifestyleView = "lifestyle-male",
+        )
+        assertEquals(2, build.urls.size)
+        assertTrue(build.urls.contains("https://shop/w-front.jpg"))
+        assertTrue(build.urls.contains("https://shop/b-front.jpg"))
+        assertTrue(!build.urls.contains("https://shop/w-f.jpg"))
+        assertTrue(!build.urls.contains("https://shop/b-f.jpg"))
+    }
+
+    @Test
+    fun menCollection_partialMale_fillsFrontForMissingColors() {
+        val build = PlpRotationUrls.fromProductImages(
+            listOf(
+                img("https://shop/w-m.jpg", "White|lifestyle-male|preview-default"),
+                img("https://shop/w-front.jpg", "White|front|preview-default"),
+                img("https://shop/b-f.jpg", "Black|lifestyle-female|preview-default"),
+                img("https://shop/b-front.jpg", "Black|front|preview-default"),
+                img("https://shop/n-f.jpg", "Navy|lifestyle-female|preview-default"),
+                img("https://shop/n-front.jpg", "Navy|front|preview-default"),
+            ),
+            productKey = "unisex-softstyle-cotton-tee",
+            preferredLifestyleView = "lifestyle-male",
+        )
+        assertEquals(3, build.urls.size)
+        assertTrue(build.urls.contains("https://shop/w-m.jpg"))
+        assertTrue(build.urls.contains("https://shop/b-front.jpg"))
+        assertTrue(build.urls.contains("https://shop/n-front.jpg"))
+    }
+
+    @Test
     fun photopaper_rotatesSizeGroupsNotViews() {
         val build = PlpRotationUrls.fromProductImages(
             listOf(
