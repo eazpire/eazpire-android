@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eazpire.creator.EazColors
 import com.eazpire.creator.EazpireCreatorTheme
+import com.eazpire.creator.i18n.LocalTranslationStore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -75,6 +76,9 @@ fun CreatorSwitch(
 ) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    val translations = LocalTranslationStore.current
+    val shopLabel = translations?.t("creator.app_switch.shop_label", "Shop") ?: "Shop"
+    val creatorLabel = translations?.t("creator.app_switch.creator_label", "Creator") ?: "Creator"
     val trackWidth = if (compact) 130.dp else 150.dp
     val trackHeight = if (compact) 44.dp else 50.dp
     val padding = 2.dp
@@ -280,7 +284,7 @@ fun CreatorSwitch(
                 tint = if (isCreatorMode) Color.White.copy(alpha = 0.9f) else LabelInactive
             )
         }
-        // Labels (Klick → Wechsel wie Web: Ziel-Label tippen = umschalten)
+        // Inactive label tap switches (Creator → Shop app / Play Store). Active label keeps the hint tutorial.
         Row(
             modifier = Modifier.fillMaxHeight().zIndex(1f),
             verticalAlignment = Alignment.CenterVertically
@@ -293,12 +297,16 @@ fun CreatorSwitch(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) {
-                        useDragPositionForDisplay = true
-                        triggerTutorial++
+                        if (isCreatorMode) {
+                            onModeChange(false)
+                        } else {
+                            useDragPositionForDisplay = true
+                            triggerTutorial++
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text("Shop", fontSize = if (compact) 12.sp else 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) LabelInactive else Color.White)
+                Text(shopLabel, fontSize = if (compact) 12.sp else 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) LabelInactive else Color.White)
             }
             Box(
                 modifier = Modifier
@@ -308,12 +316,16 @@ fun CreatorSwitch(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) {
-                        useDragPositionForDisplay = true
-                        triggerTutorial++
+                        if (!isCreatorMode) {
+                            onModeChange(true)
+                        } else {
+                            useDragPositionForDisplay = true
+                            triggerTutorial++
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text("Creator", fontSize = if (compact) 12.sp else 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) Color.White else LabelInactive)
+                Text(creatorLabel, fontSize = if (compact) 12.sp else 11.sp, fontWeight = FontWeight.SemiBold, color = if (isCreatorMode) Color.White else LabelInactive)
             }
         }
     }

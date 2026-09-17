@@ -37,4 +37,11 @@ class AppSwitchRoutingTest {
             assertFalse("expected creator path: $path", AppSwitchRouting.isShopStorefrontPath(path))
         }
     }
+
+    @Test
+    fun cartAndSearchPaths_areShop() {
+        assertTrue(AppSwitchRouting.isShopStorefrontPath("/cart/"))
+        assertTrue(AppSwitchRouting.isShopStorefrontPath("cart"))
+        assertTrue(AppSwitchRouting.isShopStorefrontPath("/search/"))
+    }
 }
