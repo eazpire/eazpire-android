@@ -29,6 +29,9 @@ object AppSwitchSession {
         client: AppExchangeClient = AppExchangeClient(),
     ): AppSwitchHelper.Result {
         val jwt = session.jwt?.trim().orEmpty()
+        if (!AppSwitchHelper.isInstalled(context, target)) {
+            return AppSwitchHelper.openSiblingOrStore(context, target, null)
+        }
         val exchangeToken = if (jwt.isNotEmpty()) {
             runCatching {
                 client.issueExchangeToken(

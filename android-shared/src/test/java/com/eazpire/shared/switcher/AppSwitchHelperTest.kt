@@ -40,4 +40,19 @@ class AppSwitchHelperTest {
         assertTrue(SiblingAppPromo.title(EazpireApps.Target.SHOP).contains("Shop"))
         assertTrue(SiblingAppPromo.title(EazpireApps.Target.CREATOR).contains("Creator"))
     }
+
+    @Test
+    fun usesAuthHandoff_onlyWhenTokenPresent() {
+        assertFalse(AppSwitchHelper.usesAuthHandoff(null))
+        assertFalse(AppSwitchHelper.usesAuthHandoff(""))
+        assertFalse(AppSwitchHelper.usesAuthHandoff("  "))
+        assertTrue(AppSwitchHelper.usesAuthHandoff("tok-abc"))
+    }
+
+    @Test
+    fun playStoreHttpsUri_usesPackageId() {
+        val uri = AppSwitchHelper.playStoreHttpsUriString(EazpireApps.Target.CREATOR)
+        assertTrue(uri.contains("com.eazpire.creator"))
+        assertTrue(uri.startsWith("https://play.google.com/store/apps/details"))
+    }
 }

@@ -47,13 +47,13 @@ android {
     buildTypes {
         debug {
             buildConfigField("boolean", "EAZ_PERF_TRACE", "true")
-            // IDEA-093: keep in-process Shop↔Creator until dual APK soft-launch.
-            buildConfigField("boolean", "USE_EXTERNAL_APP_SWITCH", "false")
+            // IDEA-093: Creator is shop-free; Shop/Creator switch opens the sibling Play app.
+            buildConfigField("boolean", "USE_EXTERNAL_APP_SWITCH", "true")
         }
         release {
             isMinifyEnabled = false
             buildConfigField("boolean", "EAZ_PERF_TRACE", "false")
-            buildConfigField("boolean", "USE_EXTERNAL_APP_SWITCH", "false")
+            buildConfigField("boolean", "USE_EXTERNAL_APP_SWITCH", "true")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

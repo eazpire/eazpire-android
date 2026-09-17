@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.shared.EazpireApps
 import com.eazpire.shared.switcher.SiblingAppPromo
 
@@ -28,6 +29,18 @@ fun SiblingAppPromoBanner(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val store = LocalTranslationStore.current
+    val title = store?.t(
+        if (target == EazpireApps.Target.SHOP) "creator.app_switch.get_shop_title" else "creator.app_switch.get_creator_title",
+        SiblingAppPromo.title(target),
+    ) ?: SiblingAppPromo.title(target)
+    val body = store?.t(
+        if (target == EazpireApps.Target.SHOP) "creator.app_switch.get_shop_body" else "creator.app_switch.get_creator_body",
+        SiblingAppPromo.body(target),
+    ) ?: SiblingAppPromo.body(target)
+    val cta = store?.t("creator.app_switch.open_play_store", SiblingAppPromo.cta(target))
+        ?: SiblingAppPromo.cta(target)
+    val notNow = store?.t("creator.app_switch.not_now", "Not now") ?: "Not now"
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -37,23 +50,23 @@ fun SiblingAppPromoBanner(
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
             Text(
-                text = SiblingAppPromo.title(target),
+                text = title,
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = SiblingAppPromo.body(target),
+                text = body,
                 color = Color.White.copy(alpha = 0.82f),
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
         TextButton(onClick = onOpenStore) {
-            Text(SiblingAppPromo.cta(target), color = Color(0xFF93C5FD), fontSize = 12.sp)
+            Text(cta, color = Color(0xFF93C5FD), fontSize = 12.sp)
         }
         TextButton(onClick = onDismiss) {
-            Text("Not now", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+            Text(notNow, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
         }
     }
 }

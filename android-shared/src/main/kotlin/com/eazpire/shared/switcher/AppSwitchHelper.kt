@@ -14,8 +14,10 @@ import java.nio.charset.StandardCharsets
  * Opens the sibling Shop/Creator app with an optional exchange token,
  * or the Play Store listing when the sibling is not installed.
  *
- * Soft-launch: keep in-process mode until [com.eazpire.creator.BuildConfig.USE_EXTERNAL_APP_SWITCH]
- * is enabled in the Creator app.
+ * Logged-in: `eazpire-{shop|creator}://auth/handoff?exchange_token=…`
+ * Logged-out / no token: sibling launcher activity (guest). If that fails,
+ * the handoff URI without a token — target activities must not force login.
+ * Missing app: Play Store (`market://details?id=…`, HTTPS fallback).
  */
 object AppSwitchHelper {
 
@@ -64,17 +66,16 @@ object AppSwitchHelper {
     fun playStoreHttpsUri(target: EazpireApps.Target): Uri =
         Uri.parse(playStoreHttpsUriString(target))
 
+    fun usesAuthHandoff(exchangeToken: String?): Boolean =
+        AppSwitchRouting.usesAuthHandoff(exchangeToken)
+
     fun openSiblingOrStore(
         context: Context,
         target: EazpireApps.Target,
         exchangeToken: String? = null,
     ): Result {
-        val pkg = EazpireApps.packageId(target)
         if (isInstalled(context, target)) {
-            val intent = Intent(Intent.ACTION_VIEW, handoffUri(target, exchangeToken)).apply {
-                setPackage(pkg)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+            val intent = siblingOpenIntent(context, target, exchangeToken)
             return try {
                 context.startActivity(intent)
                 Result.OpenedApp
@@ -83,6 +84,29 @@ object AppSwitchHelper {
             }
         }
         return openPlayStore(context, target)
+    }
+
+    private fun siblingOpenIntent(
+        context: Context,
+        target: EazpireApps.Target,
+        exchangeToken: String?,
+    ): Intent {
+        val pkg = EazpireApps.packageId(target)
+        if (usesAuthHandoff(exchangeToken)) {
+            return Intent(Intent.ACTION_VIEW, handoffUri(target, exchangeToken)).apply {
+                setPackage(pkg)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        val launch = context.packageManager.getLaunchIntentForPackage(pkg)
+        if (launch != null) {
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            return launch
+        }
+        return Intent(Intent.ACTION_VIEW, handoffUri(target, null)).apply {
+            setPackage(pkg)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
     }
 
     private fun openPlayStore(context: Context, target: EazpireApps.Target): Result {

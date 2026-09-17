@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.creator.EazColors
+import com.eazpire.creator.i18n.LocalTranslationStore
 
 /** Fixed narrow icons-only sidebar – immer sichtbar, kein Drawer */
 @Composable
@@ -32,6 +33,7 @@ fun CreatorSidebar(
     onSwitchToShop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val shopLabel = LocalTranslationStore.current?.t("creator.app_switch.shop_label", "Shop") ?: "Shop"
     val items = listOf(
         Icons.Default.Dashboard to 0,
         Icons.Default.Brush to 1,
@@ -76,7 +78,7 @@ fun CreatorSidebar(
 
         Icon(
             imageVector = Icons.Default.ShoppingBag,
-            contentDescription = "Shop",
+            contentDescription = shopLabel,
             tint = Color.White.copy(alpha = 0.6f),
             modifier = Modifier
                 .size(40.dp)

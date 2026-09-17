@@ -62,6 +62,7 @@ import com.eazpire.creator.i18n.LocalTranslationStore
 import com.eazpire.creator.i18n.TranslationStore
 import com.eazpire.shared.EazpireApps
 import com.eazpire.shared.switcher.AppSwitchHelper
+import com.eazpire.shared.switcher.AppSwitchRouting
 import com.eazpire.shared.switcher.AppSwitchSession
 import com.eazpire.creator.ui.switcher.SiblingAppPromoBanner
 import com.eazpire.creator.locale.LocaleStore
@@ -114,8 +115,11 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /**
- * Shop-Screen: Direkt zugänglich ohne Login.
- * Zeigt MainHeader und Platzhalter-Content (native UI).
+ * Root composable for the Creator Play app.
+ *
+ * IDEA-093: when [BuildConfig.USE_EXTERNAL_APP_SWITCH] is true (always for this APK),
+ * this screen stays on Creator tools. Shop catalog/cart/checkout/favorites are not
+ * in-app destinations — the Shop control opens `com.eazpire.shop` or its Play listing.
  */
 private val COLLECTION_HANDLE_TO_TITLE = mapOf(
     "women" to "Women", "men" to "Men", "kids" to "Kids",
@@ -192,10 +196,19 @@ fun ShopScreen(
         var authLoginMethod by remember { mutableStateOf(AuthLoginMethod.EMAIL) }
         val oauthCallbackForAuth = remember { mutableStateOf<String?>(null) }
         var siblingPromoDismissed by rememberSaveable { mutableStateOf(false) }
-        val shopAppInstalled = remember {
-            AppSwitchHelper.isInstalled(context, EazpireApps.Target.SHOP)
+        var shopAppInstalled by remember {
+            mutableStateOf(AppSwitchHelper.isInstalled(context, EazpireApps.Target.SHOP))
         }
         val showSiblingShopPromo = !siblingPromoDismissed && !shopAppInstalled
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    shopAppInstalled = AppSwitchHelper.isInstalled(context, EazpireApps.Target.SHOP)
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
 
         LaunchedEffect(pendingOpenAuth?.value) {
             if (pendingOpenAuth?.value == true) {
@@ -391,16 +404,18 @@ fun ShopScreen(
     var selectedCreatorName by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreatorsIndex by rememberSaveable { mutableStateOf(false) }
     val shopNavHistory = rememberShopNavHistoryController()
-    var isCreatorMode by rememberSaveable { mutableStateOf(false) }
+    val externalAppSwitch = BuildConfig.USE_EXTERNAL_APP_SWITCH
+    var inProcessCreatorMode by rememberSaveable { mutableStateOf(false) }
+    val isCreatorMode = if (externalAppSwitch) true else inProcessCreatorMode
 
     fun switchCreatorMode(toCreator: Boolean, @Suppress("UNUSED_PARAMETER") animate: Boolean = false) {
-        // IDEA-093 soft-launch: when enabled, leave this APK and open sibling / Play Store.
-        if (BuildConfig.USE_EXTERNAL_APP_SWITCH) {
-            val target = if (toCreator) EazpireApps.Target.CREATOR else EazpireApps.Target.SHOP
+        // IDEA-093: this APK is Creator-only. Shop opens the sibling app or Play Store.
+        if (externalAppSwitch) {
+            if (toCreator) return
             scope.launch {
                 AppSwitchSession.openSiblingWithOptionalExchange(
                     context = context,
-                    target = target,
+                    target = EazpireApps.Target.SHOP,
                     session = AppSwitchSession.SessionSnapshot(
                         jwt = tokenStore.getJwt(),
                         sourcePackage = EazpireApps.CREATOR,
@@ -412,8 +427,8 @@ fun ShopScreen(
             }
             return
         }
-        if (toCreator == isCreatorMode) return
-        isCreatorMode = toCreator
+        if (toCreator == inProcessCreatorMode) return
+        inProcessCreatorMode = toCreator
     }
 
     fun openShopCreate(seedDesignUrl: String? = null, seedDesignId: String? = null) {
@@ -430,11 +445,17 @@ fun ShopScreen(
     val designRequestOpen by DesignRequestUiTrigger.open.collectAsState()
     val designGenerateTick by DesignRequestUiTrigger.generateTick.collectAsState()
     LaunchedEffect(designGenerateTick) {
-        if (designGenerateTick > 0) openShopCreate()
+        if (designGenerateTick > 0) {
+            if (externalAppSwitch) switchCreatorMode(toCreator = false)
+            else openShopCreate()
+        }
     }
     LaunchedEffect(authSessionTick) {
         if (tokenStore.isLoggedIn()) {
-            DesignRequestPendingStore.take(context)?.let { DesignRequestUiTrigger.openSheet(it) }
+            DesignRequestPendingStore.take(context)?.let {
+                if (externalAppSwitch) switchCreatorMode(toCreator = false)
+                else DesignRequestUiTrigger.openSheet(it)
+            }
         }
     }
 
@@ -484,7 +505,7 @@ fun ShopScreen(
 
     val pendingWearPair = pendingWearPairToken?.value
     LaunchedEffect(pendingWearPair) {
-        if (!pendingWearPair.isNullOrBlank()) isCreatorMode = true
+        if (!pendingWearPair.isNullOrBlank() && !externalAppSwitch) inProcessCreatorMode = true
     }
 
     var pendingCreationsScreen by remember { mutableIntStateOf(-1) }
@@ -506,7 +527,11 @@ fun ShopScreen(
         }
         val pc = pendingOpenCart
         if (pc?.value == true) {
-            cartDrawerVisible = true
+            if (externalAppSwitch) {
+                switchCreatorMode(toCreator = false, animate = false)
+            } else {
+                cartDrawerVisible = true
+            }
             pc.value = false
         }
         val ps = pendingOpenShop
@@ -857,6 +882,10 @@ fun ShopScreen(
             "www.eazpire.com", "eazpire.com" -> uri.path ?: "/"
             else -> uri.path ?: "/"
         }
+        if (externalAppSwitch && AppSwitchRouting.isShopStorefrontPath(path)) {
+            switchCreatorMode(toCreator = false, animate = false)
+            return@LaunchedEffect
+        }
         when {
             path == "/creator" || path == "/creator/" -> {
                 showCreatorsIndex = true
@@ -986,6 +1015,7 @@ fun ShopScreen(
         }
         }
     } else {
+    // Legacy in-process shop UI — unreachable while USE_EXTERNAL_APP_SWITCH is true.
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -1512,7 +1542,7 @@ fun ShopScreen(
             showLoginOptions = true
         },
         onResetMascot = { eazyMascotStore.resetSync() },
-        chatContext = if (isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop,
+        chatContext = if (externalAppSwitch || isCreatorMode) EazyChatContext.Creator else EazyChatContext.Shop,
         startTab = eazyStartTab,
         pendingGamesSection = pendingGamesSection?.value,
         pendingTradeOfferId = pendingTradeOfferId?.value,
@@ -1547,7 +1577,7 @@ fun ShopScreen(
         locale = localeStore.getLanguageCodeSync()
     )
 
-    MenuDrawer(
+    if (!externalAppSwitch) MenuDrawer(
         visible = menuDrawerVisible,
         translationStore = translationStore,
         tokenStore = tokenStore,
@@ -1625,7 +1655,7 @@ fun ShopScreen(
         )
     }
 
-    askTeamFormToken?.let { token ->
+    if (!externalAppSwitch) askTeamFormToken?.let { token ->
         com.eazpire.creator.ui.askteam.AskTeamFormSheet(
             token = token,
             invite = askTeamFormInvite,
@@ -1636,7 +1666,7 @@ fun ShopScreen(
         )
     }
 
-    if (favoritesModalVisible) {
+    if (!externalAppSwitch && favoritesModalVisible) {
         FavoritesModal(
             visible = true,
             customerId = ownerId.ifBlank { null },
@@ -1673,7 +1703,7 @@ fun ShopScreen(
     debugLog("ShopScreen.kt:232", "ShopScreen rendering modal block", mapOf("modalHandle" to modalHandle), "H2")
     // #endregion
     Log.d("ProductModalDebug", "[6] ShopScreen: rendering modal block, modalHandle=$modalHandle")
-    if (modalHandle != null) {
+    if (!externalAppSwitch && modalHandle != null) {
         // #region agent log
         debugLog("ShopScreen.kt:236", "ShopScreen composing ProductModal", mapOf("handle" to modalHandle), "H3")
         // #endregion

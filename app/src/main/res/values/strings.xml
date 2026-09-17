@@ -55,4 +55,6 @@
     <string name="poster_ar_scan_hint">Move your phone slowly to scan walls and surfaces.</string>
     <string name="poster_ar_tap_place">Tap to place the poster</string>
     <string name="poster_ar_view_in_room">View in room</string>
+    <string name="creator_handoff_ok">Signed in via Shop handoff</string>
+    <string name="creator_handoff_fail">Could not complete sign-in handoff</string>
 </resources>
